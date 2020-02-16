@@ -164,37 +164,38 @@ def validate_config_and_setup_param_noise(config):
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
     schedule_max_timesteps = None
-    if "schedule_max_timesteps" in config and \
-            config["schedule_max_timesteps"] > 0:
+    if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         deprecation_warning(
             "schedule_max_timesteps",
             "exploration_config.epsilon_timesteps AND "
             "prioritized_replay_beta_annealing_timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
-    if "exploration_final_eps" in config and \
-            config["exploration_final_eps"] > 0:
+    if config.get("exploration_final_eps", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         deprecation_warning("exploration_final_eps",
                             "exploration_config.final_epsilon")
         if isinstance(config["exploration_config"], dict):
             config["exploration_config"]["final_epsilon"] = \
                 config.pop("exploration_final_eps")
-    if "exploration_fraction" in config and config["exploration_fraction"] > 0:
+    if config.get("exploration_fraction", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         assert schedule_max_timesteps is not None
         deprecation_warning("exploration_fraction",
                             "exploration_config.epsilon_timesteps")
         if isinstance(config["exploration_config"], dict):
             config["exploration_config"]["epsilon_timesteps"] = config.pop(
                 "exploration_fraction") * schedule_max_timesteps
-    if "beta_annealing_fraction" in config and \
-            config["beta_annealing_fraction"] > 0:
+    if config.get("beta_annealing_fraction", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         assert schedule_max_timesteps is not None
         deprecation_warning(
             "beta_annealing_fraction (decimal)",
             "prioritized_replay_beta_annealing_timesteps (int)")
         config["prioritized_replay_beta_annealing_timesteps"] = config.pop(
             "beta_annealing_fraction") * schedule_max_timesteps
-    if "per_worker_exploration" in config and \
-            config["per_worker_exploration"] != DEPRECATED_VALUE:
+    if config.get("per_worker_exploration", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         deprecation_warning("per_worker_exploration",
                             "exploration_config.type=PerWorkerEpsilonGreedy")
         if isinstance(config["exploration_config"], dict):

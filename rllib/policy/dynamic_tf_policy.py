@@ -106,7 +106,7 @@ class DynamicTFPolicy(TFPolicy):
             action_input = ModelCatalog.get_action_placeholder(action_space)
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
-                    action_space)
+                    action_space, "prev_action")
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
 
