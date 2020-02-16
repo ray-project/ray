@@ -479,7 +479,8 @@ def test_deserialized_from_buffer_immutable(ray_start_regular):
     x = np.full((2, 2), 1.)
     o = ray.put(x)
     y = ray.get(o)
-    with pytest.raises(ValueError, match="assignment destination is read-only"):
+    with pytest.raises(
+            ValueError, match="assignment destination is read-only"):
         y[0, 0] = 9.
 
 
