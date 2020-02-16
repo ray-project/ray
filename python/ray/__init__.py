@@ -112,6 +112,7 @@ from ray._raylet import (
 
 _config = _Config()
 
+from ray import util
 from ray.profiling import profile  # noqa: E402
 from ray.state import (jobs, nodes, actors, tasks, objects, timeline,
                        object_transfer_timeline, cluster_resources,
