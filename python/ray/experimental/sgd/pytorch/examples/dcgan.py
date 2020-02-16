@@ -16,6 +16,7 @@ from scipy.stats import entropy
 
 import ray
 from ray.experimental.sgd import PyTorchTrainer
+from ray.experimental.sgd.pytorch.utils import TEST_MODE
 
 # Training parameters
 TRAIN_BATCHES = 5
@@ -211,7 +212,7 @@ def optimizer_creator(models, config):
 
 
 def train_example(num_replicas=1, use_gpu=False, test_mode=False):
-    config = {"test_mode": test_mode}
+    config = {TEST_MODE: test_mode}
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,

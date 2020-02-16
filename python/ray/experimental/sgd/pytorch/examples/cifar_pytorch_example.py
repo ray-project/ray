@@ -95,7 +95,7 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
         "batch_size": 16 if test_mode else 512,
         "config": {
             "lr": tune.choice([1e-4, 1e-3, 5e-3, 1e-2]),
-            "test_mode": test_mode
+            TEST_MODE: test_mode
         },
         "backend": "nccl" if use_gpu else "gloo"
     }
