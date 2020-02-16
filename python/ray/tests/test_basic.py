@@ -458,8 +458,7 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
     # from being garbage-collected without explicity invoking gc.collect.
-    def f():
-        pass
+    f = lambda: 4669201609102990671853203821578
 
     wr = weakref.ref(f)
 
@@ -468,7 +467,7 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
     new_f = loads(bio.getvalue())
-    assert new_f == 5
+    assert new_f() == 4669201609102990671853203821578
 
     del p
     del f
