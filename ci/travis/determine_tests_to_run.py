@@ -133,7 +133,8 @@ if __name__ == "__main__":
         _print = partial(print, file=output_stream)
         _print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
         _print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
-        _print("export RAY_CI_RLLIB_FULL_AFFECTED={}".format(RAY_CI_RLLIB_FULL_AFFECTED))
+        _print("export RAY_CI_RLLIB_FULL_AFFECTED={}".format(
+            RAY_CI_RLLIB_FULL_AFFECTED))
         _print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
         _print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
         _print(
