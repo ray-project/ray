@@ -61,14 +61,6 @@ py_test(
 # DQNTrainer
 py_test(
     name = "test_dqn",
-    tags = ["agents_dir"],
-    size = "small",
-    srcs = ["agents/dqn/tests/test_dqn.py"]
-)
-
-# DQNTrainer
-py_test(
-    name = "test_dqn",
     size = "medium",
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
