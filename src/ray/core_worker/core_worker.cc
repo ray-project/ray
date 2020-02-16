@@ -961,9 +961,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
 
-  status = task_execution_callback_(task_type, func,
-                                    task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, return_objects);
+  status = task_execution_callback_(
+      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
+      arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
 
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.

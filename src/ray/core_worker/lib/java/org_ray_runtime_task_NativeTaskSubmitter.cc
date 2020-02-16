@@ -92,6 +92,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   bool use_direct_call;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
+  uint64_t max_concurrency = 1;
   if (actorCreationOptions) {
     max_reconstructions = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_reconstructions));
@@ -106,6 +107,8 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       std::string jvm_options = JavaStringToNativeString(env, java_jvm_options);
       dynamic_worker_options.emplace_back(jvm_options);
     }
+    max_concurrency = static_cast<uint64_t>(env->GetIntField(
+        actorCreationOptions, java_actor_creation_options_max_concurrency));
   } else {
     use_direct_call =
         env->GetStaticBooleanField(java_actor_creation_options_class,
@@ -115,7 +118,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   ray::ActorCreationOptions actor_creation_options{
       static_cast<uint64_t>(max_reconstructions),
       use_direct_call,
-      /*max_concurrency=*/1,
+      static_cast<int>(max_concurrency),
       resources,
       resources,
       dynamic_worker_options,
