@@ -117,11 +117,11 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
             squashed_deterministic_actions)
 
     actions = tf.cond(
-        tf.constant(explore, dtype=tf.bool),
+        tf.constant(explore) if isinstance(explore, bool) else explore,
         true_fn=lambda: stochastic_actions,
         false_fn=lambda: deterministic_actions)
     logp = tf.cond(
-        tf.constant(explore, dtype=tf.bool),
+        tf.constant(explore) if isinstance(explore, bool) else explore,
         true_fn=lambda: log_pis,
         false_fn=lambda: tf.zeros_like(log_pis))
 

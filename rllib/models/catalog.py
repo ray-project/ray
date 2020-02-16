@@ -108,7 +108,7 @@ class ModelCatalog:
     @staticmethod
     @DeveloperAPI
     def get_action_dist(action_space,
-                        config,
+                        config=None,
                         dist_type=None,
                         torch=None,
                         framework="tf",
@@ -117,7 +117,7 @@ class ModelCatalog:
 
         Args:
             action_space (Space): Action space of the target gym env.
-            config (dict): Optional model config.
+            config (Optional[dict]): Optional model config.
             dist_type (Optional[str]): Identifier of the action distribution.
             torch (bool): Deprecated: Whether to return PyTorch Model and
                 distribution (use framework="torch" instead).
