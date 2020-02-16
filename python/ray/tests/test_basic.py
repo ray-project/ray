@@ -464,10 +464,10 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler
+    from ray.cloudpickle import CloudPickler, loads
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
-    new_f = pickle.loads(bio.getvalue())
+    new_f = loads(bio.getvalue())
     assert new_f == 5
 
     del p
