@@ -27,7 +27,7 @@ class Random(Exploration):
     def get_exploration_action(self,
                                model_output,
                                model,
-                               action_dist_class=None,
+                               action_dist_class,
                                explore=True,
                                timestep=None):
         # Instantiate the distribution object.
@@ -37,7 +37,8 @@ class Random(Exploration):
             return self._get_tf_exploration_action_op(action_dist, explore,
                                                       timestep)
         else:
-            pass  # TODO
+            return self._get_torch_exploration_action(action_dist, explore,
+                                                      timestep)
 
     @tf.function
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
@@ -49,4 +50,14 @@ class Random(Exploration):
             action = tf.cast(
                 action_dist.deterministic_sample(), dtype=tf.int32)
         logp = tf.zeros_like(action, dtype=tf.float32)
+        return action, logp
+
+    def _get_torch_exploration_action(self, action_dist, explore, timestep):
+        if explore:
+            # Unsqueeze will be unnecessary, once we support batch/time-aware
+            # Spaces.
+            action = torch.IntTensor(self.action_space.sample()).unsqueeze(0)
+        else:
+            action = torch.IntTensor(action_dist.deterministic_sample())
+        logp = torch.zeros_like(action, dtype=torch.float32)
         return action, logp
