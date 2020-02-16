@@ -181,7 +181,6 @@ class ModelCatalog:
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
-                # action_space=action_space,
                 input_lens=input_lens), sum(input_lens)
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):

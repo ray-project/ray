@@ -380,13 +380,20 @@ class Trainer(Trainable):
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
     """
-
+    # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
+
+    # List of top-level keys with value=dict, for which new sub-keys are
+    # allowed to be added to the value dict.
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
-        "evaluation_config", "exploration"
+        "evaluation_config", "exploration_config"
     ]
+
+    # List of top level keys with value=dict, for which we always override the
+    # entire value (dict), iff the "type" key in that value dict changes.
+    _override_all_subkeys_if_type_changes = ["exploration_config"]
 
     @PublicAPI
     def __init__(self, config=None, env=None, logger_creator=None):
@@ -543,18 +550,10 @@ class Trainer(Trainable):
 
         # Merge the supplied config with the class default.
         merged_config = copy.deepcopy(self._default_config)
-        # Handle special case for Explorations.
-        # TODO(sven): Maybe move this into `deep_update()`?
-        if isinstance(merged_config.get("exploration_config"), dict) and \
-                "type" in merged_config["exploration_config"] and \
-                isinstance(config.get("exploration_config"), dict) and \
-                "type" in config["exploration_config"] and \
-                merged_config["exploration_config"]["type"] != \
-                config["exploration_config"]["type"]:
-            merged_config["exploration_config"] = config["exploration_config"]
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
-                                    self._allow_unknown_subkeys)
+                                    self._allow_unknown_subkeys,
+                                    self._override_all_subkeys_if_type_changes)
         self.raw_user_config = config
         self.config = merged_config
 
