@@ -181,7 +181,6 @@ class ModelCatalog:
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
-                # action_space=action_space,
                 input_lens=input_lens), sum(input_lens)
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
@@ -249,7 +248,7 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space):
+    def get_action_placeholder(action_space, name=None):
         """Returns an action placeholder consistent with the action space
 
         Args:
@@ -260,7 +259,7 @@ class ModelCatalog:
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
 
-        return tf.placeholder(dtype, shape=shape, name="action")
+        return tf.placeholder(dtype, shape=shape, name=(name or "action"))
 
     @staticmethod
     @DeveloperAPI

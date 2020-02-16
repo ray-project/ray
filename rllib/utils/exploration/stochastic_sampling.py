@@ -2,6 +2,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.spaces.tuple_actions import TupleActions
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -76,11 +77,17 @@ class StochasticSampling(Exploration):
     def _get_tf_exploration_action_op(action_dist, explore):
         if explore:
             action = action_dist.sample()
+            # TODO(sven): Change `sample` to accept `sample(logp=True|False)`
             logp = action_dist.sampled_action_logp()
         else:
             action = action_dist.deterministic_sample()
-            logp = tf.zeros_like(action, dtype=tf.float32)
-        return action, tf.reshape(logp, tf.shape(action))
+            # TODO(sven): Move into (deterministic_)sample(logp=True|False)
+            if isinstance(action, TupleActions):
+                batch_size = tf.shape(action[0][0])[0]
+            else:
+                batch_size = tf.shape(action)[0]
+            logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+        return action, logp
 
     @staticmethod
     def _get_torch_exploration_action(action_dist, explore):
@@ -89,5 +96,5 @@ class StochasticSampling(Exploration):
             logp = action_dist.sampled_action_logp()
         else:
             action = action_dist.deterministic_sample()
-            logp = torch.zeros_like(action, dtype=torch.float32)
+            logp = torch.zeros_like(action.size()[0], dtype=torch.float32)
         return action, logp

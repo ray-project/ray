@@ -10,6 +10,10 @@ torch, _ = try_import_torch()
 
 class Random(Exploration):
     """A random action selector (deterministic/greedy for explore=False).
+
+    If explore=True, returns actions randomly from `self.action_space` (via
+    Space.sample()).
+    If explore=False, returns the greedy/max-likelihood action.
     """
 
     def __init__(self, action_space, framework="tf", **kwargs):
