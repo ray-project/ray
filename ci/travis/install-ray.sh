@@ -26,14 +26,14 @@ if [[ "$PYTHON" == "3.6" ]]; then
       npm ci
       npm run build
     popd
-    python setup.py install --user
+    pip install -e . --verbose
   popd
 
 elif [[ "$LINT" == "1" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
   pushd "$ROOT_DIR/../../python"
-    python setup.py install --user
+    pip install -e . --verbose
   popd
 else
   echo "Unrecognized Python version."

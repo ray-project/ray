@@ -28,6 +28,7 @@ parser.add_argument("--num-agents", type=int, default=4)
 parser.add_argument("--num-policies", type=int, default=2)
 parser.add_argument("--num-iters", type=int, default=20)
 parser.add_argument("--simple", action="store_true")
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class CustomModel1(Model):
@@ -68,7 +69,7 @@ class CustomModel2(Model):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(num_cpus=args.num_cpus or None)
 
     # Simple environment with `num_agents` independent cartpole entities
     register_env("multi_cartpole", lambda _: MultiCartpole(args.num_agents))

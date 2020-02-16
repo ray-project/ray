@@ -169,7 +169,15 @@ class TestRolloutWorker(unittest.TestCase):
         result = agent.train()
         self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
         result2 = agent.train()
-        self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
+        print("num_steps_sampled={}".format(
+            result["info"]["num_steps_sampled"]))
+        print("num_steps_trained={}".format(
+            result["info"]["num_steps_trained"]))
+        self.assertLess(result2["info"]["learner"]["cur_lr"], 0.09)
+        print("num_steps_sampled={}".format(
+            result["info"]["num_steps_sampled"]))
+        print("num_steps_trained={}".format(
+            result["info"]["num_steps_trained"]))
 
     def test_no_step_on_init(self):
         # Allow for Unittest run.

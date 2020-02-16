@@ -22,8 +22,9 @@ by Espeholt, Soyer, Munos et al.
 
 from absl.testing import parameterized
 import numpy as np
-import vtrace
+
 from ray.rllib.utils import try_import_tf
+import ray.rllib.agents.impala.vtrace as vtrace
 
 tf = try_import_tf()
 
