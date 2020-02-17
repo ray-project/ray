@@ -67,7 +67,7 @@ class StreamTask(ABC):
         if len(input_actor_ids) > 0:
             channel_ids = list(input_actor_ids.keys())
             from_actor_ids = list(input_actor_ids.values())
-            logger.info("Create DataReader, channels {}.", channel_ids)
+            logger.info("Create DataReader, channels {}.".format(channel_ids))
             self.reader = DataReader(channel_ids, from_actor_ids, channel_conf)
 
             def exit_handler():

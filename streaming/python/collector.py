@@ -37,8 +37,8 @@ class OutputCollector(Collector):
         self.writer = writer
         self.partition_func = partition_func
         logger.info(
-            "Create OutputCollector, channel_ids {}, partition_func {}",
-            channel_ids, partition_func)
+            "Create OutputCollector, channel_ids {}, partition_func {}".format(
+            channel_ids, partition_func))
 
     def collect(self, record):
         partitions = self.partition_func.partition(record,
