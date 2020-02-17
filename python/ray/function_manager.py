@@ -69,7 +69,14 @@ class FunctionActorManager:
         # these types.
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
-        self.lock = threading.Lock()
+        # Deserialize an ActorHandle will call load_actor_class(). If a
+        # function closure captured an ActorHandle, the deserialization of the
+        # function will be:
+        #     import_thread.py
+        #         -> fetch_and_register_remote_function (acquire lock)
+        #         -> _load_actor_class_from_gcs (acquire lock, too)
+        # So, the lock should be a reentrant lock.
+        self.lock = threading.RLock()
         self.execution_infos = {}
 
     def increase_task_counter(self, job_id, function_descriptor):
