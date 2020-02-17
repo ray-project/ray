@@ -136,7 +136,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     stats = {}
 
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, ignore_reinit_error=True)
 
     def tearDown(self):
         ray.shutdown()

@@ -42,7 +42,7 @@ class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
     @DeveloperAPI
-    def __init__(self, inputs, model, temperature=1.0):
+    def __init__(self, inputs, model=None, temperature=1.0):
         temperature = max(0.0001, temperature)  # clamp for stability reasons
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.

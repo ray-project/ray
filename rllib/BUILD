@@ -1193,18 +1193,26 @@ py_test(
 )
 
 py_test(
-    name = "examples/multiagent_cartpole",
+    name = "examples/multi_agent_cartpole",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_cartpole.py"],
+    srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--num-iters=2", "--num-cpus=4"]
 )
 
+# Broken (NOTE: this test was not in Jenkins: run_rllib_tests.sh)
+#py_test(
+#    name = "examples/multi_agent_custom_policy",
+#    tags = ["examples", "examples_M"],
+#    size = "medium",
+#    srcs = ["examples/multi_agent_custom_policy.py"],
+#)
+
 py_test(
-    name = "examples/multiagent_two_trainers",
+    name = "examples/multi_agent_two_trainers",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_two_trainers.py"],
+    srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--num-iters=2"]
 )
 

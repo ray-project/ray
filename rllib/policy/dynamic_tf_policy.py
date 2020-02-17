@@ -84,6 +84,7 @@ class DynamicTFPolicy(TFPolicy):
                 previous action and reward in the model input
         """
         self.config = config
+        self.framework = "tf"
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn

@@ -2,7 +2,9 @@ from gym.spaces import Discrete
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    tf_function
+from ray.rllib.utils.spaces.tuple_actions import TupleActions
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -44,7 +46,7 @@ class Random(Exploration):
             return self._get_torch_exploration_action(action_dist, explore,
                                                       timestep)
 
-    @tf.function
+    @tf_function(tf)
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
         if explore:
             action = self.action_space.sample()
@@ -53,7 +55,12 @@ class Random(Exploration):
         else:
             action = tf.cast(
                 action_dist.deterministic_sample(), dtype=tf.int32)
-        logp = tf.zeros_like(action, dtype=tf.float32)
+        # TODO(sven): Move into (deterministic_)sample(logp=True|False)
+        if isinstance(action, TupleActions):
+            batch_size = tf.shape(action[0][0])[0]
+        else:
+            batch_size = tf.shape(action)[0]
+        logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
         return action, logp
 
     def _get_torch_exploration_action(self, action_dist, explore, timestep):
@@ -63,5 +70,5 @@ class Random(Exploration):
             action = torch.IntTensor(self.action_space.sample()).unsqueeze(0)
         else:
             action = torch.IntTensor(action_dist.deterministic_sample())
-        logp = torch.zeros_like(action, dtype=torch.float32)
+        logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
         return action, logp

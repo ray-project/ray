@@ -77,7 +77,7 @@ class TestExplorations(unittest.TestCase):
     Tests all Exploration components and the deterministic flag for
     compute_action calls.
     """
-    ray.init()
+    ray.init(ignore_reinit_error=True)
 
     def test_a2c(self):
         test_explorations(
