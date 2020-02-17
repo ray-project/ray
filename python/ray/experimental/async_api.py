@@ -15,7 +15,7 @@ async def _async_init():
     if handler is None:
         worker = ray.worker.global_worker
         loop = asyncio.get_event_loop()
-        handler = PlasmaEventHandler(loop)
+        handler = PlasmaEventHandler(loop, worker)
         worker.core_worker.subscribe_to_plasma(handler)
         logger.debug("AsyncPlasma Connection Created!")
 

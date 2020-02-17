@@ -13,9 +13,10 @@ class PlasmaObjectFuture(asyncio.Future):
 class PlasmaEventHandler:
     """This class is an event handler for Plasma."""
 
-    def __init__(self, loop):
+    def __init__(self, loop, worker):
         super().__init__()
         self._loop = loop
+        self._worker = worker
         self._waiting_dict = defaultdict(list)
 
     def process_notifications(self, messages):
@@ -34,7 +35,7 @@ class PlasmaEventHandler:
         logger.debug(
             "Completing plasma futures for object id {}".format(ray_object_id))
 
-        obj = ray.get(ray_object_id)
+        obj = self._worker.get_objects([ray_object_id])[0]
         futures = self._waiting_dict.pop(ray_object_id)
         for fut in futures:
             loop = fut._loop
