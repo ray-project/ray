@@ -281,7 +281,6 @@ Getting Involved
 
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
-   raysgd/raysgd_pytorch_examples.rst
    raysgd/raysgd_tensorflow.rst
    raysgd/raysgd_ref.rst
 
