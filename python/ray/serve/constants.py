@@ -21,3 +21,6 @@ ASYNC_CONCURRENCY = int(1e6)
 
 #: Default latency SLO
 DEFAULT_LATENCY_SLO_MS = 1e9
+
+#: Key for storing no http route services
+NO_ROUTE_KEY = "NO_ROUTE"
