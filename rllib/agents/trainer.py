@@ -540,8 +540,16 @@ class Trainer(Trainable):
 
         if self.config["normalize_actions"]:
             inner = self.env_creator
-            self.env_creator = (
-                lambda env_config: NormalizeActionWrapper(inner(env_config)))
+
+            def normalize(env):
+                import gym  # soft dependency
+                if not isinstance(env, gym.Env):
+                    raise ValueError(
+                        "Cannot apply NormalizeActionActionWrapper to env of "
+                        "type {}, which does not subclass gym.Env.", type(env))
+                return NormalizeActionWrapper(env)
+
+            self.env_creator = lambda env_config: normalize(inner(env_config))
 
         Trainer._validate_config(self.config)
         log_level = self.config.get("log_level")
