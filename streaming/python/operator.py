@@ -113,7 +113,6 @@ class FlatMapOperator(StreamOperator, OneInputOperator):
             collectors)
 
     def process_element(self, record):
-        self.collect(message.Record(self.func.map(record.value)))
         self.func.flat_map(record.value, self.collection_collector)
 
 
