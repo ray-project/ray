@@ -41,7 +41,7 @@ class KeyPartition(Partition):
         self.__partitions = [-1]
 
     def partition(self, key_record, num_partition: int):
-        self.__partitions[0] = abs(hash(key_record.key())) % num_partition
+        self.__partitions[0] = abs(hash(key_record.key)) % num_partition
         return self.__partitions
 
 
