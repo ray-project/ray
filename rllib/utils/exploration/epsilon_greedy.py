@@ -1,4 +1,3 @@
-import gym
 import numpy as np
 
 from ray.rllib.utils.annotations import override
@@ -45,7 +44,6 @@ class EpsilonGreedy(Exploration):
         """
         # For now, require Discrete action space (may loosen this restriction
         # in the future).
-        assert isinstance(action_space, gym.spaces.Discrete)
         assert framework is not None
         super().__init__(
             action_space=action_space,

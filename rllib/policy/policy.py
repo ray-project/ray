@@ -260,8 +260,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             any: Serializable information on the `self.exploration` object.
         """
-        if isinstance(self.exploration, Exploration):
-            return self.exploration.get_info()
+        return self.exploration.get_info()
 
     @DeveloperAPI
     def get_exploration_state(self):
@@ -272,8 +271,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             any: Serializable copy or view of the current exploration state.
         """
-        if isinstance(self.exploration, Exploration):
-            raise NotImplementedError
+        raise NotImplementedError
 
     @DeveloperAPI
     def set_exploration_state(self, exploration_state):
@@ -283,8 +281,7 @@ class Policy(metaclass=ABCMeta):
             exploration_state (any): Serializable copy or view of the new
                 exploration state.
         """
-        if isinstance(self.exploration, Exploration):
-            raise NotImplementedError
+        raise NotImplementedError
 
     @DeveloperAPI
     def is_recurrent(self):
@@ -357,13 +354,19 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     def _create_exploration(self, action_space, config):
+        """Creates the Policy's Exploration object.
+
+        This method only exists b/c some Trainers do not use TfPolicy nor
+        TorchPolicy, but inherit directly from Policy. Others inherit from
+        TfPolicy w/o using DynamicTfPolicy.
+        TODO(sven): unify these cases."""
         return from_config(
             Exploration,
             config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=action_space,
             num_workers=config.get("num_workers"),
             worker_index=config.get("worker_index"),
-            framework="torch" if config.get("use_pytorch") else "tf")
+            framework=self.framework)
 
 
 def clip_action(action, space):

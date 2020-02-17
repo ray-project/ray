@@ -111,6 +111,7 @@ class TFPolicy(Policy):
                 call to Exploration.get_exploration_action.
             timestep (Tensor): Placeholder for the global sampling timestep.
         """
+        self.framework = "tf"
         super().__init__(observation_space, action_space, config, exploration)
         self.model = model
         self._sess = sess

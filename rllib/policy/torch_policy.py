@@ -20,9 +20,9 @@ class TorchPolicy(Policy):
     Attributes:
         observation_space (gym.Space): observation space of the policy.
         action_space (gym.Space): action space of the policy.
-        config (dict): config of the policy
-        model (TorchModel): Torch model instance
-        dist_class (type): Torch action distribution class
+        config (dict): config of the policy.
+        model (TorchModel): Torch model instance.
+        dist_class (type): Torch action distribution class.
     """
 
     def __init__(self, observation_space, action_space, config, model, loss,
@@ -44,6 +44,7 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
+        self.framework = "torch"
         super().__init__(observation_space, action_space, config)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
