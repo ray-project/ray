@@ -151,7 +151,7 @@ def check_for_failure(remote_values):
     return False
 
 
-def overrides(interface_class):
+def override(interface_class):
     def overrider(method):
         assert (method.__name__ in dir(interface_class))
         return method

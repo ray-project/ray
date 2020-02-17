@@ -16,7 +16,7 @@ from scipy.stats import entropy
 
 import ray
 from ray.experimental.sgd import PyTorchTrainer
-from ray.experimental.sgd.utils import overrides
+from ray.experimental.sgd.utils import override
 from ray.experimental.sgd.pytorch.utils import BaseOperator
 
 
@@ -159,8 +159,12 @@ class GANOperator(BaseOperator):
 
         return np.mean(split_scores), np.std(split_scores)
 
-    @overrides(BaseOperator)
+    @override(BaseOperator)
     def train_batch(self, batch, batch_idx):
+        """Trains on one batch of data from the data creator.
+
+        User needs to manually handle
+        """
         real_label = 1
         fake_label = 0
         discriminator, generator = self.model

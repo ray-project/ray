@@ -62,14 +62,15 @@ class BaseOperator:
     def scheduler(self):
         return self._scheduler
 
-    def __init__(self):
+    @property
+    def use_fp16(self):
+        return USE_FP16 in self.config
+
+    def __init__(self, config):
         self.timers = {
             k: TimerStat() for k in ["fwd", "grad", "apply", "train_epoch"]}
         self._validated_customization = False
-        self.setup(self, self.config)
-
-    def setup(self, config):
-        pass
+        self.setup(config)
 
     def train_epoch(self, iterator, num_steps=None):
         """Runs one standard training pass over the train_iterator.
@@ -131,7 +132,7 @@ class BaseOperator:
         # Compute gradients in a backward pass.
         with self.timers["grad"]:
             optimizer.zero_grad()
-            if config.get(USE_FP16):
+            if self.use_fp16:
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
             else:
