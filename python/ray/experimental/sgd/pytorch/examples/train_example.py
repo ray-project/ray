@@ -32,12 +32,25 @@ class LinearDataset(torch.utils.data.Dataset):
 
 
 def model_creator(config):
-    return nn.Linear(1, 1)
+    """Returns a torch.nn.Module object."""
+    return nn.Linear(1, config.get("hidden_size", 1))
 
 
 def optimizer_creator(model, config):
-    """Returns optimizer."""
-    return torch.optim.SGD(model.parameters(), lr=1e-2)
+    """Returns optimizer defined upon the model parameters."""
+    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-2))
+
+
+def scheduler_creator(optimizer, config):
+    """Returns a learning rate scheduler wrapping the optimizer.
+
+    You will need to set ``PyTorchTrainer(scheduler_step_freq="epoch")``
+    for the scheduler to be incremented correctly.
+
+    If using a scheduler for validation loss, be sure to call
+    ``trainer.update_scheduler(validation_loss)``.
+    """
+    return torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
 
 
 def data_creator(config):
@@ -51,10 +64,13 @@ def train_example(num_replicas=1, use_gpu=False):
         data_creator,
         optimizer_creator,
         loss_creator=nn.MSELoss,
+        scheduler_creator=scheduler_creator,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         batch_size=num_replicas * 4,
-        backend="gloo")
+        config={"lr": 1e-2, "hidden_size": 1},
+        backend="gloo",
+        scheduler_step_freq="epoch")
     for i in range(5):
         stats = trainer1.train()
         print(stats)

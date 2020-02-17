@@ -19,7 +19,6 @@ idle_timeout_minutes: 20
 provider:
     type: aws
     region: us-east-1
-    availability_zone: us-east-1f
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -37,18 +36,18 @@ head_node:
 worker_nodes:
     InstanceType: p3.8xlarge
     ImageId: ami-0757fc5a639fe7666
+    # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
         MarketType: spot
         # SpotOptions:
         #     MaxPrice: "9.0"
 
-    #     # Run workers on spot by default. Comment this out to use on-demand.
-    #     InstanceMarketOptions:
-    #         MarketType: spot
-
 setup_commands:
     - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     - pip install -U ipdb ray[rllib] torch torchvision
+    # Install apex.
+    # - rm -rf apex || true
+    # - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
 
 
 file_mounts: {

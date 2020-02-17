@@ -1362,6 +1362,7 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
+    ray.actor.ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager

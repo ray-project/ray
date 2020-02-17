@@ -69,7 +69,14 @@ class FunctionActorManager:
         # these types.
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
-        self.lock = threading.Lock()
+        # Deserialize an ActorHandle will call load_actor_class(). If a
+        # function closure captured an ActorHandle, the deserialization of the
+        # function will be:
+        #     import_thread.py
+        #         -> fetch_and_register_remote_function (acquire lock)
+        #         -> _load_actor_class_from_gcs (acquire lock, too)
+        # So, the lock should be a reentrant lock.
+        self.lock = threading.RLock()
         self.execution_infos = {}
 
     def increase_task_counter(self, job_id, function_descriptor):
@@ -363,17 +370,18 @@ class FunctionActorManager:
         # within tasks. I tried to disable this, but it may be necessary
         # because of https://github.com/ray-project/ray/issues/1146.
 
-    def load_actor_class(self, job_id, function_descriptor):
+    def load_actor_class(self, job_id, actor_creation_function_descriptor):
         """Load the actor class.
 
         Args:
             job_id: job ID of the actor.
-            function_descriptor: Function descriptor of the actor constructor.
+            actor_creation_function_descriptor: Function descriptor of
+                the actor constructor.
 
         Returns:
             The actor class.
         """
-        function_id = function_descriptor.function_id
+        function_id = actor_creation_function_descriptor.function_id
         # Check if the actor class already exists in the cache.
         actor_class = self._loaded_actor_classes.get(function_id, None)
         if actor_class is None:
@@ -381,23 +389,32 @@ class FunctionActorManager:
             if self._worker.load_code_from_local:
                 job_id = ray.JobID.nil()
                 # Load actor class from local code.
-                actor_class = self._load_actor_from_local(
-                    job_id, function_descriptor)
+                actor_class = self._load_actor_class_from_local(
+                    job_id, actor_creation_function_descriptor)
             else:
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
-                    job_id, function_descriptor)
+                    job_id, actor_creation_function_descriptor)
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
             # Generate execution info for the methods of this actor class.
-            module_name = function_descriptor.module_name
-            actor_class_name = function_descriptor.class_name
+            module_name = actor_creation_function_descriptor.module_name
+            actor_class_name = actor_creation_function_descriptor.class_name
             actor_methods = inspect.getmembers(
                 actor_class, predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
-                method_descriptor = PythonFunctionDescriptor(
-                    module_name, actor_method_name, actor_class_name)
+                # Actor creation function descriptor use a unique function
+                # hash to solve actor name conflict. When constructing an
+                # actor, the actor creation function descriptor will be the
+                # key to find __init__ method execution info. So, here we
+                # use actor creation function descriptor as method descriptor
+                # for generating __init__ method execution info.
+                if actor_method_name == "__init__":
+                    method_descriptor = actor_creation_function_descriptor
+                else:
+                    method_descriptor = PythonFunctionDescriptor(
+                        module_name, actor_method_name, actor_class_name)
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
                     actor_method_name,
@@ -414,11 +431,13 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         return actor_class
 
-    def _load_actor_from_local(self, job_id, function_descriptor):
+    def _load_actor_class_from_local(self, job_id,
+                                     actor_creation_function_descriptor):
         """Load actor class from local code."""
         assert isinstance(job_id, ray.JobID)
-        module_name, class_name = (function_descriptor.module_name,
-                                   function_descriptor.class_name)
+        module_name, class_name = (
+            actor_creation_function_descriptor.module_name,
+            actor_creation_function_descriptor.class_name)
         try:
             module = importlib.import_module(module_name)
             actor_class = getattr(module, class_name)
@@ -446,10 +465,11 @@ class FunctionActorManager:
 
         return TemporaryActor
 
-    def _load_actor_class_from_gcs(self, job_id, function_descriptor):
+    def _load_actor_class_from_gcs(self, job_id,
+                                   actor_creation_function_descriptor):
         """Load actor class from GCS."""
         key = (b"ActorClass:" + job_id.binary() + b":" +
-               function_descriptor.function_id.binary())
+               actor_creation_function_descriptor.function_id.binary())
         # Wait for the actor class key to have been imported by the
         # import thread. TODO(rkn): It shouldn't be possible to end
         # up in an infinite loop here, but we should push an error to
