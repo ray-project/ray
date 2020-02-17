@@ -1093,6 +1093,7 @@ def start_dashboard(require_webui,
             colorama.Fore.RESET, colorama.Style.NORMAL))
 
         if not hosted_dashboard_addr:
+            # TODO(simon): Implement frontend UI for this.
             enable_hosted_dashboard_url = "{}/to_host".format(dashboard_url)
             logger.info("To host your dashboard, go to {}{}{}{}{}".format(
                 colorama.Style.BRIGHT, colorama.Fore.GREEN,
