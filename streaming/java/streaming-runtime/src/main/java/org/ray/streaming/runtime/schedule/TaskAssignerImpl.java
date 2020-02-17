@@ -51,7 +51,7 @@ public class TaskAssignerImpl implements TaskAssigner {
 
       ExecutionEdge executionEdge = new ExecutionEdge(srcNodeId, targetNodeId,
           jobEdge.getPartition());
-      idToExecutionNode.get(srcNodeId).addExecutionEdge(executionEdge);
+      idToExecutionNode.get(srcNodeId).addOutputEdge(executionEdge);
       idToExecutionNode.get(targetNodeId).addInputEdge(executionEdge);
     }
 

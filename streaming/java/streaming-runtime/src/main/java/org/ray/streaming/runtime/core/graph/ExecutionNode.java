@@ -60,7 +60,7 @@ public class ExecutionNode implements Serializable {
     this.outputEdges = outputEdges;
   }
 
-  public void addExecutionEdge(ExecutionEdge executionEdge) {
+  public void addOutputEdge(ExecutionEdge executionEdge) {
     this.outputEdges.add(executionEdge);
   }
 
