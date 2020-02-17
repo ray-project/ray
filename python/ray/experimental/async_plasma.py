@@ -32,7 +32,8 @@ class PlasmaEventHandler:
                 fut.cancel()
 
     def _complete_future(self, ray_object_id):
-        # TODO(ilr): Consider race condition between this method and as_future
+        # TODO(ilr): Consider race condition between popping from the
+        # waiting_dict and as_future appending to the waiting_dict's list.
         logger.debug(
             "Completing plasma futures for object id {}".format(ray_object_id))
 
@@ -48,7 +49,7 @@ class PlasmaEventHandler:
                     # Avoid issues where process_notifications
                     # and check_ready both get executed
                     logger.debug("Failed to set result for future {}."
-                                 "It's ok.".format(fut))
+                                 "Most likely already set.".format(fut))
 
             loop.call_soon_threadsafe(complete_closure)
 
