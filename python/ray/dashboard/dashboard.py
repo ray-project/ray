@@ -927,7 +927,7 @@ if __name__ == "__main__":
                    "error:\n{}".format(os.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
-        if isinstance(e, OSError) and e.errno != errno.ENOENT:
+        if isinstance(e, OSError) and e.errno == errno.ENOENT:
             logger.warning(message)
         else:
             raise e
