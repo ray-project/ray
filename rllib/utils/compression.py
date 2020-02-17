@@ -4,7 +4,7 @@ import logging
 import time
 import base64
 import numpy as np
-import pickle5 as pickle
+from ray import cloudpickle as pickle
 from six import string_types
 
 logger = logging.getLogger(__name__)
