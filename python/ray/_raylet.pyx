@@ -925,7 +925,11 @@ cdef class CoreWorker:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
             # Load actor_method_cpu from actor handle's extension data.
-            actor_method_cpu = int(c_actor_handle.ExtensionData())
+            extension_data = <str>c_actor_handle.ExtensionData()
+            if extension_data:
+                actor_method_cpu = int(extension_data)
+            else:
+                actor_method_cpu = 0  # Actor is created by non Python worker.
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
             method_meta = ray.actor.ActorClassMethodMetadata.create(

@@ -87,12 +87,19 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   @Test
   public void testPassActorHandleFromJavaToPython() {
     // Create a java actor, and pass actor handle to python.
-    RayActor<TestActor> actor = Ray.createActor(TestActor::new, "1".getBytes());
-    Preconditions.checkState(actor instanceof NativeRayActor);
-    byte[] actorHandleBytes = ((NativeRayActor) actor).toBytes();
+    RayActor<TestActor> javaActor = Ray.createActor(TestActor::new, "1".getBytes());
+    Preconditions.checkState(javaActor instanceof NativeRayActor);
+    byte[] actorHandleBytes = ((NativeRayActor) javaActor).toBytes();
     RayObject res = Ray.callPy(PYTHON_MODULE,
         "py_func_call_java_actor_from_handle", actorHandleBytes);
     Assert.assertEquals(res.get(), "12".getBytes());
+    // Create a python actor, and pass actor handle to python.
+    RayPyActor pyActor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
+    Preconditions.checkState(pyActor instanceof NativeRayActor);
+    actorHandleBytes = ((NativeRayActor) pyActor).toBytes();
+    res = Ray.callPy(PYTHON_MODULE,
+        "py_func_call_python_actor_from_handle", actorHandleBytes);
+    Assert.assertEquals(res.get(), "3".getBytes());
   }
 
   public static byte[] bytesEcho(byte[] value) {

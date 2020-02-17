@@ -40,6 +40,14 @@ def py_func_call_java_actor_from_handle(value):
 
 
 @ray.remote
+def py_func_call_python_actor_from_handle(value):
+    assert isinstance(value, bytes)
+    actor_handle = ray.actor.ActorHandle._deserialization_helper(value, False)
+    r = actor_handle.increase.remote(2)
+    return ray.get(r)
+
+
+@ray.remote
 def py_func_pass_python_actor_handle():
     counter = Counter.remote(2)
     f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
