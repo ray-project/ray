@@ -366,7 +366,7 @@ class Policy(metaclass=ABCMeta):
             action_space=action_space,
             num_workers=config.get("num_workers"),
             worker_index=config.get("worker_index"),
-            framework=self.framework)
+            framework=getattr(self, "framework", "tf"))
 
 
 def clip_action(action, space):
