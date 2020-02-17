@@ -10,7 +10,7 @@ def test_word_count():
         .build()
     ctx.read_text_file(__file__) \
         .set_parallelism(1) \
-        .flat_map(lambda x: x.split) \
+        .flat_map(lambda x: x.split()) \
         .map(lambda x: (x, 1)) \
         .key_by(lambda x: x[0]) \
         .reduce(lambda old_value, new_value:
@@ -19,7 +19,7 @@ def test_word_count():
         .sink(lambda x: print("result", x))
     ctx.execute("word_count")
     import time
-    time.sleep(100)
+    time.sleep(10)
     ray.shutdown()
 
 
