@@ -5,6 +5,7 @@ import requests
 from ray.experimental import serve
 from ray.experimental.serve import BackendConfig
 import ray
+from ray.experimental.serve.constants import NO_ROUTE_KEY
 
 
 def test_e2e(serve_instance):
@@ -35,6 +36,26 @@ def test_e2e(serve_instance):
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
     assert resp == "OK"
+
+
+def test_no_route(serve_instance):
+    serve.create_endpoint("noroute-endpoint", blocking=True)
+    global_state = serve.api._get_global_state()
+
+    result = global_state.route_table.list_service(include_headless=True)
+    assert result[NO_ROUTE_KEY] == ["noroute-endpoint"]
+
+    without_headless_result = global_state.route_table.list_service()
+    assert NO_ROUTE_KEY not in without_headless_result
+
+    def func(_, i=1):
+        return 1
+
+    serve.create_backend(func, "backend:1")
+    serve.link("noroute-endpoint", "backend:1")
+    service_handle = serve.get_handle("noroute-endpoint")
+    result = ray.get(service_handle.remote(i=1))
+    assert result == 1
 
 
 def test_scaling_replicas(serve_instance):

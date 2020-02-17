@@ -6,6 +6,8 @@ from ray import cloudpickle as pickle
 
 import ray.experimental.internal_kv as ray_kv
 from ray.experimental.serve.utils import logger
+from typing import Union
+from ray.experimental.serve.constants import NO_ROUTE_KEY
 
 
 class NamespacedKVStore(ABC):
@@ -174,7 +176,7 @@ class RoutingTable:
         self.routing_table = kv_connector("routing_table")
         self.request_count = 0
 
-    def register_service(self, route: str, service: str):
+    def register_service(self, route: Union[str, None], service: str):
         """Create an entry in the routing table
 
         Args:
@@ -184,12 +186,27 @@ class RoutingTable:
         """
         logger.debug("[KV] Registering route {} to service {}.".format(
             route, service))
-        self.routing_table.put(route, service)
 
-    def list_service(self):
-        """Returns the routing table."""
-        self.request_count += 1
+        # put no route services in default key
+        if route is None:
+            no_http_services = json.loads(
+                self.routing_table.get(NO_ROUTE_KEY, "[]"))
+            no_http_services.append(service)
+            self.routing_table.put(NO_ROUTE_KEY, json.dumps(no_http_services))
+        else:
+            self.routing_table.put(route, service)
+
+    def list_service(self, include_headless=False):
+        """Returns the routing table.
+        Args:
+            include_headless: If True, returns a no route services (headless)
+                services with normal services. (Default: False)
+        """
         table = self.routing_table.as_dict()
+        if include_headless:
+            table[NO_ROUTE_KEY] = json.loads(table.get(NO_ROUTE_KEY, "[]"))
+        else:
+            table.pop(NO_ROUTE_KEY, None)
         return table
 
     def get_request_count(self):
