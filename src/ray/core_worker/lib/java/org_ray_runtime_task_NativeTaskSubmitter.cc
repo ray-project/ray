@@ -81,12 +81,11 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
-    use_direct_call = env->GetBooleanField(callOptions,
-                                           java_base_task_options_use_direct_call);
-  } else {
     use_direct_call =
-        env->GetStaticBooleanField(java_base_task_options_class,
-                                   java_base_task_options_default_use_direct_call);
+        env->GetBooleanField(callOptions, java_base_task_options_use_direct_call);
+  } else {
+    use_direct_call = env->GetStaticBooleanField(
+        java_base_task_options_class, java_base_task_options_default_use_direct_call);
   }
 
   ray::TaskOptions task_options{numReturns, use_direct_call, resources};
@@ -117,9 +116,8 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     max_concurrency = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   } else {
-    use_direct_call =
-        env->GetStaticBooleanField(java_base_task_options_class,
-                                   java_base_task_options_default_use_direct_call);
+    use_direct_call = env->GetStaticBooleanField(
+        java_base_task_options_class, java_base_task_options_default_use_direct_call);
   }
 
   ray::ActorCreationOptions actor_creation_options{

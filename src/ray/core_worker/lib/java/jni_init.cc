@@ -157,8 +157,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
   java_base_task_options_use_direct_call =
       env->GetFieldID(java_base_task_options_class, "useDirectCall", "Z");
-  java_base_task_options_default_use_direct_call = env->GetStaticFieldID(
-      java_base_task_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
+  java_base_task_options_default_use_direct_call =
+      env->GetStaticFieldID(java_base_task_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
 
   java_actor_creation_options_class =
       LoadClass(env, "org/ray/api/options/ActorCreationOptions");
@@ -190,9 +190,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
 
   java_task_executor_get = env->GetStaticMethodID(
-      java_task_executor_class,
-      "get",
-      "([B)Lorg/ray/runtime/task/TaskExecutor;");
+      java_task_executor_class, "get", "([B)Lorg/ray/runtime/task/TaskExecutor;");
 
   return CURRENT_JNI_VERSION;
 }
