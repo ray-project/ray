@@ -1,11 +1,11 @@
 package org.ray.streaming.runtime.python;
 
+import com.google.common.io.BaseEncoding;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.msgpack.core.MessageBufferPacker;
 import org.msgpack.core.MessagePack;
 import org.msgpack.core.MessageUnpacker;
@@ -14,8 +14,6 @@ import org.msgpack.value.FloatValue;
 import org.msgpack.value.IntegerValue;
 import org.msgpack.value.MapValue;
 import org.msgpack.value.Value;
-
-import com.google.common.io.BaseEncoding;
 
 public class MsgPackSerializer {
 

@@ -27,7 +27,7 @@ public class JobGraphBuilder {
   }
 
   public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName,
-      Map<String, String> jobConfig) {
+                         Map<String, String> jobConfig) {
     this.jobGraph = new JobGraph(jobName, jobConfig);
     this.streamSinkList = streamSinkList;
     this.edgeIdGenerator = new AtomicInteger(0);
@@ -64,7 +64,7 @@ public class JobGraphBuilder {
       this.jobGraph.addEdge(jobEdge);
       processStream(parentStream);
     } else {
-       throw new UnsupportedOperationException("Unsupported stream " + stream);
+      throw new UnsupportedOperationException("Unsupported stream " + stream);
     }
     this.jobGraph.addVertex(jobVertex);
   }

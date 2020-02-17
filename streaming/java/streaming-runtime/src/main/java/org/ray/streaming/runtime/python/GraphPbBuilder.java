@@ -1,7 +1,7 @@
 package org.ray.streaming.runtime.python;
 
+import com.google.protobuf.ByteString;
 import java.util.Arrays;
-
 import org.ray.api.RayActor;
 import org.ray.api.RayPyActor;
 import org.ray.streaming.api.function.Function;
@@ -15,8 +15,6 @@ import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.generated.RemoteCall;
 import org.ray.streaming.runtime.generated.Streaming;
 import org.ray.streaming.runtime.worker.JobWorker;
-
-import com.google.protobuf.ByteString;
 
 public class GraphPbBuilder {
 
