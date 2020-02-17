@@ -1290,6 +1290,214 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// We submit a task and submit another task that depends on the return ID. The
+// submitted task returns an object ID, which will get borrowed by the second
+// task. The second task returns the borrowed ID.
+//
+// @ray.remote
+// def returns_id():
+//     inner_id = ray.put()
+//     return inner_id
+//
+// @ray.remote
+// def returns_borrowed_id(inner_ids):
+//     return inner_ids
+//
+// return_id = returns_id.remote()
+// returns_borrowed_id.remote(return_id)
+TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
+  ReferenceCounter caller_rc;
+  auto caller = std::make_shared<MockWorkerClient>(caller_rc, "1");
+  ReferenceCounter borrower_rc;
+  auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "2");
+  ReferenceCounter owner_rc(true, [&](const rpc::Address &addr) {
+    if (addr.ip_address() == caller->address_.ip_address()) {
+      return caller;
+    } else {
+      return borrower;
+    }
+  });
+  auto owner = std::make_shared<MockWorkerClient>(owner_rc, "3");
+
+  // Caller submits a task.
+  auto return_id = caller->SubmitTaskWithArg(ObjectID::Nil());
+
+  // Task returns inner_id as its return value.
+  auto inner_id = ObjectID::FromRandom();
+  owner->Put(inner_id);
+  rpc::WorkerAddress addr(caller->address_);
+  auto refs = owner->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &addr);
+  owner_rc.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(refs.empty());
+  ASSERT_TRUE(owner_rc.HasReference(inner_id));
+
+  // Caller receives the owner's message, but inner_id is still in scope
+  // because caller has a reference to return_id.
+  caller->HandleSubmittedTaskFinished(ObjectID::Nil());
+  auto borrower_return_id = caller->SubmitTaskWithArg(return_id);
+  caller_rc.RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(caller->FlushBorrowerCallbacks());
+  ASSERT_TRUE(owner_rc.HasReference(inner_id));
+
+  // Borrower receives a reference to inner_id. It still has a reference when
+  // the task returns.
+  borrower->ExecuteTaskWithArg(return_id, inner_id, owner->task_id_, owner->address_);
+  ASSERT_TRUE(borrower_rc.HasReference(inner_id));
+  auto borrower_refs =
+      borrower->FinishExecutingTask(return_id, borrower_return_id, &inner_id, &addr);
+  ASSERT_TRUE(borrower_rc.HasReference(inner_id));
+
+  // Borrower merges ref count into the caller.
+  caller->HandleSubmittedTaskFinished(return_id, borrower->address_, borrower_refs);
+  // The caller should still have a ref count because it has a reference to
+  // borrower_return_id.
+  ASSERT_FALSE(caller_rc.HasReference(return_id));
+  ASSERT_TRUE(caller_rc.HasReference(borrower_return_id));
+  ASSERT_TRUE(caller_rc.HasReference(inner_id));
+  ASSERT_TRUE(owner_rc.HasReference(inner_id));
+
+  // The borrower's receives the owner's message and its reference goes out of
+  // scope.
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  borrower_rc.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower_rc.HasReference(return_id));
+  ASSERT_FALSE(borrower_rc.HasReference(inner_id));
+
+  // The caller's reference to the borrower's return value goes out of scope.
+  caller_rc.RemoveLocalReference(borrower_return_id, nullptr);
+  ASSERT_FALSE(caller_rc.HasReference(borrower_return_id));
+  ASSERT_FALSE(caller_rc.HasReference(inner_id));
+  ASSERT_FALSE(owner_rc.HasReference(inner_id));
+}
+
+// Recursively returning IDs. We submit a task, which submits another task and
+// returns the submitted task's return ID. The nested task creates an object
+// and returns that ID.
+//
+// @ray.remote
+// def nested_worker():
+//     inner_id = ray.put()
+//     return inner_id
+//
+// @ray.remote
+// def worker():
+//     return nested_worker.remote()
+//
+// return_id = worker.remote()
+// nested_return_id = ray.get(return_id)
+// inner_id = ray.get(nested_return_id)
+TEST(DistributedReferenceCountTest, TestReturnIdChain) {
+  ReferenceCounter root_rc;
+  auto root = std::make_shared<MockWorkerClient>(root_rc, "1");
+  ReferenceCounter worker_rc(true, [&](const rpc::Address &addr) {
+    RAY_CHECK(addr.ip_address() == root->address_.ip_address());
+    return root;
+  });
+  auto worker = std::make_shared<MockWorkerClient>(worker_rc, "2");
+  ReferenceCounter nested_worker_rc(true, [&](const rpc::Address &addr) {
+    RAY_CHECK(addr.ip_address() == worker->address_.ip_address());
+    return worker;
+  });
+  auto nested_worker = std::make_shared<MockWorkerClient>(nested_worker_rc, "3");
+
+  // Root submits a task.
+  auto return_id = root->SubmitTaskWithArg(ObjectID::Nil());
+
+  // Task submits a nested task and returns the return ID.
+  auto nested_return_id = worker->SubmitTaskWithArg(ObjectID::Nil());
+  rpc::WorkerAddress addr(root->address_);
+  auto refs =
+      worker->FinishExecutingTask(ObjectID::Nil(), return_id, &nested_return_id, &addr);
+
+  // The nested task returns an ObjectID that it owns.
+  auto inner_id = ObjectID::FromRandom();
+  nested_worker->Put(inner_id);
+  rpc::WorkerAddress worker_addr(worker->address_);
+  auto nested_refs = nested_worker->FinishExecutingTask(ObjectID::Nil(), nested_return_id,
+                                                        &inner_id, &worker_addr);
+  nested_worker_rc.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(nested_worker_rc.HasReference(inner_id));
+
+  // All task execution replies are received.
+  root->HandleSubmittedTaskFinished(ObjectID::Nil());
+  worker->HandleSubmittedTaskFinished(ObjectID::Nil());
+  root->FlushBorrowerCallbacks();
+  worker->FlushBorrowerCallbacks();
+
+  // The reference only goes out of scope once the other workers' references to
+  // their submitted tasks' return ID go out of scope.
+  ASSERT_TRUE(nested_worker_rc.HasReference(inner_id));
+  worker_rc.RemoveLocalReference(nested_return_id, nullptr);
+  ASSERT_TRUE(nested_worker_rc.HasReference(inner_id));
+  root_rc.RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(nested_worker_rc.HasReference(inner_id));
+}
+
+// Recursively returning a borrowed object ID. We submit a task, which submits
+// another task, calls ray.get() on the return ID and returns the value.  The
+// nested task creates an object and returns that ID.
+//
+// @ray.remote
+// def nested_worker():
+//     inner_id = ray.put()
+//     return inner_id
+//
+// @ray.remote
+// def worker():
+//     return ray.get(nested_worker.remote())
+//
+// return_id = worker.remote()
+// inner_id = ray.get(return_id)
+TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
+  ReferenceCounter root_rc;
+  auto root = std::make_shared<MockWorkerClient>(root_rc, "1");
+  ReferenceCounter worker_rc(true, [&](const rpc::Address &addr) {
+    RAY_CHECK(addr.ip_address() == root->address_.ip_address());
+    return root;
+  });
+  auto worker = std::make_shared<MockWorkerClient>(worker_rc, "2");
+  ReferenceCounter nested_worker_rc(true, [&](const rpc::Address &addr) {
+    RAY_CHECK(addr.ip_address() == worker->address_.ip_address());
+    return worker;
+  });
+  auto nested_worker = std::make_shared<MockWorkerClient>(nested_worker_rc, "3");
+
+  // Root submits a task.
+  auto return_id = root->SubmitTaskWithArg(ObjectID::Nil());
+
+  // Task submits a nested task.
+  auto nested_return_id = worker->SubmitTaskWithArg(ObjectID::Nil());
+
+  // The nested task returns an ObjectID that it owns.
+  auto inner_id = ObjectID::FromRandom();
+  nested_worker->Put(inner_id);
+  rpc::WorkerAddress worker_addr(worker->address_);
+  auto nested_refs = nested_worker->FinishExecutingTask(ObjectID::Nil(), nested_return_id,
+                                                        &inner_id, &worker_addr);
+  nested_worker_rc.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(nested_worker_rc.HasReference(inner_id));
+
+  // Worker receives the reply from the nested task.
+  worker->HandleSubmittedTaskFinished(ObjectID::Nil());
+  worker->FlushBorrowerCallbacks();
+  // Worker deserializes the inner_id and returns it.
+  worker->GetSerializedObjectId(nested_return_id, inner_id, nested_worker->task_id_,
+                                nested_worker->address_);
+  rpc::WorkerAddress addr(root->address_);
+  auto refs = worker->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &addr);
+
+  worker_rc.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(worker_rc.HasReference(inner_id));
+  ASSERT_TRUE(nested_worker_rc.HasReference(inner_id));
+
+  root->HandleSubmittedTaskFinished(ObjectID::Nil());
+  root->FlushBorrowerCallbacks();
+  root_rc.RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(root_rc.HasReference(return_id));
+  ASSERT_FALSE(root_rc.HasReference(inner_id));
+  ASSERT_FALSE(nested_worker_rc.HasReference(inner_id));
+}
+
 // TODO: Test returning an Object ID.
 // TODO: Test Pop and Merge individually.
 
