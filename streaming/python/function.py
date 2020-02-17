@@ -88,10 +88,9 @@ class LocalFileSourceFunction(SourceFunction):
     def run(self, ctx: SourceContext):
         with open(self.filename, "r") as f:
             line = f.readline()
-            if line == "":
-                return
-            ctx.collect(line[:-1])
-
+            while line != "":
+                ctx.collect(line[:-1])
+                line = f.readline()
 
 
 class SimpleMapFunction(MapFunction):

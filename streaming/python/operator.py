@@ -118,7 +118,12 @@ class FlatMapOperator(StreamOperator, OneInputOperator):
 
 
 class FilterOperator(StreamOperator, OneInputOperator):
-    pass
+    def __init__(self, filter_func):
+        super().__init__(filter_func)
+
+    def process_element(self, record):
+        if self.func.filter(record.value):
+            self.collect(record)
 
 
 class KeyByOperator(StreamOperator, OneInputOperator):

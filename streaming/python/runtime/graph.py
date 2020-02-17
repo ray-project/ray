@@ -19,6 +19,7 @@ class ExecutionNode:
     def __init__(self, node_pb):
         self.node_id = node_pb.node_id
         self.node_type = NodeType[streaming_pb.NodeType.Name(node_pb.node_type)]
+        self.parallelism = node_pb.parallelism
         if node_pb.language == Language.PYTHON:
             func_bytes = node_pb.function  # python function descriptor
             func = function.load_function(func_bytes)

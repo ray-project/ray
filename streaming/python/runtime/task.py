@@ -72,11 +72,6 @@ class StreamTask(ABC):
             from_actor_ids = list(input_actor_ids.values())
             logger.info("Create DataReader, channels {}.", channel_ids)
             self.reader = DataReader(channel_ids, from_actor_ids, channel_conf)
-            runtime_context = RuntimeContextImpl(
-                self.worker.execution_task.task_id,
-                self.worker.execution_task.task_index,
-                execution_node.parallelism)
-            self.processor.open(collectors, runtime_context)
 
             def exit_handler():
                 # Make DataReader stop read data when MockQueue destructor
@@ -85,6 +80,13 @@ class StreamTask(ABC):
 
             import atexit
             atexit.register(exit_handler)
+
+        runtime_context = RuntimeContextImpl(
+            self.worker.execution_task.task_id,
+            self.worker.execution_task.task_index,
+            execution_node.parallelism)
+        logger.info("open Processor {}".format(self.processor))
+        self.processor.open(collectors, runtime_context)
 
     @abstractmethod
     def init(self):
