@@ -76,13 +76,20 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
+  bool use_direct_call;
   if (callOptions) {
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
+    use_direct_call = env->GetBooleanField(callOptions,
+                                           java_base_task_options_use_direct_call);
+  } else {
+    use_direct_call =
+        env->GetStaticBooleanField(java_base_task_options_class,
+                                   java_base_task_options_default_use_direct_call);
   }
 
-  ray::TaskOptions task_options{numReturns, /*is_direct_call=*/false, resources};
+  ray::TaskOptions task_options{numReturns, use_direct_call, resources};
   return task_options;
 }
 
@@ -97,7 +104,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     max_reconstructions = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_reconstructions));
     use_direct_call = env->GetBooleanField(actorCreationOptions,
-                                           java_actor_creation_options_use_direct_call);
+                                           java_base_task_options_use_direct_call);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -111,8 +118,8 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         actorCreationOptions, java_actor_creation_options_max_concurrency));
   } else {
     use_direct_call =
-        env->GetStaticBooleanField(java_actor_creation_options_class,
-                                   java_actor_creation_options_default_use_direct_call);
+        env->GetStaticBooleanField(java_base_task_options_class,
+                                   java_base_task_options_default_use_direct_call);
   }
 
   ray::ActorCreationOptions actor_creation_options{

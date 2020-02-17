@@ -94,15 +94,15 @@ extern jfieldID java_function_arg_value;
 extern jclass java_base_task_options_class;
 /// resources field of BaseTaskOptions class
 extern jfieldID java_base_task_options_resources;
+/// useDirectCall field of BaseTaskOptions class
+extern jfieldID java_base_task_options_use_direct_call;
+/// DEFAULT_USE_DIRECT_CALL field of BaseTaskOptions class
+extern jfieldID java_base_task_options_default_use_direct_call;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// DEFAULT_USE_DIRECT_CALL field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_default_use_direct_call;
 /// maxReconstructions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_reconstructions;
-/// useDirectCall field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_use_direct_call;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class
