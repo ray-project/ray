@@ -13,7 +13,7 @@ from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.util.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 from ray.util.sgd.pytorch.utils import (train, BATCH_COUNT, TEST_MODE,
-                                                SCHEDULER_STEP)
+                                        SCHEDULER_STEP)
 from ray.util.sgd.utils import check_for_failure
 
 from ray.util.sgd.pytorch.examples.train_example import (

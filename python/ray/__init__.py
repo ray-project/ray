@@ -3,6 +3,8 @@ import logging
 from os.path import dirname
 import sys
 
+from ray import util
+
 logger = logging.getLogger(__name__)
 
 # MUST add pickle5 to the import path because it will be imported by some
@@ -112,7 +114,6 @@ from ray._raylet import (
 
 _config = _Config()
 
-from ray import util
 from ray.profiling import profile  # noqa: E402
 from ray.state import (jobs, nodes, actors, tasks, objects, timeline,
                        object_transfer_timeline, cluster_resources,
@@ -188,6 +189,7 @@ __all__ = [
     "Language",
     "java_function",
     "java_actor_class",
+    "util",
 ]
 
 # ID types
