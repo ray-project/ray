@@ -46,7 +46,7 @@ class KubernetesCommandRunner:
     def run(self,
             cmd=None,
             timeout=120,
-            allocate_tty=False,
+            interactive=True,
             exit_on_fail=False,
             port_forward=None):
         if cmd and port_forward:
@@ -75,12 +75,14 @@ class KubernetesCommandRunner:
             raise Exception(exception_str)
         else:
             logger.info(self.log_prefix + "Running {}...".format(cmd))
-            final_cmd = self.kubectl + [
-                "exec",
-                "-it" if allocate_tty else "-i",
+            final_cmd = self.kubectl + ["exec"]
+            if interactive:
+                final_cmd.append("-it")
+            final_cmd += [
                 self.node_id,
                 "--",
-            ] + with_interactive(cmd)
+            ]
+            final_cmd += with_interactive(cmd) if interactive else [quote(cmd)]
             try:
                 self.process_runner.check_call(" ".join(final_cmd), shell=True)
             except subprocess.CalledProcessError:
@@ -230,14 +232,14 @@ class SSHCommandRunner:
     def run(self,
             cmd,
             timeout=120,
-            allocate_tty=False,
+            interactive=True,
             exit_on_fail=False,
             port_forward=None):
 
         self.set_ssh_ip_if_required()
 
         ssh = ["ssh"]
-        if allocate_tty:
+        if interactive:
             ssh.append("-tt")
 
         if port_forward:
@@ -254,11 +256,11 @@ class SSHCommandRunner:
         if cmd:
             logger.info(self.log_prefix +
                         "Running {} on {}...".format(cmd, self.ssh_ip))
-            final_cmd += with_interactive(cmd)
+            final_cmd += with_interactive(cmd) if interactive else [quote(cmd)]
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
-            final_cmd.append("while true; do sleep 86400; done")
+            final_cmd.append(quote("while true; do sleep 86400; done"))
         try:
             self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError:
