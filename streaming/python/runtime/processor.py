@@ -57,7 +57,7 @@ class OneInputProcessor(StreamingProcessor):
         super().__init__(operator)
 
     def process(self, record):
-        self.operator.process_elelemt(record)
+        self.operator.process_element(record)
 
 
 class TwoInputProcessor(StreamingProcessor):
@@ -70,7 +70,7 @@ class TwoInputProcessor(StreamingProcessor):
         if record.stream == self.left_stream:
             self.operator.process_element(record, None)
         else:
-            self.operator.process_elelemt(None, record)
+            self.operator.process_element(None, record)
 
     @property
     def left_stream(self):
