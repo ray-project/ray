@@ -17,7 +17,7 @@ from scipy.stats import entropy
 import ray
 from ray.experimental.sgd import PyTorchTrainer
 from ray.experimental.sgd.utils import override
-from ray.experimental.sgd.pytorch.utils import BaseOperator
+from ray.experimental.sgd.pytorch import TrainingOperator
 
 
 def data_creator(config):
@@ -118,7 +118,7 @@ def optimizer_creator(models, config):
     return discriminator_opt, generator_opt
 
 
-class GANOperator(BaseOperator):
+class GANOperator(TrainingOperator):
     def setup(self, config):
         self.device = torch.device("cuda"
                                    if torch.cuda.is_available() else "cpu")
@@ -159,7 +159,7 @@ class GANOperator(BaseOperator):
 
         return np.mean(split_scores), np.std(split_scores)
 
-    @override(BaseOperator)
+    @override(TrainingOperator)
     def train_batch(self, batch, batch_idx):
         """Trains on one batch of data from the data creator.
 

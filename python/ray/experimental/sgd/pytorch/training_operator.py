@@ -1,9 +1,8 @@
-import collections
-import time
 import torch
 
-from ray.experimental.sgd.utils import TimerStat
-from ray.experimental.sgd.pytorch.utils import AverageMeter
+from ray.experimental.sgd.utils import TimerStat, AverageMeter
+from ray.experimental.sgd.constants import (
+    SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 amp = None
 
@@ -15,25 +14,12 @@ except ImportError:
     # where amp is initialized.
     pass
 
-USE_FP16 = "__use_fp16__"
-TEST_MODE = "__test_mode__"
-SCHEDULER_STEP = "scheduler_step"
-SCHEDULER_STEP_BATCH = "batch"
-SCHEDULER_STEP_EPOCH = "epoch"
 
-VALID_SCHEDULER_STEP = {SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH}
-
-def validate_multiple_components(model, optimizer, scheduler):
-    if isinstance(model, collections.Iterable) or isinstance(
-            optimizer, collections.Iterable) or isinstance(
-                scheduler, collections.Iterable):
-        raise ValueError(
-            "Need to provide a custom operator if using multi-model "
-            "or multi-scheduler or multi-optimizer training/validation.")
+def _is_multiple(component):
+    return isinstance(component, list) and len(component) > 1
 
 
-
-class BaseOperator:
+class TrainingOperator:
     """Abstract class for custom training or validation loops.
 
     The scheduler will only be called at a batch or epoch frequency, depending
@@ -41,7 +27,14 @@ class BaseOperator:
     ``PyTorchTrainer`` to either "batch" or "epoch" to increment the scheduler
     correctly during training. If using a learning rate scheduler
     that depends on validation loss, you can use ``trainer.update_scheduler``.
+
+
+    Raises:
+        ValueError if multiple models/optimizers/schedulers are provided. You
+            are expected to have a custom training function if you wish
+            to use multiple models/optimizers/schedulers.
     """
+
     @property
     def config(self):
         return self._config
@@ -64,27 +57,45 @@ class BaseOperator:
 
     @property
     def use_fp16(self):
-        return USE_FP16 in self.config
+        return self._use_fp16
 
-    def __init__(self, config):
+    def __init__(self,
+                 config,
+                 model,
+                 optimizer,
+                 criterion,
+                 scheduler,
+                 use_fp16=False):
         self.timers = {
-            k: TimerStat() for k in ["fwd", "grad", "apply", "train_epoch"]}
+            k: TimerStat()
+            for k in ["fwd", "grad", "apply", "train_step"]
+        }
         self._validated_customization = False
+        self._model = model
+        self._optimizer = optimizer
+        self._criterion = criterion
+        self._scheduler = scheduler
+        self._config = config
+        self._use_fp16 = use_fp16
+        self.global_step = 0
         self.setup(config)
 
-    def train_epoch(self, iterator, num_steps=None):
+        if type(self) is TrainingOperator:
+            for component in (self.model, self.scheduler, self.optimizer):
+                if _is_multiple(component):
+                    raise ValueError(
+                        "Need to provide a custom operator subclassing "
+                        "TrainingOperator if using multi-scheduler, "
+                        "multi-model or multi-optimizer training/validation.")
+
+    def train_epoch(self, iterator, info=None):
         """Runs one standard training pass over the train_iterator.
 
         This function automatically measures timing for various operations such
-        as host to device transfer, gradient calculation, and gradient application.
+        as host to device transfer, and gradient calculation.
 
-        It also automatically detects and places the data on the given GPU device
+        It also automatically detects and places the data on the GPU
         if available.
-
-        Raises:
-            ValueError if multiple models/optimizers/schedulers are provided. You
-                are expected to have a custom training function if you wish
-                to use multiple models/optimizers/schedulers.
 
         Returns:
             A dict of metrics from training.
@@ -92,32 +103,36 @@ class BaseOperator:
         self._losses = AverageMeter()
 
         self.model.train()
-        with self.timers["train_epoch"]:
+        with self.timers["train_step"]:
             for batch_idx, batch in enumerate(iterator):
-                metrics = self.train_batch(batch, batch_idx)
+                batch_info = {
+                    "batch_idx": batch_idx,
+                    "global_step": self.global_step
+                }
+                batch_info.update(info)
+                metrics = self.train_batch(batch, batch_info=batch_info)
                 if "loss" in metrics:
                     self._losses.update(
                         metrics["loss"], n=metrics.get("num_samples", 1))
-                if batch_idx + 1 == num_steps:
-                    break
+                self.global_step += 1
 
-        if scheduler and config.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
-            scheduler.step()
+        if self.scheduler and self.config.get(
+                SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+            self.scheduler.step()
 
         stats = {
             "batch_count": batch_idx + 1,
             "mean_train_loss": self._losses.avg,
             "last_train_loss": self._losses.val,
-            "epoch_time": self.timers["train_epoch"].last
+            "epoch_time": self.timers["train_step"].last
         }
         stats.update({
-            timer_tag: timer.mean for timer_tag, timer in timers.items()})
+            timer_tag: timer.mean
+            for timer_tag, timer in self.timers.items()
+        })
         return stats
 
-    def train_batch(self, batch, batch_idx):
-        if not self._validated_customization:
-            validate_multiple_components(model, optimizer, scheduler)
-            self._validated_customization = True
+    def train_batch(self, batch, info=None):
         features, target = batch
         # Create non_blocking tensors for distributed training
         if torch.cuda.is_available():
@@ -131,28 +146,28 @@ class BaseOperator:
 
         # Compute gradients in a backward pass.
         with self.timers["grad"]:
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
             if self.use_fp16:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
             else:
                 loss.backward()
 
         # Call step of optimizer to update model params.
         with self.timers["apply"]:
-            optimizer.step()
+            self.optimizer.step()
 
-        if scheduler and config.get(SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
-            scheduler.step()
+        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
+            self.scheduler.step()
         return {"loss": loss.item(), "num_samples": features.size(0)}
 
-    def evaluation_epoch(self, val_iterator, num_steps=None):
+    def evaluation_epoch(self, val_iterator, info=None):
         """Runs one standard validation pass over the val_iterator.
 
         This function automatically measures timing for various operations such
         as host to device transfer and processing time for the batch.
 
-        It also automatically detects and places the data on the given GPU device
+        It also automatically detects and places the data on GPU device
         if available.
 
         Raises:
@@ -175,40 +190,36 @@ class BaseOperator:
             A dict of metrics from the evaluation.
         """
         losses = AverageMeter()
+        total_correct = 0
 
         # switch to evaluate mode
-        model.eval()
+        self.model.eval()
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_iterator):
                 metrics = self.evaluation_batch(batch, batch_idx)
                 if "loss" in metrics:
-                    self._losses.update(
+                    losses.update(
                         metrics["loss"], n=metrics.get("num_samples", 1))
-                if batch_idx + 1 == num_steps:
-                    break
+
+                if "correct" in metrics:
+                    total_correct += metrics["correct"]
 
         stats = {
             "batch_count": batch_idx + 1,
-            "batch_time": batch_time.avg,
             "evaluation_loss": losses.avg,
-            "mean_accuracy": correct / total
+            "mean_accuracy": total_correct / losses.n
         }
         return stats
 
-
     def evaluation_batch(self, batch, batch_idx):
-        if not self._validated_customization:
-            validate_multiple_components(model, optimizer, scheduler)
-            self._validated_customization = True
-
         features, target = batch
         if torch.cuda.is_available():
             features = features.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
 
         # compute output
-        output = model(features)
-        loss = criterion(output, target)
+        output = self.model(features)
+        loss = self.criterion(output, target)
         _, predicted = torch.max(output.data, 1)
 
         return {
@@ -217,8 +228,8 @@ class BaseOperator:
             "num_samples": target.size(0)
         }
 
-    def save(self, checkpoint_path):
+    def state_dict(self):
         pass
 
-    def restore(self, checkpoint_path):
+    def load_state_dict(self, state_dict):
         pass

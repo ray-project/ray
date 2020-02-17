@@ -2,13 +2,14 @@ import collections
 from filelock import FileLock
 import logging
 import inspect
+import itertools
 import os
 import torch
 import torch.utils.data
 from torch.utils.data import Dataset
 
 import ray
-from ray.experimental.sgd.pytorch import utils as pytorch_utils
+from ray.experimental.sgd.pytorch.constants import USE_FP16, SCHEDULER_STEP
 from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -47,8 +48,7 @@ class PyTorchRunner:
                  optimizer_creator,
                  loss_creator,
                  scheduler_creator=None,
-                 train_function=None,
-                 validation_function=None,
+                 training_operator_cls=None,
                  config=None,
                  dataloader_config=None,
                  batch_size=16,
@@ -60,17 +60,15 @@ class PyTorchRunner:
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.scheduler_creator = scheduler_creator
+        self.training_operator_cls = training_operator_cls
         self.config = {} if config is None else config
         self.dataloader_config = {
             "num_workers": 2
         } if dataloader_config is None else dataloader_config
-        self.train_function = train_function or pytorch_utils.train
-        self.validation_function = (validation_function
-                                    or pytorch_utils.validate)
         self.batch_size = batch_size
         self.verbose = True
 
-        self.epoch = 0
+        self.steps = 0
         self._timers = {
             k: utils.TimerStat(window_size=1)
             for k in [
@@ -160,6 +158,14 @@ class PyTorchRunner:
             self.validation_loader = torch.utils.data.DataLoader(
                 val_set, batch_size=self.batch_size, **self.dataloader_config)
 
+        self.training_operator = self.training_operator_cls(
+            self.config,
+            models=self.given_models,
+            optimizers=self.given_optimizers,
+            criterion=self.criterion,
+            schedulers=self.given_schedulers,
+            use_fp16=self.use_fp16)
+
     def get_node_ip(self):
         """Returns the IP address of the current node."""
         return ray.services.get_node_ip_address()
@@ -168,47 +174,44 @@ class PyTorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def step(self):
+    def train_epoch(self, info=None):
         """Runs a training epoch and updates the model parameters."""
-        logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
-        training_config = self.config.copy()
-        training_config.update({
-            pytorch_utils.USE_FP16: self.use_fp16,
-            pytorch_utils.SCHEDULER_STEP: self.scheduler_step_freq
+        logger.debug("Begin Training Step {}".format(self.steps + 1))
+        info.update({
+            USE_FP16: self.use_fp16,
+            SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self._timers["training"]:
-            train_stats = self.train_function(
-                training_config,
-                self.given_models,
-                self.train_loader,
-                self.criterion,
-                self.given_optimizers,
-                scheduler=self.given_schedulers)
-            train_stats["epoch"] = self.epoch
+            iterator = self.train_loader
+            if "num_steps" in info:
+                iterator = itertools.islice(
+                    iter(self.train_loader), info["num_steps"])
+            train_stats = self.training_operator.train_epoch(iterator, info)
 
-        self.epoch += 1
+        self.steps += 1
+        train_stats["train_steps"] = self.steps
 
         train_stats.update(self.stats())
         return train_stats
 
-    def validate(self):
+    def validate_epoch(self, info=None):
         """Evaluates the model on the validation data set."""
         if self.validation_loader is None:
             raise ValueError("No validation dataloader provided.")
         with self._timers["validation"]:
-            validation_stats = self.validation_function(
-                self.config,
-                self.given_models,
-                self.validation_loader,
-                self.criterion,
-                scheduler=self.given_schedulers)
+            iterator = self.validation_loader
+            if "num_steps" in info:
+                iterator = itertools.islice(
+                    iter(self.validation_loader), info["num_steps"])
+            validation_stats = self.training_operator.evaluation_epoch(
+                iterator, info)
 
         validation_stats.update(self.stats())
         return validation_stats
 
     def stats(self):
         """Returns a dictionary of statistics collected."""
-        stats = {"epoch": self.epoch}
+        stats = {"epoch": self.steps}
         for k, t in self._timers.items():
             stats[k + "_time_mean"] = t.mean
             stats[k + "_time_total"] = t.sum
@@ -233,7 +236,8 @@ class PyTorchRunner:
         """Returns the state of the runner."""
 
         state = {
-            "epoch": self.epoch,
+            "epoch": self.steps,
+            "operator": self.training_operator.state_dict(),
             "models": self._get_model_state_dicts(),
             "optimizers": [opt.state_dict() for opt in self.optimizers],
             "stats": self.stats()
@@ -262,13 +266,18 @@ class PyTorchRunner:
 
         if self.use_fp16 and "amp" in state and amp:
             amp.load_state_dict(state["amp"])
-        self.epoch = state["stats"]["epoch"]
+        self.steps = state["stats"]["epoch"]
+        self.training_operator.load_state_dict(state_dict)
 
-    def apply_fn(self, fn):
-        return fn(self)
+    def apply(self, fn):
+        return fn()
+
+    def apply_operator(self, fn):
+        return fn(self.training_operator)
 
     def shutdown(self):
         """Attempts to shut down the worker."""
+        del self.training_operator
         del self.validation_loader
         del self.train_loader
         del self.criterion
