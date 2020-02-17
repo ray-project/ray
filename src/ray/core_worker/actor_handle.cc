@@ -7,7 +7,8 @@ namespace {
 ray::rpc::ActorHandle CreateInnerActorHandle(
     const class ActorID &actor_id, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language, bool is_direct_call,
-    const ray::FunctionDescriptor &actor_creation_task_function_descriptor) {
+    const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
+    const std::string &extension_data) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_creation_job_id(job_id.Data(), job_id.Size());
@@ -16,6 +17,7 @@ ray::rpc::ActorHandle CreateInnerActorHandle(
       actor_creation_task_function_descriptor->GetMessage();
   inner.set_actor_cursor(initial_cursor.Binary());
   inner.set_is_direct_call(is_direct_call);
+  inner.set_extension_data(extension_data);
   return inner;
 }
 
@@ -32,10 +34,11 @@ namespace ray {
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language, bool is_direct_call,
-    const ray::FunctionDescriptor &actor_creation_task_function_descriptor)
-    : ActorHandle(CreateInnerActorHandle(actor_id, job_id, initial_cursor, actor_language,
-                                         is_direct_call,
-                                         actor_creation_task_function_descriptor)) {}
+    const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
+    const std::string &extension_data)
+    : ActorHandle(CreateInnerActorHandle(
+          actor_id, job_id, initial_cursor, actor_language, is_direct_call,
+          actor_creation_task_function_descriptor, extension_data)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
