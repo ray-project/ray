@@ -10,6 +10,7 @@ import torchvision.transforms as transforms
 import ray
 from ray.experimental.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
 from ray.experimental.sgd.pytorch.resnet import ResNet18
+from ray.experimental.sgd.pytorch.utils import TEST_MODE
 
 
 def initialization_hook(runner):
@@ -18,55 +19,6 @@ def initialization_hook(runner):
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
     os.environ["NCCL_DEBUG"] = "INFO"
-
-
-def train(model, train_iterator, criterion, optimizer, config):
-    model.train()
-    train_loss, total_num, correct = 0, 0, 0
-    for batch_idx, (data, target) in enumerate(train_iterator):
-        if config.get("test_mode") and batch_idx > 0:
-            break
-        # get small model update
-        if torch.cuda.is_available():
-            data, target = data.cuda(), target.cuda()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        train_loss += loss.item() * target.size(0)
-        total_num += target.size(0)
-        _, predicted = output.max(1)
-        correct += predicted.eq(target).sum().item()
-        optimizer.step()
-        optimizer.zero_grad()
-    stats = {
-        "train_loss": train_loss / total_num,
-        "train_acc": correct / total_num
-    }
-    return stats
-
-
-def validate(model, val_iterator, criterion, config):
-    # switch to evaluate mode
-    model.eval()
-    correct = 0
-    total = 0
-    total_loss = 0
-    with torch.no_grad():
-        for batch_idx, (features, target) in enumerate(val_iterator):
-            if config.get("test_mode") and batch_idx > 10:
-                break
-            if torch.cuda.is_available():
-                features = features.cuda(non_blocking=True)
-                target = target.cuda(non_blocking=True)
-            # compute output
-            output = model(features)
-            loss = criterion(output, target)
-            total_loss += loss.item() * target.size(0)
-            _, predicted = torch.max(output.data, 1)
-            total += target.size(0)
-            correct += (predicted == target).sum().item()
-    stats = {"mean_accuracy": correct / total, "mean_loss": total_loss / total}
-    return stats
 
 
 def cifar_creator(config):
@@ -96,23 +48,34 @@ def optimizer_creator(model, config):
     return torch.optim.SGD(model.parameters(), lr=config.get("lr", 0.1))
 
 
-def train_example(num_replicas=1, use_gpu=False, test_mode=False):
-    config = {"test_mode": test_mode}
+def scheduler_creator(optimizer, config):
+    return torch.optim.lr_scheduler.MultiStepLR(
+        optimizer, milestones=[150, 250, 350], gamma=0.1)
+
+
+def train_example(num_replicas=1,
+                  num_epochs=5,
+                  use_gpu=False,
+                  use_fp16=False,
+                  test_mode=False):
+    config = {TEST_MODE: test_mode}
     trainer1 = PyTorchTrainer(
         ResNet18,
         cifar_creator,
         optimizer_creator,
         nn.CrossEntropyLoss,
+        scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
-        train_function=train,
-        validation_function=validate,
         num_replicas=num_replicas,
         config=config,
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
-        backend="nccl" if use_gpu else "gloo")
-    for i in range(5):
-        stats = trainer1.train()
+        backend="nccl" if use_gpu else "gloo",
+        scheduler_step_freq="epoch",
+        use_fp16=use_fp16)
+    for i in range(num_epochs):
+        # Increase `max_retries` to turn on fault tolerance.
+        stats = trainer1.train(max_retries=0)
         print(stats)
 
     print(trainer1.validate())
@@ -126,15 +89,13 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
         "data_creator": cifar_creator,
         "optimizer_creator": optimizer_creator,
         "loss_creator": lambda config: nn.CrossEntropyLoss(),
-        "train_function": train,
-        "validation_function": validate,
         "num_replicas": num_replicas,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
         "batch_size": 16 if test_mode else 512,
         "config": {
             "lr": tune.choice([1e-4, 1e-3, 5e-3, 1e-2]),
-            "test_mode": test_mode
+            TEST_MODE: test_mode
         },
         "backend": "nccl" if use_gpu else "gloo"
     }
@@ -152,7 +113,7 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--ray-redis-address",
+        "--address",
         required=False,
         type=str,
         help="the address to use for Redis")
@@ -163,10 +124,17 @@ if __name__ == "__main__":
         default=1,
         help="Sets number of replicas for training.")
     parser.add_argument(
+        "--num-epochs", type=int, default=5, help="Number of epochs to train.")
+    parser.add_argument(
         "--use-gpu",
         action="store_true",
         default=False,
         help="Enables GPU training")
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        default=False,
+        help="Enables FP16 training with apex. Requires `use-gpu`.")
     parser.add_argument(
         "--smoke-test",
         action="store_true",
@@ -177,7 +145,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.ray_redis_address, log_to_driver=False)
+    ray.init(address=args.address, log_to_driver=True)
 
     if args.tune:
         tune_example(
@@ -187,5 +155,7 @@ if __name__ == "__main__":
     else:
         train_example(
             num_replicas=args.num_replicas,
+            num_epochs=args.num_epochs,
             use_gpu=args.use_gpu,
+            use_fp16=args.fp16,
             test_mode=args.smoke_test)
