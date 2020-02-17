@@ -15,9 +15,9 @@ With Ray Serve, you can deploy your services at any scale.
 
 Quickstart
 ----------
-.. literalinclude:: ../../python/ray/util/serve/examples/echo_full.py
+.. literalinclude:: ../../python/ray/serve/examples/echo_full.py
 
 API
 ---
-.. automodule:: ray.util.serve
+.. automodule:: ray.serve
     :members:
