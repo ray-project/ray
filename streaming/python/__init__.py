@@ -3,5 +3,4 @@
 import ray
 from ray.streaming.context import StreamingContext
 
-
 __all__ = ['StreamingContext']

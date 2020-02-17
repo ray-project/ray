@@ -63,7 +63,8 @@ ActorID CreateActorHelper(CoreWorker &worker,
 
   // Create an actor.
   ActorID actor_id;
-  RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, &actor_id));
+  RAY_CHECK_OK(
+      worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
   return actor_id;
 }
 
@@ -614,7 +615,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), job_id,
                            ObjectID::FromRandom(), function.GetLanguage(), true,
-                           function.GetFunctionDescriptor());
+                           function.GetFunctionDescriptor(), "");
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -729,7 +730,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   JobID job_id = NextJobId();
   ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), job_id,
                        ObjectID::FromRandom(), Language::PYTHON, /*is_direct_call=*/false,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "");
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
