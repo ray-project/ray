@@ -165,18 +165,19 @@ class DynamicTFPolicy(TFPolicy):
 
         # Setup custom action sampler.
         if action_sampler_fn:
-            action, logp = action_sampler_fn(
+            action_sampler, action_logp = action_sampler_fn(
                 self, self.model, self._input_dict, obs_space, action_space,
                 explore, config, timestep)
         # Create a default action sampler.
         else:
             # Using an exporation setup.
-            action, logp = self.exploration.get_exploration_action(
-                model_out,
-                self.model,
-                action_dist_class=self.dist_class,
-                explore=explore,
-                timestep=timestep)
+            action_sampler, action_logp = \
+                self.exploration.get_exploration_action(
+                    model_out,
+                    self.model,
+                    action_dist_class=self.dist_class,
+                    explore=explore,
+                    timestep=timestep)
 
         # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
@@ -191,8 +192,8 @@ class DynamicTFPolicy(TFPolicy):
             config,
             sess,
             obs_input=obs,
-            action_sampler=action,
-            action_logp=logp,
+            action_sampler=action_sampler,
+            action_logp=action_logp,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
