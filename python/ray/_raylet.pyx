@@ -1123,8 +1123,7 @@ cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
 cdef void async_plasma_callback(CObjectID object_id,
                                 int64_t data_size,
                                 int64_t metadata_size) with gil:
-    message = []
-    message.append((ObjectID(object_id.Binary()), data_size, metadata_size))
+    message = [tuple([ObjectID(object_id.Binary()), data_size, metadata_size])]
     core_worker = ray.worker.global_worker.core_worker
     event_handler = core_worker.get_plasma_event_handler()
     if event_handler is not None:

@@ -238,8 +238,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 }
 
 CoreWorker::~CoreWorker() {
-  // Possibly account for shutdown
-  plasma_notifier_.release();
   io_service_.stop();
   io_thread_.join();
   if (log_dir_ != "") {
@@ -1239,11 +1237,11 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback sub_callback) {
+void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
   plasma_notifier_->SubscribeObjAdded(
-      [sub_callback](const object_manager::protocol::ObjectInfoT &info) {
-        sub_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
-                     info.metadata_size);
+      [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
+        subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
+                           info.metadata_size);
       });
 }
 

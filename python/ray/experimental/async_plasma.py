@@ -32,6 +32,7 @@ class PlasmaEventHandler:
                 fut.cancel()
 
     def _complete_future(self, ray_object_id):
+        # TODO(ilr): Consider race condition between this method and as_future
         logger.debug(
             "Completing plasma futures for object id {}".format(ray_object_id))
 

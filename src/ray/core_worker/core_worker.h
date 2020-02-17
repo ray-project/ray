@@ -502,7 +502,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Connect to plasma store for async futures
   using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
 
-  void SubscribeToAsyncPlasma(PlasmaSubscriptionCallback);
+  /// Subscribe to plasma store
+  ///
+  /// \param[in] subscribe_callback The callback when an item is added to plasma.
+  /// \return void
+  void SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
