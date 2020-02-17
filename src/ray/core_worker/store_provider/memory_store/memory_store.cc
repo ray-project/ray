@@ -91,7 +91,7 @@ void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> objec
     return;  // We have already hit the number of objects to return limit.
   }
   objects_.emplace(object_id, object);
-  if (objects_.size() == num_objects_) {
+  if (objects_.size() == num_objects_ || object->IsException()) {
     is_ready_ = true;
     cv_.notify_all();
   }
