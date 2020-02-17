@@ -7,14 +7,13 @@ from multiprocessing import cpu_count
 import numpy as np
 
 import ray
-from ray.serve.constants import (
-    DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, SERVE_NURSERY_NAME)
-from ray.serve.global_state import (GlobalState,
-                                                 start_initial_state)
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                 SERVE_NURSERY_NAME)
+from ray.serve.global_state import (GlobalState, start_initial_state)
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
-from ray.serve.utils import (block_until_http_ready,
-                                          get_random_letters, expand)
+from ray.serve.utils import (block_until_http_ready, get_random_letters,
+                             expand)
 from ray.serve.exceptions import RayServeException
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy

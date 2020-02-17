@@ -1,9 +1,9 @@
 import ray
 from ray.serve.constants import (BOOTSTRAP_KV_STORE_CONN_KEY,
-                                      DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                      SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
+                                 DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                 SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
-                                             TrafficPolicyTable)
+                                        TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 
 from ray.serve.policy import RoutePolicy
