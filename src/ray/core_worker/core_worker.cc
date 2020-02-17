@@ -288,13 +288,14 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
     absl::MutexLock lock(&mutex_);
     not_actor_task = actor_id_.IsNil();
   }
-  // Clear all actor handles at the end of each non-actor task.
   if (not_actor_task && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
+    // Reset the seqnos so that for the next task it start off at 0.
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
+      handle.second->Reset();
     }
-    actor_handles_.clear();
+    // TODO(ekl) we can't unsubscribe to actor notifications here due to
+    // https://github.com/ray-project/ray/pull/6885
   }
 }
 
@@ -614,14 +615,16 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> memory_object_ids;
-  GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
-
   // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
   // Should we just delete locally or ping the owner and delete globally?
   reference_counter_->DeleteReferences(object_ids);
-  memory_store_->Delete(memory_object_ids, &plasma_object_ids);
+
+  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
+  // objects are always handled by ref counting only.
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  for (const auto &obj_id : object_ids) {
+    plasma_object_ids.insert(obj_id);
+  }
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
 
@@ -958,9 +961,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
 
-  status = task_execution_callback_(task_type, func,
-                                    task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, return_objects);
+  status = task_execution_callback_(
+      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
+      arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
 
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.

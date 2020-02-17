@@ -15,7 +15,6 @@ import setuptools.command.build_ext as _build_ext
 # manually.
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
-
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",

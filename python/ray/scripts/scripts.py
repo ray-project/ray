@@ -668,8 +668,18 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--new", "-N", is_flag=True, help="Force creation of a new screen.")
-def attach(cluster_config_file, start, screen, tmux, cluster_name, new):
-    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new)
+@click.option(
+    "--port-forward",
+    "-p",
+    required=False,
+    multiple=True,
+    type=int,
+    help="Port to forward. Use this multiple times to forward multiple ports.")
+def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
+           port_forward):
+    port_forward = [(port, port) for port in list(port_forward)]
+    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
+                   port_forward)
 
 
 @cli.command()
@@ -744,6 +754,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward",
+    "-p",
     required=False,
     multiple=True,
     type=int,
@@ -821,6 +832,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward",
+    "-p",
     required=False,
     multiple=True,
     type=int,
