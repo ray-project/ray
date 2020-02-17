@@ -71,7 +71,8 @@ from ray.includes.libcoreworker cimport (
     CCoreWorker,
     CTaskOptions,
     ResourceMappingType,
-    CFiberEvent
+    CFiberEvent,
+    CActorHandle,
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
@@ -809,7 +810,8 @@ cdef class CoreWorker:
                      c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
-                     c_bool is_asyncio):
+                     c_bool is_asyncio,
+                     c_string extension_data):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -832,6 +834,7 @@ cdef class CoreWorker:
                         max_reconstructions, is_direct_call, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
+                    extension_data,
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
@@ -904,17 +907,56 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
+        cdef CActorHandle* c_actor_handle
+        worker = ray.worker.get_global_worker()
+        worker.check_connected()
+        manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
             bytes)
+        check_status(self.core_worker.get().GetActorHandle(
+            c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
-        return actor_id
+        job_id = JobID(c_actor_handle.CreationJobID().Binary())
+        language = Language.from_native(c_actor_handle.ActorLanguage())
+        actor_creation_function_descriptor = \
+            CFunctionDescriptorToPython(
+                c_actor_handle.ActorCreationTaskFunctionDescriptor())
+        if language == Language.PYTHON:
+            assert isinstance(actor_creation_function_descriptor,
+                              PythonFunctionDescriptor)
+            # Load actor_method_cpu from actor handle's extension data.
+            extension_data = <str>c_actor_handle.ExtensionData()
+            if extension_data:
+                actor_method_cpu = int(extension_data)
+            else:
+                actor_method_cpu = 0  # Actor is created by non Python worker.
+            actor_class = manager.load_actor_class(
+                job_id, actor_creation_function_descriptor)
+            method_meta = ray.actor.ActorClassMethodMetadata.create(
+                actor_class, actor_creation_function_descriptor)
+            return ray.actor.ActorHandle(language, actor_id,
+                                         method_meta.decorators,
+                                         method_meta.signatures,
+                                         method_meta.num_return_vals,
+                                         actor_method_cpu,
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
+        else:
+            return ray.actor.ActorHandle(language, actor_id,
+                                         {},  # method decorators
+                                         {},  # method signatures
+                                         {},  # method num_return_vals
+                                         0,  # actor method cpu
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
 
-    def serialize_actor_handle(self, ActorID actor_id):
+    def serialize_actor_handle(self, actor_handle):
+        assert isinstance(actor_handle, ray.actor.ActorHandle)
         cdef:
-            CActorID c_actor_id = actor_id.native()
+            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
         check_status(self.core_worker.get().SerializeActorHandle(
-            c_actor_id, &output))
+            actor_id.native(), &output))
         return output
 
     def add_object_id_reference(self, ObjectID object_id):

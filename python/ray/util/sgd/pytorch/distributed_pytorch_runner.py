@@ -13,16 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class DistributedPyTorchRunner(PyTorchRunner):
-    """Manages a distributed PyTorch model replica."""
+    """Manages a distributed PyTorch model replica.
+
+
+    Args:
+        args: Arguments for PyTorchRunner.
+        backend (string): backend used by distributed PyTorch.
+        kwargs: Keyword arguments for PyTorchRunner.
+
+    """
 
     def __init__(self, *args, backend="gloo", **kwargs):
-        """Initializes the runner.
-
-        Args:
-            args: Arguments for the PyTorchRunner.
-            kwargs: Keyword arguments for the PyTorchRunner.
-            backend (string): backend used by distributed PyTorch.
-        """
         super(DistributedPyTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
@@ -59,13 +60,19 @@ class DistributedPyTorchRunner(PyTorchRunner):
             "All models must be PyTorch models: {}.".format(self.models))
         if torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
-        self.models = [DistributedDataParallel(model) for model in self.models]
 
         logger.debug("Creating optimizer.")
         self.optimizers = self.optimizer_creator(self.given_models,
                                                  self.config)
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
+
+        self._create_schedulers_if_available()
+
+        self._try_setup_apex()
+
+        # This needs to happen after apex
+        self.models = [DistributedDataParallel(model) for model in self.models]
 
         logger.debug("Creating loss.")
         self._create_loss()
@@ -98,37 +105,27 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.train_loader.sampler.set_epoch(self.epoch)
         return super(DistributedPyTorchRunner, self).step()
 
-    def get_state(self):
-        """Returns the state of the runner."""
-        # This is so that we create a duplicate of weights into CPU rather than
-        # move the model weights entirely out of the GPU, so that we can
-        # resume training while saving intermediate checkpoints.
+    def _get_model_state_dicts(self):
+        """Fetch state from ``model.module`` instead of ``model``.
+
+        This is needed for PyTorch DistributedDataParallel models.
+        """
         cpu_state_dicts = []
         for model in self.models:
             state_dict = model.module.state_dict()
-            for k, v in state_dict.items():
-                state_dict[k] = v.cpu()
-            cpu_state_dicts += [state_dict]
-        return {
-            "epoch": self.epoch,
-            "models": cpu_state_dicts,
-            "optimizers": [opt.state_dict() for opt in self.optimizers],
-            "stats": self.stats()
-        }
+            # This is so that we create a duplicate of weights into CPU rather
+            # than move the model weights out of the GPU so that we can
+            # resume training while saving intermediate checkpoints.
+            cpu_state_dicts += [{k: v.cpu() for k, v in state_dict.items()}]
+        return cpu_state_dicts
 
-    def set_state(self, state):
-        """Sets the state of the model."""
-        # TODO: restore timer stats
-        for model, model_state_dict in zip(self.models, state["models"]):
+    def _set_model_state_dicts(self, model_state_dicts):
+        for model, model_state_dict in zip(self.models, model_state_dicts):
             model.module.load_state_dict(model_state_dict)
-        for optimizer, opt_state_dict in zip(self.optimizers,
-                                             state["optimizers"]):
-            optimizer.load_state_dict(opt_state_dict)
-        self.epoch = state["stats"]["epoch"]
 
-    def shutdown(self):
+    # def shutdown(self):
         """Attempts to shut down the worker."""
-        super(DistributedPyTorchRunner, self).shutdown()
+        # super(DistributedPyTorchRunner, self).shutdown()
         # TODO: Temporarily removing since it causes hangs on MacOSX.
         # However, it seems to be harmless to remove permanently
         # since the processes are shutdown anyways. This comment can be

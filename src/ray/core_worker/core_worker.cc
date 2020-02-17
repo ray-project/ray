@@ -698,6 +698,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
+                               const std::string &extension_data,
                                ActorID *return_actor_id) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
@@ -720,9 +721,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.is_direct_call, actor_creation_options.max_concurrency,
       actor_creation_options.is_detached, actor_creation_options.is_asyncio);
 
-  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
-      actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
-      actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
+  std::unique_ptr<ActorHandle> actor_handle(
+      new ActorHandle(actor_id, job_id, /*actor_cursor=*/return_ids[0],
+                      function.GetLanguage(), actor_creation_options.is_direct_call,
+                      function.GetFunctionDescriptor(), extension_data));
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
       << "Actor " << actor_id << " already exists";
 

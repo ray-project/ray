@@ -74,7 +74,9 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-            model_out = self.model(input_dict, state_batches, [1])
+            state_batches = [self._convert_to_tensor(s) for s in state_batches]
+            model_out = self.model(input_dict, state_batches,
+                                   self._convert_to_tensor([1]))
             logits, state = model_out
             action_dist = self.dist_class(logits, self.model)
             # Try our Exploration, if any.
@@ -212,17 +214,16 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)
-
-        def convert(arr):
-            if torch.is_tensor(arr):
-                return arr.to(self.device)
-            tensor = torch.from_numpy(np.asarray(arr))
-            if tensor.dtype == torch.double:
-                tensor = tensor.float()
-            return tensor.to(self.device)
-
-        train_batch.set_get_interceptor(convert)
+        train_batch.set_get_interceptor(self._convert_to_tensor)
         return train_batch
+
+    def _convert_to_tensor(self, arr):
+        if torch.is_tensor(arr):
+            return arr.to(self.device)
+        tensor = torch.from_numpy(np.asarray(arr))
+        if tensor.dtype == torch.double:
+            tensor = tensor.float()
+        return tensor.to(self.device)
 
     @override(Policy)
     def export_model(self, export_dir):
