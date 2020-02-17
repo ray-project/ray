@@ -138,9 +138,8 @@ class SerializationContext:
             return obj._serialization_helper(True)
 
         def actor_handle_deserializer(serialized_obj):
-            new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
-            new_handle._deserialization_helper(serialized_obj, True)
-            return new_handle
+            return ray.actor.ActorHandle._deserialization_helper(
+                serialized_obj, True)
 
         self._register_cloudpickle_serializer(
             ray.actor.ActorHandle,

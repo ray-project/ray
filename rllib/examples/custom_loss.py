@@ -11,6 +11,7 @@ $ python custom_loss.py --input-files=/tmp/cartpole
 """
 
 import argparse
+from pathlib import Path
 import os
 
 import ray
@@ -80,6 +81,14 @@ class CustomLossModel(Model):
 if __name__ == "__main__":
     ray.init()
     args = parser.parse_args()
+
+    # Bazel makes it hard to find files specified in `args` (and `data`).
+    # Look for them here.
+    if not os.path.exists(args.input_files):
+        # This script runs in the ray/rllib/examples dir.
+        rllib_dir = Path(__file__).parent.parent
+        input_dir = rllib_dir.absolute().joinpath(args.input_files)
+        args.input_files = str(input_dir)
 
     ModelCatalog.register_custom_model("custom_loss", CustomLossModel)
     tune.run(

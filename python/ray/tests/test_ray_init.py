@@ -58,6 +58,20 @@ class TestRedisPassword:
         object_id = f.remote()
         ray.get(object_id)
 
+    def test_redis_port(self, shutdown_only):
+        @ray.remote
+        def f():
+            return 1
+
+        info = ray.init(redis_port=1234, redis_password="testpassword")
+        address = info["redis_address"]
+        redis_ip, redis_port = address.split(":")
+        assert redis_port == "1234"
+
+        redis_client = redis.StrictRedis(
+            host=redis_ip, port=redis_port, password="testpassword")
+        assert redis_client.ping()
+
 
 if __name__ == "__main__":
     import pytest

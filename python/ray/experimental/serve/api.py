@@ -1,6 +1,7 @@
 import inspect
 from functools import wraps
 from tempfile import mkstemp
+
 from multiprocessing import cpu_count
 
 import numpy as np
@@ -13,7 +14,7 @@ from ray.experimental.serve.global_state import (GlobalState,
 from ray.experimental.serve.kv_store_service import SQLiteKVStore
 from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
-                                          get_random_letters)
+                                          get_random_letters, expand)
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.backend_config import BackendConfig
 from ray.experimental.serve.policy import RoutePolicy
@@ -64,6 +65,7 @@ def accept_batch(f):
 def init(kv_store_connector=None,
          kv_store_path=None,
          blocking=False,
+         start_server=True,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={
@@ -87,6 +89,8 @@ def init(kv_store_connector=None,
         kv_store_path (str, path): Path to the SQLite table.
         blocking (bool): If true, the function will wait for the HTTP server to
             be healthy, and other components to be ready before returns.
+        start_server (bool): If true, `serve.init` starts http server.
+            (Default: True)
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
         ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
@@ -132,18 +136,19 @@ def init(kv_store_connector=None,
     nursery = start_initial_state(kv_store_connector)
 
     global_state = GlobalState(nursery)
-    global_state.init_or_get_http_server(host=http_host, port=http_port)
+    if start_server:
+        global_state.init_or_get_http_server(host=http_host, port=http_port)
     global_state.init_or_get_router(
         queueing_policy=queueing_policy, policy_kwargs=policy_kwargs)
     global_state.init_or_get_metric_monitor(
         gc_window_seconds=gc_window_seconds)
 
-    if blocking:
+    if start_server and blocking:
         block_until_http_ready("http://{}:{}".format(http_host, http_port))
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name, route, blocking=True):
+def create_endpoint(endpoint_name, route=None, blocking=True):
     """Create a service endpoint given route_expression.
 
     Args:
@@ -396,7 +401,8 @@ def split(endpoint_name, traffic_policy_dictionary):
         traffic_policy_dictionary (dict): a dictionary maps backend names
             to their traffic weights. The weights must sum to 1.
     """
-    assert endpoint_name in global_state.route_table.list_service().values()
+    assert endpoint_name in expand(
+        global_state.route_table.list_service(include_headless=True).values())
 
     assert isinstance(traffic_policy_dictionary,
                       dict), "Traffic policy must be dictionary"
@@ -430,7 +436,8 @@ def get_handle(endpoint_name, relative_slo_ms=None, absolute_slo_ms=None):
     Returns:
         RayServeHandle
     """
-    assert endpoint_name in global_state.route_table.list_service().values()
+    assert endpoint_name in expand(
+        global_state.route_table.list_service(include_headless=True).values())
 
     # Delay import due to it's dependency on global_state
     from ray.experimental.serve.handle import RayServeHandle

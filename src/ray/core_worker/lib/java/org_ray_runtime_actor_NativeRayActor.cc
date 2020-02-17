@@ -13,6 +13,16 @@ inline ray::CoreWorker &GetCoreWorker(jlong nativeCoreWorkerPointer) {
 extern "C" {
 #endif
 
+JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
+  auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
+  ray::ActorHandle *native_actor_handle = nullptr;
+  auto status = GetCoreWorker(nativeCoreWorkerPointer)
+                    .GetActorHandle(actor_id, &native_actor_handle);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, false);
+  return native_actor_handle->ActorLanguage();
+}
+
 JNIEXPORT jboolean JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
