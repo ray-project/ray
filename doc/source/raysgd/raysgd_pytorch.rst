@@ -8,7 +8,7 @@ Under the hood, ``PytorchTrainer`` will create *replicas* of your model (control
 .. image:: raysgd-actors.svg
     :align: center
 
-or end to end examples leveraging RaySGD PyTorchTrainer, jump to :ref:`raysgd-pytorch-examples`.
+For end to end examples leveraging RaySGD PyTorchTrainer, jump to :ref:`raysgd-pytorch-examples`.
 
 Setting up training
 -------------------
@@ -150,8 +150,6 @@ After training, you may want to reappropriate the Ray cluster. To release Ray re
 
 Initialization Functions
 ------------------------
-
-.. warning:: This is still an experimental API and is subject to change without warning.
 
 You may want to run some initializers on each worker when they are started. This may be something like setting an environment variable or downloading some data. You can do this via the ``initialization_hook`` parameter:
 
@@ -302,8 +300,6 @@ Users can set ``checkpoint="auto"`` to always checkpoint the current model befor
 Advanced: Hyperparameter Tuning
 -------------------------------
 
-.. warning:: This is still an experimental API and is subject to change without warning.
-
 ``PyTorchTrainer`` naturally integrates with Tune via the ``PyTorchTrainable`` interface. The same arguments to ``PyTorchTrainer`` should be passed into the ``tune.run(config=...)`` as shown below.
 
 .. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/tune_example.py
@@ -358,8 +354,6 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
 
 Custom Training and Validation Functions
 ----------------------------------------
-
-.. warning:: This is still an experimental API and is subject to change in the near future.
 
 ``PyTorchTrainer`` allows you to run a custom training and validation step in parallel on each worker, providing a flexibility similar to using PyTorch natively. This is done via the ``train_function`` and ``validation_function`` parameters.
 
