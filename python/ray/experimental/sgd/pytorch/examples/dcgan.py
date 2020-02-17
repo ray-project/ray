@@ -166,7 +166,7 @@ def train(config, models, dataloader, criterion, optimizers, **kwargs):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     for i, data in enumerate(dataloader, 0):
-        if i >= TRAIN_BATCHES and config.get("test_mode"):
+        if i >= TRAIN_BATCHES and config.get(TEST_MODE):
             break
 
         netD.zero_grad()
