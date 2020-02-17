@@ -269,7 +269,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     // Create an actor.
     ActorID actor_id;
-    RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, &actor_id));
+    RAY_CHECK_OK(
+        worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
     return actor_id;
   }
 

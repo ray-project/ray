@@ -21,8 +21,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
  * Method:    nativeRunTaskExecutor
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
-    JNIEnv *, jclass, jlong);
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_RayNativeRuntime
