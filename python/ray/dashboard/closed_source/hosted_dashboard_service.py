@@ -2,6 +2,8 @@ import argparse
 
 from aiohttp import web
 
+grafana_api_key = "eyJrIjoiNDRjelZmMW9JY0N3aUFFQ3N0bnljdVhDblZaSWFYR08iLCJuIjoiZGV2ZWxvcG1lbnR0ZXN0IiwiaWQiOjF9"
+grafana_url = "http://localhost:3000/"
 
 async def health(request):
     return web.json_response({"Status": "Healty"})
@@ -26,7 +28,7 @@ if __name__ == "__main__":
         required=False,
         default=8080,
         type=str,
-        help="The port to use for the GRPC server.")
+        help="The port to use for a server.")
     args = parser.parse_args()
     app = web.Application()
     app.add_routes([
