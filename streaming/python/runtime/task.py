@@ -18,7 +18,7 @@ class StreamTask(ABC):
         self.processor = processor
         self.worker = worker
         self.reader = None  # DataReader
-        self.writers = None  # ExecutionEdge -> DataWriter
+        self.writers = {}  # ExecutionEdge -> DataWriter
         self.thread = None
         self.prepare_task()
         self.thread = threading.Thread(target=self.run, daemon=True)
@@ -37,23 +37,21 @@ class StreamTask(ABC):
         execution_graph = self.worker.execution_graph
         execution_node = self.worker.execution_node
         # writers
-        writers = {}
-        self.writers = writers
         collectors = []
         for edge in execution_node.output_edges:
             output_actor_ids = {}
             task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
                 edge.target_node_id)
-            for target_task_id, target_actor_id in task_id2_worker.items():
+            for target_task_id, target_actor in task_id2_worker.items():
                 channel_name = ChannelID.gen_id(self.task_id, target_task_id,
                                                 execution_graph.build_time())
-                output_actor_ids[channel_name] = target_actor_id
+                output_actor_ids[channel_name] = target_actor
             if len(output_actor_ids) > 0:
                 channel_ids = list(output_actor_ids.keys())
                 to_actor_ids = list(output_actor_ids.values())
                 writer = DataWriter(channel_ids, to_actor_ids, channel_conf)
                 logger.info("Create DataWriter succeed.")
-                writers[edge] = writer
+                self.writers[edge] = writer
                 collectors.append(
                     OutputCollector(channel_ids, writer, edge.partition))
 
@@ -62,10 +60,10 @@ class StreamTask(ABC):
         for edge in execution_node.input_edges:
             task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
                 edge.src_node_id)
-            for src_task_id, src_actor_id in task_id2_worker.items():
+            for src_task_id, src_actor in task_id2_worker.items():
                 channel_name = ChannelID.gen_id(src_task_id, self.task_id,
                                                 execution_graph.build_time())
-                input_actor_ids[channel_name] = src_actor_id
+                input_actor_ids[channel_name] = src_actor
         if len(input_actor_ids) > 0:
             channel_ids = list(input_actor_ids.keys())
             from_actor_ids = list(input_actor_ids.values())
