@@ -13,6 +13,7 @@ class Exporter(threading.Thread):
 
     def __init__(self,
                  export_address,
+                 access_token,
                  dashboard_controller,
                  update_frequency=1.0):
         self.dashboard_controller = dashboard_controller
@@ -46,6 +47,7 @@ class Exporter(threading.Thread):
         raise NotImplementedError("Not implemented yet.")
 
     def run(self):
+        # TODO(sang): Health check.
         # TODO(sang): Add error handling.
         while True:
             time.sleep(self.update_frequency)

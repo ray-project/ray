@@ -96,6 +96,10 @@ def b64_decode(reply):
     return b64decode(reply).decode("utf-8")
 
 
+def get_host_and_port(addr):
+    return addr.strip().split(":")
+
+
 class DashboardController(BaseDashboardController):
     """Perform data fetching and other actions required by HTTP endpoints."""
 
@@ -115,8 +119,8 @@ class DashboardController(BaseDashboardController):
         # ready_tasks are used to render tasks that are not schedulable
         # due to resource limitations.
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
-        ready_tasks = sum(
-            (data.get("readyTasks", []) for data in D.values()), [])
+        ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
+                          [])
         actor_tree = self.node_stats.get_actor_tree(
             workers_info_by_node, infeasible_tasks, ready_tasks)
         for address, data in D.items():
@@ -125,8 +129,8 @@ class DashboardController(BaseDashboardController):
             for view_data in data["viewData"]:
                 view_name = view_data["viewName"]
                 if view_name in ("local_available_resource",
-                                    "local_total_resource",
-                                    "object_manager_stats"):
+                                 "local_total_resource",
+                                 "object_manager_stats"):
                     measures_dicts[view_name] = measures_to_dict(
                         view_data["measures"])
             # process resources info
@@ -150,9 +154,8 @@ class DashboardController(BaseDashboardController):
                 for stats_name in [
                         "used_object_store_memory", "num_local_objects"
                 ]:
-                    stats_value = measures_dicts[
-                        "object_manager_stats"].get(
-                            prefix + stats_name, .0)
+                    stats_value = measures_dicts["object_manager_stats"].get(
+                        prefix + stats_name, .0)
                     extra_info_strings.append("{}: {}".format(
                         stats_name, stats_value))
                 data["extraInfo"] += ", ".join(extra_info_strings)
@@ -163,8 +166,7 @@ class DashboardController(BaseDashboardController):
                 max_line_length = max(map(len, lines))
                 to_print = []
                 for line in lines:
-                    to_print.append(line +
-                                    (max_line_length - len(line)) * " ")
+                    to_print.append(line + (max_line_length - len(line)) * " ")
                 data["extraInfo"] += "\n" + "\n".join(to_print)
         return {"nodes": D, "actors": actor_tree}
 
@@ -213,8 +215,7 @@ class Dashboard(object):
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
         redis_passord(str): Redis password to access GCS
-        hosted_dashboard_client(bool): True if a server runs as a
-            hosted dashboard client mode.
+        hosted_dashboard_addr(str): The address users host their dashboard.
         update_frequency(float): Frequency where metrics are updated.
         DashboardController(DashboardController): DashboardController
             that defines the business logic of a Dashboard server.
@@ -226,7 +227,7 @@ class Dashboard(object):
                  redis_address,
                  temp_dir,
                  redis_password=None,
-                 hosted_dashboard_client=False,
+                 hosted_dashboard_addr=None,
                  update_frequency=1.0,
                  DashboardController=DashboardController):
         self.host = host
@@ -240,10 +241,15 @@ class Dashboard(object):
         if Analysis is not None:
             self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
 
-        self.hosted_dashboard_client = hosted_dashboard_client
+        self.hosted_dashboard_addr = hosted_dashboard_addr
         self.dashboard_client = None
-        if self.hosted_dashboard_client:
-            self.dashboard_client = DashboardClient(self.dashboard_controller)
+
+        if self.hosted_dashboard_addr:
+            hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
+                self.hosted_dashboard_addr)
+            self.dashboard_client = DashboardClient(hosted_dashboard_host,
+                                                    hosted_dashboard_port,
+                                                    self.dashboard_controller)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -381,7 +387,7 @@ class Dashboard(object):
             result = self.dashboard_controller.get_errors(hostname, pid)
             return await json_response(result=result)
 
-        if not self.hosted_dashboard_client:
+        if self.hosted_dashboard_addr is None:
             # Hosted dashboard mode won't use local dashboard frontend.
             self.app.router.add_get("/", get_index)
             self.app.router.add_get("/favicon.ico", get_favicon)
@@ -428,7 +434,7 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
-        if self.hosted_dashboard_client:
+        if self.hosted_dashboard_addr:
             self.dashboard_client.start_exporting_metrics()
         if Analysis is not None:
             self.tune_stats.start()
@@ -832,10 +838,12 @@ class TuneCollector(threading.Thread):
             try:
                 logger.info("Create a directory at {}".format(self._logdir))
                 os.mkdir(self._logdir)
-            except:
-                FileNotFoundError("Log directory {} does not exist. "
-                                    "Please create the directory to use Tune "
-                                    "collector".format(self._logdir))
+            except OSError as e:
+                logger.warning(e)
+                raise FileNotFoundError(
+                    "Log directory {} does not exist. "
+                    "Please create the directory to use Tune "
+                    "collector".format(self._logdir))
 
         super().__init__()
 

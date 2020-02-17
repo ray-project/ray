@@ -2,10 +2,12 @@ from abc import ABC, abstractmethod
 
 
 class BaseDashboardController(ABC):
-    """Interface to get Ray cluster metrics and control actions
+    """Perform data fetching and other actions required by Dashboard
 
     Make sure you run start_collecting_metrics function before using
     get_[stats]_info methods.
+
+    TODO(sang): Write descriptions and requirements for each interface
     """
 
     @abstractmethod
@@ -42,4 +44,9 @@ class BaseDashboardController(ABC):
 
     @abstractmethod
     def start_collecting_metrics(self):
+        """Start threads/processes/actors to collect metrics
+
+        NOTE: This interface should be called before using other
+                interface.
+        """
         raise NotImplementedError("Please implement this method.")

@@ -111,7 +111,6 @@ if __name__ == "__main__":
             args.redis_address,
             args.temp_dir,
             redis_password=args.redis_password,
-            hosted_dashboard_client=False,
             DashboardController=HostedDashboardController)
         dashboard.run()
     except Exception as e:
