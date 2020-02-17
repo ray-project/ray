@@ -42,8 +42,9 @@ class JobWorker(object):
             get_execution_node_by_task_id(self.task_id)
         operator = self.execution_node.stream_operator
         self.stream_processor = processor.build_processor(operator)
-        logger.info("Initializing JobWorker, task_id: {}, operator: {}.".format(
-                    self.task_id, self.stream_processor))
+        logger.info(
+            "Initializing JobWorker, task_id: {}, operator: {}.".format(
+                self.task_id, self.stream_processor))
 
         if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
             core_worker = ray.worker.global_worker.core_worker

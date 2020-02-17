@@ -1,11 +1,11 @@
 import enum
 
-from ray.streaming import function
+import ray
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
+import ray.streaming.generated.streaming_pb2 as streaming_pb
 import ray.streaming.operator as operator
 import ray.streaming.partition as partition
-import ray.streaming.runtime.gateway_client as gateway_client
-import ray.streaming.generated.streaming_pb2 as streaming_pb
+from ray.streaming import function
 from ray.streaming.generated.streaming_pb2 import Language
 
 
@@ -18,7 +18,8 @@ class NodeType(enum.Enum):
 class ExecutionNode:
     def __init__(self, node_pb):
         self.node_id = node_pb.node_id
-        self.node_type = NodeType[streaming_pb.NodeType.Name(node_pb.node_type)]
+        self.node_type = NodeType[streaming_pb.NodeType.Name(
+            node_pb.node_type)]
         self.parallelism = node_pb.parallelism
         if node_pb.language == Language.PYTHON:
             func_bytes = node_pb.function  # python function descriptor
@@ -51,19 +52,8 @@ class ExecutionTask:
     def __init__(self, task_pb, language):
         self.task_id = task_pb.task_id
         self.task_index = task_pb.task_index
-        if language == Language.PYTHON:
-            # module_name/class_name/actor_id_bytes
-            module_name, class_name, actor_id_bytes =\
-                gateway_client.deserialize(task_pb.worker_actor)
-            # actor_id = ray.ActorID(actor_id_bytes)
-            # TODO deserialize actor
-            # self.worker_actor = None
-        elif language == Language.JAVA:
-            java_class_name, actor_id_bytes = gateway_client.deserialize(
-                task_pb.worker_actor)
-            # actor_id = ray.ActorID(actor_id_bytes)
-            # TODO deserialize actor
-            # self.worker_actor = None
+        self.worker_actor = ray.actor.ActorHandle.\
+            _deserialization_helper(task_pb.worker_actor, False)
 
 
 class ExecutionGraph:
@@ -74,7 +64,7 @@ class ExecutionGraph:
         ]
 
     def build_time(self):
-        return self._graph_pb.build_time()
+        return self._graph_pb.build_time
 
     def execution_nodes(self):
         return self.execution_nodes

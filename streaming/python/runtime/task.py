@@ -29,9 +29,8 @@ class StreamTask(ABC):
             self.worker.config.get(Config.CHANNEL_SIZE,
                                    Config.CHANNEL_SIZE_DEFAULT))
         channel_conf[Config.CHANNEL_SIZE] = channel_size
-        channel_conf[
-            Config.TASK_JOB_ID] = ray.runtime_context._get_runtime_context(
-            ).current_driver_id,
+        channel_conf[Config.TASK_JOB_ID] = ray.runtime_context.\
+            _get_runtime_context().current_driver_id
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 
@@ -83,8 +82,7 @@ class StreamTask(ABC):
 
         runtime_context = RuntimeContextImpl(
             self.worker.execution_task.task_id,
-            self.worker.execution_task.task_index,
-            execution_node.parallelism)
+            self.worker.execution_task.task_index, execution_node.parallelism)
         logger.info("open Processor {}".format(self.processor))
         self.processor.open(collectors, runtime_context)
 

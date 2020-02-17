@@ -35,7 +35,7 @@ class StreamingProcessor(Processor, ABC):
         self.runtime_context = runtime_context
         if self.operator is not None:
             self.operator.open(collectors, runtime_context)
-        logger.info("Opened Processor {}", self)
+        logger.info("Opened Processor {}".format(self))
 
     def close(self):
         pass
@@ -91,8 +91,9 @@ class TwoInputProcessor(StreamingProcessor):
 
 def build_processor(operator_instance):
     operator_type = operator_instance.operator_type()
-    logger.info("Building StreamProcessor, operator type = {}, operator = {}.".format(
-                operator_type, operator_instance))
+    logger.info(
+        "Building StreamProcessor, operator type = {}, operator = {}.".format(
+            operator_type, operator_instance))
     if operator_type == OperatorType.SOURCE:
         return SourceProcessor(operator_instance)
     elif operator_type == OperatorType.ONE_INPUT:

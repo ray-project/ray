@@ -2,8 +2,7 @@ package org.ray.streaming.runtime.python;
 
 import com.google.protobuf.ByteString;
 import java.util.Arrays;
-import org.ray.api.RayActor;
-import org.ray.api.RayPyActor;
+import org.ray.runtime.actor.NativeRayActor;
 import org.ray.streaming.api.function.Function;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.python.PythonFunction;
@@ -14,7 +13,6 @@ import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.generated.RemoteCall;
 import org.ray.streaming.runtime.generated.Streaming;
-import org.ray.streaming.runtime.worker.JobWorker;
 
 public class GraphPbBuilder {
 
@@ -42,10 +40,11 @@ public class GraphPbBuilder {
       for (ExecutionTask task : node.getExecutionTasks()) {
         RemoteCall.ExecutionGraph.ExecutionTask.Builder taskBuilder =
             RemoteCall.ExecutionGraph.ExecutionTask.newBuilder();
+        byte[] serializedActorHandle = ((NativeRayActor) task.getWorker()).toBytes();
         taskBuilder
             .setTaskId(task.getTaskId())
             .setTaskIndex(task.getTaskIndex())
-            .setWorkerActor(ByteString.copyFrom(serializeWorkerActor(task.getWorker())));
+            .setWorkerActor(ByteString.copyFrom(serializedActorHandle));
         nodeBuilder.addExecutionTasks(taskBuilder.build());
       }
 
@@ -96,19 +95,6 @@ public class GraphPbBuilder {
       ));
     } else {
       return new byte[0];
-    }
-  }
-
-  private byte[] serializeWorkerActor(RayActor actor) {
-    if (actor instanceof RayPyActor) {
-      RayPyActor pyActor = (RayPyActor) actor;
-      return serializer.serialize(Arrays.asList(
-          pyActor.getModuleName(), pyActor.getClassName(), pyActor.getId().getBytes()
-      ));
-    } else {
-      return serializer.serialize(Arrays.asList(
-          JobWorker.class.getName(), actor.getId().getBytes()
-      ));
     }
   }
 
