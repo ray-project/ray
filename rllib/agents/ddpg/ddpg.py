@@ -1,7 +1,7 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
-from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -176,11 +176,11 @@ def make_exploration_schedule(config, worker_index):
             # run properly
             return ConstantSchedule(0.0)
     elif config["exploration_should_anneal"]:
-        return LinearSchedule(
-            schedule_timesteps=int(config["exploration_fraction"] *
-                                   config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=config["exploration_final_scale"])
+        return PiecewiseSchedule(
+            endpoints=[(0, 1.0), (int(config["exploration_fraction"] *
+                                      config["schedule_max_timesteps"]),
+                                  config["exploration_final_scale"])],
+            outside_value=config["exploration_final_scale"])
     else:
         # *always* add exploration noise
         return ConstantSchedule(1.0)

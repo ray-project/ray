@@ -16,6 +16,7 @@ from scipy.stats import entropy
 
 import ray
 from ray.experimental.sgd import PyTorchTrainer
+from ray.experimental.sgd.pytorch.utils import TEST_MODE
 
 # Training parameters
 TRAIN_BATCHES = 5
@@ -157,7 +158,7 @@ def model_creator(config):
     return netD, netG
 
 
-def train(models, dataloader, criterion, optimizers, config):
+def train(config, models, dataloader, criterion, optimizers, **kwargs):
     netD, netG = models
     optimD, optimG = optimizers
     real_label = 1
@@ -165,7 +166,7 @@ def train(models, dataloader, criterion, optimizers, config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     for i, data in enumerate(dataloader, 0):
-        if i >= TRAIN_BATCHES and config.get("test_mode"):
+        if i >= TRAIN_BATCHES and config.get(TEST_MODE):
             break
 
         netD.zero_grad()
@@ -211,7 +212,7 @@ def optimizer_creator(models, config):
 
 
 def train_example(num_replicas=1, use_gpu=False, test_mode=False):
-    config = {"test_mode": test_mode}
+    config = {TEST_MODE: test_mode}
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
