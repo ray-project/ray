@@ -183,7 +183,7 @@ message WaitForRefRemovedRequest {
 message ObjectReferenceCount {
   // The reference that the worker has or had a reference to.
   ObjectReference reference = 1;
-  // Whether the worker is still using the object ID locally. This means that
+  // Whether the worker is still using the ObjectID locally. This means that
   // it has a copy of the ObjectID in the language frontend, has a pending task
   // that depends on the object, and/or owns an ObjectID that is in scope and
   // that contains the object ID.
