@@ -1,7 +1,7 @@
 import torch
 
-from ray.experimental.sgd.utils import TimerStat, AverageMeter
-from ray.experimental.sgd.pytorch.constants import (
+from ray.util.sgd.utils import TimerStat, AverageMeter
+from ray.util.sgd.pytorch.constants import (
     SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT)
 
 amp = None

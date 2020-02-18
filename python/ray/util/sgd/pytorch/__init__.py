@@ -11,7 +11,7 @@ try:
     from ray.util.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
                                                       PyTorchTrainable)
 
-    from ray.experimental.sgd.pytorch.training_operator import TrainingOperator
+    from ray.util.sgd.pytorch.training_operator import TrainingOperator
 
     __all__ = ["PyTorchTrainer", "PyTorchTrainable", "TrainingOperator"]
 except ImportError:

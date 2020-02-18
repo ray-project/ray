@@ -9,9 +9,9 @@ import torch.utils.data
 from torch.utils.data import Dataset
 
 import ray
-from ray.experimental.sgd.pytorch.constants import USE_FP16, SCHEDULER_STEP
-from ray.experimental.sgd.pytorch.training_operator import TrainingOperator
-from ray.experimental.sgd import utils
+from ray.util.sgd.pytorch.constants import USE_FP16, SCHEDULER_STEP
+from ray.util.sgd.pytorch.training_operator import TrainingOperator
+from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
 amp = None

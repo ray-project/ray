@@ -15,9 +15,9 @@ from torch.nn import functional as F
 from scipy.stats import entropy
 
 import ray
-from ray.experimental.sgd import PyTorchTrainer
-from ray.experimental.sgd.utils import override
-from ray.experimental.sgd.pytorch import TrainingOperator
+from ray.util.sgd import PyTorchTrainer
+from ray.util.sgd.utils import override
+from ray.util.sgd.pytorch import TrainingOperator
 
 
 def data_creator(config):

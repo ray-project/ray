@@ -13,9 +13,9 @@ from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
-from ray.experimental.sgd import utils
-from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
-from ray.experimental.sgd.pytorch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd import utils
+from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.util.sgd.pytorch.constants import VALID_SCHEDULER_STEP
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
