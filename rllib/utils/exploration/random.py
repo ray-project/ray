@@ -4,7 +4,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     tf_function
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()

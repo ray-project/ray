@@ -69,13 +69,12 @@ class EpsilonGreedy(Exploration):
                                explore=True,
                                timestep=None):
 
-        #action_dist = action_dist_class(distribution_parameters, model)
         if self.framework == "tf":
-            return self._get_tf_exploration_action_op(
-                distribution_parameters, explore, timestep)
+            return self._get_tf_exploration_action_op(distribution_parameters,
+                                                      explore, timestep)
         else:
-            return self._get_torch_exploration_action(
-                distribution_parameters, explore, timestep)
+            return self._get_torch_exploration_action(distribution_parameters,
+                                                      explore, timestep)
 
     def _get_tf_exploration_action_op(self, q_values, explore, timestep):
         """Tf method to produce the tf op for an epsilon exploration action.
@@ -98,8 +97,7 @@ class EpsilonGreedy(Exploration):
         # even consider them for exploration.
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
-            tf.ones_like(q_values) * tf.float32.min,
-            tf.ones_like(q_values))
+            tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
         random_actions = tf.squeeze(
             tf.multinomial(random_valid_action_logits, 1), axis=1)
 

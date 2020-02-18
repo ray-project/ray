@@ -86,7 +86,7 @@ def build_tf_policy(name,
             a tuple of action and action prob tensors given
             (policy, model, input_dict, obs_space, action_space, config).
             If None, a default action distribution will be used.
-        dist_class_and_parameters_fn (Optional[callable]): A callable, 
+        dist_class_and_parameters_fn (Optional[callable]): A callable,
             returning a tuple of action_dist_class and distribution_parameters.
             If None, a default class is used and parameters will be generated
             by a model call.

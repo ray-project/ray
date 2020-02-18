@@ -88,12 +88,12 @@ def build_q_models(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def get_dist_class_and_q_values(policy, q_model, input_dict,
-                                obs_space, action_space, config):
+def get_dist_class_and_q_values(policy, q_model, input_dict, obs_space,
+                                action_space, config):
     # Action Q network.
-    q_vals = _compute_q_values(
-        policy, q_model, input_dict[SampleBatch.CUR_OBS],
-        obs_space, action_space)
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
     return (Categorical, q_vals[0] if isinstance(q_vals, tuple) else q_vals)
 
 

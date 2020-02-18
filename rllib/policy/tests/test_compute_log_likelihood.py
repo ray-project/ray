@@ -11,8 +11,13 @@ from ray.rllib.utils.numpy import one_hot, fc
 tf = try_import_tf()
 
 
-def test_log_likelihood(run, config, obs_batch, preprocessed_obs_batch,
-                        prev_a=None, prev_r=None, continuous=False):
+def test_log_likelihood(run,
+                        config,
+                        obs_batch,
+                        preprocessed_obs_batch,
+                        prev_a=None,
+                        prev_r=None,
+                        continuous=False):
     config = config.copy()
     # Run locally.
     config["num_workers"] = 0
@@ -44,9 +49,12 @@ def test_log_likelihood(run, config, obs_batch, preprocessed_obs_batch,
         actions = []
         for _ in range(num_actions):
             # Single action from single obs.
-            actions.append(trainer.compute_action(
-                obs_batch[0], prev_action=prev_a, prev_reward=prev_r,
-                explore=True))
+            actions.append(
+                trainer.compute_action(
+                    obs_batch[0],
+                    prev_action=prev_a,
+                    prev_reward=prev_r,
+                    explore=True))
 
         if continuous:
             # Test 50 actions for their log-likelihoods vs expected values.
@@ -70,8 +78,9 @@ def test_log_likelihood(run, config, obs_batch, preprocessed_obs_batch,
                         vars["_logits.0._model.0.bias"])
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
                 expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
-                logp = policy.compute_log_likelihood(
-                    np.array([a]), preprocessed_obs_batch,
+                logp = policy.compute_log_likelihoods(
+                    np.array([a]),
+                    preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]),
                     prev_reward_batch=np.array([prev_r]))
                 check(logp, expected_logp[0], rtol=0.2)
@@ -80,8 +89,9 @@ def test_log_likelihood(run, config, obs_batch, preprocessed_obs_batch,
             for a in [0, 1, 2, 3]:
                 count = actions.count(a)
                 expected_logp = np.log(count / num_actions)
-                logp = policy.compute_log_likelihood(
-                    np.array([a]), preprocessed_obs_batch,
+                logp = policy.compute_log_likelihoods(
+                    np.array([a]),
+                    preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]),
                     prev_reward_batch=np.array([prev_r]))
                 check(logp, expected_logp, rtol=0.2)
@@ -96,23 +106,25 @@ class TestComputeLogLikelihood(unittest.TestCase):
                             preprocessed_obs)
 
     def test_ppo_cont(self):
-        """Tests PPO's (cont. actions) compute_log_likelihood method."""
+        """Tests PPO's (cont. actions) compute_log_likelihoods method."""
         obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
         config = ppo.DEFAULT_CONFIG.copy()
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a, prev_r = np.array([0.0]), np.array(0.0)
         test_log_likelihood(
-            ppo.PPOTrainer, config,
-            obs_batch, preprocessed_obs_batch,
-            prev_a, prev_r, continuous=True)
+            ppo.PPOTrainer,
+            config,
+            obs_batch,
+            preprocessed_obs_batch,
+            prev_a,
+            prev_r,
+            continuous=True)
 
     def test_ppo_discr(self):
-        """Tests PPO's (discr. actions) compute_log_likelihood method."""
+        """Tests PPO's (discr. actions) compute_log_likelihoods method."""
         obs_batch = np.array([0])
         preprocessed_obs_batch = one_hot(obs_batch, depth=16)
         prev_a, prev_r = np.array(0), np.array(0.0)
-        test_log_likelihood(
-            ppo.PPOTrainer, ppo.DEFAULT_CONFIG,
-            obs_batch, preprocessed_obs_batch,
-            prev_a, prev_r)
+        test_log_likelihood(ppo.PPOTrainer, ppo.DEFAULT_CONFIG, obs_batch,
+                            preprocessed_obs_batch, prev_a, prev_r)
