@@ -10,6 +10,12 @@ from ray.streaming.generated.streaming_pb2 import Language
 
 
 class NodeType(enum.Enum):
+    """
+    SOURCE: Sources are where your program reads its input from
+    TRANSFORM: Operators transform one or more DataStreams into a new DataStream.
+    Programs can combine multiple transformations into sophisticated dataflow topologies.
+    SINK: Sinks consume DataStreams and forward them to files, sockets, external systems, or print them.
+    """
     SOURCE = 0
     TRANSFORM = 1
     SINK = 2
@@ -26,8 +32,7 @@ class ExecutionNode:
             func = function.load_function(func_bytes)
             self.stream_operator = operator.create_operator(func)
         self.execution_tasks = [
-            ExecutionTask(task, node_pb.language)
-            for task in node_pb.execution_tasks
+            ExecutionTask(task) for task in node_pb.execution_tasks
         ]
         self.input_edges = [
             ExecutionEdge(edge, node_pb.language)
@@ -49,7 +54,7 @@ class ExecutionEdge:
 
 
 class ExecutionTask:
-    def __init__(self, task_pb, language):
+    def __init__(self, task_pb):
         self.task_id = task_pb.task_id
         self.task_index = task_pb.task_index
         self.worker_actor = ray.actor.ActorHandle.\

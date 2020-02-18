@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 
 class Processor(ABC):
+    """The base interface for all processors."""
+
     @abstractmethod
     def open(self, collectors, runtime_context):
         pass
@@ -42,6 +44,8 @@ class StreamingProcessor(Processor, ABC):
 
 
 class SourceProcessor(StreamingProcessor):
+    """Processor for :class:`ray.streaming.operator.SourceOperator` """
+
     def __init__(self, operator):
         super().__init__(operator)
 
@@ -53,6 +57,8 @@ class SourceProcessor(StreamingProcessor):
 
 
 class OneInputProcessor(StreamingProcessor):
+    """Processor for stream operator with one input"""
+
     def __init__(self, operator):
         super().__init__(operator)
 
@@ -61,6 +67,8 @@ class OneInputProcessor(StreamingProcessor):
 
 
 class TwoInputProcessor(StreamingProcessor):
+    """Processor for stream operator with two input"""
+
     def __init__(self, operator):
         super().__init__(operator)
         self.left_stream = None
@@ -90,6 +98,7 @@ class TwoInputProcessor(StreamingProcessor):
 
 
 def build_processor(operator_instance):
+    """Create processor for operator"""
     operator_type = operator_instance.operator_type()
     logger.info(
         "Building StreamProcessor, operator type = {}, operator = {}.".format(

@@ -1,11 +1,11 @@
 import logging
-from abc import ABC, abstractmethod
-import threading
 import pickle
+import threading
+from abc import ABC, abstractmethod
 
 import ray
-from ray.streaming.config import Config
 from ray.streaming.collector import OutputCollector
+from ray.streaming.config import Config
 from ray.streaming.context import RuntimeContextImpl
 from ray.streaming.runtime.transfer import ChannelID, DataWriter, DataReader
 
@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 class StreamTask(ABC):
+    """Base class for all streaming tasks. Each task runs a processor."""
+
     def __init__(self, task_id, processor, worker):
         self.task_id = task_id
         self.processor = processor
@@ -101,6 +103,10 @@ class StreamTask(ABC):
 
 
 class InputStreamTask(StreamTask):
+    """Base class for stream tasks that execute a
+    :class:`runtime.processor.OneInputProcessor` or
+    :class:`runtime.processor.TwoInputProcessor` """
+
     def __init__(self, task_id, processor_instance, worker):
         super().__init__(task_id, processor_instance, worker)
         self.running = True
@@ -128,11 +134,15 @@ class InputStreamTask(StreamTask):
 
 
 class OneInputStreamTask(InputStreamTask):
+    """A stream task for executing :class:`runtime.processor.OneInputProcessor`"""
+
     def __init__(self, task_id, processor_instance, worker):
         super().__init__(task_id, processor_instance, worker)
 
 
 class SourceStreamTask(StreamTask):
+    """A stream task for executing :class:`runtime.processor.SourceProcessor`"""
+
     def __init__(self, task_id, processor_instance, worker):
         super().__init__(task_id, processor_instance, worker)
 

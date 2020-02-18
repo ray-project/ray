@@ -7,6 +7,8 @@ import ray
 
 
 class GatewayClient:
+    """GatewayClient is used to interact with `PythonGateway` java actor"""
+
     _PYTHON_GATEWAY_CLASSNAME = \
         b"org.ray.streaming.runtime.python.PythonGateway"
 
@@ -54,9 +56,11 @@ class GatewayClient:
         return deserialize(ray.get(call))
 
 
-def serialize(obj):
+def serialize(obj) -> bytes:
+    """Serialize a python object which can be deserialized by `PythonGateway`"""
     return msgpack.packb(obj, use_bin_type=True)
 
 
-def deserialize(data):
+def deserialize(data: bytes):
+    """Deserialize the binary data serialized by `PythonGateway`"""
     return msgpack.unpackb(data, raw=False)
