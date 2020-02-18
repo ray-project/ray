@@ -110,7 +110,6 @@ class ModelCatalog:
     def get_action_dist(action_space,
                         config=None,
                         dist_type=None,
-                        torch=None,
                         framework="tf",
                         **kwargs):
         """Returns a distribution class and size for the given action space.
@@ -119,8 +118,6 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
             dist_type (Optional[str]): Identifier of the action distribution.
-            torch (bool): Deprecated: Whether to return PyTorch Model and
-                distribution (use framework="torch" instead).
             framework (str): One of "tf" or "torch".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
@@ -129,11 +126,6 @@ class ModelCatalog:
             dist_class (ActionDistribution): Python class of the distribution.
             dist_dim (int): The size of the input vector to the distribution.
         """
-        # Obsoleted parameter `torch`:
-        if torch is not None:
-            deprecation_warning("`torch` parameter", "`framework`='tf|torch'")
-            framework = "torch" if torch else "tf"
-
         dist = None
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
