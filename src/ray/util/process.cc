@@ -115,18 +115,12 @@ ProcessFD::ProcessFD(pid_t pid, intptr_t fd) : pid_(pid), fd_(fd) {
     // Don't verify anything if the PID is too high, since that's used for testing
     if (pid < PID_MAX_LIMIT) {
       if (process_does_not_exist) {
-        RAY_LOG(FATAL) << "Process " << pid << " does not appear to exist. "
-                       << "This indicates a severe race condition or logic error in "
-                       << "the codebase, as the caller MUST guarantee PID validity, "
-                       << "even if the child process might have already exited."
-                       << "On POSIX systems, this requires that the process be either "
-                       << "running or in a zombie state throughout the lifetime of this "
-                       << "object, which typically only the parent process can guarantee."
-                       << "In particular, if SIGCHLD should NOT be suppressed for this "
-                       << "PID as doing so can make it _impossible_ to provide this "
-                       << "guarantee. "
-                       << "Please fix this bug, or PID reuse can result in opening and "
-                       << "even terminating an incorrect process in the system.";
+        // NOTE: This indicates a race condition where a process died and its process
+        // table entry was removed before the ProcessFD could be instantiated. For
+        // processes owned by this process, we should make this impossible by keeping
+        // the SIGCHLD signal. For processes not owned by this process, we need to come up
+        // with a strategy to create this class in a way that avoids race conditions.
+        RAY_LOG(ERROR) << "Process " << pid << " does not exist.";
       }
       if (error) {
         // TODO(mehrdadn): Should this be fatal, or perhaps returned as an error code?
