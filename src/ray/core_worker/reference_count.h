@@ -82,7 +82,7 @@ class ReferenceCounter {
   /// \param[in] owner_id The ID of the object's owner.
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] dependencies The objects that the object depends on.
-  void AddOwnedObject(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
+  void AddOwnedObject(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
                       const TaskID &owner_id, const rpc::Address &owner_address)
       LOCKS_EXCLUDED(mutex_);
 
