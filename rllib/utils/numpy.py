@@ -1,5 +1,10 @@
 import numpy as np
 
+from ray.rllib.utils.framework import try_import_torch
+
+
+torch, _ = try_import_torch()
+
 SMALL_NUMBER = 1e-6
 # Some large int number. May be increased here, if needed.
 LARGE_INTEGER = 100000000
@@ -119,6 +124,9 @@ def fc(x, weights, biases=None):
     Returns:
         The dense layer's output.
     """
+    # Torch stores matrices in transpose (faster for backprop).
+    if torch and isinstance(weights, torch.Tensor):
+        weights = np.transpose(weights.numpy())
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 

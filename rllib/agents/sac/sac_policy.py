@@ -106,46 +106,9 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
     dist_class, dist_parameters = dist_class_and_parameters_fn(
         policy, model, input_dict, obs_space, action_space, config)
 
-    # model_out, _ = model({
-    #    "obs": input_dict[SampleBatch.CUR_OBS],
-    #    "is_training": policy._get_is_training_placeholder(),
-    # }, [], None)
-
-    # def unsquash_actions(actions):
-    #    # Use sigmoid to scale to [0,1], but also double magnitude of input to
-    #    # emulate behaviour of tanh activation used in SAC and TD3 papers.
-    #    sigmoid_out = tf.nn.sigmoid(2 * actions)
-    #    # Rescale to actual env policy scale
-    #    # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
-    #    # get same dims)
-    #    action_range = (action_space.high - action_space.low)[None]
-    #    low_action = action_space.low[None]
-    #    unsquashed_actions = action_range * sigmoid_out + low_action
-
-    #    return unsquashed_actions
-
-    # squashed_stochastic_actions, log_pis = policy.model.get_policy_output(
-    #    model_out, deterministic=False)
-    # stochastic_actions = squashed_stochastic_actions if config[
-    #   "normalize_actions"] else unsquash_actions(squashed_stochastic_actions)
-    # squashed_deterministic_actions, _ = policy.model.get_policy_output(
-    #    model_out, deterministic=True)
-    # deterministic_actions = squashed_deterministic_actions if config[
-    #    "normalize_actions"] else unsquash_actions(
-    #        squashed_deterministic_actions)
-
     policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
             dist_parameters, dist_class, model, explore, timestep)
-
-    # policy.output_actions = tf.cond(
-    #    tf.constant(explore) if isinstance(explore, bool) else explore,
-    #    true_fn=lambda: stochastic_actions,
-    #    false_fn=lambda: deterministic_actions)
-    # policy.sampled_action_logp = tf.cond(
-    #    tf.constant(explore) if isinstance(explore, bool) else explore,
-    #    true_fn=lambda: log_pis,
-    #    false_fn=lambda: tf.zeros_like(log_pis))
 
     return policy.output_actions, policy.sampled_action_logp
 
@@ -165,9 +128,7 @@ def actor_critic_loss(policy, model, _, train_batch):
         "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-    # TODO(hartikainen): figure actions and log pis
-    #policy_t, log_pis_t = model.get_policy_output(model_out_t)
-    #policy_tp1, log_pis_tp1 = model.get_policy_output(model_out_tp1)
+
     action_dist_t = policy.dist_class(
         model.action_model(model_out_t), policy.model)
     policy_t = action_dist_t.sample()

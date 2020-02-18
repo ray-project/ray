@@ -1,4 +1,6 @@
+from contextlib import nullcontext
 import numpy as np
+from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray
@@ -39,37 +41,38 @@ def test_explorations(run,
             if exploration == "Random":
                 config["exploration_config"] = {"type": "Random"}
 
-            trainer = run(config=config, env=env)
+            with eager_mode() if fw == "eager" else nullcontext():
+                trainer = run(config=config, env=env)
 
-            # Make sure all actions drawn are the same, given same
-            # observations.
-            actions = []
-            for _ in range(100):
-                actions.append(
-                    trainer.compute_action(
-                        observation=dummy_obs,
-                        explore=False,
-                        prev_action=prev_a,
-                        prev_reward=1.0 if prev_a is not None else None))
-                check(actions[-1], actions[0])
-
-            # Make sure actions drawn are different (around some mean value),
-            # given constant observations.
-            actions = []
-            for _ in range(100):
-                actions.append(
-                    trainer.compute_action(
-                        observation=dummy_obs,
-                        explore=True,
-                        prev_action=prev_a,
-                        prev_reward=1.0 if prev_a is not None else None))
-            check(
-                np.mean(actions),
-                expected_mean_action
-                if expected_mean_action is not None else 0.5,
-                atol=0.3)
-            # Check that the stddev is not 0.0 (values differ).
-            check(np.std(actions), 0.0, false=True)
+                # Make sure all actions drawn are the same, given same
+                # observations.
+                actions = []
+                for _ in range(100):
+                    actions.append(
+                        trainer.compute_action(
+                            observation=dummy_obs,
+                            explore=False,
+                            prev_action=prev_a,
+                            prev_reward=1.0 if prev_a is not None else None))
+                    check(actions[-1], actions[0])
+    
+                # Make sure actions drawn are different
+                # (around some mean value), given constant observations.
+                actions = []
+                for _ in range(100):
+                    actions.append(
+                        trainer.compute_action(
+                            observation=dummy_obs,
+                            explore=True,
+                            prev_action=prev_a,
+                            prev_reward=1.0 if prev_a is not None else None))
+                check(
+                    np.mean(actions),
+                    expected_mean_action
+                    if expected_mean_action is not None else 0.5,
+                    atol=0.3)
+                # Check that the stddev is not 0.0 (values differ).
+                check(np.std(actions), 0.0, false=True)
 
 
 class TestExplorations(unittest.TestCase):
@@ -109,7 +112,7 @@ class TestExplorations(unittest.TestCase):
             "CartPole-v0",
             impala.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
-            prev_a=np.array([0]))
+            prev_a=np.array(0))
 
     def test_pg(self):
         test_explorations(
@@ -117,7 +120,7 @@ class TestExplorations(unittest.TestCase):
             "CartPole-v0",
             pg.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
-            prev_a=np.array([1]))
+            prev_a=np.array(1))
 
     def test_ppo_discr(self):
         test_explorations(
@@ -125,7 +128,7 @@ class TestExplorations(unittest.TestCase):
             "CartPole-v0",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
-            prev_a=np.array([0]))
+            prev_a=np.array(0))
 
     def test_ppo_cont(self):
         test_explorations(
@@ -133,7 +136,7 @@ class TestExplorations(unittest.TestCase):
             "Pendulum-v0",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
-            prev_a=np.array([0]),
+            prev_a=np.array([0.0]),
             expected_mean_action=0.0)
 
     def test_sac(self):

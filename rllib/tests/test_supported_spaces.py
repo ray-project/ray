@@ -19,31 +19,31 @@ tf = try_import_tf()
 
 
 ACTION_SPACES_TO_TEST = {
-    #"discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (1, ), dtype=np.float32),
-    #"vector2": Box(-1.0, 1.0, (
-    #    5,
-    #    5,
-    #), dtype=np.float32),
-    #"multidiscrete": MultiDiscrete([1, 2, 3, 4]),
-    #"tuple": Tuple(
-    #    [Discrete(2),
-    #     Discrete(3),
-    #     Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
+    "discrete": Discrete(5),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (
+        5,
+        5,
+    ), dtype=np.float32),
+    "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
+    "tuple": Tuple(
+        [Discrete(2),
+         Discrete(3),
+         Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
-    #"discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (3, ), dtype=np.float32),
-    #"vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
-    #"image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
-    #"atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
-    #"tuple": Tuple([Discrete(10),
-                   # Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
-    #"dict": Dict({
-    #    "task": Discrete(10),
-    #    "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    #}),
+    "discrete": Discrete(5),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
+    "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
+    "tuple": Tuple([Discrete(10),
+                    Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
+    "dict": Dict({
+        "task": Discrete(10),
+        "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    }),
 }
 
 
@@ -95,8 +95,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                                               VisionNetV2)
                         elif o_name in ["vector", "vector2"]:
                             assert isinstance(a.get_policy().model, FCNetV2)
-                    for _ in range(100):
-                        a.train()
+                    a.train()
                     covered_a.add(a_name)
                     covered_o.add(o_name)
             except UnsupportedSpaceException:
@@ -222,18 +221,7 @@ class ModelSupportedSpaces(unittest.TestCase):
             check_bounds=True)
 
     def test_sac(self):
-        #tf.enable_eager_execution()
-        check_support("SAC", {"eager": True}, self.stats, check_bounds=True)
-
-    # def testAll(self):
-
-    #    num_unexpected_errors = 0
-    #    for (alg, a_name, o_name), stat in sorted(self.stats.items()):
-    #        if stat not in ["ok", "unsupported", "skip"]:
-    #            num_unexpected_errors += 1
-    #        print(alg, "action_space", a_name, "obs_space", o_name, "result",
-    #              stat)
-    #    self.assertEqual(num_unexpected_errors, 0)
+        check_support("SAC", {}, self.stats, check_bounds=True)
 
     def test_a3c_multiagent(self):
         check_support_multiagent("A3C", {

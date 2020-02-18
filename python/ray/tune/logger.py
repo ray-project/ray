@@ -7,7 +7,6 @@ import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.rllib.utils.debug import log_once
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
@@ -215,11 +214,10 @@ class TBXLogger(Logger):
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
                 except (ValueError, TypeError):
-                    if log_once("tbx_invalid_value"):
-                        logger.warning(
-                            "You are trying to log an invalid value ({}={}) "
-                            "via {}!".format(
-                                full_attr, value, type(self).__name__))
+                    logger.warning(
+                        "You are trying to log an invalid value ({}={}) "
+                        "via {}!".format(
+                            full_attr, value, type(self).__name__))
 
         self.last_result = valid_result
         self._file_writer.flush()

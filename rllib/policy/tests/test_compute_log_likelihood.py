@@ -4,37 +4,43 @@ import unittest
 
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
+import ray.rllib.agents.sac as sac
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check
-from ray.rllib.utils.numpy import one_hot, fc
+from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, \
+    MAX_LOG_NN_OUTPUT
 
 tf = try_import_tf()
 
 
 def test_log_likelihood(run,
                         config,
-                        obs_batch,
-                        preprocessed_obs_batch,
                         prev_a=None,
-                        prev_r=None,
-                        continuous=False):
+                        continuous=False,
+                        layer_key=("fc", (0, 4)),
+                        logp_func=None):
     config = config.copy()
     # Run locally.
     config["num_workers"] = 0
     # Env setup.
     if continuous:
         env = "Pendulum-v0"
+        obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
     else:
         env = "FrozenLake-v0"
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        obs_batch = np.array([0])
+        preprocessed_obs_batch = one_hot(obs_batch, depth=16)
 
     # Use Soft-Q for DQNs.
     if run is dqn.DQNTrainer:
         config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
 
+    prev_r = None if prev_a is None else np.array(0.0)
+
     # Test against all frameworks.
     for fw in ["tf", "eager", "torch"]:
-        if run in [dqn.DQNTrainer] and fw == "torch":
+        if run in [dqn.DQNTrainer, sac.SACTrainer] and fw == "torch":
             continue
         print("Testing {} with framework={}".format(run, fw))
         config["eager"] = True if fw == "eager" else False
@@ -56,36 +62,42 @@ def test_log_likelihood(run,
                     prev_reward=prev_r,
                     explore=True))
 
+        # Test 50 actions for their log-likelihoods vs expected values.
         if continuous:
-            # Test 50 actions for their log-likelihoods vs expected values.
             for idx in range(50):
                 a = actions[idx]
-                if fw == "tf":
-                    expected_mean_logstd = fc(
-                        fc(obs_batch, vars["default_policy/fc_1/kernel"],
-                           vars["default_policy/fc_1/bias"]),
-                        vars["default_policy/fc_out/kernel"],
-                        vars["default_policy/fc_out/bias"])
-                elif fw == "eager":
-                    expected_mean_logstd = fc(
-                        fc(obs_batch, vars[0], vars[1]), vars[4], vars[5])
+                if fw == "tf" or fw == "eager":
+                    if isinstance(vars, list):
+                        expected_mean_logstd = fc(
+                            fc(
+                                obs_batch, vars[layer_key[1][0]]),
+                            vars[layer_key[1][1]])
+                    else:
+                        expected_mean_logstd = fc(fc(
+                            obs_batch,
+                            vars["default_policy/{}_1/kernel".
+                                format(layer_key[0])]),
+                            vars["default_policy/{}_out/kernel".
+                                format(layer_key[0])])
                 else:
-                    print()
                     expected_mean_logstd = fc(
-                        fc(obs_batch, vars["_hidden_layers.0._model.0.weight"],
-                           vars["_hidden_layers.0._model.0.bias"]),
-                        vars["_logits.0._model.0.weight"],
-                        vars["_logits.0._model.0.bias"])
+                        fc(
+                            obs_batch,
+                            vars["_hidden_layers.0._model.0.weight"]),
+                        vars["_logits._model.0.weight"])
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
-                expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
+                if logp_func is None:
+                    expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
+                else:
+                    expected_logp = logp_func(mean, log_std, a)
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
                     preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]),
                     prev_reward_batch=np.array([prev_r]))
                 check(logp, expected_logp[0], rtol=0.2)
+        # Test all available actions for their logp values.
         else:
-            # Test all available actions for their logp values.
             for a in [0, 1, 2, 3]:
                 count = actions.count(a)
                 expected_logp = np.log(count / num_actions)
@@ -100,31 +112,47 @@ def test_log_likelihood(run,
 class TestComputeLogLikelihood(unittest.TestCase):
     def test_dqn(self):
         """Tests, whether DQN correctly computes logp in soft-q mode."""
-        obs_batch = np.array([0])
-        preprocessed_obs = one_hot(obs_batch, depth=16)
-        test_log_likelihood(dqn.DQNTrainer, dqn.DEFAULT_CONFIG, obs_batch,
-                            preprocessed_obs)
+        test_log_likelihood(dqn.DQNTrainer, dqn.DEFAULT_CONFIG)
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
-        obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
         config = ppo.DEFAULT_CONFIG.copy()
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
-        prev_a, prev_r = np.array([0.0]), np.array(0.0)
+        prev_a = np.array([0.0])
         test_log_likelihood(
             ppo.PPOTrainer,
             config,
-            obs_batch,
-            preprocessed_obs_batch,
             prev_a,
-            prev_r,
             continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
-        obs_batch = np.array([0])
-        preprocessed_obs_batch = one_hot(obs_batch, depth=16)
-        prev_a, prev_r = np.array(0), np.array(0.0)
-        test_log_likelihood(ppo.PPOTrainer, ppo.DEFAULT_CONFIG, obs_batch,
-                            preprocessed_obs_batch, prev_a, prev_r)
+        prev_a = np.array(0)
+        test_log_likelihood(ppo.PPOTrainer, ppo.DEFAULT_CONFIG, prev_a)
+
+    def test_sac(self):
+        """Tests SAC's compute_log_likelihoods method."""
+        config = sac.DEFAULT_CONFIG.copy()
+        config["policy_model"]["hidden_layer_sizes"] = [10]
+        config["policy_model"]["hidden_activation"] = "linear"
+        prev_a = np.array([0.0])
+
+        def logp_func(means, log_stds, values, low=-1.0, high=1.0):
+            stds = np.exp(
+                np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
+            unsquashed_values = np.arctanh(
+                (values - low) / (high - low) * 2.0 - 1.0)
+            log_prob_unsquashed = \
+                np.sum(np.log(norm.pdf(unsquashed_values, means, stds)), -1)
+            return log_prob_unsquashed - \
+                   np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
+                          axis=-1)
+
+        test_log_likelihood(
+            sac.SACTrainer,
+            config,
+            prev_a,
+            continuous=True,
+            layer_key=("sequential/action", (0, 2)),
+            logp_func=logp_func)
