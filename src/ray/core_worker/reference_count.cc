@@ -481,10 +481,10 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   if (it == borrower_cache_.end()) {
     RAY_CHECK(client_factory_ != nullptr);
     it = borrower_cache_.emplace(addr, client_factory_(addr.ToProto())).first;
-    RAY_LOG(DEBUG) << "Connected to borrower " << addr.ip_address << ":" << addr.port
-                   << " for object " << object_id;
   }
 
+  RAY_LOG(DEBUG) << "Sending WaitForRefRemoved to borrower " << addr.ip_address << ":"
+                 << addr.port << " for object " << object_id;
   // Send the borrower a message about this object. The borrower responds once
   // it is no longer using the object ID.
   RAY_CHECK_OK(it->second->WaitForRefRemoved(
@@ -493,14 +493,22 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
                        << addr.port << " of object " << object_id;
         absl::MutexLock lock(&mutex_);
+
+        // Merge in any new borrowers that the previous borrower learned of.
+        const ReferenceTable new_borrower_refs =
+            ReferenceTableFromProto(reply.borrowed_refs());
+        MergeRemoteBorrowers(object_id, addr, new_borrower_refs);
+
+        // Erase the previous borrower.
+        // NOTE(swang): We do this after the merge in case the previous
+        // borrower was added back to the list, which can happen when a task
+        // submitted by the borrower returns the borrowed ID as the value. It
+        // is still safe to remove the borrower because it must have merged
+        // the nested task's references before it responded to the
+        // WaitForRefRemoved request.
         auto it = object_id_refs_.find(object_id);
         RAY_CHECK(it != object_id_refs_.end());
         RAY_CHECK(it->second.borrowers.erase(addr));
-
-        const ReferenceTable new_borrower_refs =
-            ReferenceTableFromProto(reply.borrowed_refs());
-
-        MergeRemoteBorrowers(object_id, addr, new_borrower_refs);
         DeleteReferenceInternal(it, nullptr);
       }));
 }
@@ -537,21 +545,13 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
     // Returning an object ID from a task, and the task's caller executed in a
     // remote process.
     for (const auto &inner_id : inner_ids) {
+      RAY_LOG(DEBUG) << "Adding borrower " << owner_address->ip_address << " to id "
+                     << inner_id << ", borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
       RAY_CHECK(inner_it != object_id_refs_.end());
-      if (!inner_it->second.owned_by_us) {
-        RAY_LOG(WARNING)
-            << "Ref counting currently does not support returning an object ID that was "
-               "not created by the worker executing the task. The object may be evicted "
-               "before all references are out of scope.";
-        // TODO: Do not return. Handle the case where we return a BORROWED id.
-        continue;
-      }
       // Add the task's caller as a borrower.
       auto inserted = inner_it->second.borrowers.insert(*owner_address).second;
-      if (inserted) {
-        RAY_LOG(DEBUG) << "Adding borrower " << owner_address->ip_address << " to id "
-                       << object_id << ", borrower owns outer ID " << object_id;
+      if (inserted && inner_it->second.owned_by_us) {
         // Wait for it to remove its
         // reference.
         WaitForRefRemoved(inner_it, *owner_address, object_id);
