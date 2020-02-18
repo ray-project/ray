@@ -295,7 +295,7 @@ class PyTorchTrainer:
             self._resize_workers(checkpoint=checkpoint)
 
         with self.optimizer_timer:
-            success, worker_stats = self._train_step()
+            success, worker_stats = self._train_epoch(info)
             # Fault handling
             for i in range(max_retries):
                 if success:
@@ -305,7 +305,7 @@ class PyTorchTrainer:
                 self._resize_workers(checkpoint=checkpoint)
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
-                success, worker_stats = self._train_step()
+                success, worker_stats = self._train_epoch(info)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -320,8 +320,8 @@ class PyTorchTrainer:
                 train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
 
-    def _train_step(self):
-        worker_stats = [w.step.remote() for w in self.workers]
+    def _train_epoch(self, info=None):
+        worker_stats = [w.train_epoch.remote(info=info) for w in self.workers]
         success = utils.check_for_failure(worker_stats)
         return success, worker_stats
 
@@ -336,10 +336,8 @@ class PyTorchTrainer:
 
         Args:
             info (dict): Optional dictionary passed to the training
-                operator for `train_epoch` and `train_batch`.
+                operator for `validate` and `validate_batch`.
         """
-        if self.validation_function is False:
-            return {}
         worker_stats = ray.get(
             [w.validate.remote(info=info) for w in self.workers])
 

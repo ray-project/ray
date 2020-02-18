@@ -1,8 +1,8 @@
 import torch
 
 from ray.experimental.sgd.utils import TimerStat, AverageMeter
-from ray.experimental.sgd.constants import (
-    SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
+from ray.experimental.sgd.pytorch.constants import (
+    SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT)
 
 amp = None
 
@@ -16,6 +16,7 @@ except ImportError:
 
 
 def _is_multiple(component):
+    """Checks if a component (optimizer, model, etc) is not singular."""
     return isinstance(component, list) and len(component) > 1
 
 
@@ -31,64 +32,97 @@ class TrainingOperator:
 
     Raises:
         ValueError if multiple models/optimizers/schedulers are provided. You
-            are expected to have a custom training function if you wish
-            to use multiple models/optimizers/schedulers.
+            are expected to subclass this class if you wish
+            to train over multiple models/optimizers/schedulers.
     """
 
     @property
     def config(self):
+        """Dictionary as provided into PyTorchTrainer."""
         return self._config
 
     @property
     def model(self):
-        return self._model
+        """First or only model created by the provided model_creator."""
+        return self._models[0]
+
+    @property
+    def models(self):
+        """List of models created by the provided model_creator."""
+        return self._models
 
     @property
     def optimizer(self):
-        return self._optimizer
+        """First or only optimizer(s) created by the optimizer_creator."""
+        return self._optimizers[0]
+
+    @property
+    def optimizers(self):
+        """List of optimizers created by the optimizer_creator."""
+        return self._optimizers
 
     @property
     def criterion(self):
+        """Criterion created by the provided loss_creator."""
         return self._criterion
 
     @property
     def scheduler(self):
-        return self._scheduler
+        """First or only scheduler(s) created by the scheduler_creator."""
+        if self._schedulers:
+            return self._schedulers[0]
+
+    @property
+    def schedulers(self):
+        """List of schedulers created by the scheduler_creator."""
+        return self._schedulers
 
     @property
     def use_fp16(self):
+        """Whether the model and optimizer have been FP16 enabled."""
         return self._use_fp16
 
     def __init__(self,
                  config,
-                 model,
-                 optimizer,
+                 models,
+                 optimizers,
                  criterion,
-                 scheduler,
+                 schedulers=None,
                  use_fp16=False):
+        # You are not expected to override this method.
         self.timers = {
             k: TimerStat()
             for k in ["fwd", "grad", "apply", "train_step"]
         }
         self._validated_customization = False
-        self._model = model
-        self._optimizer = optimizer
+        self._models = models  # List of models
+        assert isinstance(models, list), "Components need to be in a list."
+        self._optimizers = optimizers  # List of optimizers
+        assert isinstance(optimizers, list), "Components need to be in a list."
         self._criterion = criterion
-        self._scheduler = scheduler
+        self._schedulers = schedulers
+        if schedulers:
+            assert isinstance(schedulers,
+                              list), "Components need to be in a list."
         self._config = config
         self._use_fp16 = use_fp16
         self.global_step = 0
-        self.setup(config)
 
         if type(self) is TrainingOperator:
-            for component in (self.model, self.scheduler, self.optimizer):
+            for component in (models, schedulers, optimizers):
                 if _is_multiple(component):
                     raise ValueError(
                         "Need to provide a custom operator subclassing "
                         "TrainingOperator if using multi-scheduler, "
                         "multi-model or multi-optimizer training/validation.")
 
-    def train_epoch(self, iterator, info=None):
+        self.setup(config)
+
+    def setup(self, config):
+        """Override this method to implement custom operator setup."""
+        pass
+
+    def train_epoch(self, iterator, info):
         """Runs one standard training pass over the train_iterator.
 
         This function automatically measures timing for various operations such
@@ -121,7 +155,7 @@ class TrainingOperator:
             self.scheduler.step()
 
         stats = {
-            "batch_count": batch_idx + 1,
+            BATCH_COUNT: batch_idx + 1,
             "mean_train_loss": self._losses.avg,
             "last_train_loss": self._losses.val,
             "epoch_time": self.timers["train_step"].last
@@ -132,7 +166,7 @@ class TrainingOperator:
         })
         return stats
 
-    def train_batch(self, batch, info=None):
+    def train_batch(self, batch, batch_info):
         features, target = batch
         # Create non_blocking tensors for distributed training
         if torch.cuda.is_available():
@@ -157,11 +191,12 @@ class TrainingOperator:
         with self.timers["apply"]:
             self.optimizer.step()
 
-        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
+        if self.scheduler and batch_info.get(
+                SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
             self.scheduler.step()
         return {"loss": loss.item(), "num_samples": features.size(0)}
 
-    def evaluation_epoch(self, val_iterator, info=None):
+    def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
 
         This function automatically measures timing for various operations such
@@ -169,11 +204,6 @@ class TrainingOperator:
 
         It also automatically detects and places the data on GPU device
         if available.
-
-        Raises:
-            ValueError if multiple models/schedulers are provided. You
-                are expected to have a custom validation function if you wish
-                to use multiple models/schedulers.
 
         Args:
             config: (dict): A user configuration provided into the Trainer
@@ -196,7 +226,9 @@ class TrainingOperator:
         self.model.eval()
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_iterator):
-                metrics = self.evaluation_batch(batch, batch_idx)
+                batch_info = {"batch_idx": batch_idx}
+                batch_info.update(info)
+                metrics = self.validate_batch(batch, batch_info)
                 if "loss" in metrics:
                     losses.update(
                         metrics["loss"], n=metrics.get("num_samples", 1))
@@ -206,12 +238,12 @@ class TrainingOperator:
 
         stats = {
             "batch_count": batch_idx + 1,
-            "evaluation_loss": losses.avg,
-            "mean_accuracy": total_correct / losses.n
+            "mean_validation_loss": losses.avg,
+            "mean_accuracy": total_correct / losses.count
         }
         return stats
 
-    def evaluation_batch(self, batch, batch_idx):
+    def validate_batch(self, batch, batch_info):
         features, target = batch
         if torch.cuda.is_available():
             features = features.cuda(non_blocking=True)

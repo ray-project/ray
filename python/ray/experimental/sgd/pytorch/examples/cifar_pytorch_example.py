@@ -58,7 +58,6 @@ def train_example(num_replicas=1,
                   use_gpu=False,
                   use_fp16=False,
                   test_mode=False):
-    config = {TEST_MODE: test_mode}
     trainer1 = PyTorchTrainer(
         ResNet18,
         cifar_creator,
@@ -74,8 +73,9 @@ def train_example(num_replicas=1,
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
     for i in range(num_epochs):
+        info = {"num_steps": 1} if test_mode else None
         # Increase `max_retries` to turn on fault tolerance.
-        stats = trainer1.train(max_retries=0)
+        stats = trainer1.train(max_retries=0, info=info)
         print(stats)
 
     print(trainer1.validate())

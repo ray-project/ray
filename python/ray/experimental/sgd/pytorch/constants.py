@@ -1,5 +1,6 @@
 USE_FP16 = "__use_fp16__"
 TEST_MODE = "__test_mode__"
+BATCH_COUNT = "batch_count"
 SCHEDULER_STEP = "scheduler_step"
 SCHEDULER_STEP_BATCH = "batch"
 SCHEDULER_STEP_EPOCH = "epoch"

@@ -167,8 +167,8 @@ class GANOperator(TrainingOperator):
         """
         real_label = 1
         fake_label = 0
-        discriminator, generator = self.model
-        optimD, optimG = self.optimizer
+        discriminator, generator = self.models
+        optimD, optimG = self.optimizers
 
         discriminator.zero_grad()
         real_cpu = batch[0].to(self.device)
@@ -217,7 +217,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         data_creator,
         optimizer_creator,
         nn.BCELoss,
-        operator=GANOperator,
+        training_operator_cls=GANOperator,
         num_replicas=num_replicas,
         config=config,
         use_gpu=use_gpu,

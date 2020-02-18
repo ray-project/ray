@@ -97,21 +97,21 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
         self.training_operator = self.training_operator_cls(
             self.config,
-            models=self.given_models,
-            optimizers=self.given_optimizers,
+            models=self.models,
+            optimizers=self.optimizers,
             criterion=self.criterion,
-            schedulers=self.given_schedulers,
+            schedulers=self.schedulers,
             use_fp16=self.use_fp16)
 
-    def train_step(self):
+    def train_epoch(self, info=None):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
         logger.debug("Starting step")
         if hasattr(self.train_loader.sampler, "set_epoch"):
-            self.train_loader.sampler.set_epoch(self.epoch)
-        return super(DistributedPyTorchRunner, self).train_step()
+            self.train_loader.sampler.set_epoch(self.steps)
+        return super(DistributedPyTorchRunner, self).train_epoch(info=info)
 
     def _get_model_state_dicts(self):
         """Fetch state from ``model.module`` instead of ``model``.

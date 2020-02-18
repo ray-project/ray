@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 
 import ray
 from ray.experimental.sgd.pytorch.constants import USE_FP16, SCHEDULER_STEP
+from ray.experimental.sgd.pytorch.training_operator import TrainingOperator
 from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class PyTorchRunner:
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.scheduler_creator = scheduler_creator
-        self.training_operator_cls = training_operator_cls
+        self.training_operator_cls = training_operator_cls or TrainingOperator
         self.config = {} if config is None else config
         self.dataloader_config = {
             "num_workers": 2
@@ -160,10 +161,10 @@ class PyTorchRunner:
 
         self.training_operator = self.training_operator_cls(
             self.config,
-            models=self.given_models,
-            optimizers=self.given_optimizers,
+            models=self.models,
+            optimizers=self.optimizers,
             criterion=self.criterion,
-            schedulers=self.given_schedulers,
+            schedulers=self.schedulers,
             use_fp16=self.use_fp16)
 
     def get_node_ip(self):
@@ -177,6 +178,7 @@ class PyTorchRunner:
     def train_epoch(self, info=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.steps + 1))
+        info = info or {}
         info.update({
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
@@ -194,17 +196,17 @@ class PyTorchRunner:
         train_stats.update(self.stats())
         return train_stats
 
-    def validate_epoch(self, info=None):
+    def validate(self, info=None):
         """Evaluates the model on the validation data set."""
         if self.validation_loader is None:
             raise ValueError("No validation dataloader provided.")
+        info = info or {}
         with self._timers["validation"]:
             iterator = self.validation_loader
             if "num_steps" in info:
                 iterator = itertools.islice(
                     iter(self.validation_loader), info["num_steps"])
-            validation_stats = self.training_operator.evaluation_epoch(
-                iterator, info)
+            validation_stats = self.training_operator.validate(iterator, info)
 
         validation_stats.update(self.stats())
         return validation_stats
