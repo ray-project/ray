@@ -104,8 +104,12 @@ class ProjectDefinition:
             ValueError: This exception is raised if the given command is not
                 found in project.yaml.
         """
-        if shell or not command_name:
+        if not command_name:
             return command_name, {}, {}
+
+        if shell:
+            command_to_return = " ".join([command_name] + list(args))
+            return command_to_return, {}, {}
 
         command_to_run = None
         params = None
