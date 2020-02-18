@@ -100,6 +100,11 @@ def _import_marwil():
     return marwil.MARWILTrainer
 
 
+def _import_a2c_workflow():
+    from ray.rllib.agents import a3c
+    return a3c.A2CWorkflow
+
+
 ALGORITHMS = {
     "SAC": _import_sac,
     "DDPG": _import_ddpg,
@@ -120,6 +125,9 @@ ALGORITHMS = {
     "APPO": _import_appo,
     "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
+
+    # Experimental.
+    "A2C_wf": _import_a2c_workflow,
 }
 
 

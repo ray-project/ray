@@ -1,3 +1,4 @@
+import math
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
     validate_config, get_policy_class
 from ray.rllib.optimizers import SyncSamplesOptimizer, MicrobatchOptimizer
@@ -39,3 +40,37 @@ A2CTrainer = build_trainer(
     get_policy_class=get_policy_class,
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config)
+
+
+# Experimental workflow API; run this with --run='A2C_wf'
+def training_workflow(workers, config):
+    from ray.rllib.utils.experimental_dsl import (
+        ParallelRollouts, ConcatBatches, ComputeGradients, AverageGradients,
+        ApplyGradients, OncePerTimeInterval, CollectMetrics, TrainOneStep)
+
+    rollouts = ParallelRollouts(workers, mode="batch_sync")
+
+    if config["microbatch_size"]:
+        num_microbatches = math.ceil(
+            config["train_batch_size"] / config["microbatch_size"])
+
+        train_op = rollouts \
+            .combine(ConcatBatches(min_batch_size=config["microbatch_size"])) \
+            .for_each(ComputeGradients(workers)) \
+            .batch(num_microbatches) \
+            .for_each(AverageGradients()) \
+            .for_each(ApplyGradients(workers))
+    else:
+        train_op = rollouts \
+            .combine(ConcatBatches(
+                min_batch_size=config["train_batch_size"])) \
+            .for_each(TrainOneStep(workers))
+
+    output_op = (train_op.filter(
+        OncePerTimeInterval(config["min_iter_time_s"])).for_each(
+            CollectMetrics(workers)))
+
+    return output_op
+
+
+A2CWorkflow = A2CTrainer.with_updates(training_workflow=training_workflow)
