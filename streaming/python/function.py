@@ -172,14 +172,14 @@ def load_function(descriptor_func_bytes):
         else:
             assert function_name
             func = getattr(mod, function_name)
-            simple_func_class = get_simple_function_class(function_interface)
+            simple_func_class = _get_simple_function_class(function_interface)
             return simple_func_class(func)
 
 
-def get_simple_function_class(function_interface):
+def _get_simple_function_class(function_interface):
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if inspect.isclass(obj) and issubclass(obj, function_interface):
-            if obj is not function_interface:
+            if obj is not function_interface and obj.__name__.startswith("Simple"):
                 return obj
     raise Exception(
         "SimpleFunction for %s doesn't exist".format(function_interface))
