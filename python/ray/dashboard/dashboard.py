@@ -8,6 +8,7 @@ except ImportError:
 import argparse
 import copy
 import datetime
+import errno
 import json
 import logging
 import os
@@ -323,12 +324,13 @@ class Dashboard(object):
         build_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "client/build")
         if not os.path.isdir(build_dir):
-            raise ValueError(
-                "Dashboard build directory not found at '{}'. If installing "
+            raise OSError(
+                errno.ENOENT,
+                "Dashboard build directory not found. If installing "
                 "from source, please follow the additional steps required to "
-                "build the dashboard: "
-                "cd python/ray/dashboard/client && npm ci && npm run build"
-                .format(build_dir))
+                "build the dashboard "
+                "(cd python/ray/dashboard/client && npm ci && npm run build)",
+                build_dir)
 
         static_dir = os.path.join(build_dir, "static")
         self.app.router.add_static("/static", static_dir)
@@ -925,4 +927,7 @@ if __name__ == "__main__":
                    "error:\n{}".format(os.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
-        raise e
+        if isinstance(e, OSError) and e.errno == errno.ENOENT:
+            logger.warning(message)
+        else:
+            raise e
