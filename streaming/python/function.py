@@ -2,13 +2,16 @@ import importlib
 import inspect
 import sys
 from abc import ABC, abstractmethod
+import typing
 
 import cloudpickle
 from ray.streaming.runtime import gateway_client
 
 
 class Function(ABC):
-    def open(self, conf):
+    """The base interface for all user-defined functions."""
+
+    def open(self, conf: typing.Dict[str, str]):
         pass
 
     def close(self):
@@ -16,8 +19,10 @@ class Function(ABC):
 
 
 class SourceContext(ABC):
+    """Interface that source functions use to emit elements, and possibly watermarks."""
     @abstractmethod
     def collect(self, element):
+        """Emits one element from the source, without attaching a timestamp."""
         pass
 
 
@@ -26,10 +31,17 @@ class SourceFunction(Function):
 
     @abstractmethod
     def init(self, parallel, index):
+        """
+        :param parallel: parallelism of source function
+        :param index: task index of this function and goes up from 0 to parallel-1.
+        """
         pass
 
     @abstractmethod
     def run(self, ctx: SourceContext):
+        """
+        Starts the source. Implementations can use the :class:`SourceContext` to emit elements.
+        """
         pass
 
     def close(self):
@@ -41,32 +53,80 @@ class MapFunction(Function):
     Base interface for Map functions. Map functions take elements and transform them,
     element wise. A Map function always produces a single result element for each input element.
     """
+
     def map(self, value):
         pass
 
 
 class FlatMapFunction(Function):
+    """
+    Base interface for flatMap functions. FlatMap functions take elements and transform them,
+    into zero, one, or more elements.
+    """
+
     def flat_map(self, value, collector):
+        """
+        Takes an element from the input data set and transforms it into zero, one, or more elements.
+        :param value: The input value.
+        :param collector: The collector for returning result values.
+        """
         pass
 
 
 class FilterFunction(Function):
+    """
+    A filter function is a predicate applied individually to each record.
+    The predicate decides whether to keep the element, or to discard it.
+    """
+
     def filter(self, value):
+        """
+        The filter function that evaluates the predicate.
+        :param value: The value to be filtered.
+        :return: True for values that should be retained, false for values to be filtered out.
+        """
         pass
 
 
 class KeyFunction(Function):
+    """
+    A key function is extractor takes an object and returns the deterministic
+    key for that object.
+    """
+
     def key_by(self, value):
+        """
+        User-defined function that deterministically extracts the key from an object.
+        :param value: The object to get the key from.
+        :return: The extracted key.
+        """
         pass
 
 
 class ReduceFunction(Function):
+    """
+    Base interface for Reduce functions. Reduce functions combine groups of elements to
+    a single value, by taking always two elements and combining them into one.
+    """
+
     def reduce(self, old_value, new_value):
+        """
+        The core method of ReduceFunction, combining two values into one value of the same type.
+        The reduce function is consecutively applied to all values of a group until only a single
+        value remains.
+
+        :param old_value: The old value to combine.
+        :param new_value: The new input value to combine.
+        :return: The combined value of both values.
+        """
         pass
 
 
 class SinkFunction(Function):
+    """Interface for implementing user defined sink functionality."""
+
     def sink(self, value):
+        """Writes the given value to the sink. This function is called for every record."""
         pass
 
 
@@ -106,12 +166,40 @@ class SimpleMapFunction(MapFunction):
 
 
 class SimpleFlatMapFunction(FlatMapFunction):
+    """
+    Wrap a python function as :class:`FlatMapFunction`
+
+    >>> assert SimpleFlatMapFunction(lambda x: x.split())
+    >>> def flat_func(x, collector):
+    ...     for item in x.split():
+    ...         collector.collect(item)
+    >>> assert SimpleFlatMapFunction(flat_func)
+    """
+
     def __init__(self, func):
+        """
+        :param func: a python function which takes an element from input augment and transforms
+                it into zero, one, or more elements.
+                Or takes an element from input augment, and used provided collector to collect
+                zero, one, or more elements.
+        """
         self.func = func
+        self.process_func = None
+        sig = inspect.signature(func)
+        assert len(sig.parameters) <= 2,\
+            "func should receive value [, collector] as arguments"
+        if len(sig.parameters) == 2:
+            def process(value, collector):
+                func(value, collector)
+            self.process_func = process
+        else:
+            def process(value, collector):
+                for elem in func(value):
+                    collector.collect(elem)
+            self.process_func = process
 
     def flat_map(self, value, collector):
-        for elem in self.func(value):
-            collector.collect(elem)
+        self.process_func(value, collector)
 
 
 class SimpleFilterFunction(FilterFunction):
@@ -146,15 +234,25 @@ class SimpleSinkFunction(SinkFunction):
         return self.func(value)
 
 
-def serialize(func):
+def serialize(func: Function):
+    """Serialize a streaming :class:`Function`"""
     return cloudpickle.dumps(func)
 
 
 def deserialize(func_bytes):
+    """Deserialize a binary function serialized by `serialize` method."""
     return cloudpickle.loads(func_bytes)
 
 
-def load_function(descriptor_func_bytes):
+def load_function(descriptor_func_bytes: bytes):
+    """
+    Deserialize `descriptor_func_bytes` to get function info, then
+    get or load streaming function.
+    Note that this function must be kept in sync with
+     `org.ray.streaming.runtime.python.GraphPbBuilder.serializeFunction`
+    :param descriptor_func_bytes: serialized function info
+    :return: streaming function
+    """
     function_bytes, module_name, class_name, function_name, function_interface\
         = gateway_client.deserialize(descriptor_func_bytes)
     if function_bytes:
@@ -177,6 +275,7 @@ def load_function(descriptor_func_bytes):
 
 
 def _get_simple_function_class(function_interface):
+    """Get the wrapper function for the given `function_interface`."""
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if inspect.isclass(obj) and issubclass(obj, function_interface):
             if obj is not function_interface and obj.__name__.startswith("Simple"):
