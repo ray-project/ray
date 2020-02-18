@@ -1,12 +1,10 @@
 import ray
 from ray.streaming import StreamingContext
-from ray.streaming.config import Config
 
 
 def test_word_count():
     ray.init(load_code_from_local=True, include_java=True)
     ctx = StreamingContext.Builder() \
-        .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL) \
         .build()
     ctx.read_text_file(__file__) \
         .set_parallelism(1) \
@@ -17,9 +15,9 @@ def test_word_count():
                 (old_value[0], old_value[1] + new_value[1])) \
         .filter(lambda x: "ray" not in x) \
         .sink(lambda x: print("result", x))
-    ctx.execute("word_count")
+    ctx.submit("word_count")
     import time
-    time.sleep(10)
+    time.sleep(3)
     ray.shutdown()
 
 
