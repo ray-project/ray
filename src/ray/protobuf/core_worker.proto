@@ -186,7 +186,7 @@ message ObjectReferenceCount {
   // Whether the worker is still using the ObjectID locally. This means that
   // it has a copy of the ObjectID in the language frontend, has a pending task
   // that depends on the object, and/or owns an ObjectID that is in scope and
-  // that contains the object ID.
+  // that contains the ObjectID.
   bool has_local_ref = 2;
   // Any other borrowers that the worker created, by passing the ID again.
   repeated Address borrowers = 3;
