@@ -82,6 +82,13 @@ def test_failed_task(ray_start_regular):
         assert False
 
 
+# Note that `ray_start_2_cpus` is required here. If we use
+# `ray_start_regular`, it's very likely that two tasks are submitted before
+# the first worker is registered to Raylet. Since
+# `maximum_startup_concurrency` is 1, worker pool will wait for the
+# registration of the first worker without starting any new workers. The
+# result is, the two tasks will be executed sequentially, which breaks an
+# assumption of this test case - the two tasks run in parallel.
 def test_get_throws_quickly_when_found_exception(ray_start_2_cpus):
     @ray.remote
     def bad_func1():
