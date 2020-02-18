@@ -1200,13 +1200,12 @@ py_test(
     args = ["--num-iters=2", "--num-cpus=4"]
 )
 
-# Broken (NOTE: this test was not in Jenkins: run_rllib_tests.sh)
-#py_test(
-#    name = "examples/multi_agent_custom_policy",
-#    tags = ["examples", "examples_M"],
-#    size = "medium",
-#    srcs = ["examples/multi_agent_custom_policy.py"],
-#)
+py_test(
+    name = "examples/multi_agent_custom_policy",
+    tags = ["examples", "examples_M_xxx"],
+    size = "medium",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+)
 
 py_test(
     name = "examples/multi_agent_two_trainers",

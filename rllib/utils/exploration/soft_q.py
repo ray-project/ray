@@ -12,7 +12,7 @@ class SoftQ(StochasticSampling):
 
     def __init__(self, action_space, temperature=1.0, framework="tf",
                  **kwargs):
-        """
+        """Initializes a SoftQ Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.

@@ -5,7 +5,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     tf_function
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.spaces.tuple_actions import TupleActions
+from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -20,7 +20,7 @@ class Random(Exploration):
     """
 
     def __init__(self, action_space, framework="tf", **kwargs):
-        """
+        """Initialize a Random Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.
@@ -29,9 +29,6 @@ class Random(Exploration):
         assert isinstance(action_space, Discrete)
         super().__init__(
             action_space=action_space, framework=framework, **kwargs)
-
-        self.action_dist_class, _ = ModelCatalog.get_action_dist(
-            action_space, framework=self.framework)
 
     @override(Exploration)
     def get_exploration_action(self,

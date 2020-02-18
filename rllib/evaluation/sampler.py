@@ -16,7 +16,7 @@ from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import log_once, summarize
-from ray.rllib.utils.spaces.tuple_actions import TupleActions
+from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
 logger = logging.getLogger(__name__)
