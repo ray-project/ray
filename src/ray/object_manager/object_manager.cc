@@ -642,6 +642,8 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   // Unsubscribe to any objects that weren't found in the time allotted.
   for (const auto &object_id : wait_state.requested_objects) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
+    // Should have cancelled the pull request already.
+    RAY_CHECK(pull_requests_.find(object_id) == pull_requests_.end()) << object_id;
   }
   // Cancel the timer. This is okay even if the timer hasn't been started.
   // The timer handler will be given a non-zero error code. The handler
