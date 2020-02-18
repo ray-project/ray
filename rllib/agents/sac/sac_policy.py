@@ -91,7 +91,7 @@ def postprocess_trajectory(policy,
 def dist_class_and_parameters_fn(
         policy, model, input_dict, obs_space, action_space, config):
 
-    model_out, _ = model({
+    distribution_parameters, _ = model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     },  [], None)
