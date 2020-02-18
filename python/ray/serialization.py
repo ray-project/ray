@@ -55,7 +55,8 @@ class SerializedObject:
 
 class Pickle5SerializedObject(SerializedObject):
     def __init__(self, metadata, inband, writer, contained_object_ids):
-        super(Pickle5SerializedObject, self).__init__(metadata, contained_object_ids)
+        super(Pickle5SerializedObject, self).__init__(metadata,
+                                                      contained_object_ids)
         self.inband = inband
         self.writer = writer
         # cached total bytes
@@ -223,8 +224,8 @@ class SerializationContext:
     def _deserialize_pickle5_data(self, data, object_id):
         if not self.use_pickle:
             raise ValueError("Receiving pickle5 serialized objects "
-                                "while the serialization context is "
-                                "using pyarrow as the backend.")
+                             "while the serialization context is "
+                             "using pyarrow as the backend.")
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
@@ -339,7 +340,8 @@ class SerializationContext:
             # Only RayTaskError is possible to be serialized here. We don't
             # need to deal with other exception types here.
             if isinstance(value, RayTaskError):
-                metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
+                metadata = str(ErrorType.Value(
+                    "TASK_EXECUTION_EXCEPTION")).encode("ascii")
             else:
                 metadata = ray_constants.PICKLE5_BUFFER_METADATA
 
@@ -349,7 +351,8 @@ class SerializationContext:
             inband = pickle.dumps(
                 value, protocol=5, buffer_callback=writer.buffer_callback)
             return Pickle5SerializedObject(
-                metadata, inband, writer, self.get_and_clear_contained_object_ids())
+                metadata, inband, writer,
+                self.get_and_clear_contained_object_ids())
 
     def register_custom_serializer(self,
                                    cls,
