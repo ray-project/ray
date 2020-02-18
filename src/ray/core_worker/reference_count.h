@@ -165,13 +165,13 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The object ID whose value we are storing.
   /// \param[in] inner_ids The object IDs that we are storing in object_id.
-  /// \param[in] owner_address The owner address of the outer object_id. If the
+  /// \param[in] owner_address The owner address of the outer object_id. If
+  /// this is not provided, then the outer object ID must be owned by us. the
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  /// \param[in] owned_by_us Whether the outer object_id is owned by us.
   void WrapObjectIds(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-                     const rpc::WorkerAddress &owner_address, bool owned_by_us)
+                     const absl::optional<rpc::WorkerAddress> &owner_address)
       LOCKS_EXCLUDED(mutex_);
 
   /// Whether we have a reference to a particular ObjectID.
@@ -294,14 +294,14 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The object ID whose value we are storing.
   /// \param[in] inner_ids The object IDs that we are storing in object_id.
-  /// \param[in] owner_address The owner address of the outer object_id. If the
+  /// \param[in] owner_address The owner address of the outer object_id. If
+  /// this is not provided, then the outer object ID must be owned by us. the
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  /// \param[in] owned_by_us Whether the outer object_id is owned by us.
   void WrapObjectIdsInternal(const ObjectID &object_id,
                              const std::vector<ObjectID> &inner_ids,
-                             const rpc::WorkerAddress &owner_address, bool owned_by_us)
+                             const absl::optional<rpc::WorkerAddress> &owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still

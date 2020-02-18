@@ -919,8 +919,12 @@ Status CoreWorker::AllocateReturnObjects(
   RAY_CHECK(object_ids.size() == data_sizes.size());
   return_objects->resize(object_ids.size(), nullptr);
 
-  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
-  bool owned_by_us = owner_address.worker_id() == rpc_address_.worker_id();
+  absl::optional<rpc::Address> owner_address(
+      worker_context_.GetCurrentTask()->CallerAddress());
+  bool owned_by_us = owner_address->worker_id() == rpc_address_.worker_id();
+  if (owned_by_us) {
+    owner_address.reset();
+  }
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;
@@ -931,7 +935,7 @@ Status CoreWorker::AllocateReturnObjects(
       // keep the inner IDs in scope until the outer one is out of scope.
       if (!contained_object_ids[i].empty()) {
         reference_counter_->WrapObjectIds(object_ids[i], contained_object_ids[i],
-                                          owner_address, owned_by_us);
+                                          owner_address);
       }
 
       // Allocate a buffer for the return object.

@@ -101,7 +101,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       const ObjectID *return_wrapped_id = nullptr,
       const rpc::WorkerAddress *owner_address = nullptr) {
     if (return_wrapped_id) {
-      rc_.WrapObjectIds(return_id, {*return_wrapped_id}, *owner_address, false);
+      rc_.WrapObjectIds(return_id, {*return_wrapped_id}, *owner_address);
     }
 
     ReferenceCounter::ReferenceTableProto refs;

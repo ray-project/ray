@@ -61,20 +61,13 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
   if (!outer_id.IsNil()) {
     auto outer_it = object_id_refs_.find(outer_id);
-    if (outer_it == object_id_refs_.end()) {
-      outer_it = object_id_refs_.emplace(outer_id, Reference()).first;
-    }
-    if (outer_it->second.owned_by_us) {
-      RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id
-                     << " contained_in_owned: " << outer_id;
-      it->second.contained_in_owned.insert(outer_id);
-    } else {
+    if (outer_it != object_id_refs_.end() && !outer_it->second.owned_by_us) {
       RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id
                      << " contained_in_borrowed: " << outer_id;
       RAY_CHECK(!it->second.contained_in_borrowed_id.has_value());
       it->second.contained_in_borrowed_id = outer_id;
+      outer_it->second.contains.insert(object_id);
     }
-    outer_it->second.contains.insert(object_id);
   }
   return true;
 }
@@ -93,7 +86,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
   // Mark that this object ID contains other inner IDs. Then, we will not GC
   // the inner objects until the outer object ID goes out of scope.
-  WrapObjectIdsInternal(object_id, inner_ids, owner_address, /*owned_by_us=*/true);
+  WrapObjectIdsInternal(object_id, inner_ids, absl::optional<rpc::WorkerAddress>());
 }
 
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
@@ -377,12 +370,13 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
 void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
                                             const rpc::WorkerAddress &worker_addr,
                                             const ReferenceTable &borrowed_refs) {
+  RAY_LOG(DEBUG) << "Merging ref " << object_id;
   auto borrower_it = borrowed_refs.find(object_id);
   if (borrower_it == borrowed_refs.end()) {
     return;
   }
   const auto &borrower_ref = borrower_it->second;
-  RAY_LOG(DEBUG) << "Merging ref " << object_id << " has "
+  RAY_LOG(DEBUG) << "Borrower ref " << object_id << " has "
                  << borrower_ref.borrowers.size() << " borrowers "
                  << ", has local: " << borrower_ref.local_ref_count
                  << " submitted: " << borrower_ref.submitted_task_ref_count
@@ -481,23 +475,22 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
       }));
 }
 
-void ReferenceCounter::WrapObjectIds(const ObjectID &object_id,
-                                     const std::vector<ObjectID> &inner_ids,
-                                     const rpc::WorkerAddress &owner_address,
-                                     bool owned_by_us) {
+void ReferenceCounter::WrapObjectIds(
+    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
+    const absl::optional<rpc::WorkerAddress> &owner_address) {
   absl::MutexLock lock(&mutex_);
-  WrapObjectIdsInternal(object_id, inner_ids, owner_address, owned_by_us);
+  WrapObjectIdsInternal(object_id, inner_ids, owner_address);
 }
 
-void ReferenceCounter::WrapObjectIdsInternal(const ObjectID &object_id,
-                                             const std::vector<ObjectID> &inner_ids,
-                                             const rpc::WorkerAddress &owner_address,
-                                             bool owned_by_us) {
+void ReferenceCounter::WrapObjectIdsInternal(
+    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
+    const absl::optional<rpc::WorkerAddress> &owner_address) {
   auto it = object_id_refs_.find(object_id);
-  if (owned_by_us) {
+  if (!owner_address.has_value()) {
     // `ray.put()` case OR returning an object ID from a task and the task's
     // caller executed in the same process as us.
     if (it != object_id_refs_.end()) {
+      RAY_CHECK(it->second.owned_by_us);
       // The outer object is still in scope. Mark the inner ones as being
       // contained in the outer object ID so we do not GC the inner objects
       // until the outer object goes out of scope.
@@ -525,13 +518,13 @@ void ReferenceCounter::WrapObjectIdsInternal(const ObjectID &object_id,
         continue;
       }
       // Add the task's caller as a borrower.
-      auto inserted = inner_it->second.borrowers.insert(owner_address).second;
+      auto inserted = inner_it->second.borrowers.insert(*owner_address).second;
       if (inserted) {
-        RAY_LOG(DEBUG) << "Adding borrower " << owner_address.ip_address << " to id "
+        RAY_LOG(DEBUG) << "Adding borrower " << owner_address->ip_address << " to id "
                        << object_id << ", borrower owns outer ID " << object_id;
         // Wait for it to remove its
         // reference.
-        WaitForRefRemoved(inner_it, owner_address, object_id);
+        WaitForRefRemoved(inner_it, *owner_address, object_id);
       }
     }
   }
@@ -572,28 +565,27 @@ void ReferenceCounter::SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest
                                           object_id, reply, send_reply_callback);
 
   auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    it = object_id_refs_.emplace(object_id, Reference()).first;
+  }
 
   // If we are borrowing the ID because we own an object that contains it, then
   // add the outer object to the inner ID's ref count. We will not respond to
   // the owner of the inner ID until the outer object ID goes out of scope.
   ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
   if (!contained_in_id.IsNil()) {
-    auto outer_it = object_id_refs_.find(contained_in_id);
-    if (outer_it != object_id_refs_.end()) {
-      RAY_CHECK(outer_it->second.owned_by_us);
-      if (it == object_id_refs_.end()) {
-        it = object_id_refs_.emplace(object_id, Reference()).first;
-      }
-      AddBorrowedObjectInternal(object_id, contained_in_id,
-                                TaskID::FromBinary(request.reference().owner_id()),
-                                request.reference().owner_address());
-    }
+    AddBorrowedObjectInternal(object_id, contained_in_id,
+                              TaskID::FromBinary(request.reference().owner_id()),
+                              request.reference().owner_address());
+    WrapObjectIdsInternal(contained_in_id, {object_id},
+                          absl::optional<rpc::WorkerAddress>());
   }
 
-  if (it == object_id_refs_.end() || it->second.RefCount() == 0) {
+  if (it->second.RefCount() == 0) {
     // We already stopped borrowing the object ID. Respond to the owner
     // immediately.
     ref_removed_callback();
+    DeleteReferenceInternal(it, nullptr);
   } else {
     // We are still borrowing the object ID. Respond to the owner once we have
     // stopped borrowing it.
