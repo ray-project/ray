@@ -86,7 +86,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
   // Mark that this object ID contains other inner IDs. Then, we will not remove
   // the inner objects until the outer object ID goes out of scope.
-  WrapObjectIdsInternal(object_id, inner_ids, absl::optional<rpc::WorkerAddress>());
+  AddNestedObjectIdsInternal(object_id, inner_ids, absl::optional<rpc::WorkerAddress>());
 }
 
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
@@ -141,9 +141,21 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, const rpc::Address &worker_addr,
-    const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> &argument_ids,
+    const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids,
+    const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
+    std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_object : nested_return_ids) {
+    const auto &return_id = return_object.first;
+    const auto &nested_ids = return_object.second;
+    for (const auto &nested_id : nested_ids) {
+      object_id_refs_.emplace(nested_id, Reference());
+    }
+    AddNestedObjectIdsInternal(return_id, nested_ids,
+                               absl::optional<rpc::WorkerAddress>());
+  }
+
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
   // the inner ID before decrementing the submitted_task_ref_count for the
@@ -493,14 +505,14 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
       }));
 }
 
-void ReferenceCounter::WrapObjectIds(
+void ReferenceCounter::AddNestedObjectIds(
     const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
     const absl::optional<rpc::WorkerAddress> &owner_address) {
   absl::MutexLock lock(&mutex_);
-  WrapObjectIdsInternal(object_id, inner_ids, owner_address);
+  AddNestedObjectIdsInternal(object_id, inner_ids, owner_address);
 }
 
-void ReferenceCounter::WrapObjectIdsInternal(
+void ReferenceCounter::AddNestedObjectIdsInternal(
     const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
     const absl::optional<rpc::WorkerAddress> &owner_address) {
   auto it = object_id_refs_.find(object_id);
@@ -590,9 +602,8 @@ void ReferenceCounter::SetRefRemovedCallback(
   // add the outer object to the inner ID's ref count. We will not respond to
   // the owner of the inner ID until the outer object ID goes out of scope.
   if (!contained_in_id.IsNil()) {
-    AddBorrowedObjectInternal(object_id, contained_in_id, owner_id, owner_address);
-    WrapObjectIdsInternal(contained_in_id, {object_id},
-                          absl::optional<rpc::WorkerAddress>());
+    AddNestedObjectIdsInternal(contained_in_id, {object_id},
+                               absl::optional<rpc::WorkerAddress>());
   }
 
   if (it->second.RefCount() == 0) {

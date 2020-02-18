@@ -66,11 +66,11 @@ class ReferenceCounter {
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                    const rpc::Address &worker_addr,
-                                    const ReferenceTableProto &borrowed_refs,
-                                    std::vector<ObjectID> *deleted)
-      LOCKS_EXCLUDED(mutex_);
+  void UpdateFinishedTaskReferences(
+      const std::vector<ObjectID> &argument_ids,
+      const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids,
+      const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
+      std::vector<ObjectID> *deleted) LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
   /// Dependencies for each ObjectID must be set at most once. The local
@@ -184,17 +184,25 @@ class ReferenceCounter {
   void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
                                  ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
 
-  /// Wrap ObjectIDs inside another object ID.
+  /// Mark that this ObjectID contains another ObjectID(s). This should be
+  /// called in two cases:
+  /// 1. We are storing the value of an object and the value contains
+  /// serialized copies of other ObjectIDs. If the outer object is owned by a
+  /// remote process, then they are now a borrower of the nested IDs.
+  /// 2. We submitted a task that returned an ObjectID(s) in its return values
+  /// and we are processing the worker's reply. In this case, we own the task's
+  /// return objects and are borrowing the nested IDs.
   ///
-  /// \param[in] object_id The object ID whose value we are storing.
-  /// \param[in] inner_ids The object IDs that we are storing in object_id.
+  /// \param[in] object_id The ID of the object that contains other ObjectIDs.
+  /// \param[in] inner_ids The object IDs are nested in object_id's value.
   /// \param[in] owner_address The owner address of the outer object_id. If
   /// this is not provided, then the outer object ID must be owned by us. the
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  void WrapObjectIds(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-                     const absl::optional<rpc::WorkerAddress> &owner_address)
+  void AddNestedObjectIds(const ObjectID &object_id,
+                          const std::vector<ObjectID> &inner_ids,
+                          const absl::optional<rpc::WorkerAddress> &owner_address)
       LOCKS_EXCLUDED(mutex_);
 
   /// Whether we have a reference to a particular ObjectID.
@@ -321,18 +329,18 @@ class ReferenceCounter {
                                      std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Helper method to wrap an ObjectID(s) inside another object ID.
+  /// Helper method to mark that this ObjectID contains another ObjectID(s).
   ///
-  /// \param[in] object_id The object ID whose value we are storing.
-  /// \param[in] inner_ids The object IDs that we are storing in object_id.
+  /// \param[in] object_id The ID of the object that contains other ObjectIDs.
+  /// \param[in] inner_ids The object IDs are nested in object_id's value.
   /// \param[in] owner_address The owner address of the outer object_id. If
   /// this is not provided, then the outer object ID must be owned by us. the
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  void WrapObjectIdsInternal(const ObjectID &object_id,
-                             const std::vector<ObjectID> &inner_ids,
-                             const absl::optional<rpc::WorkerAddress> &owner_address)
+  void AddNestedObjectIdsInternal(const ObjectID &object_id,
+                                  const std::vector<ObjectID> &inner_ids,
+                                  const absl::optional<rpc::WorkerAddress> &owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still

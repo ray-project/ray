@@ -931,8 +931,8 @@ Status CoreWorker::AllocateReturnObjects(
       // Mark this object as containing other object IDs. The ref counter will
       // keep the inner IDs in scope until the outer one is out of scope.
       if (!contained_object_ids[i].empty()) {
-        reference_counter_->WrapObjectIds(object_ids[i], contained_object_ids[i],
-                                          owner_address);
+        reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
+                                               owner_address);
       }
 
       // Allocate a buffer for the return object.

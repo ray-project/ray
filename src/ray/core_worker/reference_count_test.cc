@@ -110,7 +110,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       const ObjectID *return_wrapped_id = nullptr,
       const rpc::WorkerAddress *owner_address = nullptr) {
     if (return_wrapped_id) {
-      rc_.WrapObjectIds(return_id, {*return_wrapped_id}, *owner_address);
+      rc_.AddNestedObjectIds(return_id, {*return_wrapped_id}, *owner_address);
     }
 
     ReferenceCounter::ReferenceTableProto refs;
@@ -126,7 +126,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       const ObjectID &arg_id, const rpc::Address &borrower_address = empty_borrower,
       const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
     if (!arg_id.IsNil()) {
-      rc_.UpdateFinishedTaskReferences({arg_id}, borrower_address, borrower_refs,
+      rc_.UpdateFinishedTaskReferences({arg_id}, {}, borrower_address, borrower_refs,
                                        nullptr);
     }
   }
@@ -174,13 +174,13 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->UpdateSubmittedTaskReferences({id1});
   rc->UpdateSubmittedTaskReferences({id1, id2});
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, {}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, {}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, {}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 2);
   out.clear();
@@ -193,10 +193,10 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, {}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, {}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
   rc->RemoveLocalReference(id2, &out);
