@@ -45,6 +45,9 @@ ctypedef void (*ray_callback_function) \
     (shared_ptr[CRayObject] result_object,
      CObjectID object_id, void* user_data)
 
+ctypedef void (*plasma_callback_function) \
+    (CObjectID object_id, int64_t data_size, int64_t metadata_size)
+
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -193,3 +196,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CClientID &client_Id)
+
+        void SubscribeToAsyncPlasma(plasma_callback_function callback)
