@@ -378,6 +378,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
   // of the returned borrowed_refs must merge this list into their own list
   // until all active borrowers are merged into the owner.
   it->second.borrowers.clear();
+  it->second.stored_in_objects.clear();
 
   if (it->second.contained_in_borrowed_id.has_value()) {
     /// This ID was nested in another ID that we (or a nested task) borrowed.
@@ -456,6 +457,13 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
     }
   }
 
+  // If the borrower stored this object ID inside another object ID that it did
+  // not own, then mark that the object ID is nested inside another.
+  for (const auto &stored_in_object : borrower_ref.stored_in_objects) {
+    AddNestedObjectIdsInternal(stored_in_object.first, {object_id},
+                               stored_in_object.second);
+  }
+
   // Recursively merge any references that were contained in this object, to
   // handle any borrowers of nested objects.
   for (const auto &inner_id : borrower_ref.contains) {
@@ -500,12 +508,6 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         MergeRemoteBorrowers(object_id, addr, new_borrower_refs);
 
         // Erase the previous borrower.
-        // NOTE(swang): We do this after the merge in case the previous
-        // borrower was added back to the list, which can happen when a task
-        // submitted by the borrower returns the borrowed ID as the value. It
-        // is still safe to remove the borrower because it must have merged
-        // the nested task's references before it responded to the
-        // WaitForRefRemoved request.
         auto it = object_id_refs_.find(object_id);
         RAY_CHECK(it != object_id_refs_.end());
         RAY_CHECK(it->second.borrowers.erase(addr));
@@ -523,6 +525,7 @@ void ReferenceCounter::AddNestedObjectIds(
 void ReferenceCounter::AddNestedObjectIdsInternal(
     const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
     const absl::optional<rpc::WorkerAddress> &owner_address) {
+  // TODO: Set an address_ instead of checking whether it has a value or not.
   auto it = object_id_refs_.find(object_id);
   if (!owner_address.has_value()) {
     // `ray.put()` case OR returning an object ID from a task and the task's
@@ -550,11 +553,18 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       auto inner_it = object_id_refs_.find(inner_id);
       RAY_CHECK(inner_it != object_id_refs_.end());
       // Add the task's caller as a borrower.
-      auto inserted = inner_it->second.borrowers.insert(*owner_address).second;
-      if (inserted && inner_it->second.owned_by_us) {
-        // Wait for it to remove its
-        // reference.
-        WaitForRefRemoved(inner_it, *owner_address, object_id);
+      if (inner_it->second.owned_by_us) {
+        auto inserted = inner_it->second.borrowers.insert(*owner_address).second;
+        if (inserted) {
+          // Wait for it to remove its reference.
+          WaitForRefRemoved(inner_it, *owner_address, object_id);
+        }
+      } else {
+        auto inserted =
+            inner_it->second.stored_in_objects.emplace(object_id, *owner_address).second;
+        // This should be the first time that we have stored this object ID
+        // inside this return ID.
+        RAY_CHECK(inserted);
       }
     }
   }
@@ -638,6 +648,10 @@ ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
   for (const auto &borrower : ref_count.borrowers()) {
     ref.borrowers.insert(rpc::WorkerAddress(borrower));
   }
+  for (const auto &object : ref_count.stored_in_objects()) {
+    const auto &object_id = ObjectID::FromBinary(object.object_id());
+    ref.stored_in_objects.emplace(object_id, rpc::WorkerAddress(object.owner_address()));
+  }
   for (const auto &id : ref_count.contains()) {
     ref.contains.insert(ObjectID::FromBinary(id));
   }
@@ -658,6 +672,11 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   ref->set_has_local_ref(has_local_ref);
   for (const auto &borrower : borrowers) {
     ref->add_borrowers()->CopyFrom(borrower.ToProto());
+  }
+  for (const auto &object : stored_in_objects) {
+    auto ref_object = ref->add_stored_in_objects();
+    ref_object->set_object_id(object.first.Binary());
+    ref_object->mutable_owner_address()->CopyFrom(object.second.ToProto());
   }
   if (contained_in_borrowed_id.has_value()) {
     ref->set_contained_in_borrowed_id(contained_in_borrowed_id->Binary());

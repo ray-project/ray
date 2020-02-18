@@ -195,12 +195,19 @@ message ObjectReferenceCount {
   bool has_local_ref = 2;
   // Any other borrowers that the worker created (by passing the ID on to them).
   repeated Address borrowers = 3;
+  // The borrower may have returned the object ID nested inside the return
+  // value of a task that it executed. This list contains all task returns that
+  // were owned by a process other than the borrower. Then, the process that
+  // owns the outer object is also a borrower for as long as it has the task
+  // return ID in scope. Note that only the object ID and owner address are
+  // used for elements in this list.
+  repeated ObjectReference stored_in_objects = 4;
   // The borrowed object ID that contained this object, if any. This is used
   // for nested object IDs.
-  bytes contained_in_borrowed_id = 4;
+  bytes contained_in_borrowed_id = 5;
   // The object IDs that this object contains, if any. This is used for nested
   // object IDs.
-  repeated bytes contains = 5;
+  repeated bytes contains = 6;
 }
 
 message WaitForRefRemovedReply {

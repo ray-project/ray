@@ -244,7 +244,9 @@ class ReferenceCounter {
       bool in_scope = RefCount() > 0;
       bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
       bool has_borrowers = borrowers.size() > 0;
-      return !(in_scope || was_contained_in_borrowed_id || has_borrowers);
+      bool was_stored_in_objects = stored_in_objects.size() > 0;
+      return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
+               was_stored_in_objects);
     }
 
     /// Whether we own the object. If we own the object, then we are
@@ -303,6 +305,13 @@ class ReferenceCounter {
     ///     borrowers. A borrower is removed from the list when it responds
     ///     that it is no longer using the reference.
     absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+    /// When a process that is borrowing an object ID stores the ID inside the
+    /// return value of a task that it executes, the caller of the task is also
+    /// considered a borrower for as long as its reference to the task's return
+    /// ID stays in scope. Thus, the borrower must notify the owner that the
+    /// task's caller is also a borrower. The key is the task's return ID, and
+    /// the value is the task ID and address of the task's caller.
+    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.
