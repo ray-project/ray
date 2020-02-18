@@ -220,10 +220,10 @@ class DistributionalQModel(TFModelV2):
                      non_linear=True):
         """
         a common dense layer: y = w^{T}x + b
-        a noisy layer: y = (w + \epsilon_w*\sigma_w)^{T}x +
-            (b+\epsilon_b*\sigma_b)
+        a noisy layer: y = (w + \\epsilon_w*\\sigma_w)^{T}x +
+            (b+\\epsilon_b*\\sigma_b)
         where \epsilon are random variables sampled from factorized normal
-        distributions and \sigma are trainable variables which are expected to
+        distributions and \\sigma are trainable variables which are expected to
         vanish along the training procedure
         """
         in_size = int(action_in.shape[1])
