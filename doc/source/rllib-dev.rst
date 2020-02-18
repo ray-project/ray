@@ -1,5 +1,5 @@
-RLlib Development
-=================
+Contributing to RLlib
+=====================
 
 Development Install
 -------------------

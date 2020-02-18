@@ -842,7 +842,7 @@ class RolloutWorker(EvaluatorInterface):
 
     def find_free_port(self):
         """Finds a free port on the current node."""
-        from ray.experimental.sgd import utils
+        from ray.util.sgd import utils
         return utils.find_free_port()
 
     def __del__(self):
