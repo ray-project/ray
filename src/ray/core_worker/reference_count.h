@@ -161,7 +161,7 @@ class ReferenceCounter {
   void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
                                  ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
 
-  /// Wrap an ObjectID(s) inside another object ID.
+  /// Wrap ObjectIDs inside another object ID.
   ///
   /// \param[in] object_id The object ID whose value we are storing.
   /// \param[in] inner_ids The object IDs that we are storing in object_id.
@@ -208,7 +208,7 @@ class ReferenceCounter {
     /// - The reference is still being used by this process.
     /// - The reference was contained in another ID that we were borrowing, and
     ///   we haven't told the process that gave us that ID yet.
-    /// - We gave the reference to another process(es).
+    /// - We gave the reference to at least one other process.
     bool CanDelete() const {
       bool in_scope = RefCount() > 0;
       bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
