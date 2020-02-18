@@ -5,7 +5,7 @@ import requests
 from ray import serve
 from ray.serve import BackendConfig
 import ray
-from ray.experimental.serve.constants import NO_ROUTE_KEY
+from ray.serve.constants import NO_ROUTE_KEY
 
 
 def test_e2e(serve_instance):
