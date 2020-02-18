@@ -24,7 +24,6 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.deprecation import deprecation_warning
 
 tf = try_import_tf()
 
@@ -172,6 +171,7 @@ class ModelCatalog:
                 input_lens.append(action_size)
             return partial(
                 MultiActionDistribution,
+                action_space=action_space,
                 child_distributions=child_dist,
                 input_lens=input_lens), sum(input_lens)
         # Simplex -> Dirichlet.

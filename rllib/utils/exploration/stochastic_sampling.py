@@ -3,7 +3,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     tf_function
-from ray.rllib.utils.spaces.tuple_actions import TupleActions
+from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -24,7 +24,7 @@ class StochasticSampling(Exploration):
                  static_params=None,
                  time_dependent_params=None,
                  **kwargs):
-        """
+        """Initializes a StochasticSampling Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.
