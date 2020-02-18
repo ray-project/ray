@@ -5,9 +5,9 @@ from subprocess import PIPE
 import requests
 
 import ray
-from ray.experimental import serve
+from ray import serve
 from ray.cluster_utils import Cluster
-from ray.experimental.serve.kv_store_service import RayInternalKVStore
+from ray.serve.kv_store_service import RayInternalKVStore
 
 num_redis_shards = 1
 redis_max_memory = 10**8
