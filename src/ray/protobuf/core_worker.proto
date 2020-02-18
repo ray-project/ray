@@ -95,13 +95,18 @@ message PushTaskReply {
   repeated ReturnObject return_objects = 1;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 2;
-  // The references that the worker borrowed during the task execution. This
-  // includes the reference counts for any IDs that were passed to the worker
-  // in the task spec as an argument by reference, or an ObjectID that was
-  // serialized in an inlined argument. It also includes reference counts for
-  // any IDs that were nested inside these objects that the worker may now be
-  // borrowing. The reference counts also include any new borrowers that the
-  // worker created by passing a borrowed ID into a nested task.
+  // The references that the worker borrowed during the task execution. A
+  // borrower is a process that is currently using the object ID, in one of 3 ways:
+  // 1. Has an ObjectID copy in Python.
+  // 2. Has submitted a task that depends on the object and that is still pending.
+  // 3. Owns another object that is in scope and whose value contains the
+  // ObjectID.
+  // This list includes the reference counts for any IDs that were passed to
+  // the worker in the task spec as an argument by reference, or an ObjectID
+  // that was serialized in an inlined argument. It also includes reference
+  // counts for any IDs that were nested inside these objects that the worker
+  // may now be borrowing. The reference counts also include any new borrowers
+  // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 3;
 }
 

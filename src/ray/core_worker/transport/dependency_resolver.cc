@@ -33,7 +33,6 @@ void InlineDependencies(
         mutable_arg->clear_object_ids();
         if (it->second->IsInPlasmaError()) {
           // Promote the object id to plasma.
-          mutable_arg->clear_object_ids();
           mutable_arg->add_object_ids(it->first.Binary());
         } else {
           // Inline the object value.

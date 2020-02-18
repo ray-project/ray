@@ -28,7 +28,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     address_.set_worker_id(WorkerID::FromRandom().Binary());
   }
 
-  // TODO: Make message receive and reply async.
   ray::Status WaitForRefRemoved(
       const rpc::WaitForRefRemovedRequest &request,
       const rpc::ClientCallback<rpc::WaitForRefRemovedReply> &callback) override {
@@ -43,7 +42,15 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       requests_[r].second(status, *requests_[r].first);
     };
     auto borrower_callback = [=]() {
-      rc_.SetRefRemovedCallback(request, requests_[r].first.get(), send_reply_callback);
+      const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
+      ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
+      const auto owner_id = TaskID::FromBinary(request.reference().owner_id());
+      const auto owner_address = request.reference().owner_address();
+      auto ref_removed_callback =
+          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1,
+                      requests_[r].first.get(), send_reply_callback);
+      rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_id, owner_address,
+                                ref_removed_callback);
     };
     borrower_callbacks_[r] = borrower_callback;
 
@@ -63,6 +70,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
   }
 
+  // The below methods mirror a core worker's operations, e.g., `Put` simulates
+  // a ray.put().
   void Put(const ObjectID &object_id) {
     rc_.AddOwnedObject(object_id, {}, task_id_, address_);
     rc_.AddLocalReference(object_id);
@@ -117,7 +126,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       const ObjectID &arg_id, const rpc::Address &borrower_address = empty_borrower,
       const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
     if (!arg_id.IsNil()) {
-      rc_.RemoveSubmittedTaskReferences({arg_id}, borrower_address, borrower_refs,
+      rc_.UpdateSubmittedTaskReferences({arg_id}, borrower_address, borrower_refs,
                                         nullptr);
     }
   }
@@ -165,13 +174,13 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->AddSubmittedTaskReferences({id1});
   rc->AddSubmittedTaskReferences({id1, id2});
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
-  rc->RemoveSubmittedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateSubmittedTaskReferences({id1}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->RemoveSubmittedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateSubmittedTaskReferences({id2}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
-  rc->RemoveSubmittedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateSubmittedTaskReferences({id1}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 2);
   out.clear();
@@ -184,10 +193,10 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->RemoveSubmittedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateSubmittedTaskReferences({id2}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->RemoveSubmittedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateSubmittedTaskReferences({id1}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
   rc->RemoveLocalReference(id2, &out);

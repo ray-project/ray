@@ -1260,9 +1260,17 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                            send_reply_callback)) {
     return;
   }
+  const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
+  ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
+  const auto owner_id = TaskID::FromBinary(request.reference().owner_id());
+  const auto owner_address = request.reference().owner_address();
+  auto ref_removed_callback =
+      boost::bind(&ReferenceCounter::HandleRefRemoved, reference_counter_, object_id,
+                  reply, send_reply_callback);
   // Set a callback to send the reply when the requested object ID's ref count
   // goes to 0.
-  reference_counter_->SetRefRemovedCallback(request, reply, send_reply_callback);
+  reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_id,
+                                            owner_address, ref_removed_callback);
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,

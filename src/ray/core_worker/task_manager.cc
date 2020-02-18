@@ -190,7 +190,7 @@ void TaskManager::RemoveSubmittedTaskReferences(
     const std::vector<ObjectID> &object_ids, const rpc::Address &worker_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> deleted;
-  reference_counter_->RemoveSubmittedTaskReferences(object_ids, worker_addr,
+  reference_counter_->UpdateSubmittedTaskReferences(object_ids, worker_addr,
                                                     borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }

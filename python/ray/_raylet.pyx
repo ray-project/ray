@@ -305,8 +305,7 @@ cdef void prepare_args(
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
                         arg_data, string_to_buffer(serialized_arg.metadata),
-                        inlined_ids
-                        )))
+                        inlined_ids)))
                 inlined_ids.clear()
             else:
                 args_vector.push_back(

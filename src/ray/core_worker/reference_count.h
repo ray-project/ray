@@ -21,6 +21,7 @@ class ReferenceCounter {
  public:
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
+  using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
 
   ReferenceCounter(bool distributed_ref_counting_enabled = true,
                    rpc::ClientFactoryFn client_factory = nullptr)
@@ -50,17 +51,20 @@ class ReferenceCounter {
   void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove references for the provided object IDs that correspond to them being
-  /// dependencies to a submitted task. This should be called when inlined
-  /// dependencies are inlined or when the task finishes for plasma dependencies.
+  /// Update object references that were given to a submitted task. The task
+  /// may still be borrowing any object IDs that were contained in its
+  /// arguments. This should be called when inlined dependencies are inlined or
+  /// when the task finishes for plasma dependencies.
   ///
   /// \param[in] object_ids The object IDs to remove references for.
   /// \param[in] worker_addr The address of the worker that executed the task.
   /// \param[in] borrowed_refs The references that the worker borrowed during
-  /// the task. Some references in this table may still be borrowed by the
+  /// the task. This table includes all task arguments that were passed by
+  /// reference and any object IDs that were transitively nested in the
+  /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
+  void UpdateSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
                                      const rpc::Address &worker_addr,
                                      const ReferenceTableProto &borrowed_refs,
                                      std::vector<ObjectID> *deleted)
@@ -82,9 +86,9 @@ class ReferenceCounter {
   /// \param[in] owner_id The ID of the object's owner.
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] dependencies The objects that the object depends on.
-  void AddOwnedObject(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-                      const TaskID &owner_id, const rpc::Address &owner_address)
-      LOCKS_EXCLUDED(mutex_);
+  void AddOwnedObject(const ObjectID &object_id,
+                      const std::vector<ObjectID> &contained_ids, const TaskID &owner_id,
+                      const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
   ///
@@ -117,20 +121,37 @@ class ReferenceCounter {
                          const std::function<void(const ObjectID &)> callback)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Set a callback to reply to the given RPC when a borrower's ref count goes
-  /// to 0. The sender is the owner of the object ID. The borrower will send
-  /// the reply when its RefCount() for the object ID goes to 0.
+  /// Set a callback for when we are no longer borrowing this object (when our
+  /// ref count goes to 0).
   ///
-  /// \param[in] request The request from the object's owner.
+  /// \param[in] object_id The object ID to set the callback for.
+  /// \param[in] contained_in_id The object ID that contains object_id, if any.
+  /// This is used for cases when object_id was returned from a task that we
+  /// submitted. Then, as long as we have contained_in_id in scope, we are
+  /// borrowing object_id.
+  /// \param[in] owner_id The ID of the owner of object_id. This is either the
+  /// task ID (for non-actors) or the actor ID of the owner.
+  /// \param[in] owner_address The owner of object_id's address.
+  /// \param[in] ref_removed_callback The callback to call when we are no
+  /// longer borrowing the object.
+  void SetRefRemovedCallback(const ObjectID &object_id, const ObjectID &contained_in_id,
+                             const TaskID &owner_id, const rpc::Address &owner_address,
+                             const ReferenceRemovedCallback &ref_removed_callback)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Respond to the object's owner once we are no longer borrowing it.  The
+  /// sender is the owner of the object ID. We will send the reply when our
+  /// RefCount() for the object ID goes to 0.
+  ///
+  /// \param[in] object_id The object that we were borrowing.
   /// \param[in] reply A reply sent to the owner when we are no longer
   /// borrowing the object ID. This reply also includes any new borrowers and
   /// any object IDs that were nested inside the object that we or others are
   /// now borrowing.
   /// \param[in] send_reply_callback The callback to send the reply.
-  void SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest &request,
-                             rpc::WaitForRefRemovedReply *reply,
-                             rpc::SendReplyCallback send_reply_callback)
-      LOCKS_EXCLUDED(mutex_);
+  void HandleRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
+                        rpc::SendReplyCallback send_reply_callback)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
@@ -278,7 +299,7 @@ class ReferenceCounter {
     std::function<void(const ObjectID &)> on_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
-    std::function<void()> on_local_ref_deleted;
+    std::function<void(const ObjectID &)> on_ref_removed;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
@@ -364,11 +385,6 @@ class ReferenceCounter {
   bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
                                  const TaskID &owner_id,
                                  const rpc::Address &owner_address)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  /// Respond to the object's owner once we are no longer borrowing it.
-  void HandleRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
-                        rpc::SendReplyCallback send_reply_callback)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary

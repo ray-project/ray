@@ -134,7 +134,7 @@ void ReferenceCounter::AddSubmittedTaskReferences(
   }
 }
 
-void ReferenceCounter::RemoveSubmittedTaskReferences(
+void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &object_ids, const rpc::Address &worker_addr,
     const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
@@ -206,31 +206,31 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (distributed_ref_counting_enabled_ && it->second.RefCount() == 0 &&
-      it->second.on_local_ref_deleted) {
-    RAY_LOG(DEBUG) << "Calling on_local_ref_deleted for object " << id;
-    it->second.on_local_ref_deleted();
-    it->second.on_local_ref_deleted = nullptr;
+      it->second.on_ref_removed) {
+    RAY_LOG(DEBUG) << "Calling on_ref_removed for object " << id;
+    it->second.on_ref_removed(id);
+    it->second.on_ref_removed = nullptr;
   }
   PRINT_REF_COUNT(it);
 
-  bool evicted = false;
+  // Whether it is safe to unpin the value.
+  bool should_delete_value = false;
+  // Whether it is safe to delete the Reference.
+  bool should_delete_reference = false;
+
   // If distributed ref counting is not enabled, then delete the object as soon
   // as its local ref count goes to 0.
   size_t local_ref_count =
       it->second.local_ref_count + it->second.submitted_task_ref_count;
   if (!distributed_ref_counting_enabled_ && local_ref_count == 0) {
-    RAY_LOG(DEBUG) << "Deleting object " << id;
-    if (it->second.on_delete) {
-      it->second.on_delete(id);
-      it->second.on_delete = nullptr;
-    }
-    if (deleted) {
-      deleted->push_back(id);
-    }
-    evicted = true;
+    should_delete_value = true;
   }
 
   if (it->second.CanDelete()) {
+    // If distributed ref counting is enabled, then delete the object once its
+    // ref count across all processes is 0.
+    should_delete_value = true;
+    should_delete_reference = true;
     for (const auto &inner_id : it->second.contains) {
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it != object_id_refs_.end()) {
@@ -249,16 +249,20 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
+  }
 
-    if (!evicted) {
-      RAY_LOG(DEBUG) << "Deleting object " << id;
-      if (it->second.on_delete) {
-        it->second.on_delete(id);
-      }
-      if (deleted) {
-        deleted->push_back(id);
-      }
+  // Perform the deletion.
+  if (should_delete_value) {
+    RAY_LOG(DEBUG) << "Deleting object " << id;
+    if (it->second.on_delete) {
+      it->second.on_delete(id);
+      it->second.on_delete = nullptr;
     }
+    if (deleted) {
+      deleted->push_back(id);
+    }
+  }
+  if (should_delete_reference) {
     object_id_refs_.erase(it);
   }
 }
@@ -336,7 +340,10 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
     return false;
   }
 
-  // We can only borrow objects that we do not own.
+  // We only borrow objects that we do not own. This is not an assertion
+  // because it is possible to receive a reference to an object that we already
+  // own, e.g., if we execute a task that has an object ID in its arguments
+  // that we created in an earlier task.
   if (it->second.owned_by_us) {
     // Return true because we have the ref, but there is no need to return it
     // since we own the object.
@@ -555,14 +562,13 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void ReferenceCounter::SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest &request,
-                                             rpc::WaitForRefRemovedReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+void ReferenceCounter::SetRefRemovedCallback(
+    const ObjectID &object_id, const ObjectID &contained_in_id, const TaskID &owner_id,
+    const rpc::Address &owner_address,
+    const ReferenceCounter::ReferenceRemovedCallback &ref_removed_callback) {
   absl::MutexLock lock(&mutex_);
-  const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
-  RAY_LOG(DEBUG) << "Received WaitForRefRemoved " << object_id;
-  auto ref_removed_callback = boost::bind(&ReferenceCounter::HandleRefRemoved, this,
-                                          object_id, reply, send_reply_callback);
+  RAY_LOG(DEBUG) << "Received WaitForRefRemoved " << object_id << " contained in "
+                 << contained_in_id;
 
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -572,11 +578,8 @@ void ReferenceCounter::SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest
   // If we are borrowing the ID because we own an object that contains it, then
   // add the outer object to the inner ID's ref count. We will not respond to
   // the owner of the inner ID until the outer object ID goes out of scope.
-  ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
   if (!contained_in_id.IsNil()) {
-    AddBorrowedObjectInternal(object_id, contained_in_id,
-                              TaskID::FromBinary(request.reference().owner_id()),
-                              request.reference().owner_address());
+    AddBorrowedObjectInternal(object_id, contained_in_id, owner_id, owner_address);
     WrapObjectIdsInternal(contained_in_id, {object_id},
                           absl::optional<rpc::WorkerAddress>());
   }
@@ -584,22 +587,22 @@ void ReferenceCounter::SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest
   if (it->second.RefCount() == 0) {
     // We already stopped borrowing the object ID. Respond to the owner
     // immediately.
-    ref_removed_callback();
+    ref_removed_callback(object_id);
     DeleteReferenceInternal(it, nullptr);
   } else {
     // We are still borrowing the object ID. Respond to the owner once we have
     // stopped borrowing it.
-    if (it->second.on_local_ref_deleted != nullptr) {
+    if (it->second.on_ref_removed != nullptr) {
       // TODO(swang): If the owner of an object dies and and is re-executed, it
       // is possible that we will receive a duplicate request to set
-      // on_local_ref_deleted. If messages are delayed and we overwrite the
+      // on_ref_removed. If messages are delayed and we overwrite the
       // callback here, it's possible we will drop the request that was sent by
       // the more recent owner. We should fix this by setting multiple
       // callbacks or by versioning the owner requests.
-      RAY_LOG(WARNING) << "on_local_ref_deleted already set for " << object_id
+      RAY_LOG(WARNING) << "on_ref_removed already set for " << object_id
                        << ". The owner task must have died and been re-executed.";
     }
-    it->second.on_local_ref_deleted = ref_removed_callback;
+    it->second.on_ref_removed = ref_removed_callback;
   }
 }
 
