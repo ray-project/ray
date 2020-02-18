@@ -65,7 +65,7 @@ def tf_function(tf_module):
     # The actual decorator to use (pass in `tf` (which could be None)).
     def decorator(func):
         # If tf not installed -> return function as is (won't be used anyways).
-        if tf_module is None:
+        if tf_module is None or tf_module.executing_eagerly():
             return func
         # If tf installed, return @tf.function-decorated function.
         return tf_module.function(func)

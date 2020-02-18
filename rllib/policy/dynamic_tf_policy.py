@@ -47,6 +47,7 @@ class DynamicTFPolicy(TFPolicy):
                  before_loss_init=None,
                  make_model=None,
                  action_sampler_fn=None,
+                 dist_class_and_parameters_fn=None,
                  existing_inputs=None,
                  existing_model=None,
                  get_batch_divisibility_req=None,
@@ -69,10 +70,14 @@ class DynamicTFPolicy(TFPolicy):
                 given (policy, obs_space, action_space, config).
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn (func): optional function that returns a
-                tuple of action and action logp tensors given
+            action_sampler_fn (Optional[callable]): An optional callable
+                returning a tuple of action and action prob tensors given
                 (policy, model, input_dict, obs_space, action_space, config).
-                If not specified, a default action distribution will be used.
+                If None, a default action distribution will be used.
+            dist_class_and_parameters_fn (Optional[callable]): A callable,
+                returning a tuple of action_dist_class and distribution_parameters.
+                If None, a default class is used and parameters will be generated
+                by a model call.
             existing_inputs (OrderedDict): When copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
@@ -123,16 +128,16 @@ class DynamicTFPolicy(TFPolicy):
         self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
-        # Setup model
         if action_sampler_fn:
-            if not make_model:
+            if not make_model or not dist_class_and_parameters_fn:
                 raise ValueError(
-                    "make_model is required if action_sampler_fn is given")
-            self.dist_class = None
+                    "`make_model` AND `dist_class_and_parameters_fn` are "
+                    "required if `action_sampler_fn` is given")
         else:
             self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
 
+        # Setup model
         if existing_model:
             self.model = existing_model
         elif make_model:
@@ -158,8 +163,15 @@ class DynamicTFPolicy(TFPolicy):
                 for s in self.model.get_initial_state()
             ]
 
-        model_out, self._state_out = self.model(self._input_dict,
-                                                self._state_in, self._seq_lens)
+        model_out, self._state_out = self.model(
+            self._input_dict, self._state_in, self._seq_lens)
+
+        if action_sampler_fn:
+            self.dist_class, dist_parameters = dist_class_and_parameters_fn(
+                self, self.model, self._input_dict, obs_space,
+                action_space, self.config)
+        else:
+            dist_parameters = model_out
 
         # Create the Exploration object to use for this Policy.
         self.exploration = self._create_exploration(action_space, config)
@@ -172,12 +184,12 @@ class DynamicTFPolicy(TFPolicy):
                 explore, config, timestep)
         # Create a default action sampler.
         else:
-            # Using an exporation setup.
+            # Using an exploration setup.
             sampled_action, sampled_action_logp = \
                 self.exploration.get_exploration_action(
-                    model_out,
+                    dist_parameters,
+                    self.dist_class,
                     self.model,
-                    action_dist_class=self.dist_class,
                     explore=explore,
                     timestep=timestep)
 
@@ -198,7 +210,7 @@ class DynamicTFPolicy(TFPolicy):
             sampled_action=sampled_action,
             sampled_action_logp=sampled_action_logp,
             action_dist_class=self.dist_class,
-            action_dist_inputs=model_out,
+            action_dist_parameters=dist_parameters,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,

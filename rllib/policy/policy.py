@@ -176,9 +176,7 @@ class Policy(metaclass=ABCMeta):
                                obs_batch,
                                state_batches=None,
                                prev_action_batch=None,
-                               prev_reward_batch=None,
-                               info_batch=None,
-                               episodes=None):
+                               prev_reward_batch=None):
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -192,10 +190,6 @@ class Policy(metaclass=ABCMeta):
                 action values.
             prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
                 rewards.
-            info_batch (info): Batch of info objects.
-            episodes (list): MultiAgentEpisode for each obs in obs_batch.
-                This provides access to all of the internal episode state,
-                which may be useful for model-based or multiagent algorithms.
 
         Returns:
             log-likelihoods (np.ndarray): Batch of log probs/likelihoods, with

@@ -4,6 +4,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     tf_function
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.spaces.tuple_actions import TupleActions
 
 tf = try_import_tf()
@@ -29,15 +30,18 @@ class Random(Exploration):
         super().__init__(
             action_space=action_space, framework=framework, **kwargs)
 
+        self.action_dist_class, _ = ModelCatalog.get_action_dist(
+            action_space, framework=self.framework)
+
     @override(Exploration)
     def get_exploration_action(self,
-                               model_output,
-                               model,
+                               distribution_parameters,
                                action_dist_class,
+                               model=None,
                                explore=True,
                                timestep=None):
         # Instantiate the distribution object.
-        action_dist = action_dist_class(model_output, model)
+        action_dist = action_dist_class(distribution_parameters, model)
 
         if self.framework == "tf":
             return self._get_tf_exploration_action_op(action_dist, explore,

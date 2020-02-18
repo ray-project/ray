@@ -89,7 +89,7 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     shape = x.shape
 
     # Python 2.7 compatibility, (*shape, depth) is not allowed.
-    shape_list = shape[:]
+    shape_list = list(shape[:])
     shape_list.append(depth)
     out = np.ones(shape_list) * off_value
     indices = []

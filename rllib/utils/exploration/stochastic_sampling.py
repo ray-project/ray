@@ -45,15 +45,19 @@ class StochasticSampling(Exploration):
         #  and that will be passed into the distribution's c'tor.
         self.time_dependent_params = time_dependent_params or {}
 
+        self.action_dist_class, _ = ModelCatalog.get_action_dist(
+            self.action_space,
+            None,  # model.config
+            framework=self.framework,
+            **self.static_params)
+
     @override(Exploration)
     def get_exploration_action(self,
-                               model_output,
-                               model,
-                               action_dist_class=None,
+                               distribution_parameters,
+                               action_dist_class,
+                               model=None,
                                explore=True,
                                timestep=None):
-        kwargs = self.static_params.copy()
-
         # TODO(sven): create schedules for these via easy-config patterns
         #  These can be used anywhere in configs, where schedules are wanted:
         #  e.g. lr=[0.003, 0.00001, 100k] <- linear anneal from 0.003, to
@@ -61,12 +65,7 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist_cls, _ = ModelCatalog.get_action_dist(
-            self.action_space,
-            None,  # model.config
-            action_dist_class,
-            framework=self.framework)
-        action_dist = action_dist_cls(model_output, model, **kwargs)
+        action_dist = action_dist_class(distribution_parameters, model)
 
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore)

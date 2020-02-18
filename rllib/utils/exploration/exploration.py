@@ -1,4 +1,5 @@
-from ray.rllib.utils.framework import check_framework, try_import_tf
+from ray.rllib.utils.framework import check_framework, try_import_tf, \
+    tf_function
 
 tf = try_import_tf()
 
@@ -29,11 +30,13 @@ class Exploration:
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = check_framework(framework)
+        ## May be set by child-classes to calculate log-probs.
+        #self.action_dist_class = None
 
     def get_exploration_action(self,
-                               model_output,
-                               model,
-                               action_dist_class=None,
+                               distribution_parameters,
+                               action_dist_class,
+                               model=None,
                                explore=True,
                                timestep=None):
         """Returns a (possibly) exploratory action.
@@ -42,10 +45,12 @@ class Exploration:
         exploratory action.
 
         Args:
-            model_output (any): The raw output coming from the model
+            distribution_parameters (any): The output coming from the model,
+                ready for parameterizing a distribution
                 (e.g. q-values or PG-logits).
+            action_dist_class (class): The action distribution class
+                to use.
             model (ModelV2): The Model object.
-            action_dist_class: The ActionDistribution class.
             explore (bool): True: "Normal" exploration behavior.
                 False: Suppress all exploratory behavior and return
                     a deterministic action.
@@ -59,6 +64,20 @@ class Exploration:
                 exploration action from the graph.
         """
         pass
+
+    #@tf_function(tf)
+    #def get_log_likelihood(self, actions, distribution_parameters, model):
+    #    """Calculates the log-likelihood/probs for a given action."""
+    #    if self.action_dist_class is None:
+    #        raise ValueError("Cannot compute log-prob/likelihood w/o an action"
+    #                         " distribution!")
+
+    #    action_dist = self.action_dist_class(distribution_parameters, model)
+    #    log_likelihoods = action_dist.logp(actions)
+    #    if self.framework == "torch":
+    #        return log_likelihoods.cpu().numpy()
+    #    else:
+    #        return log_likelihoods
 
     def get_loss_exploration_term(self,
                                   model_output,
