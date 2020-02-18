@@ -84,7 +84,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
   object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
-  // Mark that this object ID contains other inner IDs. Then, we will not GC
+  // Mark that this object ID contains other inner IDs. Then, we will not remove
   // the inner objects until the outer object ID goes out of scope.
   WrapObjectIdsInternal(object_id, inner_ids, absl::optional<rpc::WorkerAddress>());
 }
