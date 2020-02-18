@@ -78,7 +78,7 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The ID of the object that we own.
   /// \param[in] inner_ids ObjectIDs that are contained in the object's value.
-  /// As long as object_id is in scope, the inner objects should not be GC'ed.
+  /// As long as the object_id is in scope, the inner objects should not be GC'ed.
   /// \param[in] owner_id The ID of the object's owner.
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] dependencies The objects that the object depends on.
