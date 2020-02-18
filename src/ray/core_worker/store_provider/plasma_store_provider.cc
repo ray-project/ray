@@ -132,7 +132,9 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
-    if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+    // NOTE: for direct call actors, we still need to issue an unblock IPC to release
+    // get subscriptions, even if the worker isn't blocked.
+    if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
       return client->NotifyDirectCallTaskUnblocked();
     } else {
       return Status::OK();  // We don't need to release resources.
