@@ -79,6 +79,7 @@ YAPF_FLAGS=(
 YAPF_EXCLUDES=(
     '--exclude' 'python/ray/cloudpickle/*'
     '--exclude' 'python/build/*'
+    '--exclude' 'python/ray/pyarrow_files/*'
     '--exclude' 'python/ray/core/src/ray/gcs/*'
     '--exclude' 'python/ray/thirdparty_files/*'
 )
@@ -144,7 +145,6 @@ fi
 # Ensure import ordering
 # Make sure that for every import psutil; import setpproctitle
 # There's a import ray above it.
-
 python ci/travis/check_import_order.py . -s ci -s python/ray/pyarrow_files -s python/ray/thirdparty_files -s python/build
 
 if ! git diff --quiet &>/dev/null; then
