@@ -3,13 +3,14 @@ import logging
 import time
 import threading
 
+import pyarrow.plasma as plasma
+
 import ray.cloudpickle as pickle
 from ray import ray_constants, JobID
 import ray.utils
 from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
-    PlasmaObjectNotAvailable,
     RayActorError,
     RayWorkerError,
     UnreconstructableError,
@@ -224,7 +225,7 @@ class SerializationContext:
                 if not self.use_pickle:
                     raise ValueError("Receiving pickle5 serialized objects "
                                      "while the serialization context is "
-                                     "using a custom raw backend.")
+                                     "using pyarrow as the backend.")
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
                     if len(buffers) > 0:
@@ -271,7 +272,7 @@ class SerializationContext:
             # to the user. We should only reach this line if this object was
             # deserialized as part of a list, and another object in the list
             # throws an exception.
-            return PlasmaObjectNotAvailable
+            return plasma.ObjectNotAvailable
 
     def deserialize_objects(self,
                             data_metadata_pairs,

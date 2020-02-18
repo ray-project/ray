@@ -13,6 +13,7 @@ import time
 import redis
 
 import colorama
+import pyarrow
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
@@ -506,21 +507,22 @@ def wait_for_redis_to_start(redis_ip_address,
 
 
 def _compute_version_info():
-    """Compute the versions of Python, and Ray.
+    """Compute the versions of Python, pyarrow, and Ray.
 
     Returns:
         A tuple containing the version information.
     """
     ray_version = ray.__version__
     python_version = ".".join(map(str, sys.version_info[:3]))
-    return ray_version, python_version
+    pyarrow_version = pyarrow.__version__
+    return ray_version, python_version, pyarrow_version
 
 
 def _put_version_info_in_redis(redis_client):
     """Store version information in Redis.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, or Ray.
+    different versions of Python, pyarrow, or Ray.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -532,7 +534,7 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, or Ray. If the version
+    different versions of Python, pyarrow, or Ray. If the version
     information is not present in Redis, then no check is done.
 
     Args:
@@ -555,10 +557,12 @@ def check_version_info(redis_client):
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
                          "    Python: " + true_version_info[1] + "\n"
+                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
                          "This process on node " + node_ip_address +
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
-                         "    Python: " + version_info[1] + "\n")
+                         "    Python: " + version_info[1] + "\n"
+                         "    Pyarrow: " + str(version_info[2]))
         if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
