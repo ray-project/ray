@@ -57,7 +57,8 @@ class GatewayClient:
 
 
 def serialize(obj) -> bytes:
-    """Serialize a python object which can be deserialized by `PythonGateway`"""
+    """Serialize a python object which can be deserialized by `PythonGateway`
+    """
     return msgpack.packb(obj, use_bin_type=True)
 
 

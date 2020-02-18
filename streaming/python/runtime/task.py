@@ -134,14 +134,16 @@ class InputStreamTask(StreamTask):
 
 
 class OneInputStreamTask(InputStreamTask):
-    """A stream task for executing :class:`runtime.processor.OneInputProcessor`"""
+    """A stream task for executing :class:`runtime.processor.OneInputProcessor`
+    """
 
     def __init__(self, task_id, processor_instance, worker):
         super().__init__(task_id, processor_instance, worker)
 
 
 class SourceStreamTask(StreamTask):
-    """A stream task for executing :class:`runtime.processor.SourceProcessor`"""
+    """A stream task for executing :class:`runtime.processor.SourceProcessor`
+    """
 
     def __init__(self, task_id, processor_instance, worker):
         super().__init__(task_id, processor_instance, worker)

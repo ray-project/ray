@@ -3,7 +3,8 @@ from ray.streaming.runtime import gateway_client
 
 
 def test_get_simple_function_class():
-    simple_map_func_class = function._get_simple_function_class(function.MapFunction)
+    simple_map_func_class = function._get_simple_function_class(
+        function.MapFunction)
     assert simple_map_func_class is function.SimpleMapFunction
 
 
@@ -13,7 +14,8 @@ class MapFunc(function.MapFunction):
 
 
 def test_load_function():
-    # function_bytes, module_name, class_name, function_name, function_interface
+    # function_bytes, module_name, class_name, function_name,
+    # function_interface
     descriptor_func_bytes = gateway_client.serialize(
         [None, __name__, MapFunc.__name__, None, "MapFunction"])
     func = function.load_function(descriptor_func_bytes)

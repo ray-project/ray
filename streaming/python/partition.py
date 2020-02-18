@@ -78,7 +78,8 @@ def serialize(partition_func):
 
 
 def deserialize(partition_bytes):
-    """Deserialize the binary partition function serialized by :func:`serialize`"""
+    """Deserialize the binary partition function serialized by
+    :func:`serialize`"""
     return cloudpickle.loads(partition_bytes)
 
 
@@ -88,8 +89,12 @@ def load_partition(descriptor_partition_bytes: bytes):
     get or load partition function.
     Note that this function must be kept in sync with
      `org.ray.streaming.runtime.python.GraphPbBuilder.serializePartition`
-    :param descriptor_partition_bytes: serialized partition info
-    :return: partition function
+
+    Args:
+        descriptor_partition_bytes: serialized partition info
+
+    Returns:
+        partition function
     """
     partition_bytes, module_name, class_name, function_name =\
         gateway_client.deserialize(descriptor_partition_bytes)

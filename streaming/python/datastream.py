@@ -26,16 +26,19 @@ class Stream(ABC):
 
     def get_parallelism(self):
         """
-        :return:  Returns the parallelism of this transformation
+        Returns:
+            the parallelism of this transformation
         """
         return self.parallelism
 
     def set_parallelism(self, parallelism: int):
-        """
-        Sets the parallelism of this transformation
-        :param parallelism: The new parallelism to set on this transformation
+        """Sets the parallelism of this transformation
 
-        :return: self
+        Args:
+            parallelism: The new parallelism to set on this transformation
+
+        Returns:
+            self
         """
         self.parallelism = parallelism
         self._gateway_client(). \
@@ -44,13 +47,15 @@ class Stream(ABC):
 
     def get_input_stream(self):
         """
-        :return: input stream of this stream
+        Returns:
+            input stream of this stream
         """
         return self.input_stream
 
     def get_id(self):
         """
-        :return: an unique id identifies this stream.
+        Returns:
+            An unique id identifies this stream.
         """
         return self._gateway_client(). \
             call_method(self._j_stream, "getId")
@@ -61,8 +66,9 @@ class Stream(ABC):
 
 class DataStream(Stream):
     """Represents a stream of data which applies a transformation executed by
-    python. It's also a wrapper of java org.ray.streaming.python.stream.PythonDataStream
-     """
+    python. It's also a wrapper of java
+    `org.ray.streaming.python.stream.PythonDataStream`
+    """
 
     def __init__(self, input_stream, j_stream, streaming_context=None):
         super().__init__(
@@ -74,10 +80,13 @@ class DataStream(Stream):
         The transformation calls a :class:`ray.streaming.function.MapFunction`
         for each element of the DataStream.
 
-        :param func: The MapFunction that is called for each element of the DataStream.
-                If `func` is a python function instead of a subclass of MapFunction,
-                it will be wrapped as SimpleMapFunction.
-        :return: a new data stream transformed by the MapFunction
+        Args:
+            func: The MapFunction that is called for each element of the
+            DataStream. If `func` is a python function instead of a subclass
+            of MapFunction, it will be wrapped as SimpleMapFunction.
+
+        Returns:
+            A new data stream transformed by the MapFunction.
         """
         if not isinstance(func, function.MapFunction):
             func = function.SimpleMapFunction(func)
@@ -92,12 +101,16 @@ class DataStream(Stream):
         Applies a FlatMap transformation on a :class:`DataStream`. The
         transformation calls a :class:`ray.streaming.function.FlatMapFunction`
         for each element of the DataStream.
-        Each FlatMapFunction call can return any number of elements including none.
+        Each FlatMapFunction call can return any number of elements including
+        none.
 
-        :param func: The FlatMapFunction that is called for each element of the DataStream.
-                If `func` is a python function instead of a subclass of FlatMapFunction,
-                it will be wrapped as SimpleFlatMapFunction.
-        :return: The transformed DataStream
+        Args:
+            func: The FlatMapFunction that is called for each element of the
+            DataStream. If `func` is a python function instead of a subclass
+            of FlatMapFunction, it will be wrapped as SimpleFlatMapFunction.
+
+        Returns:
+            The transformed DataStream
         """
         if not isinstance(func, function.FlatMapFunction):
             func = function.SimpleFlatMapFunction(func)
@@ -112,12 +125,16 @@ class DataStream(Stream):
         Applies a Filter transformation on a :class:`DataStream`. The
         transformation calls a :class:`ray.streaming.function.FilterFunction`
         for each element of the DataStream.
-        DataStream and retains only those element for which the function returns True.
+        DataStream and retains only those element for which the function
+        returns True.
 
-        :param func: The FilterFunction that is called for each element of the DataStream.
-                If `func` is a python function instead of a subclass of FilterFunction,
-                it will be wrapped as SimpleFilterFunction.
-        :return: The filtered DataStream
+        Args:
+            func: The FilterFunction that is called for each element of the
+            DataStream. If `func` is a python function instead of a subclass of
+            FilterFunction, it will be wrapped as SimpleFilterFunction.
+
+        Returns:
+            The filtered DataStream
         """
         if not isinstance(func, function.FilterFunction):
             func = function.SimpleFilterFunction(func)
@@ -132,10 +149,13 @@ class DataStream(Stream):
         Creates a new :class:`KeyDataStream` that uses the provided key to
         partition data stream by key.
 
-        :param func: The KeyFunction that is used for extracting the key for partitioning.
-                If `func` is a python function instead of a subclass of KeyFunction,
-                it will be wrapped as SimpleKeyFunction.
-        :return: a KeyDataStream
+        Args:
+            func: The KeyFunction that is used for extracting the key for
+            partitioning. If `func` is a python function instead of a subclass
+            of KeyFunction, it will be wrapped as SimpleKeyFunction.
+
+        Returns:
+             A KeyDataStream
         """
         if not isinstance(func, function.KeyFunction):
             func = function.SimpleKeyFunction(func)
@@ -147,22 +167,28 @@ class DataStream(Stream):
 
     def broadcast(self):
         """
-        Sets the partitioning of the :class:`DataStream` so that the output elements
-        are broadcast to every parallel instance of the next operation.
+        Sets the partitioning of the :class:`DataStream` so that the output
+        elements are broadcast to every parallel instance of the next
+        operation.
 
-        :return: The DataStream with broadcast partitioning set.
+        Returns:
+            The DataStream with broadcast partitioning set.
         """
         self._gateway_client().call_method(self._j_stream, "broadcast")
         return self
 
     def partition_by(self, partition_func):
         """
-        Sets the partitioning of the :class:`DataStream` so that the elements of stream
-        are partitioned by specified partition function.
-        :param partition_func: partition function
-                If `func` is a python function instead of a subclass of Partition,
-                it will be wrapped as SimplePartition.
-        :return: The DataStream with specified partitioning set.
+        Sets the partitioning of the :class:`DataStream` so that the elements
+        of stream are partitioned by specified partition function.
+
+        Args:
+            partition_func: partition function.
+            If `func` is a python function instead of a subclass of Partition,
+            it will be wrapped as SimplePartition.
+
+        Returns:
+            The DataStream with specified partitioning set.
         """
         if not isinstance(partition_func, partition.Partition):
             partition_func = partition.SimplePartition(partition_func)
@@ -197,17 +223,20 @@ class KeyDataStream(Stream):
 
     def reduce(self, func):
         """
-        Applies a reduce transformation on the grouped data stream grouped on by
-        the given key function.
+        Applies a reduce transformation on the grouped data stream grouped on
+        by the given key function.
         The :class:`ray.streaming.function.ReduceFunction` will receive input
         values based on the key value. Only input values with the same key will
         go to the same reducer.
 
-        :param func: The ReduceFunction that will be called for every
-                element of the input values with the same key.
-                If `func` is a python function instead of a subclass of ReduceFunction,
-                it will be wrapped as SimpleReduceFunction.
-        :return: a transformed DataStream.
+        Args:
+            func: The ReduceFunction that will be called for every element of
+            the input values with the same key. If `func` is a python function
+            instead of a subclass of ReduceFunction, it will be wrapped as
+            SimpleReduceFunction.
+
+        Returns:
+             A transformed DataStream.
         """
         if not isinstance(func, function.ReduceFunction):
             func = function.SimpleReduceFunction(func)

@@ -16,6 +16,7 @@ class Operator(ABC):
     Abstract base class for all operators.
     An operator is used to run a :class:`function.Function`.
     """
+
     @abstractmethod
     def open(self, collectors, runtime_context):
         pass
@@ -35,6 +36,7 @@ class Operator(ABC):
 
 class OneInputOperator(Operator, ABC):
     """Interface for stream operators with one input."""
+
     @abstractmethod
     def process_element(self, record):
         pass
@@ -45,6 +47,7 @@ class OneInputOperator(Operator, ABC):
 
 class TwoInputOperator(Operator, ABC):
     """Interface for stream operators with two input"""
+
     @abstractmethod
     def process_element(self, record1, record2):
         pass
@@ -56,9 +59,10 @@ class TwoInputOperator(Operator, ABC):
 class StreamOperator(Operator, ABC):
     """
     Basic interface for stream operators. Implementers would implement one of
-    :class:`OneInputOperator` or :class:`TwoInputOperator` to to create operators
-    that process elements.
+    :class:`OneInputOperator` or :class:`TwoInputOperator` to to create
+    operators that process elements.
     """
+
     def __init__(self, func):
         self.func = func
         self.collectors = None
@@ -83,6 +87,7 @@ class SourceOperator(StreamOperator):
     """
     Operator to run a :class:`function.SourceFunction`
     """
+
     class SourceContextImpl(function.SourceContext):
         def __init__(self, collectors):
             self.collectors = collectors
@@ -113,6 +118,7 @@ class MapOperator(StreamOperator, OneInputOperator):
     """
     Operator to run a :class:`function.MapFunction`
     """
+
     def __init__(self, map_func: function.MapFunction):
         assert isinstance(map_func, function.MapFunction)
         super().__init__(map_func)
@@ -125,6 +131,7 @@ class FlatMapOperator(StreamOperator, OneInputOperator):
     """
     Operator to run a :class:`function.FlatMapFunction`
     """
+
     def __init__(self, flat_map_func: function.FlatMapFunction):
         assert isinstance(flat_map_func, function.FlatMapFunction)
         super().__init__(flat_map_func)
@@ -143,6 +150,7 @@ class FilterOperator(StreamOperator, OneInputOperator):
     """
     Operator to run a :class:`function.FilterFunction`
     """
+
     def __init__(self, filter_func: function.FilterFunction):
         assert isinstance(filter_func, function.FilterFunction)
         super().__init__(filter_func)
@@ -156,6 +164,7 @@ class KeyByOperator(StreamOperator, OneInputOperator):
     """
     Operator to run a :class:`function.KeyFunction`
     """
+
     def __init__(self, key_func: function.KeyFunction):
         assert isinstance(key_func, function.KeyFunction)
         super().__init__(key_func)
@@ -169,6 +178,7 @@ class ReduceOperator(StreamOperator, OneInputOperator):
     """
     Operator to run a :class:`function.ReduceFunction`
     """
+
     def __init__(self, reduce_func: function.ReduceFunction):
         assert isinstance(reduce_func, function.ReduceFunction)
         super().__init__(reduce_func)
@@ -194,6 +204,7 @@ class SinkOperator(StreamOperator, OneInputOperator):
     """
     Operator to run a :class:`function.SinkFunction`
     """
+
     def __init__(self, sink_func: function.SinkFunction):
         assert isinstance(sink_func, function.SinkFunction)
         super().__init__(sink_func)
@@ -214,11 +225,13 @@ _function_to_operator = {
 
 
 def create_operator(func: function.Function):
-    """
-    Create an operator according to a :class:`function.Function`
+    """Create an operator according to a :class:`function.Function`
 
-    :param func: a subclass of function.Function
-    :return: an operator
+    Args:
+        func: a subclass of function.Function
+
+    Returns:
+        an operator
     """
     operator_class = None
     super_classes = func.__class__.mro()
