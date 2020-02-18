@@ -14,6 +14,7 @@ tf = try_import_tf()
 
 class TestDistributions(unittest.TestCase):
     """Tests ActionDistribution classes."""
+
     def test_categorical(self):
         """Tests the Categorical ActionDistribution (tf only)."""
         num_samples = 100000
@@ -36,7 +37,7 @@ class TestDistributions(unittest.TestCase):
         with eager_mode():
             input_space = Box(-1.0, 1.0, shape=(200, 10))
             low, high = -2.0, 1.0
-    
+
             # Batch of size=n and deterministic.
             inputs = input_space.sample()
             means, _ = np.split(inputs, 2, axis=-1)
@@ -46,7 +47,7 @@ class TestDistributions(unittest.TestCase):
             # Sample n times, expect always mean value (deterministic draw).
             out = squashed_distribution.deterministic_sample()
             check(out, expected)
-    
+
             # Batch of size=n and non-deterministic -> expect roughly the mean.
             inputs = input_space.sample()
             means, log_stds = np.split(inputs, 2, axis=-1)
@@ -56,24 +57,24 @@ class TestDistributions(unittest.TestCase):
             values = squashed_distribution.sample()
             self.assertTrue(np.max(values) < high)
             self.assertTrue(np.min(values) > low)
-    
+
             check(np.mean(values), expected.mean(), decimals=1)
-    
+
             # Test log-likelihood outputs.
             sampled_action_logp = squashed_distribution.sampled_action_logp()
             # Convert to parameters for distr.
-            stds = np.exp(np.clip(
-                log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
+            stds = np.exp(
+                np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
             # Unsquash values, then get log-llh from regular gaussian.
-            unsquashed_values = np.arctanh(
-                (values - low) / (high - low) * 2.0 - 1.0)
+            unsquashed_values = np.arctanh((values - low) /
+                                           (high - low) * 2.0 - 1.0)
             log_prob_unsquashed = \
                 np.sum(np.log(norm.pdf(unsquashed_values, means, stds)), -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
             check(np.mean(sampled_action_logp), np.mean(log_prob), rtol=0.01)
-    
+
             # NN output.
             means = np.array([[0.1, 0.2, 0.3, 0.4, 50.0],
                               [-0.1, -0.2, -0.3, -0.4, -1.0]])
@@ -81,21 +82,22 @@ class TestDistributions(unittest.TestCase):
                                  [0.7, -0.3, 0.4, -0.9, 2.0]])
             squashed_distribution = SquashedGaussian(
                 np.concatenate([means, log_stds], axis=-1), {},
-                low=low, high=high)
+                low=low,
+                high=high)
             # Convert to parameters for distr.
             stds = np.exp(log_stds)
             # Values to get log-likelihoods for.
             values = np.array([[0.9, 0.2, 0.4, -0.1, -1.05],
                                [-0.9, -0.2, 0.4, -0.1, -1.05]])
-    
+
             # Unsquash values, then get log-llh from regular gaussian.
-            unsquashed_values = np.arctanh(
-                (values - low) / (high - low) * 2.0 - 1.0)
+            unsquashed_values = np.arctanh((values - low) /
+                                           (high - low) * 2.0 - 1.0)
             log_prob_unsquashed = \
                 np.sum(np.log(norm.pdf(unsquashed_values, means, stds)), -1)
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
-    
+
             out = squashed_distribution.logp(values)
             check(out, log_prob)

@@ -79,7 +79,7 @@ class SACModel(TFModelV2):
             tf.keras.layers.Dense(
                 units=hidden,
                 activation=getattr(tf.nn, actor_hidden_activation, None),
-                name="action_{}".format(i+1))
+                name="action_{}".format(i + 1))
             for i, hidden in enumerate(actor_hiddens)
         ] + [
             tf.keras.layers.Dense(

@@ -55,7 +55,7 @@ def test_explorations(run,
                             prev_action=prev_a,
                             prev_reward=1.0 if prev_a is not None else None))
                     check(actions[-1], actions[0])
-    
+
                 # Make sure actions drawn are different
                 # (around some mean value), given constant observations.
                 actions = []

@@ -69,21 +69,20 @@ def test_log_likelihood(run,
                 if fw == "tf" or fw == "eager":
                     if isinstance(vars, list):
                         expected_mean_logstd = fc(
-                            fc(
-                                obs_batch, vars[layer_key[1][0]]),
+                            fc(obs_batch, vars[layer_key[1][0]]),
                             vars[layer_key[1][1]])
                     else:
-                        expected_mean_logstd = fc(fc(
-                            obs_batch,
-                            vars["default_policy/{}_1/kernel".
-                                format(layer_key[0])]),
-                            vars["default_policy/{}_out/kernel".
-                                format(layer_key[0])])
+                        expected_mean_logstd = fc(
+                            fc(
+                                obs_batch,
+                                vars["default_policy/{}_1/kernel".format(
+                                    layer_key[0])]),
+                            vars["default_policy/{}_out/kernel".format(
+                                layer_key[0])])
                 else:
                     expected_mean_logstd = fc(
-                        fc(
-                            obs_batch,
-                            vars["_hidden_layers.0._model.0.weight"]),
+                        fc(obs_batch,
+                           vars["_hidden_layers.0._model.0.weight"]),
                         vars["_logits._model.0.weight"])
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
                 if logp_func is None:
@@ -120,11 +119,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
-        test_log_likelihood(
-            ppo.PPOTrainer,
-            config,
-            prev_a,
-            continuous=True)
+        test_log_likelihood(ppo.PPOTrainer, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
@@ -141,13 +136,13 @@ class TestComputeLogLikelihood(unittest.TestCase):
         def logp_func(means, log_stds, values, low=-1.0, high=1.0):
             stds = np.exp(
                 np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
-            unsquashed_values = np.arctanh(
-                (values - low) / (high - low) * 2.0 - 1.0)
+            unsquashed_values = np.arctanh((values - low) /
+                                           (high - low) * 2.0 - 1.0)
             log_prob_unsquashed = \
                 np.sum(np.log(norm.pdf(unsquashed_values, means, stds)), -1)
             return log_prob_unsquashed - \
-                   np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
-                          axis=-1)
+                np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
+                       axis=-1)
 
         test_log_likelihood(
             sac.SACTrainer,

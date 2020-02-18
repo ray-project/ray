@@ -216,8 +216,8 @@ class TBXLogger(Logger):
                 except (ValueError, TypeError):
                     logger.warning(
                         "You are trying to log an invalid value ({}={}) "
-                        "via {}!".format(
-                            full_attr, value, type(self).__name__))
+                        "via {}!".format(full_attr, value,
+                                         type(self).__name__))
 
         self.last_result = valid_result
         self._file_writer.flush()

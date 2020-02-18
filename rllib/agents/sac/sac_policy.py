@@ -88,17 +88,17 @@ def postprocess_trajectory(policy,
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
-def dist_class_and_parameters_fn(
-        policy, model, input_dict, obs_space, action_space, config):
+def dist_class_and_parameters_fn(policy, model, input_dict, obs_space,
+                                 action_space, config):
 
     model_out, _ = model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
-    },  [], None)
+    }, [], None)
     distribution_parameters = model.action_model(model_out)
 
     return SquashedGaussian if policy.config["normalize_actions"] else \
-               DiagGaussian, distribution_parameters
+        DiagGaussian, distribution_parameters
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
