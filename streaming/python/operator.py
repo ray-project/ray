@@ -6,12 +6,16 @@ from ray.streaming import message
 
 
 class OperatorType(enum.Enum):
-    SOURCE = 0
-    ONE_INPUT = 1
-    TWO_INPUT = 2
+    SOURCE = 0  # Sources are where your program reads its input from
+    ONE_INPUT = 1  # This operator has one data stream as it's input stream.
+    TWO_INPUT = 2  # This operator has two data stream as it's input stream.
 
 
 class Operator(ABC):
+    """
+    Abstract base class for all operators.
+    An operator is used to run a :class:`function.Function`.
+    """
     @abstractmethod
     def open(self, collectors, runtime_context):
         pass
@@ -25,11 +29,12 @@ class Operator(ABC):
         pass
 
     @abstractmethod
-    def operator_type(self):
+    def operator_type(self) -> OperatorType:
         pass
 
 
 class OneInputOperator(Operator, ABC):
+    """Interface for stream operators with one input."""
     @abstractmethod
     def process_element(self, record):
         pass
@@ -39,6 +44,7 @@ class OneInputOperator(Operator, ABC):
 
 
 class TwoInputOperator(Operator, ABC):
+    """Interface for stream operators with two input"""
     @abstractmethod
     def process_element(self, record1, record2):
         pass
@@ -48,6 +54,11 @@ class TwoInputOperator(Operator, ABC):
 
 
 class StreamOperator(Operator, ABC):
+    """
+    Basic interface for stream operators. Implementers would implement one of
+    :class:`OneInputOperator` or :class:`TwoInputOperator` to to create operators
+    that process elements.
+    """
     def __init__(self, func):
         self.func = func
         self.collectors = None
@@ -69,6 +80,9 @@ class StreamOperator(Operator, ABC):
 
 
 class SourceOperator(StreamOperator):
+    """
+    Operator to run a :class:`function.SourceFunction`
+    """
     class SourceContextImpl(function.SourceContext):
         def __init__(self, collectors):
             self.collectors = collectors
@@ -78,6 +92,7 @@ class SourceOperator(StreamOperator):
                 collector.collect(message.Record(value))
 
     def __init__(self, func):
+        assert isinstance(func, function.SourceFunction)
         super().__init__(func)
         self.source_context = None
 
@@ -95,7 +110,11 @@ class SourceOperator(StreamOperator):
 
 
 class MapOperator(StreamOperator, OneInputOperator):
-    def __init__(self, map_func):
+    """
+    Operator to run a :class:`function.MapFunction`
+    """
+    def __init__(self, map_func: function.MapFunction):
+        assert isinstance(map_func, function.MapFunction)
         super().__init__(map_func)
 
     def process_element(self, record):
@@ -103,7 +122,11 @@ class MapOperator(StreamOperator, OneInputOperator):
 
 
 class FlatMapOperator(StreamOperator, OneInputOperator):
-    def __init__(self, flat_map_func):
+    """
+    Operator to run a :class:`function.FlatMapFunction`
+    """
+    def __init__(self, flat_map_func: function.FlatMapFunction):
+        assert isinstance(flat_map_func, function.FlatMapFunction)
         super().__init__(flat_map_func)
         self.collection_collector = None
 
@@ -117,7 +140,11 @@ class FlatMapOperator(StreamOperator, OneInputOperator):
 
 
 class FilterOperator(StreamOperator, OneInputOperator):
-    def __init__(self, filter_func):
+    """
+    Operator to run a :class:`function.FilterFunction`
+    """
+    def __init__(self, filter_func: function.FilterFunction):
+        assert isinstance(filter_func, function.FilterFunction)
         super().__init__(filter_func)
 
     def process_element(self, record):
@@ -126,7 +153,11 @@ class FilterOperator(StreamOperator, OneInputOperator):
 
 
 class KeyByOperator(StreamOperator, OneInputOperator):
-    def __init__(self, key_func):
+    """
+    Operator to run a :class:`function.KeyFunction`
+    """
+    def __init__(self, key_func: function.KeyFunction):
+        assert isinstance(key_func, function.KeyFunction)
         super().__init__(key_func)
 
     def process_element(self, record):
@@ -135,7 +166,11 @@ class KeyByOperator(StreamOperator, OneInputOperator):
 
 
 class ReduceOperator(StreamOperator, OneInputOperator):
-    def __init__(self, reduce_func):
+    """
+    Operator to run a :class:`function.ReduceFunction`
+    """
+    def __init__(self, reduce_func: function.ReduceFunction):
+        assert isinstance(reduce_func, function.ReduceFunction)
         super().__init__(reduce_func)
         self.reduce_state = {}
 
@@ -156,7 +191,11 @@ class ReduceOperator(StreamOperator, OneInputOperator):
 
 
 class SinkOperator(StreamOperator, OneInputOperator):
-    def __init__(self, sink_func):
+    """
+    Operator to run a :class:`function.SinkFunction`
+    """
+    def __init__(self, sink_func: function.SinkFunction):
+        assert isinstance(sink_func, function.SinkFunction)
         super().__init__(sink_func)
 
     def process_element(self, record):
@@ -174,12 +213,18 @@ _function_to_operator = {
 }
 
 
-def create_operator(func):
-    func_interface = None
+def create_operator(func: function.Function):
+    """
+    Create an operator according to a :class:`function.Function`
+
+    :param func: a subclass of function.Function
+    :return: an operator
+    """
+    operator_class = None
     super_classes = func.__class__.mro()
-    for i in range(len(super_classes)):
-        if super_classes[i] == function.Function:
-            func_interface = super_classes[i - 1]
-    assert func_interface is not None
-    operator_class = _function_to_operator[func_interface]
+    for super_class in super_classes:
+        operator_class = _function_to_operator.get(super_class, None)
+        if operator_class is not None:
+            break
+    assert operator_class is not None
     return operator_class(func)

@@ -41,6 +41,7 @@ class KeyPartition(Partition):
         self.__partitions = [-1]
 
     def partition(self, key_record, num_partition: int):
+        # TODO support key group
         self.__partitions[0] = abs(hash(key_record.key)) % num_partition
         return self.__partitions
 
@@ -59,6 +60,8 @@ class RoundRobinPartition(Partition):
 
 
 class SimplePartition(Partition):
+    """Wrap a python function as subclass of :class:`Partition`"""
+
     def __init__(self, func):
         self.func = func
 
@@ -67,14 +70,26 @@ class SimplePartition(Partition):
 
 
 def serialize(partition_func):
+    """
+    Serialize the partition function so that it can be deserialized by
+    :func:`deserialize`
+    """
     return cloudpickle.dumps(partition_func)
 
 
 def deserialize(partition_bytes):
+    """Deserialize the binary partition function serialized by :func:`serialize`"""
     return cloudpickle.loads(partition_bytes)
 
 
 def load_partition(descriptor_partition_bytes):
+    """
+    Deserialize `descriptor_partition_bytes` to get or load partition function.
+    Note that this function must be kept in sync with
+     `org.ray.streaming.runtime.python.GraphPbBuilder.serializePartition`
+    :param descriptor_partition_bytes:
+    :return: partition function
+    """
     partition_bytes, module_name, class_name, function_name =\
         gateway_client.deserialize(descriptor_partition_bytes)
     if partition_bytes:
@@ -82,6 +97,10 @@ def load_partition(descriptor_partition_bytes):
     else:
         assert module_name
         mod = importlib.import_module(module_name)
+        # If class_name is not None, user partition is a sub class
+        # of Partition.
+        # If function_name is not None, user partition is a simple python
+        # function, which will be wrapped as a SimplePartition.
         if class_name:
             assert function_name is None
             cls = getattr(mod, class_name)

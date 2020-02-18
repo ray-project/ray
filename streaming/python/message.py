@@ -1,4 +1,6 @@
 class Record:
+    """Data record in data stream"""
+
     def __init__(self, value):
         self.value = value
         self.stream = None
@@ -8,6 +10,8 @@ class Record:
 
 
 class KeyRecord(Record):
+    """Data record in a keyed data stream"""
+
     def __init__(self, key, value):
         super().__init__(value)
         self.key = key

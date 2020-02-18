@@ -1,18 +1,30 @@
 from abc import ABC, abstractmethod
 
 from ray.streaming.datastream import StreamSource
-from ray.streaming.function import ListSourceFunction, LocalFileSourceFunction
+from ray.streaming.function import SourceFunction, CollectionSourceFunction, LocalFileSourceFunction
 from ray.streaming.runtime.gateway_client import GatewayClient
 
 
 class StreamingContext:
-    """Wrapper of java org.ray.streaming.api.context.StreamingContext"""
+    """
+    Main entry point for ray streaming functionality.
+    A StreamingContext is also a wrapper of java `org.ray.streaming.api.context.StreamingContext`
+    """
 
     class Builder:
         def __init__(self):
             self._options = {}
 
         def option(self, key=None, value=None, conf=None):
+            """
+            Sets a config option. Options set using this method are automatically propagated to
+            :class:`StreamingContext`'s own configuration.
+
+            :param key: a key name string for configuration property
+            :param value: a value string for configuration property
+            :param conf: multi key-value pairs as a dict
+            :return: self
+            """
             if conf is None:
                 self._options[key] = str(value)
             else:
@@ -21,6 +33,9 @@ class StreamingContext:
             return self
 
         def build(self):
+            """
+            Creates a StreamingContext based on the options set in this builder.
+            """
             ctx = StreamingContext()
             ctx._gateway_client.with_config(self._options)
             return ctx
@@ -29,36 +44,56 @@ class StreamingContext:
         self.__gateway_client = GatewayClient()
         self._j_ctx = self._gateway_client.create_streaming_context()
 
-    def source(self, source_func):
+    def source(self, source_func: SourceFunction):
+        """
+        Create an input data stream with a SourceFunction
+        :param source_func: the SourceFunction used to create the data stream
+        :return: The data stream constructed from the source_func
+        """
         return StreamSource.build_source(self, source_func)
 
     def from_values(self, *values):
+        """
+        Creates a data stream from values
+        :param values: The elements to create the data stream from.
+        :return: The data stream representing the given values
+        """
         return self.from_collection(values)
 
     def from_collection(self, values):
-        func = ListSourceFunction(values)
+        """
+        Creates a data stream from the given non-empty collection.
+        :param values: The collection of elements to create the data stream from.
+        :return: The data stream representing the given collection.
+        """
+        assert values, "values shouldn't be None or empty"
+        func = CollectionSourceFunction(values)
         return self.source(func)
 
-    def read_text_file(self, filename):
+    def read_text_file(self, filename: str):
         """Reads the given file line-by-line and creates a data stream that
          contains a string with the contents of each such line."""
         func = LocalFileSourceFunction(filename)
         return self.source(func)
 
-    def submit(self, job_name):
-        self._gateway_client.execute(job_name)
-
-    def execute(self, job_name):
-        """Construct job DAG, and execute the job.
+    def submit(self, job_name: str):
+        """
+        Submit job for execution.
+        :param job_name: name of the job
+        :return: An JobSubmissionResult future
         """
         self._gateway_client.execute(job_name)
-        self.wait_finish()
+        # TODO return a JobSubmissionResult future
 
-    def wait_finish(self):
-        pass
-
-    def _do_init(self):
-        pass
+    def execute(self, job_name: str):
+        """
+        Execute the job. This method will block until job finished.
+        :param job_name: name of the job
+        """
+        # TODO support block to job finish
+        # job_submit_result = self.submit(job_name)
+        # job_submit_result.wait_finish()
+        raise Exception("Unsupported")
 
     @property
     def _gateway_client(self):
@@ -68,14 +103,25 @@ class StreamingContext:
 class RuntimeContext(ABC):
     @abstractmethod
     def get_task_id(self):
+        """
+        :return: task id of the parallel task.
+        """
         pass
 
     @abstractmethod
     def get_task_index(self):
+        """
+        Gets the index of this parallel subtask. The index starts from 0
+         and goes up to  parallelism-1 (parallelism as returned by `get_parallelism()`.
+        :return: The index of the parallel subtask.
+        """
         pass
 
     @abstractmethod
     def get_parallelism(self):
+        """
+        :return: the parallelism with which the parallel task runs.
+        """
         pass
 
 

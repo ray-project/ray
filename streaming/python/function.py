@@ -37,6 +37,10 @@ class SourceFunction(Function):
 
 
 class MapFunction(Function):
+    """
+    Base interface for Map functions. Map functions take elements and transform them,
+    element wise. A Map function always produces a single result element for each input element.
+    """
     def map(self, value):
         pass
 
@@ -66,7 +70,7 @@ class SinkFunction(Function):
         pass
 
 
-class ListSourceFunction(SourceFunction):
+class CollectionSourceFunction(SourceFunction):
     def __init__(self, values):
         self.values = values
 

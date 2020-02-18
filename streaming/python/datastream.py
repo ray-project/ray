@@ -5,7 +5,11 @@ from ray.streaming import partition
 
 
 class Stream(ABC):
-    """Abstract base class of all stream types."""
+    """
+    Abstract base class of all stream types. A Stream represents a stream of
+     elements of the same type. A Stream can be transformed into another Stream
+     by applying a transformation.
+    """
 
     def __init__(self, input_stream, j_stream, streaming_context=None):
         self.input_stream = input_stream
@@ -21,18 +25,33 @@ class Stream(ABC):
         return self.streaming_context
 
     def get_parallelism(self):
+        """
+        :return:  Returns the parallelism of this transformation
+        """
         return self.parallelism
 
     def set_parallelism(self, parallelism: int):
+        """
+        Sets the parallelism of this transformation
+        :param parallelism: The new parallelism to set on this transformation
+
+        :return: self
+        """
         self.parallelism = parallelism
         self._gateway_client(). \
             call_method(self._j_stream, "setParallelism", parallelism)
         return self
 
     def get_input_stream(self):
+        """
+        :return: input stream of this stream
+        """
         return self.input_stream
 
     def get_id(self):
+        """
+        :return: an unique id identifies this stream.
+        """
         return self._gateway_client(). \
             call_method(self._j_stream, "getId")
 
@@ -41,8 +60,8 @@ class Stream(ABC):
 
 
 class DataStream(Stream):
-    """Represents a stream of data.
-     Wrapper of java org.ray.streaming.python.stream.PythonDataStream
+    """Represents a stream of data which applies a transformation executed by
+    python. It's also a wrapper of java org.ray.streaming.python.stream.PythonDataStream
      """
 
     def __init__(self, input_stream, j_stream, streaming_context=None):
@@ -50,6 +69,16 @@ class DataStream(Stream):
             input_stream, j_stream, streaming_context=streaming_context)
 
     def map(self, func):
+        """
+        Applies a Map transformation on a :class:`DataStream`.
+        The transformation calls a :class:`ray.streaming.function.MapFunction`
+        for each element of the DataStream.
+
+        :param func: The MapFunction that is called for each element of the DataStream.
+                If `func` is a python function instead of a subclass of MapFunction,
+                it will be wrapped as SimpleMapFunction.
+        :return: a new data stream transformed by the MapFunction
+        """
         if not isinstance(func, function.MapFunction):
             func = function.SimpleMapFunction(func)
         j_func = self._gateway_client().create_py_func(
@@ -59,6 +88,17 @@ class DataStream(Stream):
         return DataStream(self, j_stream)
 
     def flat_map(self, func):
+        """
+        Applies a FlatMap transformation on a :class:`DataStream`. The
+        transformation calls a :class:`ray.streaming.function.FlatMapFunction`
+        for each element of the DataStream.
+        Each FlatMapFunction call can return any number of elements including none.
+
+        :param func: The FlatMapFunction that is called for each element of the DataStream.
+                If `func` is a python function instead of a subclass of FlatMapFunction,
+                it will be wrapped as SimpleFlatMapFunction.
+        :return: The transformed DataStream
+        """
         if not isinstance(func, function.FlatMapFunction):
             func = function.SimpleFlatMapFunction(func)
         j_func = self._gateway_client().create_py_func(
@@ -68,6 +108,17 @@ class DataStream(Stream):
         return DataStream(self, j_stream)
 
     def filter(self, func):
+        """
+        Applies a Filter transformation on a :class:`DataStream`. The
+        transformation calls a :class:`ray.streaming.function.FilterFunction`
+        for each element of the DataStream.
+        DataStream and retains only those element for which the function returns True.
+
+        :param func: The FilterFunction that is called for each element of the DataStream.
+                If `func` is a python function instead of a subclass of FilterFunction,
+                it will be wrapped as SimpleFilterFunction.
+        :return: The filtered DataStream
+        """
         if not isinstance(func, function.FilterFunction):
             func = function.SimpleFilterFunction(func)
         j_func = self._gateway_client().create_py_func(
@@ -77,6 +128,15 @@ class DataStream(Stream):
         return DataStream(self, j_stream)
 
     def key_by(self, func):
+        """
+        Creates a new :class:`KeyDataStream` that uses the provided key to
+        partition data stream by key.
+
+        :param func: The KeyFunction that is used for extracting the key for partitioning.
+                If `func` is a python function instead of a subclass of KeyFunction,
+                it will be wrapped as SimpleKeyFunction.
+        :return: a KeyDataStream
+        """
         if not isinstance(func, function.KeyFunction):
             func = function.SimpleKeyFunction(func)
         j_func = self._gateway_client().create_py_func(
@@ -86,11 +146,25 @@ class DataStream(Stream):
         return KeyDataStream(self, j_stream)
 
     def broadcast(self):
+        """
+        Sets the partitioning of the :class:`DataStream` so that the output elements
+        are broadcast to every parallel instance of the next operation.
+
+        :return: The DataStream with broadcast partitioning set.
+        """
         self._gateway_client().call_method(self._j_stream, "broadcast")
         return self
 
     def partition_by(self, partition_func):
-        if not isinstance(partition_func, partition.SimplePartition):
+        """
+        Sets the partitioning of the :class:`DataStream` so that the elements of stream
+        are partitioned by specified partition function.
+        :param partition_func: partition function
+                If `func` is a python function instead of a subclass of Partition,
+                it will be wrapped as SimplePartition.
+        :return: The DataStream with specified partitioning set.
+        """
+        if not isinstance(partition_func, partition.Partition):
             partition_func = partition.SimplePartition(partition_func)
         j_partition = self._gateway_client().create_py_func(
             partition.serialize(partition_func))
@@ -99,6 +173,11 @@ class DataStream(Stream):
         return self
 
     def sink(self, func):
+        """
+        Create a StreamSink with the given sink.
+        :param func: sink function.
+        :return: a StreamSink.
+        """
         if not isinstance(func, function.SinkFunction):
             func = function.SimpleSinkFunction(func)
         j_func = self._gateway_client().create_py_func(
@@ -117,6 +196,19 @@ class KeyDataStream(Stream):
         super().__init__(input_stream, j_stream)
 
     def reduce(self, func):
+        """
+        Applies a reduce transformation on the grouped data stream grouped on by
+        the given key function.
+        The :class:`ray.streaming.function.ReduceFunction` will receive input
+        values based on the key value. Only input values with the same key will
+        go to the same reducer.
+
+        :param func: The ReduceFunction that will be called for every
+                element of the input values with the same key.
+                If `func` is a python function instead of a subclass of ReduceFunction,
+                it will be wrapped as SimpleReduceFunction.
+        :return: a transformed DataStream.
+        """
         if not isinstance(func, function.ReduceFunction):
             func = function.SimpleReduceFunction(func)
         j_func = self._gateway_client().create_py_func(
