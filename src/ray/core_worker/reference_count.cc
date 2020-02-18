@@ -110,8 +110,12 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                      << object_id;
     return;
   }
-  RAY_CHECK(it->second.local_ref_count > 0)
-      << "Tried to decrease ref count for object ID that has count 0" << object_id;
+  if (it->second.local_ref_count == 0) {
+    RAY_LOG(WARNING)
+        << "Tried to decrease ref count for object ID that has count 0 " << object_id
+        << ". This should only happen if ray.internal.free was called earlier.";
+    return;
+  }
   it->second.local_ref_count--;
   RAY_LOG(DEBUG) << "Remove local reference " << object_id;
   PRINT_REF_COUNT(it);
