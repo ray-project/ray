@@ -23,11 +23,11 @@ if __name__ == "__main__":
     metrics_cpu_usage = Gauge(
         "ray_metrics_cpu_usage",
         "CPU usage of pid residing in a host.",
-        labelnames=("pid", "host", "ip"))
+        labelnames=("pid", "host"))
     metrics_mem_usage = Gauge(
         "ray_metrics_mem_usage",
         "Memory usage of pid residing in a host.",
-        labelnames=("pid", "host", "ip"))
+        labelnames=("pid", "host"))
 
     # Start up the server to expose the metrics.
     # TODO(sang) Read from args
@@ -45,14 +45,11 @@ if __name__ == "__main__":
             clients = data["clients"]
             for client in clients:
                 host = client["hostname"]
-                ip = client["ip"]
                 workers = client["workers"]
 
                 for worker in workers:
                     pid = worker["pid"]
                     cpu_usage = worker["cpu_percent"]
                     mem_usage = worker["memory_info"]["rss"]
-                    metrics_cpu_usage.labels(
-                        pid=pid, host=host, ip=ip).set(cpu_usage)
-                    metrics_mem_usage.labels(
-                        pid=pid, host=host, ip=ip).set(mem_usage)
+                    metrics_cpu_usage.labels(pid=pid, host=host).set(cpu_usage)
+                    metrics_mem_usage.labels(pid=pid, host=host).set(mem_usage)

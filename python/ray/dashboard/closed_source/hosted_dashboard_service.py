@@ -2,8 +2,6 @@ import argparse
 
 from aiohttp import web
 
-grafana_api_key = "eyJrIjoiNDRjelZmMW9JY0N3aUFFQ3N0bnljdVhDblZaSWFYR08iLCJuIjoiZGV2ZWxvcG1lbnR0ZXN0IiwiaWQiOjF9"
-grafana_url = "http://localhost:3000/"
 
 async def health(request):
     return web.json_response({"Status": "Healty"})
