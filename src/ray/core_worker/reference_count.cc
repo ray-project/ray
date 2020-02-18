@@ -359,7 +359,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
     it->second.contained_in_borrowed_id.reset();
   }
 
-  // Attempt to Pop children.
+  // Attempt to pop children.
   for (const auto &contained_id : it->second.contains) {
     GetAndClearLocalBorrowersInternal(contained_id, borrowed_refs);
   }
