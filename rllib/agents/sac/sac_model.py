@@ -75,9 +75,10 @@ class SACModel(TFModelV2):
         self.action_dim = np.product(action_space.shape)
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
-        self.actions = tf.keras.layers.Input(
-            shape=(self.action_dim, ), name="actions")
-        shift_and_log_scale_diag = tf.keras.Sequential([
+        #self.actions = tf.keras.layers.Input(
+        #    shape=(self.action_dim, ), name="actions")
+        self.action_model = tf.keras.Sequential([
+        #shift_and_log_scale_diag = tf.keras.Sequential([
             tf.keras.layers.Dense(
                 units=hidden,
                 activation=getattr(tf.nn, actor_hidden_activation),
@@ -86,84 +87,88 @@ class SACModel(TFModelV2):
         ] + [
             tf.keras.layers.Dense(
                 units=2 * self.action_dim, activation=None, name="action_out")
-        ])(self.model_out)
+        ])  #(self.model_out)
+        self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
-        shift, log_scale_diag = tf.keras.layers.Lambda(
-            lambda shift_and_log_scale_diag: tf.split(
-                shift_and_log_scale_diag,
-                num_or_size_splits=2,
-                axis=-1)
-        )(shift_and_log_scale_diag)
+        self.register_variables(self.action_model.variables)
 
-        log_scale_diag = tf.keras.layers.Lambda(
-            lambda log_sd: tf.clip_by_value(log_sd, *SCALE_DIAG_MIN_MAX))(
-                log_scale_diag)
+        #shift, log_scale_diag = tf.keras.layers.Lambda(
+        #    lambda shift_and_log_scale_diag: tf.split(
+        #        shift_and_log_scale_diag,
+        #        num_or_size_splits=2,
+        #        axis=-1)
+        #)(shift_and_log_scale_diag)
 
-        shift_and_log_scale_diag = tf.keras.layers.Concatenate(axis=-1)(
-            [shift, log_scale_diag])
+        #log_scale_diag = tf.keras.layers.Lambda(
+        #    lambda log_sd: tf.clip_by_value(log_sd, *SCALE_DIAG_MIN_MAX))(
+        #        log_scale_diag)
 
-        batch_size = tf.keras.layers.Lambda(lambda x: tf.shape(input=x)[0])(
-            self.model_out)
+        #shift_and_log_scale_diag = tf.keras.layers.Concatenate(axis=-1)(
+        #    [shift, log_scale_diag])
 
-        base_distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=tf.zeros(self.action_dim), scale_diag=tf.ones(self.action_dim))
+        #batch_size = tf.keras.layers.Lambda(lambda x: tf.shape(input=x)[0])(
+        #    self.model_out)
 
-        latents = tf.keras.layers.Lambda(
-            lambda batch_size: base_distribution.sample(batch_size))(
-                batch_size)
+        #base_distribution = tfp.distributions.MultivariateNormalDiag(
+        #    loc=tf.zeros(self.action_dim), scale_diag=tf.ones(self.action_dim))
 
-        self.shift_and_log_scale_diag = latents
-        self.latents_model = tf.keras.Model(self.model_out, latents)
+        #latents = tf.keras.layers.Lambda(
+        #    lambda batch_size: base_distribution.sample(batch_size))(
+        #        batch_size)
 
-        def raw_actions_fn(inputs):
-            shift, log_scale_diag, latents = inputs
-            bijector = tfp.bijectors.Affine(
-                shift=shift, scale_diag=tf.exp(log_scale_diag))
-            actions = bijector.forward(latents)
-            return actions
+        #self.shift_and_log_scale_diag = latents
+        #self.shift_and_log_scale_diag = shift_and_log_scale_diag
+        #self.latents_model = tf.keras.Model(self.model_out, latents)
 
-        raw_actions = tf.keras.layers.Lambda(raw_actions_fn)(
-            (shift, log_scale_diag, latents))
+        #def raw_actions_fn(inputs):
+        #    shift, log_scale_diag, latents = inputs
+        #    bijector = tfp.bijectors.Affine(
+        #        shift=shift, scale_diag=tf.exp(log_scale_diag))
+        #    actions = bijector.forward(latents)
+        #    return actions
 
-        squash_bijector = (SquashBijector())
+        #raw_actions = tf.keras.layers.Lambda(raw_actions_fn)(
+        #    (shift, log_scale_diag, latents))
 
-        actions = tf.keras.layers.Lambda(
-            lambda raw_actions: squash_bijector.forward(raw_actions))(
-                raw_actions)
-        self.actions_model = tf.keras.Model(self.model_out, actions)
+        #squash_bijector = (SquashBijector())
 
-        deterministic_actions = tf.keras.layers.Lambda(
-            lambda shift: squash_bijector.forward(shift))(shift)
+        #actions = tf.keras.layers.Lambda(
+        #    lambda raw_actions: squash_bijector.forward(raw_actions))(
+        #        raw_actions)
+        #self.actions_model = tf.keras.Model(self.model_out, actions)
 
-        self.deterministic_actions_model = tf.keras.Model(
-            self.model_out, deterministic_actions)
+        #deterministic_actions = tf.keras.layers.Lambda(
+        #    lambda shift: squash_bijector.forward(shift))(shift)
 
-        def log_pis_fn(inputs):
-            shift, log_scale_diag, actions = inputs
-            base_distribution = tfp.distributions.MultivariateNormalDiag(
-                loc=tf.zeros(self.action_dim),
-                scale_diag=tf.ones(self.action_dim))
-            bijector = tfp.bijectors.Chain((
-                squash_bijector,
-                tfp.bijectors.Affine(
-                    shift=shift, scale_diag=tf.exp(log_scale_diag)),
-            ))
-            distribution = (tfp.distributions.TransformedDistribution(
-                distribution=base_distribution, bijector=bijector))
+        #self.deterministic_actions_model = tf.keras.Model(
+        #    self.model_out, deterministic_actions)
 
-            log_pis = distribution.log_prob(actions)[:, None]
-            return log_pis
+        #def log_pis_fn(inputs):
+        #    shift, log_scale_diag, actions = inputs
+        #    base_distribution = tfp.distributions.MultivariateNormalDiag(
+        #        loc=tf.zeros(self.action_dim),
+        #        scale_diag=tf.ones(self.action_dim))
+        #    bijector = tfp.bijectors.Chain((
+        #        squash_bijector,
+        #        tfp.bijectors.Affine(
+        #            shift=shift, scale_diag=tf.exp(log_scale_diag)),
+        #    ))
+        #    distribution = (tfp.distributions.TransformedDistribution(
+        #        distribution=base_distribution, bijector=bijector))
+
+        #    log_pis = distribution.log_prob(actions)[:, None]
+        #    return log_pis
 
         self.actions_input = tf.keras.layers.Input(
             shape=(self.action_dim, ), name="actions")
 
-        log_pis_for_action_input = tf.keras.layers.Lambda(log_pis_fn)(
-            [shift, log_scale_diag, self.actions_input])
+        #log_pis_for_action_input = tf.keras.layers.Lambda(log_pis_fn)(
+        #    [shift, log_scale_diag, self.actions_input])
 
-        self.log_pis_model = tf.keras.Model(
-            (self.model_out, self.actions_input), log_pis_for_action_input)
+        #self.log_pis_model = tf.keras.Model(
+        #    (self.model_out, self.actions_input), log_pis_for_action_input)
 
-        self.register_variables(self.actions_model.variables)
+        #self.register_variables(self.actions_model.variables)
 
         def build_q_net(name, observations, actions):
             q_net = tf.keras.Sequential([
@@ -184,12 +189,12 @@ class SACModel(TFModelV2):
                                    q_net([observations, actions]))
             return q_net
 
-        self.q_net = build_q_net("q", self.model_out, self.actions)
+        self.q_net = build_q_net("q", self.model_out, self.actions_input)
         self.register_variables(self.q_net.variables)
 
         if twin_q:
             self.twin_q_net = build_q_net("twin_q", self.model_out,
-                                          self.actions)
+                                          self.actions_input)
             self.register_variables(self.twin_q_net.variables)
         else:
             self.twin_q_net = None
@@ -199,26 +204,26 @@ class SACModel(TFModelV2):
 
         self.register_variables([self.log_alpha])
 
-    def get_policy_output(self, model_out, deterministic=False):
-        """Return the (unscaled) output of the policy network.
+    #def get_policy_output(self, model_out, deterministic=False):
+    #    """Return the (unscaled) output of the policy network.
+    #
+    #    This returns the unscaled outputs of pi(s).
 
-        This returns the unscaled outputs of pi(s).
+    #    Arguments:
+    #        model_out (Tensor): obs embeddings from the model layers, of shape
+    #            [BATCH_SIZE, num_outputs].
 
-        Arguments:
-            model_out (Tensor): obs embeddings from the model layers, of shape
-                [BATCH_SIZE, num_outputs].
+    #    Returns:
+    #        tensor of shape [BATCH_SIZE, action_dim] with range [-inf, inf].
+    #    """
+    #    if deterministic:
+    #        actions = self.deterministic_actions_model(model_out)
+    #        log_pis = None
+    #    else:
+    #        actions = self.actions_model(model_out)
+    #        log_pis = self.log_pis_model((model_out, actions))
 
-        Returns:
-            tensor of shape [BATCH_SIZE, action_dim] with range [-inf, inf].
-        """
-        if deterministic:
-            actions = self.deterministic_actions_model(model_out)
-            log_pis = None
-        else:
-            actions = self.actions_model(model_out)
-            log_pis = self.log_pis_model((model_out, actions))
-
-        return actions, log_pis
+    #    return actions, log_pis
 
     def get_q_values(self, model_out, actions):
         """Return the Q estimates for the most recent forward pass.
@@ -257,7 +262,7 @@ class SACModel(TFModelV2):
     def policy_variables(self):
         """Return the list of variables for the policy net."""
 
-        return list(self.actions_model.variables)
+        return list(self.action_model.variables)
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""

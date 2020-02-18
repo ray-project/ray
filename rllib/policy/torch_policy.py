@@ -4,7 +4,6 @@ import time
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
     ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
@@ -101,13 +100,12 @@ class TorchPolicy(Policy):
                     extra_action_out)
 
     @override(Policy)
-    def compute_log_likelihood(self,
-                               actions,
-                               obs_batch,
-                               state_batches=None,
-                               prev_action_batch=None,
-                               prev_reward_batch=None):
-        seq_lens = np.ones(len(obs_batch), dtype=np.int32)
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,

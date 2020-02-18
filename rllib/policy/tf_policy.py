@@ -16,7 +16,6 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils import force_list
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -55,12 +54,12 @@ class TFPolicy(Policy):
                  config,
                  sess,
                  obs_input,
-                 action_input,
                  sampled_action,
                  loss,
                  loss_inputs,
                  model=None,
                  sampled_action_logp=None,
+                 action_input=None,
                  action_dist_class=None,
                  action_dist_parameters=None,
                  state_inputs=None,
@@ -83,8 +82,6 @@ class TFPolicy(Policy):
             sess (Session): The TensorFlow session to use.
             obs_input (Tensor): Input placeholder for observations, of shape
                 [BATCH_SIZE, obs...].
-            action_input (Tensor): Input placeholder for actions for logp/log-
-                likelihood calculations.
             sampled_action (Tensor): Tensor for sampling an action, of shape
                 [BATCH_SIZE, action...]
             loss (Tensor): Scalar policy loss output tensor.
@@ -98,6 +95,8 @@ class TFPolicy(Policy):
                 stats from user-defined RLlib models.
             sampled_action_logp (Tensor): log probability of the sampled
                 action.
+            action_input (Optional[Tensor]): Input placeholder for actions for
+                logp/log-likelihood calculations.
             action_dist_class (Optional[class]): An optional action
                 distribution class to be used for aciton log-likelihood
                 calculations.
@@ -128,7 +127,6 @@ class TFPolicy(Policy):
         self.model = model
         self._sess = sess
         self._obs_input = obs_input
-        self._action_input = action_input  # For logp calculations.
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
         self._sampled_action = sampled_action
@@ -139,6 +137,7 @@ class TFPolicy(Policy):
         self._sampled_action_prob = (tf.exp(self._sampled_action_logp)
                                      if self._sampled_action_logp is not None
                                      else None)
+        self._action_input = action_input  # For logp calculations.
         self._action_dist_class = action_dist_class
         self._action_dist_parameters = action_dist_parameters
         self._state_inputs = state_inputs or []
@@ -175,8 +174,8 @@ class TFPolicy(Policy):
         self._log_likelihood = None
         if self._action_dist_class:
             self._log_likelihood = self._action_dist_class(
-                self._action_dist_parameters, self.model).logp(
-                self._action_input)
+                self._action_dist_parameters,
+                self.model).logp(self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -282,22 +281,20 @@ class TFPolicy(Policy):
         return builder.get(fetches)
 
     @override(Policy)
-    def compute_log_likelihood(self,
-                               actions,
-                               obs_batch,
-                               state_batches=None,
-                               prev_action_batch=None,
-                               prev_reward_batch=None):
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
         if self._action_dist_class is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o an "
                              "action distribution!")
 
-        #obs_batch = force_list(obs_batch)
         # Do the forward pass through the model to capture the parameters
         # for the action distribution, then do a logp on that distribution.
         builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
         # Feed actions (for which we want logp values) into graph.
-        #builder.add_feed_dict({self._action_input: force_list(actions)})
         builder.add_feed_dict({self._action_input: actions})
         # Feed observations.
         builder.add_feed_dict({self._obs_input: obs_batch})
@@ -308,19 +305,17 @@ class TFPolicy(Policy):
                 "Must pass in RNN state batches for placeholders {}, got {}".
                 format(self._state_inputs, state_batches))
         builder.add_feed_dict(
-            {k: v for k, v in
-             zip(self._state_inputs, state_batches)})
+            {k: v
+             for k, v in zip(self._state_inputs, state_batches)})
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
         # Prev-a and r.
         if self._prev_action_input is not None and \
            prev_action_batch is not None:
-            builder.add_feed_dict(
-                {self._prev_action_input: prev_action_batch})
+            builder.add_feed_dict({self._prev_action_input: prev_action_batch})
         if self._prev_reward_input is not None and \
            prev_reward_batch is not None:
-            builder.add_feed_dict(
-                {self._prev_reward_input: prev_reward_batch})
+            builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         # Fetch the log_likelihoods output and return.
         fetches = builder.add_fetches([self._log_likelihood])
         return builder.get(fetches)[0]

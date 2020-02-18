@@ -171,12 +171,12 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def compute_log_likelihood(self,
-                               actions,
-                               obs_batch,
-                               state_batches=None,
-                               prev_action_batch=None,
-                               prev_reward_batch=None):
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
