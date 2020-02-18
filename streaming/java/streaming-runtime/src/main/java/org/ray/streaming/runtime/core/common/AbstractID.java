@@ -4,14 +4,15 @@ import java.io.Serializable;
 import java.util.Random;
 
 /**
- * Uniquely identifies the abstract base class.
+ * Streaming system unique identity base class.
  */
 public class AbstractID implements Comparable<AbstractID>, Serializable {
 
   private static final long serialVersionUID = 1L;
-  private static final Random RND = new Random();
+  private static final Random RANDOM = new Random();
   private static final int SIZE_OF_LONG = 8;
 
+  //lowerPart(long type) + upperPart(long type)
   public static final int SIZE = 2 * SIZE_OF_LONG;
 
   protected final long upperPart;
@@ -42,8 +43,8 @@ public class AbstractID implements Comparable<AbstractID>, Serializable {
   }
 
   public AbstractID() {
-    this.lowerPart = RND.nextLong();
-    this.upperPart = RND.nextLong();
+    this.lowerPart = RANDOM.nextLong();
+    this.upperPart = RANDOM.nextLong();
   }
 
   public long getLowerPart() {
@@ -94,26 +95,26 @@ public class AbstractID implements Comparable<AbstractID>, Serializable {
   }
 
   @Override
-  public int compareTo(AbstractID o) {
-    int diff1 = Long.compare(this.upperPart, o.upperPart);
-    int diff2 = Long.compare(this.lowerPart, o.lowerPart);
+  public int compareTo(AbstractID abstractID) {
+    int diff1 = Long.compare(this.upperPart, abstractID.upperPart);
+    int diff2 = Long.compare(this.lowerPart, abstractID.lowerPart);
     return diff1 == 0 ? diff2 : diff1;
   }
 
-  private static long byteArrayToLong(byte[] ba, int offset) {
-    long l = 0;
+  private static long byteArrayToLong(byte[] begin, int offset) {
+    long longNum = 0;
 
     for (int i = 0; i < SIZE_OF_LONG; ++i) {
-      l |= (ba[offset + SIZE_OF_LONG - 1 - i] & 0xffL) << (i << 3);
+      longNum |= (begin[offset + SIZE_OF_LONG - 1 - i] & 0xffL) << (i << 3);
     }
 
-    return l;
+    return longNum;
   }
 
-  private static void longToByteArray(long l, byte[] ba, int offset) {
+  private static void longToByteArray(long longNum, byte[] byteArray, int offset) {
     for (int i = 0; i < SIZE_OF_LONG; ++i) {
       final int shift = i << 3; // i * 8
-      ba[offset + SIZE_OF_LONG - 1 - i] = (byte) ((l & (0xffL << shift)) >>> shift);
+      byteArray[offset + SIZE_OF_LONG - 1 - i] = (byte) ((longNum & (0xffL << shift)) >>> shift);
     }
   }
 }

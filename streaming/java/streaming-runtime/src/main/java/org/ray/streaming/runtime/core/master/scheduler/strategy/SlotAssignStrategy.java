@@ -10,7 +10,8 @@ import org.ray.streaming.runtime.core.resource.Resources;
 import org.ray.streaming.runtime.core.resource.Slot;
 
 /**
- * Slot allocation strategy interface
+ * The SlotAssignStrategy managers a set of slots. When a container registered with ResourceManager,
+ * slots are assigned to it.
  */
 public interface SlotAssignStrategy {
 

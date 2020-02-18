@@ -23,6 +23,10 @@ import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * ResourceManager implementation. The resource manager is responsible for resource de-/allocation
+ * and monitoring ray cluster.
+ */
 public class ResourceManagerImpl implements ResourceManager {
 
   private static final Logger LOG = LoggerFactory.getLogger(ResourceManagerImpl.class);
@@ -67,8 +71,6 @@ public class ResourceManagerImpl implements ResourceManager {
     this.slotAssignStrategy.setResources(resources);
     LOG.info("Slot assign strategy: {}.", slotAssignStrategy.getName());
 
-    checkAndUpdateResources();
-
     this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
     long intervalSecond = resourceConfig.resourceCheckIntervalSecond();
     this.scheduledExecutorService.scheduleAtFixedRate(
@@ -86,19 +88,18 @@ public class ResourceManagerImpl implements ResourceManager {
 
     // allocate resource to actor
     Map<String, Double> resources = new HashMap<>();
-    resources.put(container.getName(), 1.0);
-
     Map<String, Double> containResource = container.getAvailableResource();
     for (Map.Entry<String, Double> entry : containResource.entrySet()) {
       Map<String, Double> requireResource = executionVertex.getResources();
       if (requireResource.containsKey(entry.getKey())) {
         double availableResource = entry.getValue() - requireResource.get(entry.getKey());
         entry.setValue(availableResource);
+        resources.put(entry.getKey(), requireResource.get(entry.getKey()));
       }
     }
 
-    LOG.info("Allocate resource to actor [vertexId={}] succeeded with container {}.",
-        executionVertex.getVertexId(), container);
+    LOG.info("Allocate resource: {} to actor [vertexId={}] succeeded with container {}.",
+        executionVertex.getResources(), executionVertex.getVertexId(), container);
     return resources;
   }
 
@@ -113,6 +114,7 @@ public class ResourceManagerImpl implements ResourceManager {
       Map<String, Double> requireResource = executionVertex.getResources();
       if (requireResource.containsKey(entry.getKey())) {
         double availableResource = entry.getValue() + requireResource.get(entry.getKey());
+        LOG.info("Release source {}:{}", entry.getKey(), requireResource.get(entry.getKey()));
         entry.setValue(availableResource);
       }
     }
@@ -135,6 +137,10 @@ public class ResourceManagerImpl implements ResourceManager {
     return this.resources;
   }
 
+  /**
+   * Check the status of ray cluster node and update the internal resource information of
+   * streaming system.
+   */
   private void checkAndUpdateResources() {
     // get all started nodes
     List<NodeInfo> latestNodeInfos = Ray.getRuntimeContext().getAllNodeInfo();
@@ -181,10 +187,11 @@ public class ResourceManagerImpl implements ResourceManager {
         new Container(nodeInfo.nodeId, nodeInfo.nodeAddress, nodeInfo.nodeHostname);
     container.setAvailableResource(nodeInfo.resources);
 
-    // create ray resource
+    //Create ray resource.
     Ray.setResource(container.getNodeId(),
         container.getName(),
         resources.getMaxActorNumPerContainer());
+    //Mark container is already registered.
     Ray.setResource(container.getNodeId(),
         CONTAINER_ENGAGED_KEY, 1);
 
