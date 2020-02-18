@@ -83,7 +83,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     pending_tasks_.erase(it);
   }
 
-  RemoveFinishedTaskReferences(spec, worker_addr, reply.borrowed_refs());
+  // Find all object IDs that were nested in the task's return values.
+  std::unordered_map<ObjectID, std::vector<ObjectID>> nested_return_ids;
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
@@ -110,10 +111,16 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
       RAY_CHECK_OK(in_memory_store_->Put(
           RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.inlined_ids())),
+                    IdVectorFromProtobuf<ObjectID>(return_object.nested_ids())),
           object_id));
     }
+
+    nested_return_ids[object_id] =
+        IdVectorFromProtobuf<ObjectID>(return_object.nested_ids());
   }
+
+  RemoveFinishedTaskReferences(spec, nested_return_ids, worker_addr,
+                               reply.borrowed_refs());
 
   ShutdownIfNeeded();
 }
@@ -170,7 +177,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     }
     // The worker failed to execute the task, so it cannot be borrowing any
     // objects.
-    RemoveFinishedTaskReferences(spec, rpc::Address(),
+    RemoveFinishedTaskReferences(spec, {}, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     MarkPendingTaskFailed(task_id, spec, error_type);
   }
@@ -197,7 +204,9 @@ void TaskManager::OnTaskDependenciesInlined(
 }
 
 void TaskManager::RemoveFinishedTaskReferences(
-    TaskSpecification &spec, const rpc::Address &borrower_addr,
+    TaskSpecification &spec,
+    const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids,
+    const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
@@ -213,8 +222,8 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
 
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(plasma_dependencies, {}, borrower_addr,
-                                                   borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(
+      plasma_dependencies, nested_return_ids, borrower_addr, borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
 
