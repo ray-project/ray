@@ -23,9 +23,11 @@ class ReferenceCounter {
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
 
-  ReferenceCounter(bool distributed_ref_counting_enabled = true,
+  ReferenceCounter(const rpc::WorkerAddress &rpc_address,
+                   bool distributed_ref_counting_enabled = true,
                    rpc::ClientFactoryFn client_factory = nullptr)
-      : distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
+      : rpc_address_(rpc_address),
+        distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         client_factory_(client_factory) {}
 
   ~ReferenceCounter() {}
@@ -202,8 +204,7 @@ class ReferenceCounter {
   /// IDs.
   void AddNestedObjectIds(const ObjectID &object_id,
                           const std::vector<ObjectID> &inner_ids,
-                          const absl::optional<rpc::WorkerAddress> &owner_address)
-      LOCKS_EXCLUDED(mutex_);
+                          const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Whether we have a reference to a particular ObjectID.
   ///
@@ -349,7 +350,7 @@ class ReferenceCounter {
   /// IDs.
   void AddNestedObjectIdsInternal(const ObjectID &object_id,
                                   const std::vector<ObjectID> &inner_ids,
-                                  const absl::optional<rpc::WorkerAddress> &owner_address)
+                                  const rpc::WorkerAddress &owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still
@@ -420,6 +421,11 @@ class ReferenceCounter {
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Address of our RPC server. This is used to determine whether we own a
+  /// given object or not, by comparing our WorkerID with the WorkerID of the
+  /// object's owner.
+  rpc::WorkerAddress rpc_address_;
 
   /// Feature flag for distributed ref counting. If this is false, then we will
   /// keep the distributed ref count, but only the local ref count will be used

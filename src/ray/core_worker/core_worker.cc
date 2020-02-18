@@ -80,13 +80,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      reference_counter_(std::make_shared<ReferenceCounter>(
-          /*distributed_ref_counting_enabled=*/RayConfig::instance()
-              .distributed_ref_counting_enabled(),
-          [this](const rpc::Address &addr) {
-            return std::shared_ptr<rpc::CoreWorkerClient>(
-                new rpc::CoreWorkerClient(addr, *client_call_manager_));
-          })),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -166,6 +159,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_port(core_worker_server_.GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
+
+  reference_counter_ = std::make_shared<ReferenceCounter>(
+      rpc_address_,
+      /*distributed_ref_counting_enabled=*/
+      RayConfig::instance().distributed_ref_counting_enabled(),
+      [this](const rpc::Address &addr) {
+        return std::shared_ptr<rpc::CoreWorkerClient>(
+            new rpc::CoreWorkerClient(addr, *client_call_manager_));
+      });
 
   if (worker_type_ == ray::WorkerType::WORKER) {
     death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
@@ -916,12 +918,7 @@ Status CoreWorker::AllocateReturnObjects(
   RAY_CHECK(object_ids.size() == data_sizes.size());
   return_objects->resize(object_ids.size(), nullptr);
 
-  absl::optional<rpc::Address> owner_address(
-      worker_context_.GetCurrentTask()->CallerAddress());
-  bool owned_by_us = owner_address->worker_id() == rpc_address_.worker_id();
-  if (owned_by_us) {
-    owner_address.reset();
-  }
+  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;

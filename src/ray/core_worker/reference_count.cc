@@ -84,9 +84,11 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
   object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
-  // Mark that this object ID contains other inner IDs. Then, we will not remove
-  // the inner objects until the outer object ID goes out of scope.
-  AddNestedObjectIdsInternal(object_id, inner_ids, absl::optional<rpc::WorkerAddress>());
+  if (!inner_ids.empty()) {
+    // Mark that this object ID contains other inner IDs. Then, we will not GC
+    // the inner objects until the outer object ID goes out of scope.
+    AddNestedObjectIdsInternal(object_id, inner_ids, rpc_address_);
+  }
 }
 
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
@@ -152,8 +154,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
     for (const auto &nested_id : nested_ids) {
       object_id_refs_.emplace(nested_id, Reference());
     }
-    AddNestedObjectIdsInternal(return_id, nested_ids,
-                               absl::optional<rpc::WorkerAddress>());
+    AddNestedObjectIdsInternal(return_id, nested_ids, rpc_address_);
   }
 
   // Must merge the borrower refs before decrementing any ref counts. This is
@@ -515,21 +516,21 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
       }));
 }
 
-void ReferenceCounter::AddNestedObjectIds(
-    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-    const absl::optional<rpc::WorkerAddress> &owner_address) {
+void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
+                                          const std::vector<ObjectID> &inner_ids,
+                                          const rpc::WorkerAddress &owner_address) {
   absl::MutexLock lock(&mutex_);
   AddNestedObjectIdsInternal(object_id, inner_ids, owner_address);
 }
 
 void ReferenceCounter::AddNestedObjectIdsInternal(
     const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-    const absl::optional<rpc::WorkerAddress> &owner_address) {
-  // TODO: Set an address_ instead of checking whether it has a value or not.
+    const rpc::WorkerAddress &owner_address) {
+  RAY_CHECK(!owner_address.worker_id.IsNil());
   auto it = object_id_refs_.find(object_id);
-  if (!owner_address.has_value()) {
-    // `ray.put()` case OR returning an object ID from a task and the task's
-    // caller executed in the same process as us.
+  if (owner_address.worker_id == rpc_address_.worker_id) {
+    // We own object_id. This is a `ray.put()` case OR returning an object ID
+    // from a task and the task's caller executed in the same process as us.
     if (it != object_id_refs_.end()) {
       RAY_CHECK(it->second.owned_by_us);
       // The outer object is still in scope. Mark the inner ones as being
@@ -545,23 +546,23 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       }
     }
   } else {
-    // Returning an object ID from a task, and the task's caller executed in a
-    // remote process.
+    // We do not own object_id. This is the case where we returned an object ID
+    // from a task, and the task's caller executed in a remote process.
     for (const auto &inner_id : inner_ids) {
-      RAY_LOG(DEBUG) << "Adding borrower " << owner_address->ip_address << " to id "
+      RAY_LOG(DEBUG) << "Adding borrower " << owner_address.ip_address << " to id "
                      << inner_id << ", borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
       RAY_CHECK(inner_it != object_id_refs_.end());
       // Add the task's caller as a borrower.
       if (inner_it->second.owned_by_us) {
-        auto inserted = inner_it->second.borrowers.insert(*owner_address).second;
+        auto inserted = inner_it->second.borrowers.insert(owner_address).second;
         if (inserted) {
           // Wait for it to remove its reference.
-          WaitForRefRemoved(inner_it, *owner_address, object_id);
+          WaitForRefRemoved(inner_it, owner_address, object_id);
         }
       } else {
         auto inserted =
-            inner_it->second.stored_in_objects.emplace(object_id, *owner_address).second;
+            inner_it->second.stored_in_objects.emplace(object_id, owner_address).second;
         // This should be the first time that we have stored this object ID
         // inside this return ID.
         RAY_CHECK(inserted);
@@ -612,8 +613,7 @@ void ReferenceCounter::SetRefRemovedCallback(
   // add the outer object to the inner ID's ref count. We will not respond to
   // the owner of the inner ID until the outer object ID goes out of scope.
   if (!contained_in_id.IsNil()) {
-    AddNestedObjectIdsInternal(contained_in_id, {object_id},
-                               absl::optional<rpc::WorkerAddress>());
+    AddNestedObjectIdsInternal(contained_in_id, {object_id}, rpc_address_);
   }
 
   if (it->second.RefCount() == 0) {
