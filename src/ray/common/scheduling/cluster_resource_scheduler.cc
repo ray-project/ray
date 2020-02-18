@@ -195,6 +195,33 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
   return true;
 }
 
+TaskRequest TaskResourceInstances::ToTaskRequest() {
+  TaskRequest task_req;
+  task_req.predefined_resources.resize(PredefinedResources_MAX);
+
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    task_req.predefined_resources[i].demand = 0;
+    for (size_t j = 0; j < this->predefined_resources[i].size(); j++) {
+      task_req.predefined_resources[i].demand += this->predefined_resources[i][j];
+    }
+  }
+
+  task_req.custom_resources.resize(this->custom_resources.size());
+  size_t i = 0;
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
+    task_req.custom_resources[i].id = it->first;
+    task_req.custom_resources[i].soft = false;
+    task_req.custom_resources[i].demand = 0;
+    for (size_t j = 0; j < it->second.size(); j++) {
+      task_req.custom_resources[i].demand += it->second[j];
+    }
+    i++;
+  }
+  return task_req;
+}
+
+
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : local_node_id_(local_node_id) {
@@ -213,8 +240,7 @@ void ClusterResourceScheduler::AddOrUpdateNode(
     const std::string &node_id,
     const std::unordered_map<std::string, double> &resources_total,
     const std::unordered_map<std::string, double> &resources_available) {
-  NodeResources node_resources;
-  ResourceMapToNodeResources(resources_total, resources_available, &node_resources);
+  NodeResources node_resources = ResourceMapToNodeResources(resources_total, resources_available);
   AddOrUpdateNode(string_to_int_map_.Insert(node_id), node_resources);
 }
 
@@ -372,8 +398,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double> &task_resources,
     int64_t *total_violations) {
-  TaskRequest task_request;
-  ResourceMapToTaskRequest(task_resources, &task_request);
+  TaskRequest task_request = ResourceMapToTaskRequest(task_resources);
   int64_t node_id = GetBestSchedulableNode(task_request, total_violations);
 
   std::string id_string;
@@ -415,8 +440,7 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 bool ClusterResourceScheduler::SubtractNodeAvailableResources(
     const std::string &node_id,
     const std::unordered_map<std::string, double> &resource_map) {
-  TaskRequest task_request;
-  ResourceMapToTaskRequest(resource_map, &task_request);
+  TaskRequest task_request = ResourceMapToTaskRequest(resource_map);
   return SubtractNodeAvailableResources(string_to_int_map_.Get(node_id), task_request);
 }
 
@@ -448,8 +472,7 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
 bool ClusterResourceScheduler::AddNodeAvailableResources(
     const std::string &node_id,
     const std::unordered_map<std::string, double> &resource_map) {
-  TaskRequest task_request;
-  ResourceMapToTaskRequest(resource_map, &task_request);
+  TaskRequest task_request = ResourceMapToTaskRequest(resource_map);
   return AddNodeAvailableResources(string_to_int_map_.Get(node_id), task_request);
 }
 
@@ -464,16 +487,19 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
   }
 }
 
-int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
+int64_t ClusterResourceScheduler::NumNodes() { 
+  return nodes_.size(); 
+}
 
-void ClusterResourceScheduler::ResourceMapToNodeResources(
+NodeResources ClusterResourceScheduler::ResourceMapToNodeResources(
     const std::unordered_map<std::string, double> &resource_map_total,
-    const std::unordered_map<std::string, double> &resource_map_available,
-    NodeResources *node_resources) {
-  node_resources->predefined_resources.resize(PredefinedResources_MAX);
+    const std::unordered_map<std::string, double> &resource_map_available) {
+
+  NodeResources node_resources;
+  node_resources.predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    node_resources->predefined_resources[i].total =
-        node_resources->predefined_resources[i].available = 0;
+    node_resources.predefined_resources[i].total =
+        node_resources.predefined_resources[i].available = 0;
   }
 
   for (auto it = resource_map_total.begin(); it != resource_map_total.end(); ++it) {
@@ -486,50 +512,54 @@ void ClusterResourceScheduler::ResourceMapToNodeResources(
       resource_capacity.available = (int64_t)it2->second;
     }
     if (it->first == ray::kCPU_ResourceLabel) {
-      node_resources->predefined_resources[CPU] = resource_capacity;
+      node_resources.predefined_resources[CPU] = resource_capacity;
     } else if (it->first == ray::kGPU_ResourceLabel) {
-      node_resources->predefined_resources[GPU] = resource_capacity;
+      node_resources.predefined_resources[GPU] = resource_capacity;
     } else if (it->first == ray::kTPU_ResourceLabel) {
-      node_resources->predefined_resources[TPU] = resource_capacity;
+      node_resources.predefined_resources[TPU] = resource_capacity;
     } else if (it->first == ray::kMemory_ResourceLabel) {
-      node_resources->predefined_resources[MEM] = resource_capacity;
+      node_resources.predefined_resources[MEM] = resource_capacity;
     } else {
       // This is a custom resource.
-      node_resources->custom_resources.emplace(string_to_int_map_.Insert(it->first),
-                                               resource_capacity);
+      node_resources.custom_resources.emplace(string_to_int_map_.Insert(it->first),
+                                              resource_capacity);
     }
   }
+  return node_resources;
 }
 
-void ClusterResourceScheduler::ResourceMapToTaskRequest(
-    const std::unordered_map<std::string, double> &resource_map,
-    TaskRequest *task_request) {
+TaskRequest ClusterResourceScheduler::ResourceMapToTaskRequest(
+    const std::unordered_map<std::string, double> &resource_map) {
   size_t i = 0;
 
-  task_request->predefined_resources.resize(PredefinedResources_MAX);
-  task_request->custom_resources.resize(resource_map.size());
+  TaskRequest task_request;
+
+  task_request.predefined_resources.resize(PredefinedResources_MAX);
+  task_request.custom_resources.resize(resource_map.size());
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    task_request->predefined_resources[0].demand = 0;
-    task_request->predefined_resources[0].soft = false;
+    task_request.predefined_resources[0].demand = 0;
+    task_request.predefined_resources[0].soft = false;
   }
 
   for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
     if (it->first == ray::kCPU_ResourceLabel) {
-      task_request->predefined_resources[CPU].demand = it->second;
+      task_request.predefined_resources[CPU].demand = it->second;
     } else if (it->first == ray::kGPU_ResourceLabel) {
-      task_request->predefined_resources[GPU].demand = it->second;
+      task_request.predefined_resources[GPU].demand = it->second;
     } else if (it->first == ray::kTPU_ResourceLabel) {
-      task_request->predefined_resources[TPU].demand = it->second;
+      task_request.predefined_resources[TPU].demand = it->second;
     } else if (it->first == ray::kMemory_ResourceLabel) {
-      task_request->predefined_resources[MEM].demand = it->second;
+      task_request.predefined_resources[MEM].demand = it->second;
     } else {
-      task_request->custom_resources[i].id = string_to_int_map_.Insert(it->first);
-      task_request->custom_resources[i].demand = it->second;
-      task_request->custom_resources[i].soft = false;
+      task_request.custom_resources[i].id = string_to_int_map_.Insert(it->first);
+      task_request.custom_resources[i].demand = it->second;
+      task_request.custom_resources[i].soft = false;
       i++;
     }
   }
-  task_request->custom_resources.resize(i);
+  task_request.custom_resources.resize(i);
+
+  return task_request;
 }
 
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
@@ -664,24 +694,34 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
   }
 }
 
-void ClusterResourceScheduler::AddAvailableResourceInstances(
+std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
     std::vector<double> available,
     ResourceInstanceCapacities *resource_instances /* return */) {
+  std::vector<double> overflow(available.size(), 0.);      
   for (size_t i = 0; i < available.size(); i++) {
-    resource_instances->available[i] = std::min(
-        resource_instances->available[i] + available[i], resource_instances->total[i]);
+    resource_instances->available[i] = resource_instances->available[i] + available[i];
+    if (resource_instances->available[i] > resource_instances->total[i]) {
+      overflow[i] = resource_instances->available[i] - resource_instances->total[i];
+      resource_instances->available[i] = resource_instances->total[i];
+    } 
   }
+  return overflow;
 }
 
-void ClusterResourceScheduler::SubtractAvailableResourceInstances(
+std::vector<double> ClusterResourceScheduler::SubtractAvailableResourceInstances(
     std::vector<double> available,
     ResourceInstanceCapacities *resource_instances /* return */) {
   RAY_CHECK(available.size() == resource_instances->available.size());
 
+  std::vector<double> underflow(available.size(), 0.);      
   for (size_t i = 0; i < available.size(); i++) {
-    resource_instances->available[i] =
-        std::max(resource_instances->available[i] - available[i], 0.);
+    resource_instances->available[i] = resource_instances->available[i] - available[i];
+    if (resource_instances->available[i] < 0) {
+      underflow[i] = -resource_instances->available[i];
+      resource_instances->available[i] = 0;
+    }  
   }
+  return underflow;
 }
 
 bool ClusterResourceScheduler::AllocateResourceInstances(
@@ -843,14 +883,62 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
   }
 }
 
-void ClusterResourceScheduler::AddCPUResourceInstances(
+std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
     std::vector<double> &cpu_instances) {
-  AddAvailableResourceInstances(cpu_instances,
-                                &local_resources_.predefined_resources[CPU]);
+  if (cpu_instances.size() == 0) {
+    return cpu_instances; // No overflow.
+  }    
+  return AddAvailableResourceInstances(cpu_instances,
+                                       &local_resources_.predefined_resources[CPU]);
 }
 
-void ClusterResourceScheduler::SubtractCPUResourceInstances(
+std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
     std::vector<double> &cpu_instances) {
-  SubtractAvailableResourceInstances(cpu_instances,
-                                     &local_resources_.predefined_resources[CPU]);
+  if (cpu_instances.size() == 0) {
+    return cpu_instances; // No underflow.
+  }    
+  return SubtractAvailableResourceInstances(cpu_instances,
+                                            &local_resources_.predefined_resources[CPU]);
+}
+
+
+bool ClusterResourceScheduler::AllocateTaskResources(int64_t node_id, 
+    const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
+  if (!SubtractNodeAvailableResources(node_id, task_req)) {
+    return false;
+  }
+  if (node_id == local_node_id_) {
+    if (AllocateTaskResourceInstances(task_req, task_allocation)) {
+      return true;
+    } else {
+      AddNodeAvailableResources(node_id, task_req);
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool ClusterResourceScheduler::AllocateLocalTaskResources(
+    const std::unordered_map<std::string, double> &task_resources, 
+    TaskResourceInstances *task_allocation /* return */) {
+  TaskRequest task_request = ResourceMapToTaskRequest(task_resources);
+  return AllocateTaskResources(local_node_id_, task_request, task_allocation);    
+}
+
+
+void ClusterResourceScheduler::AllocateRemoteTaskResources(
+    std::string &node_string,
+    const std::unordered_map<std::string, double> &task_resources) {
+  TaskRequest task_request = ResourceMapToTaskRequest(task_resources);
+  auto node_id = string_to_int_map_.Insert(node_string);
+  RAY_CHECK(node_id != local_node_id_);
+  TaskResourceInstances nothing; // This is a remote node, so no local instance allocation.
+  AllocateTaskResources(node_id, task_request, &nothing);    
+}
+
+
+void ClusterResourceScheduler::FreeTaskResources(TaskResourceInstances &task_allocation) {
+  AddNodeAvailableResources(local_node_id_, task_allocation.ToTaskRequest());     
+  FreeTaskResourceInstances(task_allocation);
 }
