@@ -124,22 +124,24 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::AddSubmittedTaskReferences(
-    const std::vector<ObjectID> &object_ids) {
+void ReferenceCounter::UpdateSubmittedTaskReferences(
+    const std::vector<ObjectID> &argument_ids_to_add,
+    const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  for (const ObjectID &object_id : object_ids) {
-    auto it = object_id_refs_.find(object_id);
+  for (const ObjectID &argument_id : argument_ids_to_add) {
+    auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       // This happens if a large argument is transparently passed by reference
       // because we don't hold a Python reference to its ObjectID.
-      it = object_id_refs_.emplace(object_id, Reference()).first;
+      it = object_id_refs_.emplace(argument_id, Reference()).first;
     }
     it->second.submitted_task_ref_count++;
   }
+  RemoveSubmittedTaskReferences(argument_ids_to_remove, deleted);
 }
 
-void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> &object_ids, const rpc::Address &worker_addr,
+void ReferenceCounter::UpdateFinishedTaskReferences(
+    const std::vector<ObjectID> &argument_ids, const rpc::Address &worker_addr,
     const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   // Must merge the borrower refs before decrementing any ref counts. This is
@@ -150,15 +152,20 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
   if (!refs.empty()) {
     RAY_CHECK(!WorkerID::FromBinary(worker_addr.worker_id()).IsNil());
   }
-  for (const ObjectID &object_id : object_ids) {
-    MergeRemoteBorrowers(object_id, worker_addr, refs);
+  for (const ObjectID &argument_id : argument_ids) {
+    MergeRemoteBorrowers(argument_id, worker_addr, refs);
   }
 
-  for (const ObjectID &object_id : object_ids) {
-    auto it = object_id_refs_.find(object_id);
+  RemoveSubmittedTaskReferences(argument_ids, deleted);
+}
+
+void ReferenceCounter::RemoveSubmittedTaskReferences(
+    const std::vector<ObjectID> &argument_ids, std::vector<ObjectID> *deleted) {
+  for (const ObjectID &argument_id : argument_ids) {
+    auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
-                       << object_id;
+                       << argument_id;
       return;
     }
     it->second.submitted_task_ref_count--;

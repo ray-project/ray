@@ -48,8 +48,10 @@ class ReferenceCounter {
   /// dependencies to a submitted task.
   ///
   /// \param[in] object_ids The object IDs to add references for.
-  void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids)
-      LOCKS_EXCLUDED(mutex_);
+  void UpdateSubmittedTaskReferences(
+      const std::vector<ObjectID> &argument_ids_to_add,
+      const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
+      std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
@@ -64,10 +66,10 @@ class ReferenceCounter {
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
-                                     const rpc::Address &worker_addr,
-                                     const ReferenceTableProto &borrowed_refs,
-                                     std::vector<ObjectID> *deleted)
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                    const rpc::Address &worker_addr,
+                                    const ReferenceTableProto &borrowed_refs,
+                                    std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -310,6 +312,14 @@ class ReferenceCounter {
   /// Serialize a ReferenceTable.
   static void ReferenceTableToProto(const ReferenceTable &table,
                                     ReferenceTableProto *proto);
+
+  /// Remove references for the provided object IDs that correspond to them
+  /// being dependencies to a submitted task. This should be called when
+  /// inlined dependencies are inlined or when the task finishes for plasma
+  /// dependencies.
+  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                     std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to wrap an ObjectID(s) inside another object ID.
   ///
