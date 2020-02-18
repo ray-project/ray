@@ -82,6 +82,31 @@ def test_failed_task(ray_start_regular):
         assert False
 
 
+def test_get_throws_quickly_when_found_exception(ray_start_2_cpus):
+    @ray.remote
+    def bad_func1():
+        raise Exception("Test function intentionally failed.")
+
+    @ray.remote(max_retries=0)
+    def bad_func2():
+        eval("exit()")
+
+    @ray.remote
+    def slow_func():
+        time.sleep(10)
+
+    bad_functions = [bad_func1, bad_func2]
+    for bad_func in bad_functions:
+        objects = [bad_func.remote(), slow_func.remote()]
+        start_time = time.time()
+        with pytest.raises(ray.exceptions.RayError) as err:
+            ray.get(objects)
+        assert err.type is ray.exceptions.RayTaskError \
+            or err.type is ray.exceptions.RayWorkerError
+        duration = time.time() - start_time
+        assert duration < 5, "Should fail quickly."
+
+
 def test_fail_importing_remote_function(ray_start_2_cpus):
     # Create the contents of a temporary Python file.
     temporary_python_file = """
