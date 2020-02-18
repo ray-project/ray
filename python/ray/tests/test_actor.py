@@ -2,6 +2,7 @@ import random
 import pytest
 import numpy as np
 import os
+import pickle
 try:
     import pytest_timeout
 except ImportError:
@@ -97,6 +98,54 @@ def test_keyword_args(ray_start_regular):
     actor = Actor.remote(1)
     with pytest.raises(Exception):
         ray.get(actor.get_values.remote())
+
+
+def test_actor_method_metadata_cache(ray_start_regular):
+    class Actor(object):
+        pass
+
+    # The cache of ActorClassMethodMetadata.
+    cache = ray.actor.ActorClassMethodMetadata._cache
+
+    # Check cache hit during ActorHandle deserialization.
+    A1 = ray.remote(Actor)
+    a = A1.remote()
+    assert len(cache) == 1
+    cached_data_id = [id(x) for x in list(cache.items())[0]]
+    for x in range(10):
+        a = pickle.loads(pickle.dumps(a))
+    assert len(ray.actor.ActorClassMethodMetadata._cache) == 1
+    assert [id(x) for x in list(cache.items())[0]] == cached_data_id
+
+    # Check cache hit when @ray.remote
+    A2 = ray.remote(Actor)
+    assert id(A1.__ray_metadata__) != id(A2.__ray_metadata__)
+    assert id(A1.__ray_metadata__.method_meta) == id(
+        A2.__ray_metadata__.method_meta)
+
+
+def test_actor_name_conflict(ray_start_regular):
+    @ray.remote
+    class A(object):
+        def foo(self):
+            return 100000
+
+    a = A.remote()
+    r = a.foo.remote()
+
+    results = [r]
+    for x in range(10):
+
+        @ray.remote
+        class A(object):
+            def foo(self):
+                return x
+
+        a = A.remote()
+        r = a.foo.remote()
+        results.append(r)
+
+    assert ray.get(results) == [100000, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 def test_variable_number_of_args(ray_start_regular):

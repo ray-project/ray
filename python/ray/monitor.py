@@ -5,11 +5,8 @@ import time
 import traceback
 import json
 
-import redis
-
 import ray
 from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
-import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
@@ -53,34 +50,6 @@ class Monitor:
         else:
             self.autoscaler = None
             self.autoscaling_config = None
-
-        # Experimental feature: GCS flushing.
-        self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
-        self.gcs_flush_policy = None
-        if self.issue_gcs_flushes:
-            # Data is stored under the first data shard, so we issue flushes to
-            # that redis server.
-            addr_port = self.redis.lrange("RedisShards", 0, -1)
-            if len(addr_port) > 1:
-                logger.warning(
-                    "Monitor: "
-                    "TODO: if launching > 1 redis shard, flushing needs to "
-                    "touch shards in parallel.")
-                self.issue_gcs_flushes = False
-            else:
-                addr_port = addr_port[0].split(b":")
-                self.redis_shard = redis.StrictRedis(
-                    host=addr_port[0],
-                    port=addr_port[1],
-                    password=redis_password)
-                try:
-                    self.redis_shard.execute_command("HEAD.FLUSH 0")
-                except redis.exceptions.ResponseError as e:
-                    logger.info(
-                        "Monitor: "
-                        "Turning off flushing due to exception: {}".format(
-                            str(e)))
-                    self.issue_gcs_flushes = False
 
     def __del__(self):
         """Destruct the monitor object."""
@@ -288,37 +257,6 @@ class Monitor:
                 ip_address += ":" + str(raylet_info["NodeManagerPort"])
             self.raylet_id_to_ip_map[node_id] = ip_address
 
-    def _maybe_flush_gcs(self):
-        """Experimental: issue a flush request to the GCS.
-
-        The purpose of this feature is to control GCS memory usage.
-
-        To activate this feature, Ray must be compiled with the flag
-        RAY_USE_NEW_GCS set, and Ray must be started at run time with the flag
-        as well.
-        """
-        if not self.issue_gcs_flushes:
-            return
-        if self.gcs_flush_policy is None:
-            serialized = self.redis.get("gcs_flushing_policy")
-            if serialized is None:
-                # Client has not set any policy; by default flushing is off.
-                return
-            self.gcs_flush_policy = pickle.loads(serialized)
-
-        if not self.gcs_flush_policy.should_flush(self.redis_shard):
-            return
-
-        max_entries_to_flush = self.gcs_flush_policy.num_entries_to_flush()
-        num_flushed = self.redis_shard.execute_command(
-            "HEAD.FLUSH {}".format(max_entries_to_flush))
-        logger.info("Monitor: num_flushed {}".format(num_flushed))
-
-        # This flushes event log and log files.
-        ray.experimental.flush_redis_unsafe(self.redis)
-
-        self.gcs_flush_policy.record_flush()
-
     def _run(self):
         """Run the monitor.
 
@@ -345,8 +283,6 @@ class Monitor:
             # Process autoscaling actions
             if self.autoscaler:
                 self.autoscaler.update()
-
-            self._maybe_flush_gcs()
 
             # Process a round of messages.
             self.process_messages()

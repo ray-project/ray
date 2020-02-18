@@ -28,8 +28,8 @@ You can start a ``PyTorchTrainer`` with the following:
     import torch.nn as nn
     from torch import distributed
 
-    from ray.experimental.sgd import PyTorchTrainer
-    from ray.experimental.sgd.examples.train_example import LinearDataset
+    from ray.util.sgd import PyTorchTrainer
+    from ray.util.sgd.examples.train_example import LinearDataset
 
 
     def model_creator(config):
@@ -61,3 +61,5 @@ You can start a ``PyTorchTrainer`` with the following:
     print(stats)
     trainer1.shutdown()
     print("success!")
+
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!

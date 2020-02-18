@@ -30,6 +30,9 @@ message ActorHandle {
 
   // Whether direct actor call is used.
   bool is_direct_call = 7;
+
+  // An extension field that is used for storing app-language-specific data.
+  bytes extension_data = 8;
 }
 
 message AssignTaskRequest {

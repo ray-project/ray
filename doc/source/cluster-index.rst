@@ -12,3 +12,4 @@ How to setup your cluster and use Ray most effectively.
    deploy-on-yarn.rst
    deploy-on-kubernetes.rst
    deploying-on-slurm.rst
+   projects.rst

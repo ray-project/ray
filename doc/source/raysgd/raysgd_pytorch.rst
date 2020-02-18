@@ -1,5 +1,5 @@
-RaySGD Pytorch
-==============
+Distributed PyTorch
+===================
 
 .. image:: raysgd-pytorch.svg
     :align: center
@@ -309,7 +309,7 @@ Advanced: Hyperparameter Tuning
 
 ``PyTorchTrainer`` naturally integrates with Tune via the ``PyTorchTrainable`` interface. The same arguments to ``PyTorchTrainer`` should be passed into the ``tune.run(config=...)`` as shown below.
 
-.. literalinclude:: ../../../python/ray/experimental/sgd/pytorch/examples/tune_example.py
+.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/tune_example.py
    :language: python
    :start-after: __torch_tune_example__
 
@@ -321,7 +321,7 @@ In certain scenarios such as training GANs, you may want to use multiple models 
 
 If multiple models, optimizers, or schedulers are returned, you will need to provide a custom training function (and custom validation function if you plan to call ``validate``).
 
-You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/dcgan.py>`_ for an end-to-end example.
+You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/pytorch/examples/dcgan.py>`_ for an end-to-end example.
 
 .. code-block:: python
 

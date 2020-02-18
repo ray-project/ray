@@ -188,7 +188,7 @@ class Counter:
         self.count += 1
         return self.count
 counter = Counter.remote()
-ray.experimental.register_actor("Counter", counter)
+ray.util.register_actor("Counter", counter)
 time.sleep(100)
 """.format(address)
 
@@ -199,7 +199,7 @@ import time
 ray.init(address="{}")
 while True:
     try:
-        counter = ray.experimental.get_actor("Counter")
+        counter = ray.util.get_actor("Counter")
         break
     except ValueError:
         time.sleep(1)
