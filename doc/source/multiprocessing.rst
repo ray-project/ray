@@ -1,5 +1,5 @@
-multiprocessing.Pool API (Experimental)
-=======================================
+multiprocessing.Pool API
+========================
 
 .. warning::
 
@@ -21,14 +21,14 @@ Quickstart
 ----------
 
 To get started, first `install Ray <installation.html>`__, then use 
-``ray.experimental.multiprocessing.Pool`` in place of ``multiprocessing.Pool``.
+``ray.util.multiprocessing.Pool`` in place of ``multiprocessing.Pool``.
 This will start a local Ray cluster the first time you create a ``Pool`` and
 distribute your tasks across it. See the `Run on a Cluster`_ section below for
 instructions to run on a multi-node Ray cluster instead.
 
 .. code-block:: python
 
-  from ray.experimental.multiprocessing import Pool
+  from ray.util.multiprocessing import Pool
 
   def f(index):
       return index
@@ -59,7 +59,7 @@ head node in one of two ways:
 
 .. code-block:: python
 
-  from ray.experimental.multiprocessing import Pool
+  from ray.util.multiprocessing import Pool
 
   # Starts a new local Ray cluster.
   pool = Pool()

@@ -10,13 +10,33 @@ import requests
 from pygments import formatters, highlight, lexers
 from ray.experimental.serve.context import FakeFlaskRequest, TaskContext
 from ray.experimental.serve.http_util import build_flask_request
+import itertools
+
+
+def expand(l):
+    """
+    Implements a nested flattening of a list.
+    Example:
+    >>> serve.utils.expand([1,2,[3,4,5],6])
+    [1,2,3,4,5,6]
+    >>> serve.utils.expand(["a", ["b", "c"], "d", ["e", "f"]])
+    ["a", "b", "c", "d", "e", "f"]
+    """
+    return list(
+        itertools.chain.from_iterable(
+            [x if isinstance(x, list) else [x] for x in l]))
 
 
 def parse_request_item(request_item):
     if request_item.request_context == TaskContext.Web:
         is_web_context = True
         asgi_scope, body_bytes = request_item.request_args
-        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
+
+        # http_body_bytes enclosed in list due to
+        # https://github.com/ray-project/ray/issues/6944
+        # TODO(alind):  remove list enclosing after issue is fixed
+        flask_request = build_flask_request(asgi_scope,
+                                            io.BytesIO(body_bytes[0]))
         args = (flask_request, )
         kwargs = {}
     else:

@@ -7,6 +7,14 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_advanced",
+    size = "medium",
+    srcs = ["test_actor_advanced.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_pool",
     size = "small",
     srcs = ["test_actor_pool.py"],
@@ -364,6 +372,22 @@ py_test(
     name = "test_webui",
     size = "small",
     srcs = ["test_webui.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_args",
+    size = "small",
+    srcs = ["test_args.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_asyncio",
+    size = "small",
+    srcs = ["test_asyncio.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

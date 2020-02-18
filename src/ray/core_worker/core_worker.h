@@ -18,6 +18,7 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/subscription_executor.h"
+#include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -47,7 +48,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *results, const ray::WorkerID &worker_id)>;
 
  public:
   /// Construct a CoreWorker instance.
@@ -163,6 +164,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
+  /// Add metadata about the object IDs contained within another object ID.
+  /// This should be called during deserialization of the outer object ID.
+  ///
+  /// \param[in] object_id The object containing IDs.
+  /// \param[in] contained_object_ids The IDs contained in the object.
+  void AddContainedObjectIDs(const ObjectID &object_id,
+                             const std::vector<ObjectID> &contained_object_ids);
+
   ///
   /// Public methods related to storing and retrieving objects.
   ///
@@ -177,16 +186,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const RayObject &object, ObjectID *object_id);
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
+             ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
   ///
   /// \param[in] object The ray object.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
   /// \return Status.
-  Status Put(const RayObject &object, const ObjectID &object_id);
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
+             const ObjectID &object_id);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -195,11 +208,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
+                std::shared_ptr<Buffer> *data);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -208,24 +223,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const std::vector<ObjectID> &contained_object_ids,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
-  /// \param[in] owns_object Whether or not this worker owns the object. If true,
-  ///            the object will be added as owned to the reference counter as an
-  ///            owned object and this worker will be responsible for managing its
-  ///            lifetime.
-  /// \param[in] pin_object Whether or not to pin the object at the local raylet. This
-  ///            only applies when owns_object is true.
+  /// \param[in] pin_object Whether or not to pin the object at the local raylet.
   /// \return Status.
-  Status Seal(const ObjectID &object_id, bool owns_object, bool pin_object);
+  Status Seal(const ObjectID &object_id, bool pin_object);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -258,7 +270,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
               const int64_t timeout_ms, std::vector<bool> *results);
 
-  /// Delete a list of objects from the object store.
+  /// Delete a list of objects from the plasma object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
@@ -337,13 +349,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
-  /// \param[out] actor_handle Handle to the actor.
+  /// \param[in] extension_data Extension data of the actor handle,
+  /// see `ActorHandle` in `core_worker.proto`.
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     ActorID *actor_id);
+                     const std::string &extension_data, ActorID *actor_id);
 
   /// Submit an actor task.
   ///
@@ -409,12 +422,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids Object IDs of the return values.
   /// \param[in] data_sizes Sizes of the return values.
   /// \param[in] metadatas Metadata buffers of the return values.
+  /// \param[in] contained_object_ids IDs serialized within each return object.
   /// \param[out] return_objects RayObjects containing buffers to write results into.
   /// \return Status.
-  Status AllocateReturnObjects(const std::vector<ObjectID> &object_ids,
-                               const std::vector<size_t> &data_sizes,
-                               const std::vector<std::shared_ptr<Buffer>> &metadatas,
-                               std::vector<std::shared_ptr<RayObject>> *return_objects);
+  Status AllocateReturnObjects(
+      const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
+      const std::vector<std::shared_ptr<Buffer>> &metadatas,
+      const std::vector<std::vector<ObjectID>> &contained_object_ids,
+      std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Get a handle to an actor.
   ///
@@ -484,6 +499,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 SetResultCallback fallback_callback, void *python_future);
+
+  /// Connect to plasma store for async futures
+  using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
+
+  /// Subscribe to plasma store
+  ///
+  /// \param[in] subscribe_callback The callback when an item is added to plasma.
+  /// \return void
+  void SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -729,6 +753,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
+
+  // Plasma notification manager
+  std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
 
   friend class CoreWorkerTest;
 };

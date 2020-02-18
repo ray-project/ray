@@ -2097,10 +2097,19 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     return;
   }
 
-  if (!worker || worker->GetAssignedTaskId().IsNil() || !worker->IsBlocked()) {
+  if (!worker || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
   TaskID task_id = worker->GetAssignedTaskId();
+
+  // First, always release task dependencies. This ensures we don't leak resources even
+  // if we don't need to unblock the worker below.
+  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+
+  if (!worker->IsBlocked()) {
+    return;  // Don't need to unblock the worker.
+  }
+
   Task task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
   const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
   const ResourceSet cpu_resources = required_resources.GetNumCpus();
@@ -2121,7 +2130,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
         << cluster_resource_map_[self_node_id_].GetAvailableResources().ToString();
   }
   worker->MarkUnblocked();
-  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
 }
 
 void NodeManager::AsyncResolveObjects(
@@ -3132,9 +3140,24 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
     worker_stats->set_pid(driver->Pid());
     worker_stats->set_is_driver(true);
   }
+  // NOTE(sang): Currently reporting only infeasible/ready ActorCreationTask
+  // because Ray dashboard only renders actorCreationTask as of Feb 3 2020.
+  // TODO(sang): Support dashboard for non-ActorCreationTask.
   for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
-    auto infeasible_task = reply->add_infeasible_tasks();
-    infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      auto infeasible_task = reply->add_infeasible_tasks();
+      infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
+    }
+  }
+  // Report tasks that are not scheduled because
+  // resources are occupied by other actors/tasks.
+  // NOTE(sang): This solution is a workaround. It can be replaced by creating a new state
+  // like PENDING_UNTIL_RESOURCE_AVAILABLE.
+  for (const auto task : local_queues_.GetTasks(TaskState::READY)) {
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      auto ready_task = reply->add_ready_tasks();
+      ready_task->ParseFromString(task.GetTaskSpecification().Serialize());
+    }
   }
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {

@@ -15,7 +15,7 @@ class TFActionDistribution(ActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model):
-        super(TFActionDistribution, self).__init__(inputs, model)
+        super().__init__(inputs, model)
         self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
@@ -43,7 +43,7 @@ class Categorical(TFActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model=None):
-        super(Categorical, self).__init__(inputs, model)
+        super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -61,17 +61,14 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(
-            self.inputs, reduction_indices=[1], keep_dims=True)
-        a1 = other.inputs - tf.reduce_max(
-            other.inputs, reduction_indices=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
+        a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keep_dims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
-        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
-        z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
+        z1 = tf.reduce_sum(ea1, axis=1, keep_dims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(
-            p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
+        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -114,7 +111,9 @@ class MultiCategorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def multi_kl(self, other):
-        return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
+        return tf.stack(
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)],
+            axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -142,7 +141,7 @@ class DiagGaussian(TFActionDistribution):
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
-        TFActionDistribution.__init__(self, inputs, model)
+        super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -281,12 +280,12 @@ class Dirichlet(TFActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        TFActionDistribution.__init__(self, concentration, model)
+        super().__init__(concentration, model)
 
     @override(ActionDistribution)
     def logp(self, x):
-        # Support of Dirichlet are positive real numbers. x is already be
-        # an array of positive number, but we clip to avoid zeros due to
+        # Support of Dirichlet are positive real numbers. x is already
+        # an array of positive numbers, but we clip to avoid zeros due to
         # numerical errors.
         x = tf.maximum(x, self.epsilon)
         x = x / tf.reduce_sum(x, axis=-1, keepdims=True)

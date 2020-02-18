@@ -1,7 +1,6 @@
-import Link from "@material-ui/core/Link";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
-import { Link as RouterLink } from "react-router-dom";
+import SpanButton from "../../../../common/SpanButton";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
@@ -34,30 +33,36 @@ export const makeClusterErrors = (errorCounts: {
   );
 };
 
-export const makeNodeErrors = (errorCounts: {
-  perWorker: { [pid: string]: number };
-  total: number;
-}): NodeFeatureComponent => ({ node }) =>
+export const makeNodeErrors = (
+  errorCounts: {
+    perWorker: { [pid: string]: number };
+    total: number;
+  },
+  setErrorDialog: (hostname: string, pid: number | null) => void
+): NodeFeatureComponent => ({ node }) =>
   errorCounts.total === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   ) : (
-    <Link component={RouterLink} to={`/errors/${node.hostname}`}>
+    <SpanButton onClick={() => setErrorDialog(node.hostname, null)}>
       View all errors ({errorCounts.total.toLocaleString()})
-    </Link>
+    </SpanButton>
   );
 
-export const makeWorkerErrors = (errorCounts: {
-  perWorker: { [pid: string]: number };
-  total: number;
-}): WorkerFeatureComponent => ({ node, worker }) =>
+export const makeWorkerErrors = (
+  errorCounts: {
+    perWorker: { [pid: string]: number };
+    total: number;
+  },
+  setErrorDialog: (hostname: string, pid: number | null) => void
+): WorkerFeatureComponent => ({ node, worker }) =>
   errorCounts.perWorker[worker.pid] === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors
     </Typography>
   ) : (
-    <Link component={RouterLink} to={`/errors/${node.hostname}/${worker.pid}`}>
+    <SpanButton onClick={() => setErrorDialog(node.hostname, worker.pid)}>
       View errors ({errorCounts.perWorker[worker.pid].toLocaleString()})
-    </Link>
+    </SpanButton>
   );

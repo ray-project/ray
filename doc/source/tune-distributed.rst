@@ -105,7 +105,7 @@ Launching a cloud cluster
 
     If you have already have a list of nodes, go to the `Local Cluster Setup`_ section.
 
-Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will default to using the Deep Learning AMI. See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
+Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the `cluster setup documentation <autoscaling.html>`_. Save the below cluster configuration (``tune-default.yaml``):
 
 .. literalinclude:: ../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
@@ -118,6 +118,8 @@ Ray currently supports AWS and GCP. Below, we will launch nodes on AWS that will
     ray up tune-default.yaml
 
 ``ray submit --start`` starts a cluster as specified by the given cluster configuration YAML file, uploads ``tune_script.py`` to the cluster, and runs ``python tune_script.py [args]``.
+
+.. note:: You may see a message like: ``bash: cannot set terminal process group (-1): Inappropriate ioctl for device bash: no job control in this shell`` This is a harmless error. If the cluster launcher fails, it is most likely due to some other factor.
 
 .. code-block:: bash
 

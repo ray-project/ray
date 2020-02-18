@@ -21,7 +21,7 @@ message ActorHandle {
   Language actor_language = 4;
 
   // Function descriptor of actor creation task.
-  repeated string actor_creation_task_function_descriptor = 5;
+  FunctionDescriptor actor_creation_task_function_descriptor = 5;
 
   // The unique id of the dummy object returned by the actor creation task.
   // It's used as a dependency for the first task.
@@ -30,6 +30,9 @@ message ActorHandle {
 
   // Whether direct actor call is used.
   bool is_direct_call = 7;
+
+  // An extension field that is used for storing app-language-specific data.
+  bytes extension_data = 8;
 }
 
 message AssignTaskRequest {
