@@ -1,14 +1,16 @@
 # coding: utf-8
-import os
-import json
 import copy
-import tempfile
-import numpy as np
-import time
-import pytest
-import logging
-import uuid
 import gc
+import json
+import logging
+import os
+import tempfile
+import time
+import uuid
+
+import numpy as np
+
+import pytest
 
 import ray
 import ray.cluster_utils
