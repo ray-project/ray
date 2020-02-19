@@ -82,36 +82,40 @@ def test_failed_task(ray_start_regular):
         assert False
 
 
-# Note that `ray_start_2_cpus` is required here. If we use
-# `ray_start_regular`, it's very likely that two tasks are submitted before
-# the first worker is registered to Raylet. Since
-# `maximum_startup_concurrency` is 1, worker pool will wait for the
-# registration of the first worker without starting any new workers. The
-# result is, the two tasks will be executed sequentially, which breaks an
-# assumption of this test case - the two tasks run in parallel.
-def test_get_throws_quickly_when_found_exception(ray_start_2_cpus):
+def test_get_throws_quickly_when_found_exception(ray_start_regular):
+    # We use an actor instead of functions here. If we use functions, it's
+    # very likely that two normal tasks are submitted before the first worker
+    # is registered to Raylet. Since `maximum_startup_concurrency` is 1,
+    # the worker pool will wait for the registration of the first worker
+    # and skip starting new workers. The result is, the two tasks will be
+    # executed sequentially, which breaks an assumption of this test case -
+    # the two tasks run in parallel.
     @ray.remote
-    def bad_func1():
-        raise Exception("Test function intentionally failed.")
+    class Actor(object):
+        def bad_func1(self):
+            raise Exception("Test function intentionally failed.")
 
-    @ray.remote(max_retries=0)
-    def bad_func2():
-        eval("exit()")
+        def bad_func2(self):
+            os._exit(0)
 
-    @ray.remote
-    def slow_func():
-        time.sleep(10)
+        def slow_func(self):
+            time.sleep(3600)
 
-    bad_functions = [bad_func1, bad_func2]
-    for bad_func in bad_functions:
-        objects = [bad_func.remote(), slow_func.remote()]
+    def expect_exception(objects):
         start_time = time.time()
         with pytest.raises(ray.exceptions.RayError) as err:
             ray.get(objects)
-        assert err.type is ray.exceptions.RayTaskError \
-            or err.type is ray.exceptions.RayWorkerError
+        assert err.type in [
+            ray.exceptions.RayTaskError, ray.exceptions.RayActorError
+        ]
         duration = time.time() - start_time
-        assert duration < 5, "Should fail quickly."
+        assert duration < 60, "Should fail quickly."
+
+    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    expect_exception([actor.bad_func1.remote(), actor.slow_func.remote()])
+
+    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    expect_exception([actor.bad_func2.remote(), actor.slow_func.remote()])
 
 
 def test_fail_importing_remote_function(ray_start_2_cpus):
