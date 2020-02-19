@@ -468,7 +468,7 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads
+    from ray.cloudpickle import CloudPickler, loads, dumps
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
     new_f = loads(bio.getvalue())
@@ -484,13 +484,10 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
         def __del__(self):
             print("Went out of scope!")
 
-    bio = io.BytesIO()
     obj = ShortlivedObject()
     new_obj = weakref.ref(obj)
 
-    p = CloudPickler(bio, protocol=5)
-    p.dump(obj)
-    loads(bio.getvalue())
+    dumps(obj)
     del obj
     assert new_obj() is None
 
