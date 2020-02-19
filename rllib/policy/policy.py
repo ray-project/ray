@@ -393,6 +393,7 @@ class Policy(metaclass=ABCMeta):
         # If config is further passed around, it'll contain an already
         # instantiated object.
         config["exploration_config"] = exploration
+        return exploration
 
 
 def clip_action(action, space):
