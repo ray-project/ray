@@ -26,3 +26,19 @@ steps:
     fi
     cat $BUILD_SOURCESDIRECTORY/python/ray/__init__.py | grep "__version__ ="
   displayName: 'Change version of Ray to use'
+- task: PythonScript@0
+  inputs:
+    scriptSource: 'inline'
+    script: |
+      import platform
+      print(platform.platform())
+      import wheel.pep425tags
+      print(wheel.pep425tags.get_impl_ver())
+      print(wheel.pep425tags.get_abi_tag())
+      print(wheel.pep425tags.get_platform(None))
+      tags = wheel.pep425tags.get_supported(None)
+      print(tags)
+      print(('cp36', 'cp36m', 'macosx_10_14_x86_64') in tags)
+      print(platform.mac_ver())
+    failOnStderr: false
+  displayName: 'Print system info'

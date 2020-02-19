@@ -2,12 +2,28 @@
 # and gather information about the system
 steps:
 - script: |
-    EXPECTED_HASH_CI_CODE='efb8f5c1d01e167923b7451749a65321d1eb6ec79f5c0961e14fb562a570a4e2'
-    CURRENT_HASH_CI_CODE=$(tar --exclude='ci/azure_pipelines' --exclude='**/.DS_Store' -cf - .travis.yml ci | shasum -a 256 | awk '{print $1}')
-    if [[ $EXPECTED_HASH_CI_CODE != $CURRENT_HASH_CI_CODE ]]; then 
-      echo "The original CI of the project has changed"
-      echo "Please check the changes, change the azure pipelines acordingly and update the sha256"
-      exit 1
+    # the hash was computed in Mac
+    if [[ $AGENT_OS == "Darwin" ]]; then 
+      pushd $BUILD_SOURCESDIRECTORY
+      EXPECTED_HASH_TRAVIS='a64ea966996734aeb37cfc049d882a42548afe6a49e38cd7999f43c1cdb8a1c8'
+      CURRENT_HASH_TRAVIS=$(shasum -a 256 ./.travis.yml | awk '{print $1}')
+      if [[ $EXPECTED_HASH_TRAVIS != $CURRENT_HASH_TRAVIS ]]; then 
+        echo "The original Travis file of the project has changed"
+        echo "Expected Hash: $EXPECTED_HASH_TRAVIS"
+        echo "Current Hash:  $CURRENT_HASH_TRAVIS"
+        echo "Please check the changes, change the azure pipelines acordingly and update the sha256"
+        exit 1
+      fi
+      EXPECTED_HASH_CI_FOLDER='b679d5dbddbbf2e541683972f6e4b04e405d6dc6883b4cbfe94b20ff75d6d6f5'
+      CURRENT_HASH_CI_FOLDER=$(find ./ci -path "./ci/azure_pipelines" -prune -o -path "./**/.DS_Store" -prune -o -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
+      if [[ $EXPECTED_HASH_CI_FOLDER != $CURRENT_HASH_CI_FOLDER ]]; then 
+        echo "The original CI folder of the project has changed"
+        echo "Expected Hash: $EXPECTED_HASH_CI_FOLDER"
+        echo "Current Hash:  $CURRENT_HASH_CI_FOLDER"
+        echo "Please check the changes, change the azure pipelines acordingly and update the sha256"
+        exit 1
+      fi
+      popd
     fi
   displayName: Check upstream CI
 - script: |
@@ -25,19 +41,3 @@ steps:
     fi
     echo "PYTHON_CONFIGURE_OPTS: $PYTHON_CONFIGURE_OPTS"
   displayName: 'General system info'
-- task: PythonScript@0
-  inputs:
-    scriptSource: 'inline'
-    script: |
-      import platform
-      print(platform.platform())
-      import wheel.pep425tags
-      print(wheel.pep425tags.get_impl_ver())
-      print(wheel.pep425tags.get_abi_tag())
-      print(wheel.pep425tags.get_platform(None))
-      tags = wheel.pep425tags.get_supported(None)
-      print(tags)
-      print(('cp36', 'cp36m', 'macosx_10_14_x86_64') in tags)
-      print(platform.mac_ver())
-    failOnStderr: false
-  displayName: 'Print system info'
