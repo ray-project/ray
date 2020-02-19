@@ -310,13 +310,14 @@ def test_basic_serialized_reference(one_worker_100MiB):
 # Call a recursive chain of tasks that pass a serialized reference to the end
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_recursive_serialized_reference(one_worker_100MiB):
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
+            # Needed due to Python GC issue in cloudpickle.
+            # https://github.com/cloudpipe/cloudpickle/issues/343
+            gc.collect()
             return ray.get(dep[0])
         else:
             return recursive.remote(ref, dep, max_depth, depth + 1)
@@ -404,8 +405,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
+@pytest.mark.skip("TODO(edoakes): race condition in raylet pinning.")
 def test_worker_holding_serialized_reference(one_worker_100MiB):
     @ray.remote
     def child(dep1, dep2):
@@ -462,13 +462,14 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_recursively_nest_ids(one_worker_100MiB):
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
         if depth == max_depth:
+            # Needed due to Python GC issue in cloudpickle.
+            # https://github.com/cloudpipe/cloudpickle/issues/343
+            gc.collect()
             return ray.get(dep[0])
         else:
             return recursive.remote(unwrapped, dep, max_depth, depth + 1)
@@ -506,8 +507,6 @@ def test_recursively_nest_ids(one_worker_100MiB):
 
 # Test that serialized objectIDs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_return_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -536,8 +535,6 @@ def test_return_object_id(one_worker_100MiB):
 
 # Test that serialized objectIDs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -573,8 +570,6 @@ def test_pass_returned_object_id(one_worker_100MiB):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_recursively_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -588,6 +583,9 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     def recursive(ref, dep, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
+            # Needed due to Python GC issue in cloudpickle.
+            # https://github.com/cloudpipe/cloudpickle/issues/343
+            gc.collect()
             return ray.get(dep[0])
         else:
             return recursive.remote(ref, dep, max_depth, depth + 1)
