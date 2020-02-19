@@ -28,11 +28,11 @@ class TestPPO(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # tf.
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+        #trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
-        num_iterations = 2
-        for i in range(num_iterations):
-            trainer.train()
+        num_iterations = 100
+        #for i in range(num_iterations):
+        #    trainer.train()
 
         # Torch.
         config["use_pytorch"] = True
