@@ -33,6 +33,9 @@ from ray.includes.common cimport (
     CLanguage,
     CGcsClientOptions,
 )
+from ray.includes.function_descriptor cimport (
+    CFunctionDescriptor,
+)
 from ray.includes.task cimport CTaskSpec
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
@@ -66,6 +69,14 @@ cdef extern from "ray/core_worker/context.h" nogil:
         c_bool CurrentActorIsAsync()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
+    cdef cppclass CActorHandle "ray::ActorHandle":
+        CActorID GetActorID() const
+        CJobID CreationJobID() const
+        CLanguage ActorLanguage() const
+        CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
+        c_bool IsDirectCallActor() const
+        c_string ExtensionData() const
+
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
                     const c_string &store_socket,
@@ -95,7 +106,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries)
         CRayStatus CreateActor(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CActorCreationOptions &options, CActorID *actor_id)
+            const CActorCreationOptions &options,
+            const c_string &extension_data, CActorID *actor_id)
         CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
@@ -121,6 +133,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
+        CRayStatus GetActorHandle(const CActorID &actor_id,
+                                  CActorHandle **actor_handle) const
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
@@ -128,8 +142,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                                 CTaskID *owner_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
-                const CObjectID &object_id, const CTaskID &owner_id, const
-                CAddress &owner_address)
+                const CObjectID &object_id,
+                const CObjectID &outer_object_id,
+                const CTaskID &owner_id,
+                const CAddress &owner_address)
         void AddContainedObjectIDs(
             const CObjectID &object_id,
             const c_vector[CObjectID] &contained_object_ids)
@@ -147,7 +163,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                           CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_ids,
                           const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
