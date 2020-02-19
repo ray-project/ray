@@ -2,7 +2,7 @@ import time
 from collections import Counter
 
 import ray
-from ray.experimental.iter import from_items, from_iterators, from_range, \
+from ray.util.iter import from_items, from_iterators, from_range, \
     from_actors, ParallelIteratorWorker
 
 

@@ -628,22 +628,22 @@ def test_register_and_get_named_actors(ray_start_regular):
 
     f1 = Foo.remote()
     # Test saving f.
-    ray.experimental.register_actor("f1", f1)
+    ray.util.register_actor("f1", f1)
     # Test getting f.
-    f2 = ray.experimental.get_actor("f1")
+    f2 = ray.util.get_actor("f1")
     assert f1._actor_id == f2._actor_id
 
     # Test same name register shall raise error.
     with pytest.raises(ValueError):
-        ray.experimental.register_actor("f1", f2)
+        ray.util.register_actor("f1", f2)
 
     # Test register with wrong object type.
     with pytest.raises(TypeError):
-        ray.experimental.register_actor("f3", 1)
+        ray.util.register_actor("f3", 1)
 
     # Test getting a nonexistent actor.
     with pytest.raises(ValueError):
-        ray.experimental.get_actor("nonexistent")
+        ray.util.get_actor("nonexistent")
 
     # Test method
     assert ray.get(f1.method.remote()) == 1
@@ -682,7 +682,7 @@ ray.get(actor.ping.remote())
 """.format(redis_address, actor_name)
 
     run_string_as_driver(driver_script)
-    detached_actor = ray.experimental.get_actor(actor_name)
+    detached_actor = ray.util.get_actor(actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
 
 
