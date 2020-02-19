@@ -96,6 +96,7 @@ import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
+from ray import util  # noqa: E402
 
 # Ray version string.
 __version__ = "0.9.0.dev0"
@@ -140,6 +141,7 @@ __all__ = [
     "Language",
     "java_function",
     "java_actor_class",
+    "util",
 ]
 
 # ID types
