@@ -71,7 +71,8 @@ from ray.includes.libcoreworker cimport (
     CCoreWorker,
     CTaskOptions,
     ResourceMappingType,
-    CFiberEvent
+    CFiberEvent,
+    CActorHandle,
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
@@ -277,6 +278,8 @@ cdef void prepare_args(
         size_t size
         int64_t put_threshold
         shared_ptr[CBuffer] arg_data
+        c_vector[CObjectID] inlined_ids
+        ObjectID obj_id
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -293,14 +296,17 @@ cdef void prepare_args(
             # plasma here. This is inefficient for small objects, but inlined
             # arguments aren't associated ObjectIDs right now so this is a
             # simple fix for reference counting purposes.
-            if (<int64_t>size <= put_threshold and
-                    len(serialized_arg.contained_object_ids) == 0):
+            if <int64_t>size <= put_threshold:
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
+                for obj_id in serialized_arg.contained_object_ids:
+                    inlined_ids.push_back(obj_id.native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(serialized_arg.metadata))))
+                        arg_data, string_to_buffer(serialized_arg.metadata),
+                        inlined_ids)))
+                inlined_ids.clear()
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
@@ -663,7 +669,7 @@ cdef class CoreWorker:
                     c_object_id[0] = object_id.native()
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, contained_ids,
+                                    metadata, data_size,
                                     c_object_id[0], data))
                 break
             except ObjectStoreFullError as e:
@@ -809,7 +815,8 @@ cdef class CoreWorker:
                      c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
-                     c_bool is_asyncio):
+                     c_bool is_asyncio,
+                     c_string extension_data):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -832,6 +839,7 @@ cdef class CoreWorker:
                         max_reconstructions, is_direct_call, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
+                    extension_data,
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
@@ -904,17 +912,56 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
+        cdef CActorHandle* c_actor_handle
+        worker = ray.worker.get_global_worker()
+        worker.check_connected()
+        manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
             bytes)
+        check_status(self.core_worker.get().GetActorHandle(
+            c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
-        return actor_id
+        job_id = JobID(c_actor_handle.CreationJobID().Binary())
+        language = Language.from_native(c_actor_handle.ActorLanguage())
+        actor_creation_function_descriptor = \
+            CFunctionDescriptorToPython(
+                c_actor_handle.ActorCreationTaskFunctionDescriptor())
+        if language == Language.PYTHON:
+            assert isinstance(actor_creation_function_descriptor,
+                              PythonFunctionDescriptor)
+            # Load actor_method_cpu from actor handle's extension data.
+            extension_data = <str>c_actor_handle.ExtensionData()
+            if extension_data:
+                actor_method_cpu = int(extension_data)
+            else:
+                actor_method_cpu = 0  # Actor is created by non Python worker.
+            actor_class = manager.load_actor_class(
+                job_id, actor_creation_function_descriptor)
+            method_meta = ray.actor.ActorClassMethodMetadata.create(
+                actor_class, actor_creation_function_descriptor)
+            return ray.actor.ActorHandle(language, actor_id,
+                                         method_meta.decorators,
+                                         method_meta.signatures,
+                                         method_meta.num_return_vals,
+                                         actor_method_cpu,
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
+        else:
+            return ray.actor.ActorHandle(language, actor_id,
+                                         {},  # method decorators
+                                         {},  # method signatures
+                                         {},  # method num_return_vals
+                                         0,  # actor method cpu
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
 
-    def serialize_actor_handle(self, ActorID actor_id):
+    def serialize_actor_handle(self, actor_handle):
+        assert isinstance(actor_handle, ray.actor.ActorHandle)
         cdef:
-            CActorID c_actor_id = actor_id.native()
+            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
         check_status(self.core_worker.get().SerializeActorHandle(
-            c_actor_id, &output))
+            actor_id.native(), &output))
         return output
 
     def add_object_id_reference(self, ObjectID object_id):
@@ -937,15 +984,18 @@ cdef class CoreWorker:
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
-            self, const c_string &object_id_binary, const c_string
-            &owner_id_binary, const c_string &serialized_owner_address):
+            self, const c_string &object_id_binary, ObjectID outer_object_id,
+            const c_string &owner_id_binary,
+            const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CObjectID c_outer_object_id = outer_object_id.native()
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
+                c_outer_object_id,
                 c_owner_id,
                 c_owner_address)
 

@@ -206,7 +206,8 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         """
         module_name = target_class.__module__
         class_name = target_class.__name__
-        return cls(module_name, "__init__", class_name)
+        # Use id(targe_class) as function hash to solve actor name conflict.
+        return cls(module_name, "__init__", class_name, str(id(target_class)))
 
     @property
     def module_name(self):
