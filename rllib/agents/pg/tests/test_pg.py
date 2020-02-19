@@ -98,3 +98,9 @@ class TestPG(unittest.TestCase):
             expected_logp.detach().numpy() *
             train_batch[Postprocessing.ADVANTAGES].numpy())
         check(results.detach().numpy(), expected_loss, decimals=4)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

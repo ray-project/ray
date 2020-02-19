@@ -66,6 +66,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 
+# A2CTrainer
+py_test(
+    name = "test_a2c",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/a3c/tests/test_a2c.py"]
+)
+
 # PGTrainer
 py_test(
     name = "test_pg",

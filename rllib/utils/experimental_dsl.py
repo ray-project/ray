@@ -1,12 +1,15 @@
+from typing import List, Any
 import time
 
 import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import SampleBatch
 
 
-def ParallelRollouts(workers, mode="batch_sync") -> LocalIterator[SampleBatch]:
+def ParallelRollouts(workers: WorkerSet,
+                     mode="batch_sync") -> LocalIterator[SampleBatch]:
     rollouts = from_actors(workers.remote_workers())
     if mode == "batch_sync":
         return rollouts \
@@ -19,16 +22,26 @@ def ParallelRollouts(workers, mode="batch_sync") -> LocalIterator[SampleBatch]:
             "mode must be one of 'batch_sync', 'async', got '{}'".format(mode))
 
 
+def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
+                             config: dict):
+    output_op = train_op \
+        .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
+        .for_each(CollectMetrics(workers))
+    return output_op
+
+
 class ConcatBatches(object):
-    def __init__(self, min_batch_size):
+    def __init__(self, min_batch_size: int):
         self.min_batch_size = min_batch_size
         self.buffer = []
         self.count = 0
 
-    def __call__(self, batches):
-        for batch in batches:
-            self.buffer.append(batch)
-            self.count += batch.count
+    def __call__(self, batch: SampleBatch) -> List[SampleBatch]:
+        if not isinstance(batch, SampleBatch):
+            raise ValueError("Expected type SampleBatch, got {}: {}".format(
+                type(batch), batch))
+        self.buffer.append(batch)
+        self.count += batch.count
         if self.count >= self.min_batch_size:
             out = SampleBatch.concat_samples(self.buffer)
             self.buffer = []

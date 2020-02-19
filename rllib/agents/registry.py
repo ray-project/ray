@@ -126,7 +126,7 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
 
-    # Experimental.
+    # Experimental workflow-based impls.
     "A2C_wf": _import_a2c_workflow,
 }
 
