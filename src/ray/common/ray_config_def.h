@@ -44,6 +44,22 @@ RAY_CONFIG(bool, fair_queueing_enabled, true)
 /// enabled, objects in scope in the cluster will not be LRU evicted.
 RAY_CONFIG(bool, object_pinning_enabled, true)
 
+/// Whether to enable distributed reference counting for objects. When this is
+/// enabled, an object's ref count will include any references held by other
+/// processes, such as when an ObjectID is serialized and passed as an argument
+/// to another task. It will also include any references due to nesting, i.e.
+/// if the object ID is nested inside another object that is still in scope.
+/// When this is disabled, an object's ref count will include only local
+/// information:
+///  1. Local Python references to the ObjectID.
+///  2. Pending tasks submitted by the local process that depend on the object.
+/// If both this flag and object_pinning_enabled are turned on, then an object
+/// will not be LRU evicted until it is out of scope in ALL processes in the
+/// cluster and all objects that contain it are also out of scope. If this flag
+/// is off and object_pinning_enabled is turned on, then an object will not be
+/// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
+RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
