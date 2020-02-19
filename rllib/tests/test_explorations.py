@@ -1,4 +1,4 @@
-from contextlib import nullcontext
+import contextlib
 import numpy as np
 from tensorflow.python.eager.context import eager_mode
 import unittest
@@ -41,7 +41,7 @@ def test_explorations(run,
             if exploration == "Random":
                 config["exploration_config"] = {"type": "Random"}
 
-            with eager_mode() if fw == "eager" else nullcontext():
+            with eager_mode() if fw == "eager" else contextlib.nullcontext():
                 trainer = run(config=config, env=env)
 
                 # Make sure all actions drawn are the same, given same

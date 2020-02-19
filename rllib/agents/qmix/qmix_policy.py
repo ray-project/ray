@@ -117,7 +117,7 @@ class QMixLoss(nn.Module):
             # use the target network to estimate the Q-values of policy
             # network's selected actions
             target_max_qvals = torch.gather(target_mac_out, 3,
-                                         cur_max_actions).squeeze(3)
+                                            cur_max_actions).squeeze(3)
         else:
             target_max_qvals = target_mac_out.max(dim=3)[0]
 
@@ -271,7 +271,8 @@ class QMixTorchPolicy(Policy):
                     obs_batch, dtype=torch.float, device=self.device), [
                         torch.as_tensor(
                             np.array(s), dtype=torch.float, device=self.device)
-                        for s in state_batches])
+                        for s in state_batches
+                    ])
             avail = torch.as_tensor(
                 action_mask, dtype=torch.float, device=self.device)
             masked_q_values = q_values.clone()
@@ -348,8 +349,8 @@ class QMixTorchPolicy(Policy):
         next_action_mask = to_batches(next_action_mask, torch.float)
         if self.has_env_global_state:
             env_global_state = to_batches(env_global_state, torch.float)
-            next_env_global_state = to_batches(
-                next_env_global_state, torch.float)
+            next_env_global_state = to_batches(next_env_global_state,
+                                               torch.float)
 
         # TODO(ekl) this treats group termination as individual termination
         terminated = to_batches(dones, torch.float).unsqueeze(2).expand(
