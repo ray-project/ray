@@ -8,8 +8,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, override
 from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
@@ -85,6 +84,7 @@ class DynamicTFPolicy(TFPolicy):
                 previous action and reward in the model input
         """
         self.config = config
+        self.framework = "tf"
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
@@ -105,9 +105,11 @@ class DynamicTFPolicy(TFPolicy):
                 name="observation")
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
-                    action_space)
+                    action_space, "prev_action")
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
+
+        explore = tf.placeholder_with_default(False, (), name="is_exploring")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -157,16 +159,25 @@ class DynamicTFPolicy(TFPolicy):
         model_out, self._state_out = self.model(self._input_dict,
                                                 self._state_in, self._seq_lens)
 
+        # Create the Exploration object to use for this Policy.
+        self.exploration = self._create_exploration(action_space, config)
+        timestep = tf.placeholder(tf.int32, (), name="timestep")
+
         # Setup custom action sampler.
         if action_sampler_fn:
             action_sampler, action_logp = action_sampler_fn(
                 self, self.model, self._input_dict, obs_space, action_space,
-                config)
-        # Default action sampler.
+                explore, config, timestep)
+        # Create a default action sampler.
         else:
-            action_dist = self.dist_class(model_out, self.model)
-            action_sampler = action_dist.sample()
-            action_logp = action_dist.sampled_action_logp()
+            # Using an exporation setup.
+            action_sampler, action_logp = \
+                self.exploration.get_exploration_action(
+                    model_out,
+                    self.model,
+                    action_dist_class=self.dist_class,
+                    explore=explore,
+                    timestep=timestep)
 
         # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
@@ -192,7 +203,9 @@ class DynamicTFPolicy(TFPolicy):
             prev_reward_input=prev_rewards,
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
-            batch_divisibility_req=batch_divisibility_req)
+            batch_divisibility_req=batch_divisibility_req,
+            explore=explore,
+            timestep=timestep)
 
         # Phase 2 init.
         if before_loss_init is not None:

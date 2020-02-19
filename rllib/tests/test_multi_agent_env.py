@@ -339,6 +339,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                          list(range(25)) * 6)
 
     def testMultiAgentSampleSyncRemote(self):
+        # Allow to be run via Unittest.
+        ray.init(num_cpus=4, ignore_reinit_error=True)
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
@@ -356,6 +358,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 200)
 
     def testMultiAgentSampleAsyncRemote(self):
+        # Allow to be run via Unittest.
+        ray.init(num_cpus=4, ignore_reinit_error=True)
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
@@ -628,6 +632,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         self._testWithOptimizer(SyncSamplesOptimizer)
 
     def test_multi_agent_async_gradients_optimizer(self):
+        # Allow to be run via Unittest.
+        ray.init(num_cpus=4, ignore_reinit_error=True)
         self._testWithOptimizer(AsyncGradientsOptimizer)
 
     def test_multi_agent_replay_optimizer(self):
