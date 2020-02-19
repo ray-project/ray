@@ -96,3 +96,8 @@ class TestDQN(unittest.TestCase):
             for _ in range(300):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)
