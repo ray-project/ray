@@ -1283,7 +1283,7 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
 }
 
 // We submit a task and submit another task that depends on the return ID. The
-// submitted task returns an object ID, which will get borrowed by the second
+// first submitted task returns an object ID, which will get borrowed by the second
 // task. The second task returns the borrowed ID.
 //
 // @ray.remote
