@@ -1,4 +1,4 @@
-# Experimental workflow-based impl; run this with --run='A2C_wf'
+"""Experimental workflow-based impl; run this with --run='A2C_wf'"""
 
 import math
 
@@ -10,7 +10,7 @@ from ray.rllib.utils.experimental_dsl import (
 
 def training_workflow(workers, config):
 
-    rollouts = ParallelRollouts(workers, mode="batch_sync")
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["microbatch_size"]:
         num_microbatches = math.ceil(
@@ -26,7 +26,7 @@ def training_workflow(workers, config):
         train_op = rollouts \
             .combine(ConcatBatches(
                 min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(workers))
+            .for_each(TrainOneStep(workers)) \
 
     return StandardMetricsReporting(train_op, workers, config)
 

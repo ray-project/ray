@@ -1,3 +1,7 @@
+"""Experimental operators for RLlib's distributed training DSL.
+
+TODO(ekl): better documentation."""
+
 from typing import List, Any
 import time
 
@@ -9,9 +13,34 @@ from ray.rllib.policy.sample_batch import SampleBatch
 
 
 def ParallelRollouts(workers: WorkerSet,
-                     mode="batch_sync") -> LocalIterator[SampleBatch]:
+                     mode="bulk_sync") -> LocalIterator[SampleBatch]:
+    """Operator to collect experiences in parallel from rollout workers.
+
+    Arguments:
+        workers (WorkerSet): set of rollout workers to use.
+        mode (str): One of {'async', 'bulk_sync'}.
+            - In 'async' mode, batches are returned as soon as they are
+              computed by rollout workers with no order guarantees.
+            - In 'bulk_sync' mode, we collect one batch from each worker
+              and concatenate them together into a large batch to return.
+
+    Returns:
+        A local iterator over experiences collected in parallel.
+
+    Examples:
+        >>> rollouts = ParallelRollouts(workers, mode="async")
+        >>> batch = next(rollouts)
+        >>> print(batch.count)
+        50  # config.sample_batch_size
+
+        >>> rollouts = ParallelRollouts(workers, mode="bulk_sync")
+        >>> batch = next(rollouts)
+        >>> print(batch.count)
+        200  # config.sample_batch_size * config.num_workers
+    """
+
     rollouts = from_actors(workers.remote_workers())
-    if mode == "batch_sync":
+    if mode == "bulk_sync":
         return rollouts \
             .batch_across_shards() \
             .for_each(lambda batches: SampleBatch.concat_samples(batches))
@@ -19,18 +48,50 @@ def ParallelRollouts(workers: WorkerSet,
         return rollouts.gather_async()
     else:
         raise ValueError(
-            "mode must be one of 'batch_sync', 'async', got '{}'".format(mode))
+            "mode must be one of 'bulk_sync', 'async', got '{}'".format(mode))
 
 
 def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
                              config: dict):
+    """Operator to periodically collect and report metrics.
+
+    Arguments:
+        train_op (LocalIterator): Operator for executing training steps.
+            We ignore the output values.
+        workers (WorkerSet): Rollout workers to collect metrics from.
+        config (dict): Trainer configuration, used to determine the frequency
+            of stats reporting.
+
+    Returns:
+        A local iterator over training results.
+
+    Examples:
+        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
+        >>> metrics_op = StandardMetricsReporting(train_op)
+        >>> next(metrics_op)
+        {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
+    """
+
     output_op = train_op \
         .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
-        .for_each(CollectMetrics(workers))
+        .for_each(CollectMetrics(
+            workers, min_history=config["metrics_smoothing_episodes"],
+            timeout_seconds=config["collect_metrics_timeout"]))
     return output_op
 
 
-class ConcatBatches(object):
+class ConcatBatches:
+    """Callable used to merge batches into larger batches for training.
+
+    This should be used with the .combine() operator.
+
+    Examples:
+        >>> rollouts = ParallelRollouts(...)
+        >>> rollouts = rollouts.combine(ConcatBatches(min_batch_size=10000))
+        >>> print(next(rollouts).count)
+        10000
+    """
+
     def __init__(self, min_batch_size: int):
         self.min_batch_size = min_batch_size
         self.buffer = []
@@ -50,11 +111,22 @@ class ConcatBatches(object):
         return []
 
 
-class TrainOneStep(object):
-    def __init__(self, workers):
+class TrainOneStep:
+    """Callable that improves the policy and updates workers.
+
+    This should be used with the .for_each() operator.
+
+    Examples:
+        >>> rollouts = ParallelRollouts(...)
+        >>> train_op = rollouts.for_each(TrainOneStep(workers))
+        >>> print(next(train_op))  # This trains the policy on one batch.
+        {"learner_stats": {"policy_loss": ...}}
+    """
+
+    def __init__(self, workers: WorkerSet):
         self.workers = workers
 
-    def __call__(self, batch):
+    def __call__(self, batch: SampleBatch) -> List[dict]:
         info = self.workers.local_worker().learn_on_batch(batch)
         if self.workers.remote_workers():
             weights = ray.put(self.workers.local_worker().get_weights())
@@ -63,19 +135,33 @@ class TrainOneStep(object):
         return info
 
 
-class CollectMetrics(object):
-    def __init__(self, workers, min_history=100):
+class CollectMetrics:
+    """Callable that collects metrics from workers.
+
+    The metrics are smoothed over a given history window.
+
+    This should be used with the .for_each() operator. For a higher level
+    API, consider using StandardMetricsReporting instead.
+
+    Examples:
+        >>> output_op = train_op.for_each(CollectMetrics(workers))
+        >>> print(next(output_op))
+        {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
+    """
+
+    def __init__(self, workers, min_history=100, timeout_seconds=180):
         self.workers = workers
         self.episode_history = []
         self.to_be_collected = []
         self.min_history = min_history
+        self.timeout_seconds = timeout_seconds
 
     def __call__(self, info):
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             self.workers.remote_workers(),
             self.to_be_collected,
-            timeout_seconds=60)
+            timeout_seconds=self.timeout_seconds)
         orig_episodes = list(episodes)
         missing = self.min_history - len(episodes)
         if missing > 0:
@@ -88,7 +174,7 @@ class CollectMetrics(object):
         return res
 
 
-class OncePerTimeInterval(object):
+class OncePerTimeInterval:
     def __init__(self, delay):
         self.delay = delay
         self.last_called = 0
@@ -101,7 +187,7 @@ class OncePerTimeInterval(object):
         return False
 
 
-class ComputeGradients(object):
+class ComputeGradients:
     def __init__(self, workers):
         self.workers = workers
 
@@ -110,7 +196,7 @@ class ComputeGradients(object):
         return grad, info
 
 
-class ApplyGradients(object):
+class ApplyGradients:
     def __init__(self, workers):
         self.workers = workers
 
@@ -124,7 +210,7 @@ class ApplyGradients(object):
         return info
 
 
-class AverageGradients(object):
+class AverageGradients:
     def __call__(self, gradients):
         acc = None
         for grad, info in gradients:
