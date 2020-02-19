@@ -72,7 +72,7 @@ void ObjectStoreNotificationManager::NotificationWait() {
 void ObjectStoreNotificationManager::ProcessStoreLength(
     const boost::system::error_code &error) {
   notification_.resize(length_);
-  if (error) {
+  if (error && exit_on_error_) {
     // When shutting down a cluster, it's possible that the plasma store is killed
     // earlier than raylet, in this case we don't want raylet to crash, we instead
     // log an error message and exit.
@@ -80,12 +80,11 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
                    << boost_to_ray_status(error).ToString()
                    << ", most likely plasma store is down, raylet will exit";
     // Exit raylet process.
-    if (exit_on_error_) {
-      _exit(kRayletStoreErrorExitCode);
-    } else {
-      return;
-    }
+    _exit(kRayletStoreErrorExitCode);
+  } else {
+    return;
   }
+
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
       boost::bind(&ObjectStoreNotificationManager::ProcessStoreNotification, this,
@@ -94,14 +93,13 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
-  if (error) {
-    if (exit_on_error_) {
-      RAY_LOG(FATAL)
-          << "Problem communicating with the object store from raylet, check logs or "
-          << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
-    } else {
-      return;
-    }
+  if (error && exit_on_error_) {
+    RAY_LOG(FATAL)
+        << "Problem communicating with the object store from raylet, check logs or "
+        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+
+  } else {
+    return;
   }
 
   const auto &object_notification =
