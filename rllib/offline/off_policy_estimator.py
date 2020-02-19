@@ -62,8 +62,7 @@ class OffPolicyEstimator:
             obs_batch=batch[SampleBatch.CUR_OBS],
             state_batches=[batch[k] for k in state_keys],
             prev_action_batch=batch.data.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=batch.data.get(SampleBatch.PREV_REWARDS),
-            info_batch=batch.data.get(SampleBatch.INFOS))
+            prev_reward_batch=batch.data.get(SampleBatch.PREV_REWARDS))
         return log_likelihoods
 
     @DeveloperAPI
