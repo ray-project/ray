@@ -8,6 +8,7 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.streaming.jobgraph.JobGraph;
+import org.ray.streaming.jobgraph.Language;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
@@ -44,9 +45,13 @@ public class JobSchedulerImpl implements JobScheduler {
     }
 
     ExecutionGraph executionGraph = this.taskAssigner.assign(this.jobGraph);
-    RemoteCall.ExecutionGraph executionGraphPb =
-        new GraphPbBuilder().buildExecutionGraphPb(executionGraph);
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
+    boolean hasPythonNode = executionNodes.stream()
+        .allMatch(node -> node.getLanguage() == Language.PYTHON);
+    RemoteCall.ExecutionGraph executionGraphPb = null;
+    if (hasPythonNode) {
+      executionGraphPb = new GraphPbBuilder().buildExecutionGraphPb(executionGraph);
+    }
     List<RayObject<Object>> waits = new ArrayList<>();
     for (ExecutionNode executionNode : executionNodes) {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
