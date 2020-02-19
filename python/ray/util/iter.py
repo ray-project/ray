@@ -1,5 +1,7 @@
-from typing import TypeVar, Generic, Iterable, List, Callable, Any
+import collections
 import random
+import threading
+from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
 
@@ -337,7 +339,7 @@ class ParallelIterator(Generic[T]):
                     futures = [a.par_iter_next.remote() for a in active]
 
         name = "{}.batch_across_shards()".format(self)
-        return LocalIterator(base_iterator, name=name)
+        return LocalIterator(base_iterator, PipelineContext(), name=name)
 
     def gather_async(self) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
@@ -387,7 +389,7 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, name=name)
+        return LocalIterator(base_iterator, PipelineContext(), name=name)
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -450,7 +452,21 @@ class ParallelIterator(Generic[T]):
                     break
 
         name = self.name + ".shard[{}]".format(shard_index)
-        return LocalIterator(base_iterator, name=name)
+        return LocalIterator(base_iterator, PipelineContext(), name=name)
+
+
+class PipelineContext:
+    def __init__(self):
+        self.counters = collections.defaultdict(int)
+        self.info = {}
+
+    def save(self):
+        return {"counters": dict(self.counters), "info": self.info}
+
+    def restore(self, values):
+        self.counters.clear()
+        self.counters.update(values["counters"])
+        self.info = values["info"]
 
 
 class LocalIterator(Generic[T]):
@@ -463,8 +479,11 @@ class LocalIterator(Generic[T]):
     tasks and actors. However, it should be read from at most one process at
     a time."""
 
+    thread_local = threading.local()
+
     def __init__(self,
                  base_iterator: Callable[[], Iterable[T]],
+                 context: PipelineContext,
                  local_transforms: List[Callable[[Iterable], Any]] = None,
                  timeout: int = None,
                  name=None):
@@ -487,14 +506,31 @@ class LocalIterator(Generic[T]):
         self.base_iterator = base_iterator
         self.built_iterator = None
         self.local_transforms = local_transforms or []
+        self.context = context
         self.timeout = timeout
         self.name = name or "unknown"
+
+    @staticmethod
+    def get_context():
+        return LocalIterator.thread_local.ctx
 
     def _build_once(self):
         if self.built_iterator is None:
             it = iter(self.base_iterator(self.timeout))
             for fn in self.local_transforms:
                 it = fn(it)
+
+            def set_restore_context(it):
+                self.thread_local.ctx = self.context
+                try:
+                    for item in it:
+                        self.thread_local.ctx = None
+                        yield item
+                        self.thread_local.ctx = self.context
+                finally:
+                    self.thread_local.ctx = None
+
+            it = set_restore_context(it)
             self.built_iterator = it
 
     def __iter__(self):
@@ -521,6 +557,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
+            self.context,
             self.local_transforms + [apply_foreach],
             name=self.name + ".for_each()")
 
@@ -532,6 +569,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
+            self.context,
             self.local_transforms + [apply_filter],
             name=self.name + ".filter()")
 
@@ -551,6 +589,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
+            self.context,
             self.local_transforms + [apply_batch],
             name=self.name + ".batch({})".format(n))
 
@@ -565,6 +604,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
+            self.context,
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
 
@@ -602,6 +642,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
+            self.context,
             self.local_transforms + [apply_shuffle],
             name=self.name +
             ".shuffle(shuffle_buffer_size={}, seed={})".format(
@@ -645,9 +686,12 @@ class LocalIterator(Generic[T]):
                     type(other)))
 
         it1 = LocalIterator(
-            self.base_iterator, self.local_transforms, timeout=0)
+            self.base_iterator, self.context, self.local_transforms, timeout=0)
         it2 = LocalIterator(
-            other.base_iterator, other.local_transforms, timeout=0)
+            other.base_iterator,
+            self.context,
+            other.local_transforms,
+            timeout=0)
         active = [it1, it2]
 
         def build_union(timeout=None):
@@ -668,7 +712,9 @@ class LocalIterator(Generic[T]):
                     break
 
         return LocalIterator(
-            build_union, [], name="LocalUnion[{}, {}]".format(self, other))
+            build_union,
+            self.context, [],
+            name="LocalUnion[{}, {}]".format(self, other))
 
 
 class ParallelIteratorWorker(object):
@@ -713,7 +759,8 @@ class ParallelIteratorWorker(object):
 
     def par_iter_init(self, transforms):
         """Implements ParallelIterator worker init."""
-        it = LocalIterator(lambda timeout: self.item_generator)
+        it = LocalIterator(lambda timeout: self.item_generator,
+                           PipelineContext())
         for fn in transforms:
             it = fn(it)
             assert it is not None, fn

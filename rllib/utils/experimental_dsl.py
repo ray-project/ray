@@ -40,6 +40,8 @@ def ParallelRollouts(workers: WorkerSet,
         >>> batch = next(rollouts)
         >>> print(batch.count)
         200  # config.sample_batch_size * config.num_workers
+
+    Updates the "num_steps_sampled" counter in the local iterator context.
     """
 
     if not workers.remote_workers():
@@ -53,12 +55,18 @@ def ParallelRollouts(workers: WorkerSet,
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
 
+    def report_timesteps(batch):
+        ctx = LocalIterator.get_context()
+        ctx.counters["num_steps_sampled"] += batch.count
+        return batch
+
     if mode == "bulk_sync":
         return rollouts \
             .batch_across_shards() \
-            .for_each(lambda batches: SampleBatch.concat_samples(batches))
+            .for_each(lambda batches: SampleBatch.concat_samples(batches)) \
+            .for_each(report_timesteps)
     elif mode == "async":
-        return rollouts.gather_async()
+        return rollouts.gather_async().for_each(report_timesteps)
     else:
         raise ValueError(
             "mode must be one of 'bulk_sync', 'async', got '{}'".format(mode))
@@ -133,18 +141,23 @@ class TrainOneStep:
         >>> rollouts = ParallelRollouts(...)
         >>> train_op = rollouts.for_each(TrainOneStep(workers))
         >>> print(next(train_op))  # This trains the policy on one batch.
-        {"learner_stats": {"policy_loss": ...}}
+        None
+
+    Updates the "learner" info field in the local iterator context.
     """
 
     def __init__(self, workers: WorkerSet):
         self.workers = workers
 
     def __call__(self, batch: SampleBatch) -> List[dict]:
+        ctx = LocalIterator.get_context()
+        ctx.counters["num_steps_trained"] += batch.count
         info = self.workers.local_worker().learn_on_batch(batch)
         if self.workers.remote_workers():
             weights = ray.put(self.workers.local_worker().get_weights())
             for e in self.workers.remote_workers():
                 e.set_weights.remote(weights)
+        LocalIterator.get_context().info["learner"] = info
         return info
 
 
@@ -169,7 +182,8 @@ class CollectMetrics:
         self.min_history = min_history
         self.timeout_seconds = timeout_seconds
 
-    def __call__(self, info):
+    def __call__(self, _):
+        ctx = LocalIterator.get_context()
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             self.workers.remote_workers(),
@@ -183,7 +197,15 @@ class CollectMetrics:
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]
         res = summarize_episodes(episodes, orig_episodes)
-        res.update(info=info)
+        res.update(info=ctx.info)
+        res["info"].update({
+            "num_steps_sampled": ctx.counters["num_steps_sampled"],
+            "num_steps_trained": ctx.counters["num_steps_trained"],
+        })
+        res.update({
+            "num_healthy_workers": len(self.workers.remote_workers()),
+            "timesteps_total": ctx.counters["num_steps_sampled"],
+        })
         return res
 
 
@@ -222,7 +244,9 @@ class ComputeGradients:
     Examples:
         >>> grads_op = rollouts.for_each(ComputeGradients(workers))
         >>> print(next(grads_op))
-        {"var_0": ..., ...}, {"learner_stats": ...}  # grads, learner info
+        {"var_0": ..., ...}, 50  # grads, batch count
+
+    Updates the "learner" info field in the local iterator context.
     """
 
     def __init__(self, workers):
@@ -230,7 +254,8 @@ class ComputeGradients:
 
     def __call__(self, samples):
         grad, info = self.workers.local_worker().compute_gradients(samples)
-        return grad, info
+        LocalIterator.get_context().info["learner"] = info
+        return grad, samples.count
 
 
 class ApplyGradients:
@@ -241,20 +266,21 @@ class ApplyGradients:
     Examples:
         >>> apply_op = grads_op.for_each(ApplyGradients(workers))
         >>> print(next(apply_op))
-        {"learner_stats": ...}  # learner info
+        None
     """
 
     def __init__(self, workers):
         self.workers = workers
 
     def __call__(self, item):
-        gradients, info = item
+        gradients, count = item
+        ctx.counters["num_steps_trained"] += batch.count
         self.workers.local_worker().apply_gradients(gradients)
         if self.workers.remote_workers():
             weights = ray.put(self.workers.local_worker().get_weights())
             for e in self.workers.remote_workers():
                 e.set_weights.remote(weights)
-        return info
+        return None
 
 
 class AverageGradients:
@@ -267,14 +293,16 @@ class AverageGradients:
         >>> batched_grads = grads_op.batch(32)
         >>> avg_grads = batched_grads.for_each(AverageGradients())
         >>> print(next(avg_grads))
-        {"var_0": ..., ...}, {"learner_stats": ...}  # avg grads, last info
+        {"var_0": ..., ...}, 1600  # averaged grads, summed batch count
     """
 
     def __call__(self, gradients):
         acc = None
-        for grad, info in gradients:
+        sum_count = 0
+        for grad, count in gradients:
             if acc is None:
                 acc = grad
             else:
                 acc = [a + b for a, b in zip(acc, grad)]
-        return acc, info
+            sum_count += count
+        return acc, sum_count
