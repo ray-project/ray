@@ -66,7 +66,9 @@ class TFPolicy(Policy):
                  seq_lens=None,
                  max_seq_len=20,
                  batch_divisibility_req=1,
-                 update_ops=None):
+                 update_ops=None,
+                 explore=None,
+                 timestep=None):
         """Initialize the policy.
 
         Arguments:
@@ -102,7 +104,11 @@ class TFPolicy(Policy):
             update_ops (list): override the batchnorm update ops to run when
                 applying gradients. Otherwise we run all update ops found in
                 the current variable scope.
+            explore (Tensor): Placeholder for `explore` parameter into
+                call to Exploration.get_exploration_action.
+            timestep (Tensor): Placeholder for the global sampling timestep.
         """
+        self.framework = "tf"
         super().__init__(observation_space, action_space, config)
         self.model = model
         self._sess = sess
@@ -111,8 +117,8 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._action = action_sampler
         self._is_training = self._get_is_training_placeholder()
-        self._is_exploring = tf.placeholder_with_default(
-            True, (), name="is_exploring")
+        self._is_exploring = explore if explore is not None else \
+            tf.placeholder_with_default(True, (), name="is_exploring")
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
                              if self._action_logp is not None else None)
@@ -124,7 +130,9 @@ class TFPolicy(Policy):
         self._update_ops = update_ops
         self._stats_fetches = {}
         self._loss_input_dict = None
-        self._timestep = tf.placeholder(tf.int32, (), name="timestep")
+        self.exploration_info = self.exploration.get_info()
+        self._timestep = timestep if timestep is not None else \
+            tf.placeholder(tf.int32, (), name="timestep")
 
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
@@ -143,17 +151,6 @@ class TFPolicy(Policy):
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
-
-        # Apply the post-forward-pass exploration if applicable.
-        # And store the `get_state` op.
-        self._exploration_action = None
-        if self.exploration:
-            self._exploration_action = self.exploration.get_exploration_action(
-                self._action,
-                self.model,
-                action_dist=self.dist_class,
-                explore=self._is_exploring,
-                timestep=self._timestep)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -241,9 +238,10 @@ class TFPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        explore=True,
+                        explore=None,
                         timestep=None,
                         **kwargs):
+        explore = explore if explore is not None else self.config["explore"]
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -255,8 +253,7 @@ class TFPolicy(Policy):
             timestep=timestep
             if timestep is not None else self.global_timestep)
         # Execute session run to get action (and other fetches).
-        ret = builder.get(fetches)
-        return ret[:3]
+        return builder.get(fetches)
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
@@ -282,7 +279,7 @@ class TFPolicy(Policy):
     @override(Policy)
     def get_exploration_info(self):
         if isinstance(self.exploration, Exploration):
-            return self._sess.run(self.exploration.get_info())
+            return self._sess.run(self.exploration_info)
 
     @override(Policy)
     def get_weights(self):
@@ -464,8 +461,9 @@ class TFPolicy(Policy):
                                prev_action_batch=None,
                                prev_reward_batch=None,
                                episodes=None,
-                               explore=True,
+                               explore=None,
                                timestep=None):
+        explore = explore if explore is not None else self.config["explore"]
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
@@ -487,16 +485,8 @@ class TFPolicy(Policy):
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        # Get an exploration action.
-        if explore and self.exploration:
-            fetches = builder.add_fetches(
-                [self._exploration_action] + self._state_outputs +
-                [self.extra_compute_action_fetches()])
-        # Do not explore.
-        else:
-            fetches = builder.add_fetches(
-                [self._action] + self._state_outputs +
-                [self.extra_compute_action_fetches()])
+        fetches = builder.add_fetches([self._action] + self._state_outputs +
+                                      [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):

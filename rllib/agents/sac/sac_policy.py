@@ -87,7 +87,7 @@ def postprocess_trajectory(policy,
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
-                        config):
+                        explore, config, timestep):
     model_out, _ = model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
@@ -116,13 +116,17 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
         "normalize_actions"] else unsquash_actions(
             squashed_deterministic_actions)
 
-    actions = tf.cond(policy.stochastic, lambda: stochastic_actions,
-                      lambda: deterministic_actions)
+    actions = tf.cond(
+        tf.constant(explore) if isinstance(explore, bool) else explore,
+        true_fn=lambda: stochastic_actions,
+        false_fn=lambda: deterministic_actions)
+    logp = tf.cond(
+        tf.constant(explore) if isinstance(explore, bool) else explore,
+        true_fn=lambda: log_pis,
+        false_fn=lambda: tf.zeros_like(log_pis))
 
-    action_probabilities = tf.cond(policy.stochastic, lambda: log_pis,
-                                   lambda: tf.zeros_like(log_pis))
-    policy.output_actions = actions
-    return actions, action_probabilities
+    policy.output_actions, policy.action_logp = actions, logp
+    return policy.output_actions, policy.action_logp
 
 
 def actor_critic_loss(policy, model, _, train_batch):
@@ -317,19 +321,6 @@ def stats(policy, train_batch):
     }
 
 
-class ExplorationStateMixin:
-    def __init__(self, obs_space, action_space, config):
-        self.stochastic = tf.get_variable(
-            initializer=tf.constant_initializer(config["exploration_enabled"]),
-            name="stochastic",
-            shape=(),
-            trainable=False,
-            dtype=tf.bool)
-
-    def set_epsilon(self, epsilon):
-        pass
-
-
 class ActorCriticOptimizerMixin:
     def __init__(self, config):
         # create global step for counting the number of update operations
@@ -401,7 +392,6 @@ class TargetNetworkMixin:
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):
-    ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
     ActorCriticOptimizerMixin.__init__(policy, config)
 
 
@@ -425,8 +415,7 @@ SACTFPolicy = build_tf_policy(
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[
-        TargetNetworkMixin, ExplorationStateMixin, ActorCriticOptimizerMixin,
-        ComputeTDErrorMixin
+        TargetNetworkMixin, ActorCriticOptimizerMixin, ComputeTDErrorMixin
     ],
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,

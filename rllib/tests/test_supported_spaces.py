@@ -1,18 +1,17 @@
-import unittest
-import traceback
-
 import gym
 from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
 import sys
+import unittest
+import traceback
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
-from ray.rllib.tests.test_multi_agent_env import (MultiCartpole,
-                                                  MultiMountainCar)
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole, \
+    MultiMountainCar
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
@@ -73,9 +72,11 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
     covered_a = set()
     covered_o = set()
     config["log_level"] = "ERROR"
+    first_error = None
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
-            print("=== Testing", alg, action_space, obs_space, "===")
+            print("=== Testing {} A={} S={} ===".format(
+                alg, action_space, obs_space))
             stub_env = make_stub_env(action_space, obs_space, check_bounds)
             register_env("stub_env", lambda c: stub_env())
             stat = "ok"
@@ -85,7 +86,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                     stat = "skip"  # speed up tests by avoiding full grid
                 else:
                     a = get_agent_class(alg)(config=config, env="stub_env")
-                    if alg not in ["DDPG", "ES", "ARS"]:
+                    if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                         if o_name in ["atari", "image"]:
                             assert isinstance(a.get_policy().model,
                                               VisionNetV2)
@@ -100,6 +101,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                 stat = "ERROR"
                 print(e)
                 print(traceback.format_exc())
+                first_error = first_error if first_error is not None else e
             finally:
                 if a:
                     try:
@@ -110,6 +112,10 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
             print(stat)
             print()
             stats[name or alg, a_name, o_name] = stat
+
+    # If anything happened, raise error.
+    if first_error is not None:
+        raise first_error
 
 
 def check_support_multiagent(alg, config):
@@ -127,30 +133,15 @@ def check_support_multiagent(alg, config):
 
 
 class ModelSupportedSpaces(unittest.TestCase):
+    stats = {}
+
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, ignore_reinit_error=True)
 
     def tearDown(self):
         ray.shutdown()
 
-    def testAll(self):
-        stats = {}
-        check_support("IMPALA", {"num_gpus": 0}, stats)
-        check_support("APPO", {"num_gpus": 0, "vtrace": False}, stats)
-        check_support(
-            "APPO", {
-                "num_gpus": 0,
-                "vtrace": True
-            }, stats, name="APPO-vt")
-        check_support(
-            "DDPG", {
-                "exploration_ou_noise_scale": 100.0,
-                "timesteps_per_iteration": 1,
-                "use_state_preprocessor": True,
-            },
-            stats,
-            check_bounds=True)
-        check_support("DQN", {"timesteps_per_iteration": 1}, stats)
+    def test_a3c(self):
         check_support(
             "A3C", {
                 "num_workers": 1,
@@ -158,8 +149,54 @@ class ModelSupportedSpaces(unittest.TestCase):
                     "grads_per_step": 1
                 }
             },
-            stats,
+            self.stats,
             check_bounds=True)
+
+    def test_appo(self):
+        check_support("APPO", {"num_gpus": 0, "vtrace": False}, self.stats)
+        check_support(
+            "APPO", {
+                "num_gpus": 0,
+                "vtrace": True
+            },
+            self.stats,
+            name="APPO-vt")
+
+    def test_ars(self):
+        check_support(
+            "ARS", {
+                "num_workers": 1,
+                "noise_size": 10000000,
+                "num_rollouts": 1,
+                "rollouts_used": 1
+            }, self.stats)
+
+    def test_ddpg(self):
+        check_support(
+            "DDPG", {
+                "exploration_ou_noise_scale": 100.0,
+                "timesteps_per_iteration": 1,
+                "use_state_preprocessor": True,
+            },
+            self.stats,
+            check_bounds=True)
+
+    def test_dqn(self):
+        check_support("DQN", {"timesteps_per_iteration": 1}, self.stats)
+
+    def test_es(self):
+        check_support(
+            "ES", {
+                "num_workers": 1,
+                "noise_size": 10000000,
+                "episodes_per_batch": 1,
+                "train_batch_size": 1
+            }, self.stats)
+
+    def test_impala(self):
+        check_support("IMPALA", {"num_gpus": 0}, self.stats)
+
+    def test_ppo(self):
         check_support(
             "PPO", {
                 "num_workers": 1,
@@ -168,38 +205,40 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "sample_batch_size": 10,
                 "sgd_minibatch_size": 1,
             },
-            stats,
+            self.stats,
             check_bounds=True)
-        check_support(
-            "ES", {
-                "num_workers": 1,
-                "noise_size": 10000000,
-                "episodes_per_batch": 1,
-                "train_batch_size": 1
-            }, stats)
-        check_support(
-            "ARS", {
-                "num_workers": 1,
-                "noise_size": 10000000,
-                "num_rollouts": 1,
-                "rollouts_used": 1
-            }, stats)
+
+    def test_pg(self):
         check_support(
             "PG", {
                 "num_workers": 1,
                 "optimizer": {}
             },
-            stats,
+            self.stats,
             check_bounds=True)
-        num_unexpected_errors = 0
-        for (alg, a_name, o_name), stat in sorted(stats.items()):
-            if stat not in ["ok", "unsupported", "skip"]:
-                num_unexpected_errors += 1
-            print(alg, "action_space", a_name, "obs_space", o_name, "result",
-                  stat)
-        self.assertEqual(num_unexpected_errors, 0)
 
-    def testMultiAgent(self):
+    def test_sac(self):
+        check_support("SAC", {}, self.stats, check_bounds=True)
+
+    # def testAll(self):
+
+    #    num_unexpected_errors = 0
+    #    for (alg, a_name, o_name), stat in sorted(self.stats.items()):
+    #        if stat not in ["ok", "unsupported", "skip"]:
+    #            num_unexpected_errors += 1
+    #        print(alg, "action_space", a_name, "obs_space", o_name, "result",
+    #              stat)
+    #    self.assertEqual(num_unexpected_errors, 0)
+
+    def test_a3c_multiagent(self):
+        check_support_multiagent("A3C", {
+            "num_workers": 1,
+            "optimizer": {
+                "grads_per_step": 1
+            }
+        })
+
+    def test_apex_multiagent(self):
         check_support_multiagent(
             "APEX", {
                 "num_workers": 2,
@@ -209,6 +248,8 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "learning_starts": 1000,
                 "target_network_update_freq": 100,
             })
+
+    def test_apex_ddpg_multiagent(self):
         check_support_multiagent(
             "APEX_DDPG", {
                 "num_workers": 2,
@@ -219,14 +260,23 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,
             })
-        check_support_multiagent("IMPALA", {"num_gpus": 0})
-        check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
-        check_support_multiagent("A3C", {
-            "num_workers": 1,
-            "optimizer": {
-                "grads_per_step": 1
-            }
+
+    def test_ddpg_multiagent(self):
+        check_support_multiagent("DDPG", {
+            "timesteps_per_iteration": 1,
+            "use_state_preprocessor": True,
         })
+
+    def test_dqn_multiagent(self):
+        check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
+
+    def test_impala_multiagent(self):
+        check_support_multiagent("IMPALA", {"num_gpus": 0})
+
+    def test_pg_multiagent(self):
+        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
+
+    def test_ppo_multiagent(self):
         check_support_multiagent(
             "PPO", {
                 "num_workers": 1,
@@ -235,11 +285,6 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "sample_batch_size": 10,
                 "sgd_minibatch_size": 1,
             })
-        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
-        check_support_multiagent("DDPG", {
-            "timesteps_per_iteration": 1,
-            "use_state_preprocessor": True,
-        })
 
 
 if __name__ == "__main__":
