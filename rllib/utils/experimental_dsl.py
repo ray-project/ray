@@ -1,6 +1,6 @@
 """Experimental operators for RLlib's distributed training DSL.
 
-TODO(ekl): better documentation."""
+TODO(ekl): describe the concepts."""
 
 from typing import List, Any
 import time
@@ -175,6 +175,20 @@ class CollectMetrics:
 
 
 class OncePerTimeInterval:
+    """Callable that returns True once per given interval.
+
+    This should be used with the .filter() operator to throttle / rate-limit
+    metrics reporting. For a higher-level API, consider using
+    StandardMetricsReporting instead.
+
+    Examples:
+        >>> throttled_op = train_op.filter(OncePerTimeInterval(5))
+        >>> start = time.time()
+        >>> next(throttled_op)
+        >>> print(time.time() - start)
+        5.00001  # will be greater than 5 seconds
+    """
+
     def __init__(self, delay):
         self.delay = delay
         self.last_called = 0
@@ -188,6 +202,16 @@ class OncePerTimeInterval:
 
 
 class ComputeGradients:
+    """Callable that computes gradients with respect to the policy loss.
+
+    This should be used with the .for_each() operator.
+
+    Examples:
+        >>> grads_op = rollouts.for_each(ComputeGradients(workers))
+        >>> print(next(grads_op))
+        {"var_0": ..., ...}, {"learner_stats": ...}  # grads, learner info
+    """
+
     def __init__(self, workers):
         self.workers = workers
 
@@ -197,6 +221,16 @@ class ComputeGradients:
 
 
 class ApplyGradients:
+    """Callable that applies gradients and updates workers.
+
+    This should be used with the .for_each() operator.
+
+    Examples:
+        >>> apply_op = grads_op.for_each(ApplyGradients(workers))
+        >>> print(next(apply_op))
+        {"learner_stats": ...}  # learner info
+    """
+
     def __init__(self, workers):
         self.workers = workers
 
@@ -211,6 +245,18 @@ class ApplyGradients:
 
 
 class AverageGradients:
+    """Callable that averages the gradients in a batch.
+
+    This should be used with the .for_each() operator after a set of gradients
+    have been batched with .batch().
+
+    Examples:
+        >>> batched_grads = grads_op.batch(32)
+        >>> avg_grads = batched_grads.for_each(AverageGradients())
+        >>> print(next(avg_grads))
+        {"var_0": ..., ...}, {"learner_stats": ...}  # avg grads, last info
+    """
+
     def __call__(self, gradients):
         acc = None
         for grad, info in gradients:
