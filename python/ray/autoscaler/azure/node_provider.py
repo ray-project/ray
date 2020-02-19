@@ -8,7 +8,7 @@ from azure.mgmt.network import NetworkManagementClient
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
-INSTANCE_NAME_MAX_LEN = 16
+INSTANCE_NAME_MAX_LEN = 48 # TODO: check azure???
 INSTANCE_NAME_UUID_LEN = 4
 
 logger = logging.getLogger(__name__)
@@ -88,8 +88,9 @@ class AzureNodeProvider(NodeProvider):
         public_ip = self.network_client.public_ip_addresses.get(
             resource_group_name=resource_group,
             public_ip_address_name=metadata["public_ip_name"])
-        metadata["external_ip"] = ip_config.private_ip_address
-        metadata["internal_ip"] = public_ip.ip_address
+        metadata["external_ip"] = public_ip.ip_address
+        metadata["internal_ip"] = ip_config.private_ip_address
+
         return metadata
 
     @synchronized
@@ -108,7 +109,8 @@ class AzureNodeProvider(NodeProvider):
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [
             k for k, v in nodes.items()
-            if not v["status"].startswith("deallocat")
+            # TODO: gramhagen review they "status" in v
+            if "status" in v and not v["status"].startswith("deallocat")
         ]
 
     @synchronized
@@ -158,7 +160,12 @@ class AzureNodeProvider(NodeProvider):
         for _ in range(count):
             unique_id = uuid4().hex[:INSTANCE_NAME_UUID_LEN]
             vm_name = "{name}-{id}".format(name=name_tag, id=unique_id)
-            assert len(vm_name) <= INSTANCE_NAME_MAX_LEN
+
+            try:
+                assert len(vm_name) <= INSTANCE_NAME_MAX_LEN
+            except AssertionError as e:
+                e.args += ('name', vm_name)
+                raise
 
             # get public ip address
             public_ip_addess_params = {
