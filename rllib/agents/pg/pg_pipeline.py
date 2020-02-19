@@ -6,8 +6,7 @@ from ray.rllib.utils.experimental_dsl import (
 
 
 def training_pipeline(workers, config):
-    # Operator that collects experiences in parallel from multiple
-    # RolloutWorker actors.
+    # Collects experiences in parallel from multiple RolloutWorker actors.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     # Combine experiences batches until we hit `train_batch_size` in size.

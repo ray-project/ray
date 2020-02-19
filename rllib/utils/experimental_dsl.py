@@ -1,4 +1,4 @@
-"""Experimental operators for RLlib's distributed training DSL.
+"""Experimental operators for defining distributed training pipelines.
 
 TODO(ekl): describe the concepts."""
 
