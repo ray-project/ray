@@ -65,7 +65,7 @@ class EpsilonGreedy(Exploration):
     def get_exploration_action(self,
                                model_output,
                                model,
-                               action_dist_class=None,
+                               action_dist_class,
                                explore=True,
                                timestep=None):
 
