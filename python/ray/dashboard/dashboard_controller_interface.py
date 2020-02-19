@@ -46,7 +46,7 @@ class BaseDashboardController(ABC):
     def start_collecting_metrics(self):
         """Start threads/processes/actors to collect metrics
 
-        NOTE: This interface should be called before using other
-                interface.
+        NOTE: This interface should be called only once before using
+            other api calls.
         """
         raise NotImplementedError("Please implement this method.")

@@ -14,6 +14,9 @@ NODE_INFO_CHANNEL = "NODE_INFO_CHANNEL"
 RAY_INFO_CHANNEL = "RAY_INFO_CHANNEL"
 
 
+logger = logging.getLogger(__file__)
+
+
 class IngestServer(dashboard_pb2_grpc.DashboardServiceServicer):
     """Ingest Server that ingests User Dashboard metrics."""
 
@@ -74,6 +77,6 @@ if __name__ == "__main__":
     dashboard_pb2_grpc.add_DashboardServiceServicer_to_server(
         IngestServer(redis_host, redis_port), server)
     server.add_insecure_port("{}:{}".format(args.host, args.port))
-    print("Server listening on port {}".format(args.port))
+    logger.info("Server listening on port {}".format(args.port))
     server.start()
     server.wait_for_termination()
