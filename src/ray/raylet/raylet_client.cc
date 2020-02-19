@@ -376,4 +376,12 @@ Status raylet::RayletClient::PinObjectIDs(const rpc::Address &caller_address,
   return grpc_client_->PinObjectIDs(request, nullptr);
 }
 
+Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id, int64_t port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  RAY_LOG(DEBUG) << "Raylet Client is subscribing to: " << object_id.Binary() << "\n";
+  auto message = protocol::CreateSubscribePlasma(fbb, to_flatbuf(fbb, object_id), port);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubscribePlasma, &fbb);
+}
+
 }  // namespace ray

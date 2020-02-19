@@ -690,6 +690,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
+
+  std::mutex plasma_object_lock_;
+  // TODO(ilr): Make this Vector into a hash set?  << Calling Wait MANY times...
+  absl::flat_hash_map<ObjectID, std::vector<int64_t>> async_plasma_objects_;
+  //   absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<Worker>>>
+  //       async_plasma_objects_;
 };
 
 }  // namespace raylet

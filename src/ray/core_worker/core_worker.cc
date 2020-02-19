@@ -234,7 +234,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
-  plasma_notifier_.reset(new ObjectStoreNotificationManager(io_service_, store_socket));
 }
 
 CoreWorker::~CoreWorker() {
@@ -1239,12 +1238,26 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
-  plasma_notifier_->SubscribeObjAdded(
-      [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
-        subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
-                           info.metadata_size);
-      });
+void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback) {
+  plasma_done_callback_ = subscribe_callback;
+}
+
+void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Core worker is subscribing to: " << object_id.Binary() << "\n";
+  RAY_CHECK_OK(
+      local_raylet_client_->SubscribeToPlasma(object_id, core_worker_server_.GetPort()));
+}
+
+void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+                                         rpc::PlasmaObjectReadyReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Core worker got notification from: " << request.object_id() << "\n";
+  if (!this->plasma_done_callback_) {
+    RAY_LOG(INFO) << "Async Init was not called before async callback";
+    return;
+  }
+  plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
+                        request.metadata_size());
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {

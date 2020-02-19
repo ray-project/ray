@@ -150,6 +150,15 @@ message GetCoreWorkerStatsReply {
   CoreWorkerStats core_worker_stats = 1;
 }
 
+message PlasmaObjectReadyRequest {
+  bytes object_id = 1;
+  int64 data_size = 2;
+  int64 metadata_size = 3;
+}
+
+ message PlasmaObjectReadyReply {
+ }
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -168,4 +177,6 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
+  // Plasma object ready.
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }

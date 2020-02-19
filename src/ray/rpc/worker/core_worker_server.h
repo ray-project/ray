@@ -21,7 +21,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, 9999)               \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction, 9999)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 9999)                     \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)
+  RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)             \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady, 9999)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignTask)                     \
@@ -30,7 +31,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler {

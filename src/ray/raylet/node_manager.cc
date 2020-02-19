@@ -134,6 +134,73 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.Run();
+
+  // This just runs by default... Maybe should require some activiation in async_init()?
+
+  // ObjectID object_id;
+  // std::vector<std::shared_ptr<Worker>> objs =
+  // objs(this->async_plasma_objects_.extract(object_id));
+
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
+      [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        RAY_LOG(DEBUG) << "NODE MANAGER...RAYLET...\n\n";
+        ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
+        std::vector<int64_t> ports = std::vector<int64_t>();
+        {
+          std::lock_guard<std::mutex> guard(plasma_object_lock_);
+          auto res = this->async_plasma_objects_.extract(object_id);
+          if (!res.empty()) {
+            ports.swap(res.mapped());
+          }
+        }
+        rpc::PlasmaObjectReadyRequest request;
+        request.set_object_id(object_id.Binary());
+        request.set_metadata_size(object_info.metadata_size);
+        request.set_data_size(object_info.data_size);
+        for (int port : ports) {
+          auto x = std::unique_ptr<rpc::CoreWorkerClient>(
+              new rpc::CoreWorkerClient("127.0.0.1", port, this->client_call_manager_));
+          RAY_CHECK_OK(x->PlasmaObjectReady(
+              request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
+                if (!status.ok()) {
+                  RAY_LOG(DEBUG)
+                      << "Problem with telling worker that plasma object is ready"
+                      << status.ToString();
+                }
+              }));
+        }
+        // rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_);
+
+        // ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
+        // std::vector<std::shared_ptr<Worker>> objs =
+        //     std::vector<std::shared_ptr<Worker>>();
+        // {
+        //   std::lock_guard<std::mutex> guard(plasma_object_lock_);
+        //   auto res = this->async_plasma_objects_.extract(object_id);
+        //   if (!res.empty()) {
+        //     objs.swap(res.mapped());
+        //   }
+        //   // objs.swap(this->async_plasma_objects_.extract(object_id));
+        //   // objs.push_back(this->async_plasma_objects_.extract(object_id));
+        //   // objs();
+        //   // objs.insert(this->async_plasma_objects_.extract(object_id));
+        //   // objs.emplace_back(this->async_plasma_objects_.extract(object_id));
+        // }
+        // rpc::PlasmaObjectReadyRequest request;
+        // request.set_object_id(object_id.Binary());
+        // request.set_metadata_size(object_info.metadata_size);
+        // request.set_data_size(object_info.data_size);
+        // for (auto worker : objs) {
+        //   RAY_CHECK_OK(worker->rpc_client()->PlasmaObjectReady(
+        //       request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
+        //         if (!status.ok()) {
+        //           RAY_LOG(DEBUG)
+        //               << "Problem with telling worker that plasma object is ready"
+        //               << status.ToString();
+        //         }
+        //       }));
+        // }
+      }));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -954,6 +1021,28 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
+  } break;
+  case protocol::MessageType::SubscribePlasma: {
+    // std::shared_ptr<Worker> associated_worker =
+    // worker_pool_.GetRegisteredWorker(client); if (associated_worker == nullptr) {
+    //   RAY_LOG(DEBUG) << "NULL WORKER";
+    // }
+    // RAY_LOG(DEBUG) << "Reached Subscribe Plasma with associated worker: "
+    //                << associated_worker->Port();
+    auto message = flatbuffers::GetRoot<protocol::SubscribePlasma>(message_data);
+    ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
+    {
+      std::lock_guard<std::mutex> guard(plasma_object_lock_);
+      if (!async_plasma_objects_.contains(id)) {
+        // async_plasma_objects_.emplace(id, std::vector<std::shared_ptr<Worker>>());
+        async_plasma_objects_.emplace(id, std::vector<int64_t>());
+      }
+      // async_plasma_objects_[id].push_back(associated_worker);
+      async_plasma_objects_[id].push_back(message->port());
+    }
+    RAY_LOG(DEBUG) << "There are " << async_plasma_objects_.size()
+                   << " Objects in the waiting structure";
+    // rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_);
   } break;
 
   default:

@@ -197,4 +197,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CClientID &client_Id)
 
-        void SubscribeToAsyncPlasma(plasma_callback_function callback)
+        void SetPlasmaAddedCallback(plasma_callback_function callback)
+
+        void SubscribeToPlasmaAdd(const CObjectID &object_id)
