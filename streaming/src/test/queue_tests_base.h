@@ -161,8 +161,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
                         queue_ids, rescale_queue_ids, suite_name, test_name, param);
 
     std::vector<TaskArg> args;
-    args.emplace_back(
-        TaskArg::PassByValue(std::make_shared<RayObject>(msg.ToBytes(), nullptr, true)));
+    args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(
+        msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, true, resources};
     std::vector<ObjectID> return_ids;
@@ -176,8 +176,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<TaskArg> args;
-    args.emplace_back(
-        TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, true, resources};
     std::vector<ObjectID> return_ids;
@@ -191,8 +191,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<TaskArg> args;
-    args.emplace_back(
-        TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{1, true, resources};
     std::vector<ObjectID> return_ids;
@@ -260,7 +260,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "actor creation task", "", "", "")};
     std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     ActorCreationOptions actor_options{
         max_reconstructions,   is_direct_call,
