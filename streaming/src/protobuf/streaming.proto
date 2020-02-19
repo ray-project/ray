@@ -15,7 +15,8 @@ enum NodeType {
   SOURCE = 1;
   // Transform one or more DataStreams into a new DataStream.
   TRANSFORM = 2;
-  // Sinks consume DataStreams and forward them to files, sockets, external systems, or print them.
+  // Sinks consume DataStreams and forward them to files, sockets, external
+  // systems, or print them.
   SINK = 3;
 }
 

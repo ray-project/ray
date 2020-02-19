@@ -7,36 +7,36 @@ import "streaming/src/protobuf/streaming.proto";
 option java_package = "org.ray.streaming.runtime.generated";
 
 message ExecutionGraph {
-    message ExecutionNode {
-        int32 node_id = 1;
-        int32 parallelism = 2;
-        NodeType node_type = 3;
-        Language language = 4;
-        bytes function = 5;
-        repeated ExecutionTask execution_tasks = 6;
-        repeated ExecutionEdge input_edges = 7;
-        repeated ExecutionEdge output_edges = 8;
-    }
+  message ExecutionNode {
+    int32 node_id = 1;
+    int32 parallelism = 2;
+    NodeType node_type = 3;
+    Language language = 4;
+    bytes function = 5;
+    repeated ExecutionTask execution_tasks = 6;
+    repeated ExecutionEdge input_edges = 7;
+    repeated ExecutionEdge output_edges = 8;
+  }
 
-    message ExecutionEdge {
-        int32 src_node_id = 1;
-        int32 target_node_id = 2;
-        bytes partition = 3;
-    }
+  message ExecutionEdge {
+    int32 src_node_id = 1;
+    int32 target_node_id = 2;
+    bytes partition = 3;
+  }
 
-    message ExecutionTask {
-        int32 task_id = 1;
-        int32 task_index = 2;
-        bytes worker_actor = 3;
-    }
+  message ExecutionTask {
+    int32 task_id = 1;
+    int32 task_index = 2;
+    bytes worker_actor = 3;
+  }
 
-    uint64 build_time = 1;
-    repeated ExecutionNode execution_nodes = 2;
+  uint64 build_time = 1;
+  repeated ExecutionNode execution_nodes = 2;
 }
 
 message WorkerContext {
-    string job_name = 1;
-    int32 task_id = 2;
-    map<string, string> conf = 3;
-    ExecutionGraph graph = 4;
+  string job_name = 1;
+  int32 task_id = 2;
+  map<string, string> conf = 3;
+  ExecutionGraph graph = 4;
 }
