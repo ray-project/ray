@@ -1366,7 +1366,7 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
 }
 
 // We submit a task and submit another task that depends on the return ID. The
-// submitted task returns an object ID, which will get borrowed by the second
+// first submitted task returns an object ID, which will get borrowed by the second
 // task. The second task returns the borrowed ID. The driver gets the value of
 // the second task and now has a reference to the inner object ID.
 //
