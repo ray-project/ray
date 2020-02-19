@@ -147,9 +147,9 @@ def kl_and_loss_stats(policy, train_batch):
     count = 0
     for obj in gc.get_objects():
         try:
-            if torch.is_tensor(obj) or (
-                    hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                print(type(obj), obj.size())
+            if torch.is_tensor(obj) or (hasattr(obj, 'data')
+                                        and torch.is_tensor(obj.data)):
+                #print(type(obj), obj.size())
                 count += 1
         except:
             pass
@@ -157,15 +157,15 @@ def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
+        "total_loss": policy.loss_obj.loss.item(), #cpu().detach().numpy(),
+        "policy_loss": policy.loss_obj.mean_policy_loss.item(),  # .cpu().detach().numpy(),
+        "vf_loss": policy.loss_obj.mean_vf_loss.item(),  # .cpu().detach().numpy(),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
-            framework="torch").cpu().detach().numpy(),
-        "kl": policy.loss_obj.mean_kl.cpu().detach().numpy(),
-        "entropy": policy.loss_obj.mean_entropy.cpu().detach().numpy(),
+            framework="torch").item(),  # .cpu().detach().numpy(),
+        "kl": policy.loss_obj.mean_kl.item(),  # .cpu().detach().numpy(),
+        "entropy": policy.loss_obj.mean_entropy.item(),  # .cpu().detach().numpy(),
         "entropy_coeff": policy.entropy_coeff,
     }
 
@@ -176,8 +176,7 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
     return {
         SampleBatch.VF_PREDS: policy.model.value_function().numpy(),
         BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
-        ACTION_LOGP: action_dist.logp(
-            input_dict[SampleBatch.ACTIONS]).numpy(),
+        ACTION_LOGP: action_dist.logp(input_dict[SampleBatch.ACTIONS]).numpy(),
     }
 
 
