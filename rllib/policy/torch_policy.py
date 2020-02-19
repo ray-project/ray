@@ -1,7 +1,8 @@
 import numpy as np
 import time
 
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
+    ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -19,9 +20,9 @@ class TorchPolicy(Policy):
     Attributes:
         observation_space (gym.Space): observation space of the policy.
         action_space (gym.Space): action space of the policy.
-        config (dict): config of the policy
-        model (TorchModel): Torch model instance
-        dist_class (type): Torch action distribution class
+        config (dict): config of the policy.
+        model (TorchModel): Torch model instance.
+        dist_class (type): Torch action distribution class.
     """
 
     def __init__(self, observation_space, action_space, config, model, loss,
@@ -43,6 +44,7 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
+        self.framework = "torch"
         super().__init__(observation_space, action_space, config)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
@@ -63,9 +65,12 @@ class TorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        explore=True,
+                        explore=None,
                         timestep=None,
                         **kwargs):
+
+        explore = explore if explore is not None else self.config["explore"]
+
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
@@ -78,20 +83,23 @@ class TorchPolicy(Policy):
             model_out = self.model(input_dict, state_batches,
                                    self._convert_to_tensor([1]))
             logits, state = model_out
-            action_dist = self.dist_class(logits, self.model)
-            # Try our Exploration, if any.
-            if self.exploration:
-                actions = self.exploration.get_action(
-                    model_out, self.model, action_dist, explore, timestep
-                    if timestep is not None else self.global_timestep)
-            else:
-                actions = action_dist.sample()
-
+            action_dist = None
+            actions, logp = \
+                self.exploration.get_exploration_action(
+                    logits, self.model, self.dist_class, explore,
+                    timestep if timestep is not None else
+                    self.global_timestep)
             input_dict[SampleBatch.ACTIONS] = actions
 
+            extra_action_out = self.extra_action_out(input_dict, state_batches,
+                                                     self.model, action_dist)
+            if logp is not None:
+                extra_action_out.update({
+                    ACTION_PROB: torch.exp(logp),
+                    ACTION_LOGP: logp
+                })
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
-                    self.extra_action_out(input_dict, state_batches,
-                                          self.model, action_dist))
+                    extra_action_out)
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
