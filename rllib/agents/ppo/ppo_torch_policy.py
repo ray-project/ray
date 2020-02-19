@@ -141,31 +141,18 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
 
 
 def kl_and_loss_stats(policy, train_batch):
-    import torch
-    import gc
-    print("START")
-    count = 0
-    for obj in gc.get_objects():
-        try:
-            if torch.is_tensor(obj) or (hasattr(obj, 'data')
-                                        and torch.is_tensor(obj.data)):
-                #print(type(obj), obj.size())
-                count += 1
-        except:
-            pass
-    print("END: count={}".format(count))
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.item(), #cpu().detach().numpy(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.item(),  # .cpu().detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.item(),  # .cpu().detach().numpy(),
+        "total_loss": policy.loss_obj.loss.item(),
+        "policy_loss": policy.loss_obj.mean_policy_loss.item(),
+        "vf_loss": policy.loss_obj.mean_vf_loss.item(),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
-            framework="torch").item(),  # .cpu().detach().numpy(),
-        "kl": policy.loss_obj.mean_kl.item(),  # .cpu().detach().numpy(),
-        "entropy": policy.loss_obj.mean_entropy.item(),  # .cpu().detach().numpy(),
+            framework="torch").item(),
+        "kl": policy.loss_obj.mean_kl.item(),
+        "entropy": policy.loss_obj.mean_entropy.item(),
         "entropy_coeff": policy.entropy_coeff,
     }
 
