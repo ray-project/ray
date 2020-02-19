@@ -14,12 +14,14 @@
 namespace ray {
 
 ObjectStoreNotificationManager::ObjectStoreNotificationManager(
-    boost::asio::io_service &io_service, const std::string &store_socket_name)
+    boost::asio::io_service &io_service, const std::string &store_socket_name,
+    bool exit_on_error)
     : store_client_(),
       length_(0),
       num_adds_processed_(0),
       num_removes_processed_(0),
-      socket_(io_service) {
+      socket_(io_service),
+      exit_on_error_(exit_on_error) {
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
   int c_socket;  // TODO(mehrdadn): This should be type SOCKET for Windows
@@ -57,6 +59,10 @@ ObjectStoreNotificationManager::~ObjectStoreNotificationManager() {
   RAY_ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
+void ObjectStoreNotificationManager::Shutdown() {
+  RAY_ARROW_CHECK_OK(store_client_.Disconnect());
+}
+
 void ObjectStoreNotificationManager::NotificationWait() {
   boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
                           boost::bind(&ObjectStoreNotificationManager::ProcessStoreLength,
@@ -74,7 +80,11 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
                    << boost_to_ray_status(error).ToString()
                    << ", most likely plasma store is down, raylet will exit";
     // Exit raylet process.
-    _exit(kRayletStoreErrorExitCode);
+    if (exit_on_error_) {
+      _exit(kRayletStoreErrorExitCode);
+    } else {
+      return;
+    }
   }
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
@@ -85,9 +95,13 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
   if (error) {
-    RAY_LOG(FATAL)
-        << "Problem communicating with the object store from raylet, check logs or "
-        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+    if (exit_on_error_) {
+      RAY_LOG(FATAL)
+          << "Problem communicating with the object store from raylet, check logs or "
+          << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+    } else {
+      return;
+    }
   }
 
   const auto &object_notification =
