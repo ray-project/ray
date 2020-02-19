@@ -147,7 +147,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
         ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
         std::vector<int64_t> ports = std::vector<int64_t>();
         {
-          std::lock_guard<std::mutex> guard(plasma_object_lock_);
+          absl::MutexLock guard(&plasma_object_lock_);
           auto res = this->async_plasma_objects_.extract(object_id);
           if (!res.empty()) {
             ports.swap(res.mapped());
@@ -167,6 +167,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                       << "Problem with telling worker that plasma object is ready"
                       << status.ToString();
                 }
+                RAY_LOG(DEBUG) << "RAYLET RECEIVED A REPLY!!!!!";
               }));
         }
         // rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_);
@@ -175,7 +176,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
         // std::vector<std::shared_ptr<Worker>> objs =
         //     std::vector<std::shared_ptr<Worker>>();
         // {
-        //   std::lock_guard<std::mutex> guard(plasma_object_lock_);
+        //   absl::MutexLock guard(&plasma_object_lock_);
         //   auto res = this->async_plasma_objects_.extract(object_id);
         //   if (!res.empty()) {
         //     objs.swap(res.mapped());
@@ -1032,7 +1033,7 @@ void NodeManager::ProcessClientMessage(
     auto message = flatbuffers::GetRoot<protocol::SubscribePlasma>(message_data);
     ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
     {
-      std::lock_guard<std::mutex> guard(plasma_object_lock_);
+      absl::MutexLock guard(&plasma_object_lock_);
       if (!async_plasma_objects_.contains(id)) {
         // async_plasma_objects_.emplace(id, std::vector<std::shared_ptr<Worker>>());
         async_plasma_objects_.emplace(id, std::vector<int64_t>());
