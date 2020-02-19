@@ -80,7 +80,7 @@ def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
 
     Examples:
         >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
-        >>> metrics_op = StandardMetricsReporting(train_op)
+        >>> metrics_op = StandardMetricsReporting(train_op, workers, config)
         >>> next(metrics_op)
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
