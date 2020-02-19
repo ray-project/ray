@@ -179,6 +179,8 @@ COMMON_CONFIG = {
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
+    # Internal flag that is set to True for evaluation workers.
+    "in_evaluation": False,
     # Typical usage is to pass extra args to evaluation env creator
     # and to disable exploration by computing deterministic actions
     "evaluation_config": {
@@ -576,6 +578,7 @@ class Trainer(Trainable):
                 extra_config.update({
                     "batch_mode": "complete_episodes",
                     "batch_steps": 1,
+                    "in_evaluation": True,
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
