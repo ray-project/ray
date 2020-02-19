@@ -103,7 +103,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::InstallFailureSignalHandler();
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
-
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
@@ -247,9 +246,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
+  plasma_notifier_.reset(new ObjectStoreNotificationManager(io_service_, store_socket,
+                                                            /*exit_on_error*/ false));
 }
 
 CoreWorker::~CoreWorker() {
+  // ObjectStoreNotificationManager depends on io_service_ so we need to shut it down
+  // first.
+  plasma_notifier_->Shutdown();
+
   io_service_.stop();
   io_thread_.join();
   if (log_dir_ != "") {
@@ -1340,6 +1345,14 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
       success_callback(ray_object, object_id, python_future);
     }
   });
+}
+
+void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
+  plasma_notifier_->SubscribeObjAdded(
+      [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
+        subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
+                           info.metadata_size);
+      });
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
