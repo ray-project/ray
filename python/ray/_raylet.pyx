@@ -278,6 +278,8 @@ cdef void prepare_args(
         size_t size
         int64_t put_threshold
         shared_ptr[CBuffer] arg_data
+        c_vector[CObjectID] inlined_ids
+        ObjectID obj_id
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -294,14 +296,17 @@ cdef void prepare_args(
             # plasma here. This is inefficient for small objects, but inlined
             # arguments aren't associated ObjectIDs right now so this is a
             # simple fix for reference counting purposes.
-            if (<int64_t>size <= put_threshold and
-                    len(serialized_arg.contained_object_ids) == 0):
+            if <int64_t>size <= put_threshold:
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
+                for obj_id in serialized_arg.contained_object_ids:
+                    inlined_ids.push_back(obj_id.native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(serialized_arg.metadata))))
+                        arg_data, string_to_buffer(serialized_arg.metadata),
+                        inlined_ids)))
+                inlined_ids.clear()
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
@@ -664,7 +669,7 @@ cdef class CoreWorker:
                     c_object_id[0] = object_id.native()
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, contained_ids,
+                                    metadata, data_size,
                                     c_object_id[0], data))
                 break
             except ObjectStoreFullError as e:
@@ -979,15 +984,18 @@ cdef class CoreWorker:
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
-            self, const c_string &object_id_binary, const c_string
-            &owner_id_binary, const c_string &serialized_owner_address):
+            self, const c_string &object_id_binary, ObjectID outer_object_id,
+            const c_string &owner_id_binary,
+            const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CObjectID c_outer_object_id = outer_object_id.native()
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
+                c_outer_object_id,
                 c_owner_id,
                 c_owner_address)
 

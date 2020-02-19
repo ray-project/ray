@@ -157,9 +157,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// object.
   ///
   /// \param[in] object_id The object ID to deserialize.
+  /// \param[in] outer_object_id The object ID that contained object_id, if
+  /// any. This may be nil if the object ID was inlined directly in a task spec
+  /// or if it was passed out-of-band by the application (deserialized from a
+  /// byte string).
   /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
+                                             const ObjectID &outer_object_id,
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
@@ -222,12 +227,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
-  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const std::vector<ObjectID> &contained_object_ids,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
@@ -469,6 +472,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
+                               rpc::WaitForRefRemovedReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
@@ -535,33 +543,47 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Execute a task.
   ///
-  /// \param spec[in] Task specification.
-  /// \param spec[in] Resource IDs of resources assigned to this worker. If nullptr,
-  ///                 reuse the previously assigned resources.
-  /// \param results[out] Result objects that should be returned by value (not via
-  ///                     plasma).
+  /// \param spec[in] task_spec Task specification.
+  /// \param spec[in] resource_ids Resource IDs of resources assigned to this
+  ///                 worker. If nullptr, reuse the previously assigned
+  ///                 resources.
+  /// \param results[out] return_objects Result objects that should be returned
+  ///                     by value (not via plasma).
+  /// \param results[out] borrowed_refs Refs that this task (or a nested task)
+  ///                     was or is still borrowing. This includes all
+  ///                     objects whose IDs we passed to the task in its
+  ///                     arguments and recursively, any object IDs that were
+  ///                     contained in those objects.
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *return_objects);
+                     std::vector<std::shared_ptr<RayObject>> *return_objects,
+                     ReferenceCounter::ReferenceTableProto *borrowed_refs);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
   /// fetch its content from store and; for arguments that are passed by value,
   /// just copy their content.
   ///
-  /// \param spec[in] Task specification.
-  /// \param args[out] Argument data as RayObjects.
-  /// \param args[out] ObjectIDs corresponding to each by reference argument. The length
-  ///                  of this vector will be the same as args, and by value arguments
-  ///                  will have ObjectID::Nil().
+  /// \param spec[in] task Task specification.
+  /// \param args[out] args Argument data as RayObjects.
+  /// \param args[out] arg_reference_ids ObjectIDs corresponding to each by
+  ///                  reference argument. The length of this vector will be
+  ///                  the same as args, and by value arguments will have
+  ///                  ObjectID::Nil().
   ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
+  /// \param args[out] borrowed_ids ObjectIDs that we are borrowing from the
+  ///                  task caller for the duration of the task execution. This
+  ///                  vector will be populated with all argument IDs that were
+  ///                  passed by reference and any ObjectIDs that were included
+  ///                  in the task spec's inlined arguments.
   /// \return The arguments for passing to task executor.
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
-                              std::vector<ObjectID> *arg_reference_ids);
+                              std::vector<ObjectID> *arg_reference_ids,
+                              std::vector<ObjectID> *borrowed_ids);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
