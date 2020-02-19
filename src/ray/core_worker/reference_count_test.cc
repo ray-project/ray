@@ -1366,6 +1366,89 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
 }
 
+// We submit a task and submit another task that depends on the return ID. The
+// submitted task returns an object ID, which will get borrowed by the second
+// task. The second task returns the borrowed ID. The driver gets the value of
+// the second task and now has a reference to the inner object ID.
+//
+// @ray.remote
+// def returns_id():
+//     inner_id = ray.put()
+//     return inner_id
+//
+// @ray.remote
+// def returns_borrowed_id(inner_ids):
+//     return inner_ids
+//
+// return_id = returns_id.remote()
+// inner_id = ray.get(returns_borrowed_id.remote(return_id))[0]
+TEST(DistributedReferenceCountTest, TestReturnBorrowedIdDeserialize) {
+  auto caller = std::make_shared<MockWorkerClient>("1");
+  auto borrower = std::make_shared<MockWorkerClient>("2");
+  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+    if (addr.ip_address() == caller->address_.ip_address()) {
+      return caller;
+    } else {
+      return borrower;
+    }
+  });
+
+  // Caller submits a task.
+  auto return_id = caller->SubmitTaskWithArg(ObjectID::Nil());
+
+  // Task returns inner_id as its return value.
+  auto inner_id = ObjectID::FromRandom();
+  owner->Put(inner_id);
+  rpc::WorkerAddress addr(caller->address_);
+  auto refs = owner->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &addr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(refs.empty());
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Caller receives the owner's message, but inner_id is still in scope
+  // because caller has a reference to return_id.
+  caller->HandleSubmittedTaskFinished(ObjectID::Nil(), {{return_id, {inner_id}}});
+  auto borrower_return_id = caller->SubmitTaskWithArg(return_id);
+  caller->rc_.RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Borrower receives a reference to inner_id. It returns the inner_id as its
+  // return value.
+  borrower->ExecuteTaskWithArg(return_id, inner_id, owner->task_id_, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+  auto borrower_refs =
+      borrower->FinishExecutingTask(return_id, borrower_return_id, &inner_id, &addr);
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // Borrower merges ref count into the caller.
+  caller->HandleSubmittedTaskFinished(return_id, {{borrower_return_id, {inner_id}}},
+                                      borrower->address_, borrower_refs);
+  // The caller should still have a ref count because it has a reference to
+  // borrower_return_id.
+  ASSERT_FALSE(caller->rc_.HasReference(return_id));
+  ASSERT_TRUE(caller->rc_.HasReference(borrower_return_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  caller->GetSerializedObjectId(borrower_return_id, inner_id, owner->task_id_,
+                                owner->address_);
+  caller->rc_.RemoveLocalReference(borrower_return_id, nullptr);
+  ASSERT_TRUE(caller->FlushBorrowerCallbacks());
+  caller->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(caller->rc_.HasReference(return_id));
+  ASSERT_FALSE(caller->rc_.HasReference(borrower_return_id));
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // The borrower's receives the owner's message and its reference goes out of
+  // scope.
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_.HasReference(borrower_return_id));
+  ASSERT_FALSE(borrower->rc_.HasReference(return_id));
+  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+}
+
 // Recursively returning IDs. We submit a task, which submits another task and
 // returns the submitted task's return ID. The nested task creates an object
 // and returns that ID.
@@ -1579,7 +1662,6 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
   ASSERT_FALSE(nested_worker->rc_.HasReference(inner_id));
 }
 
-// TODO: Test returning an Object ID.
 // TODO: Test Pop and Merge individually.
 
 }  // namespace ray
