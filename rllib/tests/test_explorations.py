@@ -1,4 +1,3 @@
-import contextlib
 import numpy as np
 from tensorflow.python.eager.context import eager_mode
 import unittest
@@ -41,38 +40,44 @@ def test_explorations(run,
             if exploration == "Random":
                 config["exploration_config"] = {"type": "Random"}
 
-            with eager_mode() if fw == "eager" else contextlib.nullcontext():
-                trainer = run(config=config, env=env)
+            eager_mode_ctx = eager_mode()
+            if fw == "eager":
+                eager_mode_ctx.__enter__()
 
-                # Make sure all actions drawn are the same, given same
-                # observations.
-                actions = []
-                for _ in range(100):
-                    actions.append(
-                        trainer.compute_action(
-                            observation=dummy_obs,
-                            explore=False,
-                            prev_action=prev_a,
-                            prev_reward=1.0 if prev_a is not None else None))
-                    check(actions[-1], actions[0])
+            trainer = run(config=config, env=env)
 
-                # Make sure actions drawn are different
-                # (around some mean value), given constant observations.
-                actions = []
-                for _ in range(100):
-                    actions.append(
-                        trainer.compute_action(
-                            observation=dummy_obs,
-                            explore=True,
-                            prev_action=prev_a,
-                            prev_reward=1.0 if prev_a is not None else None))
-                check(
-                    np.mean(actions),
-                    expected_mean_action
-                    if expected_mean_action is not None else 0.5,
-                    atol=0.3)
-                # Check that the stddev is not 0.0 (values differ).
-                check(np.std(actions), 0.0, false=True)
+            # Make sure all actions drawn are the same, given same
+            # observations.
+            actions = []
+            for _ in range(100):
+                actions.append(
+                    trainer.compute_action(
+                        observation=dummy_obs,
+                        explore=False,
+                        prev_action=prev_a,
+                        prev_reward=1.0 if prev_a is not None else None))
+                check(actions[-1], actions[0])
+
+            # Make sure actions drawn are different
+            # (around some mean value), given constant observations.
+            actions = []
+            for _ in range(100):
+                actions.append(
+                    trainer.compute_action(
+                        observation=dummy_obs,
+                        explore=True,
+                        prev_action=prev_a,
+                        prev_reward=1.0 if prev_a is not None else None))
+            check(
+                np.mean(actions),
+                expected_mean_action
+                if expected_mean_action is not None else 0.5,
+                atol=0.3)
+            # Check that the stddev is not 0.0 (values differ).
+            check(np.std(actions), 0.0, false=True)
+
+            if fw == "eager":
+                eager_mode_ctx.__exit__(None, None, None)
 
 
 class TestExplorations(unittest.TestCase):
