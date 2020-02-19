@@ -18,7 +18,6 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/subscription_executor.h"
-#include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -508,15 +507,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 SetResultCallback fallback_callback, void *python_future);
 
-  /// Connect to plasma store for async futures
-  using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
-
-  /// Subscribe to plasma store
-  ///
-  /// \param[in] subscribe_callback The callback when an item is added to plasma.
-  /// \return void
-  void SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback);
-
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
@@ -775,9 +765,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
-
-  // Plasma notification manager
-  std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
 
   friend class CoreWorkerTest;
 };
