@@ -57,7 +57,7 @@ struct NodeManagerConfig {
   uint64_t debug_dump_period_ms;
   /// The time between attempts to eagerly evict objects from plasma in
   /// milliseconds, or -1 to disable.
-  int64_t flush_objects_to_free_period_ms;
+  int64_t free_objects_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
@@ -598,7 +598,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
   /// The period between attempts to eagerly evict objects from plasma.
-  int64_t flush_objects_to_free_period_;
+  int64_t free_objects_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
@@ -619,7 +619,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t last_debug_dump_at_ms_;
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.
-  uint64_t last_flush_objects_to_free_at_ms_;
+  uint64_t last_free_objects_at_ms_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.

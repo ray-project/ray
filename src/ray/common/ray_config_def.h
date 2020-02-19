@@ -53,14 +53,14 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
 /// likely cause spurious object lost errors for Object IDs that were
 /// serialized, then either passed as an argument or returned from a task.
-RAY_CONFIG(int64_t, flush_objects_to_free_period_milliseconds, -1)
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
 /// cluster. This is the maximum number of objects in the local cache before it
-/// is flushed. To disable eager eviction, set
-/// flush_objects_to_free_period_milliseconds to -1.
+/// is flushed. To disable eager eviction, set free_objects_period_milliseconds
+/// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 /// Whether to enable the new scheduler. The new scheduler is designed

@@ -83,7 +83,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
-      flush_objects_to_free_period_(config.flush_objects_to_free_period_ms),
+      free_objects_period_(config.free_objects_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
@@ -214,7 +214,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   last_debug_dump_at_ms_ = current_time_ms();
-  last_flush_objects_to_free_at_ms_ = current_time_ms();
+  last_free_objects_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -315,9 +315,8 @@ void NodeManager::Heartbeat() {
   }
 
   // Evict all copies of freed objects from the cluster.
-  if (flush_objects_to_free_period_ > 0 &&
-      static_cast<int64_t>(now_ms - last_flush_objects_to_free_at_ms_) >
-          flush_objects_to_free_period_) {
+  if (free_objects_period_ > 0 &&
+      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_) {
     FlushObjectsToFree();
   }
 
@@ -3136,7 +3135,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
           objects_to_free_.push_back(object_id);
           if (objects_to_free_.size() ==
                   RayConfig::instance().free_objects_batch_size() ||
-              flush_objects_to_free_period_ == 0) {
+              free_objects_period_ == 0) {
             FlushObjectsToFree();
           }
 
@@ -3150,7 +3149,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
 }
 
 void NodeManager::FlushObjectsToFree() {
-  if (flush_objects_to_free_period_ < 0) {
+  if (free_objects_period_ < 0) {
     return;
   }
 
@@ -3159,7 +3158,7 @@ void NodeManager::FlushObjectsToFree() {
     object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);
     objects_to_free_.clear();
   }
-  last_flush_objects_to_free_at_ms_ = current_time_ms();
+  last_free_objects_at_ms_ = current_time_ms();
 }
 
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
