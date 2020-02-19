@@ -27,6 +27,8 @@ stages:
         pool:
           vmImage: $(imageName)
         steps:
+          # Template containing steps to show info
+          - template: templates/info.yml
           # Template containing the installation of steps of python
           - template: templates/python.yml
           # Template containing the install phase of travis.yml

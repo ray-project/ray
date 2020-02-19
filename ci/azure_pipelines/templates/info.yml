@@ -1,0 +1,43 @@
+# This template includes some steps to check
+# and gather information about the system
+steps:
+- script: |
+    EXPECTED_HASH_CI_CODE='efb8f5c1d01e167923b7451749a65321d1eb6ec79f5c0961e14fb562a570a4e2'
+    CURRENT_HASH_CI_CODE=$(tar --exclude='ci/azure_pipelines' --exclude='**/.DS_Store' -cf - .travis.yml ci | shasum -a 256 | awk '{print $1}')
+    if [[ $EXPECTED_HASH_CI_CODE != $CURRENT_HASH_CI_CODE ]]; then 
+      echo "The original CI of the project has changed"
+      echo "Please check the changes, change the azure pipelines acordingly and update the sha256"
+      exit 1
+    fi
+  displayName: Check upstream CI
+- script: |
+    echo "Build ID used for versioning: $BUILD_BUILDID"
+    echo "User: $(whoami)"
+    echo "AGENT_TOOLSDIRECTORY: ${AGENT_TOOLSDIRECTORY=}"
+    echo "Default $(python --version)"
+    if [[ $AGENT_OS == "Linux" ]]; then 
+      echo "$(docker --version)"
+      echo "Test docker connection:"
+      docker ps -a
+    fi
+    if [[ $AGENT_OS == "Darwin" ]]; then 
+      echo "MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
+    fi
+    echo "PYTHON_CONFIGURE_OPTS: $PYTHON_CONFIGURE_OPTS"
+  displayName: 'General system info'
+- task: PythonScript@0
+  inputs:
+    scriptSource: 'inline'
+    script: |
+      import platform
+      print(platform.platform())
+      import wheel.pep425tags
+      print(wheel.pep425tags.get_impl_ver())
+      print(wheel.pep425tags.get_abi_tag())
+      print(wheel.pep425tags.get_platform(None))
+      tags = wheel.pep425tags.get_supported(None)
+      print(tags)
+      print(('cp36', 'cp36m', 'macosx_10_14_x86_64') in tags)
+      print(platform.mac_ver())
+    failOnStderr: false
+  displayName: 'Print system info'

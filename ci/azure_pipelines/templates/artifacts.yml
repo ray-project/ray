@@ -14,7 +14,7 @@ steps:
     # Show explicitly which commands are currently running.
     set -x
 
-    find -L $BAZEL_OUTPUTROOT -name 'command.log' -exec cp {} $BUILD_ARTIFACTSTAGINGDIRECTORY \;
+    find -L $BAZEL_OUTPUTROOT -path "**/com_github_ray_project_ray" -prune -o -name '*.log' -exec cp --parents {} $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel \;
   displayName: 'Copy bazel output dir to staging'
   timeoutInMinutes: 5
   condition: always()
@@ -24,7 +24,7 @@ steps:
   condition: always()
   inputs:
     pathToPublish: $(Build.ArtifactStagingDirectory)
-    artifactName: Bazel
+    artifactName: Logs
   displayName: 'Publishing artifacts'
   timeoutInMinutes: 5
 - bash: |
