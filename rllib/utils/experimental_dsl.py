@@ -2,14 +2,17 @@
 
 TODO(ekl): describe the concepts."""
 
+import logging
 from typing import List, Any
 import time
 
 import ray
-from ray.util.iter import from_actors, LocalIterator
+from ray.util.iter import from_actors, LocalIterator, PipelineContext
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import SampleBatch
+
+logger = logging.getLogger(__name__)
 
 
 def ParallelRollouts(workers: WorkerSet,
@@ -44,21 +47,22 @@ def ParallelRollouts(workers: WorkerSet,
     Updates the "num_steps_sampled" counter in the local iterator context.
     """
 
+    def report_timesteps(batch):
+        ctx = LocalIterator.get_context()
+        ctx.counters["num_steps_sampled"] += batch.count
+        return batch
+
     if not workers.remote_workers():
         # Handle the serial sampling case.
         def sampler(_):
             while True:
                 yield workers.local_worker().sample()
 
-        return LocalIterator(sampler)
+        return LocalIterator(sampler,
+                             PipelineContext()).for_each(report_timesteps)
 
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
-
-    def report_timesteps(batch):
-        ctx = LocalIterator.get_context()
-        ctx.counters["num_steps_sampled"] += batch.count
-        return batch
 
     if mode == "bulk_sync":
         return rollouts \
@@ -274,7 +278,8 @@ class ApplyGradients:
 
     def __call__(self, item):
         gradients, count = item
-        ctx.counters["num_steps_trained"] += batch.count
+        ctx = LocalIterator.get_context()
+        ctx.counters["num_steps_trained"] += count
         self.workers.local_worker().apply_gradients(gradients)
         if self.workers.remote_workers():
             weights = ray.put(self.workers.local_worker().get_weights())
@@ -305,4 +310,6 @@ class AverageGradients:
             else:
                 acc = [a + b for a, b in zip(acc, grad)]
             sum_count += count
+        logger.info("Computing average of {} microbatch gradients "
+                    "({} samples total)".format(len(gradients), sum_count))
         return acc, sum_count
