@@ -68,6 +68,20 @@ def torch_optimizer(policy, config):
 
 class ValueNetworkMixin:
     def _value(self, obs):
+
+        import torch
+        import gc
+        count = 0
+        for obj in gc.get_objects():
+            try:
+                if torch.is_tensor(obj) or (
+                        hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                    #print(type(obj), obj.size())
+                    count += 1
+            except:
+                pass
+        print("Tensor count = {}".format(count))
+
         obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
         _ = self.model({"obs": obs}, [], [1])
         return self.model.value_function().detach().cpu().numpy().squeeze()
