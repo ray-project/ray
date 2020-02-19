@@ -69,6 +69,9 @@ RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
 /// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
 /// likely cause spurious object lost errors for Object IDs that were
 /// serialized, then either passed as an argument or returned from a task.
+/// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
+/// this should be set to a value larger than
+/// raylet_heartbeat_timeout_milliseconds.
 RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
