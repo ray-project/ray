@@ -44,6 +44,25 @@ RAY_CONFIG(bool, fair_queueing_enabled, true)
 /// enabled, objects in scope in the cluster will not be LRU evicted.
 RAY_CONFIG(bool, object_pinning_enabled, true)
 
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. If set, then this is the duration between attempts to flush the
+/// local cache. If this is set to 0, then the objects will be freed as soon as
+/// they enter the cache. To disable eager eviction, set this to -1.
+/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
+/// likely cause spurious object lost errors for Object IDs that were
+/// serialized, then either passed as an argument or returned from a task.
+RAY_CONFIG(int64_t, flush_objects_to_free_period_milliseconds, -1)
+
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. This is the maximum number of objects in the local cache before it
+/// is flushed. To disable eager eviction, set
+/// flush_objects_to_free_period_milliseconds to -1.
+RAY_CONFIG(size_t, free_objects_batch_size, 100)
+
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
