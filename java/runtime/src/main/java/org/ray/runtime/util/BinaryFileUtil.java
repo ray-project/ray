@@ -4,6 +4,8 @@ import com.google.common.base.Preconditions;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import org.apache.commons.io.FileUtils;
@@ -44,5 +46,24 @@ public class BinaryFileUtil {
       throw new RuntimeException("Couldn't get temp file from resource " + fileName, e);
     }
     return file;
+  }
+
+  public static File getFileSafe(String destDir, String fileName) {
+    final File dir = new File(destDir);
+    if (!dir.exists()) {
+      try {
+        FileUtils.forceMkdir(dir);
+      } catch (IOException e) {
+        throw new RuntimeException(
+            String.format("Create directory %s failed", destDir), e);
+      }
+    }
+    String lockFilePath = destDir + File.separator + "file_lock";
+    try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw")
+        .getChannel().lock()) {
+      return getFile(destDir, fileName);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 }
