@@ -12,11 +12,11 @@ echo "PYTHON is $PYTHON"
 # jobs to the the number cores on the machine, which are not efficient for
 # network bounded cache downloading workload. Therefore we increase the number
 # of jobs to 50
-if [[ "$TRAVIS" == "true" ]]; then
-  echo "build --jobs=50" >> $HOME/.bazelrc
-fi
+# if [[ "$TRAVIS" == "true" ]]; then
+#   echo "build --jobs=50" >> $HOME/.bazelrc
+# fi
 
-if [[ "$PYTHON" == "3.6" ]]; then
+# if [[ "$PYTHON" == "3.6" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
   pushd "$ROOT_DIR/../../python"
@@ -29,14 +29,14 @@ if [[ "$PYTHON" == "3.6" ]]; then
     pip install -e . --verbose
   popd
 
-elif [[ "$LINT" == "1" ]]; then
-  export PATH="$HOME/miniconda/bin:$PATH"
+# elif [[ "$LINT" == "1" ]]; then
+#   export PATH="$HOME/miniconda/bin:$PATH"
 
-  pushd "$ROOT_DIR/../../python"
-    pip install -e . --verbose
-  popd
-else
-  echo "Unrecognized Python version."
-  exit 1
-fi
+#   pushd "$ROOT_DIR/../../python"
+#     pip install -e . --verbose
+#   popd
+# else
+#   echo "Unrecognized Python version."
+#   exit 1
+# fi
 
