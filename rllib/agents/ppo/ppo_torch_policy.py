@@ -1,5 +1,4 @@
 import logging
-import guppy
 
 import ray
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
@@ -13,28 +12,132 @@ from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
    LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.explained_variance import explained_variance
-# from ray.rllib.utils.torch_ops import sequence_mask
+from ray.rllib.utils.torch_ops import sequence_mask
 from ray.rllib.utils import try_import_torch
 
 torch, nn = try_import_torch()
-h = guppy.hpy()
+
 logger = logging.getLogger(__name__)
 
 
+class PPOLoss:
+    def __init__(self,
+                 dist_class,
+                 model,
+                 value_targets,
+                 advantages,
+                 actions,
+                 prev_logits,
+                 prev_actions_logp,
+                 vf_preds,
+                 curr_action_dist,
+                 value_fn,
+                 cur_kl_coeff,
+                 valid_mask,
+                 entropy_coeff=0,
+                 clip_param=0.1,
+                 vf_clip_param=0.1,
+                 vf_loss_coeff=1.0,
+                 use_gae=True):
+        """Constructs the loss for Proximal Policy Objective.
+
+        Arguments:
+            dist_class: action distribution class for logits.
+            value_targets (Placeholder): Placeholder for target values; used
+                for GAE.
+            actions (Placeholder): Placeholder for actions taken
+                from previous model evaluation.
+            advantages (Placeholder): Placeholder for calculated advantages
+                from previous model evaluation.
+            prev_logits (Placeholder): Placeholder for logits output from
+                previous model evaluation.
+            prev_actions_logp (Placeholder): Placeholder for prob output from
+                previous model evaluation.
+            vf_preds (Placeholder): Placeholder for value function output
+                from previous model evaluation.
+            curr_action_dist (ActionDistribution): ActionDistribution
+                of the current model.
+            value_fn (Tensor): Current value function output Tensor.
+            cur_kl_coeff (Variable): Variable holding the current PPO KL
+                coefficient.
+            valid_mask (Tensor): A bool mask of valid input elements (#2992).
+            entropy_coeff (float): Coefficient of the entropy regularizer.
+            clip_param (float): Clip parameter
+            vf_clip_param (float): Clip parameter for the value function
+            vf_loss_coeff (float): Coefficient of the value function loss
+            use_gae (bool): If true, use the Generalized Advantage Estimator.
+        """
+
+        def reduce_mean_valid(t):
+            return torch.mean(t * valid_mask)
+
+        prev_dist = dist_class(prev_logits, model)
+        # Make loss functions.
+        logp_ratio = torch.exp(
+            curr_action_dist.logp(actions) - prev_actions_logp)
+        action_kl = prev_dist.kl(curr_action_dist)
+        self.mean_kl = reduce_mean_valid(action_kl)
+
+        curr_entropy = curr_action_dist.entropy()
+        self.mean_entropy = reduce_mean_valid(curr_entropy)
+
+        surrogate_loss = torch.min(
+            advantages * logp_ratio,
+            advantages * torch.clamp(logp_ratio, 1 - clip_param,
+                                     1 + clip_param))
+        self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+
+        if use_gae:
+            vf_loss1 = torch.pow(value_fn - value_targets, 2.0)
+            vf_clipped = vf_preds + torch.clamp(value_fn - vf_preds,
+                                                -vf_clip_param, vf_clip_param)
+            vf_loss2 = torch.pow(vf_clipped - value_targets, 2.0)
+            vf_loss = torch.max(vf_loss1, vf_loss2)
+            self.mean_vf_loss = reduce_mean_valid(vf_loss)
+            loss = reduce_mean_valid(
+                -surrogate_loss + cur_kl_coeff * action_kl +
+                vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
+        else:
+            self.mean_vf_loss = 0.0
+            loss = reduce_mean_valid(-surrogate_loss +
+                                     cur_kl_coeff * action_kl -
+                                     entropy_coeff * curr_entropy)
+        self.loss = loss
+
+
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
-    # h.heap()
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
-    # Make loss functions.
-    loss = action_dist.logp(train_batch[SampleBatch.ACTIONS])
+    if state:
+        max_seq_len = torch.max(train_batch["seq_lens"])
+        mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = torch.reshape(mask, [-1])
+    else:
+        mask = torch.ones_like(
+            train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
 
-    policy.loss = loss
-    policy.mean_policy_loss = torch.mean(loss)
-    policy.mean_vf_loss = torch.mean(loss)
-    policy.mean_kl = torch.mean(loss)
-    policy.mean_entropy = torch.mean(loss)
-    return policy.mean_policy_loss
+    policy.loss_obj = PPOLoss(
+        dist_class,
+        model,
+        train_batch[Postprocessing.VALUE_TARGETS],
+        train_batch[Postprocessing.ADVANTAGES],
+        train_batch[SampleBatch.ACTIONS],
+        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.VF_PREDS],
+        action_dist,
+        model.value_function(),
+        policy.kl_coeff,
+        mask,
+        entropy_coeff=policy.entropy_coeff,
+        clip_param=policy.config["clip_param"],
+        vf_clip_param=policy.config["vf_clip_param"],
+        vf_loss_coeff=policy.config["vf_loss_coeff"],
+        use_gae=policy.config["use_gae"],
+    )
+
+    return policy.loss_obj.loss
 
 
 def kl_and_loss_stats(policy, train_batch):
@@ -54,28 +157,27 @@ def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        #"total_loss": policy.loss.item(), #detach().cpu().numpy(),
-        "policy_loss": policy.mean_policy_loss.item(),
-        "vf_loss": policy.mean_vf_loss.item(),
+        "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
+        "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
+        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
-            framework="torch").item(),
-        "kl": policy.mean_kl.item(),
-        "entropy": policy.mean_entropy.item(),
+            framework="torch").cpu().detach().numpy(),
+        "kl": policy.loss_obj.mean_kl.cpu().detach().numpy(),
+        "entropy": policy.loss_obj.mean_entropy.cpu().detach().numpy(),
         "entropy_coeff": policy.entropy_coeff,
     }
-    #return {}
 
 
 def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function().detach().cpu().numpy(),
-        #BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
-        #ACTION_LOGP: action_dist.logp(
-        #    input_dict[SampleBatch.ACTIONS]).cpu().numpy(),
+        SampleBatch.VF_PREDS: policy.model.value_function().numpy(),
+        BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
+        ACTION_LOGP: action_dist.logp(
+            input_dict[SampleBatch.ACTIONS]).numpy(),
     }
 
 

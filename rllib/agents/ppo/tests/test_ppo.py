@@ -2,7 +2,6 @@ import numpy as np
 import unittest
 
 import ray
-import ray.tune
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
@@ -17,8 +16,6 @@ from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check
-from gym.spaces import Discrete, Box
-from ray.rllib.examples.random_env import RandomEnv
 
 
 class TestPPO(unittest.TestCase):
@@ -31,30 +28,18 @@ class TestPPO(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # tf.
-        # trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
-        num_iterations = 1000
-        # for i in range(num_iterations):
-        #    trainer.train()
+        num_iterations = 2
+        for i in range(num_iterations):
+            trainer.train()
 
-        config["env"] = RandomEnv
-        config["env_config"] = {
-            "observation_space": Box(
-                -1.0, 1.0, shape=(42, 42, 3), dtype=np.float32),
-            "action_space": Discrete(2)
-        }
-        # config["model"]["conv_filters"] =
         # Torch.
         config["use_pytorch"] = True
-        # trainer = ppo.PPOTrainer(
-        ppo.PPOTrainer(config=config, env="SpaceInvadersNoFrameskip-v4")
-        # trainer = ppo.PPOTrainer(config=config,
-        #                         env=RandomEnv)
-        # for i in range(num_iterations):
-        #    res = trainer.train()
-        #    print(res)
-        ray.tune.run(
-            "PPO", config=config, stop={"training_iteration": num_iterations})
+        config["simple_optimizer"] = True
+        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+        for i in range(num_iterations):
+            trainer.train()
 
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
@@ -110,11 +95,11 @@ class TestPPO(unittest.TestCase):
                 policy, policy.model, Categorical, train_batch,
                 expected_logits, expected_value_outs
             )
-        # check(kl, policy.loss_obj.mean_kl)
-        # check(entropy, policy.loss_obj.mean_entropy)
-        # check(np.mean(-pg_loss), policy.loss_obj.mean_policy_loss)
-        # check(np.mean(vf_loss), policy.loss_obj.mean_vf_loss, decimals=4)
-        # check(policy.loss_obj.loss.numpy(), overall_loss, decimals=4)
+        check(kl, policy.loss_obj.mean_kl)
+        check(entropy, policy.loss_obj.mean_entropy)
+        check(np.mean(-pg_loss), policy.loss_obj.mean_policy_loss)
+        check(np.mean(vf_loss), policy.loss_obj.mean_vf_loss, decimals=4)
+        check(policy.loss_obj.loss.numpy(), overall_loss, decimals=4)
 
         # Torch.
         config["use_pytorch"] = True

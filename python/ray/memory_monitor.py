@@ -109,14 +109,13 @@ class MemoryMonitor:
                 return  # escape hatch, not intended for user use
 
             self.last_checked = time.time()
-            total_gb = psutil.virtual_memory().total  # / (1024**3)
-            used_gb = total_gb - psutil.virtual_memory(
-            ).available  # / (1024**3)
+            total_gb = psutil.virtual_memory().total / (1024**3)
+            used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
             if self.cgroup_memory_limit_gb < total_gb:
                 total_gb = self.cgroup_memory_limit_gb
                 with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
                           "rb") as f:
-                    used_gb = int(f.read())  # / (1024**3)
+                    used_gb = int(f.read()) / (1024**3)
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
                     RayOutOfMemoryError.get_message(used_gb, total_gb,
