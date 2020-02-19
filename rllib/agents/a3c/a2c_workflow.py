@@ -9,7 +9,6 @@ from ray.rllib.utils.experimental_dsl import (
 
 
 def training_workflow(workers, config):
-
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["microbatch_size"]:
