@@ -28,11 +28,8 @@ class ObjectStoreNotificationManager {
   ///
   /// \param io_service The asio service to be used.
   /// \param store_socket_name The store socket to connect to.
-  /// \param exit_on_error The manager will exit with error when it fails
-  ///                      to process messages from socket.
   ObjectStoreNotificationManager(boost::asio::io_service &io_service,
-                                 const std::string &store_socket_name,
-                                 bool exit_on_error = true);
+                                 const std::string &store_socket_name);
 
   ~ObjectStoreNotificationManager();
 
@@ -48,9 +45,6 @@ class ObjectStoreNotificationManager {
   ///
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
-
-  /// Explicitly shutdown the manager.
-  void Shutdown();
 
   /// Returns debug string for class.
   ///
@@ -77,8 +71,6 @@ class ObjectStoreNotificationManager {
   int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
   local_stream_protocol::socket socket_;
-
-  bool exit_on_error_;
 };
 
 }  // namespace ray

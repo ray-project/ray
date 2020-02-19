@@ -14,14 +14,12 @@
 namespace ray {
 
 ObjectStoreNotificationManager::ObjectStoreNotificationManager(
-    boost::asio::io_service &io_service, const std::string &store_socket_name,
-    bool exit_on_error)
+    boost::asio::io_service &io_service, const std::string &store_socket_name)
     : store_client_(),
       length_(0),
       num_adds_processed_(0),
       num_removes_processed_(0),
-      socket_(io_service),
-      exit_on_error_(exit_on_error) {
+      socket_(io_service) {
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
   int c_socket;  // TODO(mehrdadn): This should be type SOCKET for Windows
@@ -59,10 +57,6 @@ ObjectStoreNotificationManager::~ObjectStoreNotificationManager() {
   RAY_ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
-void ObjectStoreNotificationManager::Shutdown() {
-  RAY_ARROW_CHECK_OK(store_client_.Disconnect());
-}
-
 void ObjectStoreNotificationManager::NotificationWait() {
   boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
                           boost::bind(&ObjectStoreNotificationManager::ProcessStoreLength,
@@ -72,7 +66,7 @@ void ObjectStoreNotificationManager::NotificationWait() {
 void ObjectStoreNotificationManager::ProcessStoreLength(
     const boost::system::error_code &error) {
   notification_.resize(length_);
-  if (error && exit_on_error_) {
+  if (error) {
     // When shutting down a cluster, it's possible that the plasma store is killed
     // earlier than raylet, in this case we don't want raylet to crash, we instead
     // log an error message and exit.
@@ -81,10 +75,7 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
                    << ", most likely plasma store is down, raylet will exit";
     // Exit raylet process.
     _exit(kRayletStoreErrorExitCode);
-  } else {
-    return;
   }
-
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
       boost::bind(&ObjectStoreNotificationManager::ProcessStoreNotification, this,
@@ -93,13 +84,10 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
-  if (error && exit_on_error_) {
+  if (error) {
     RAY_LOG(FATAL)
         << "Problem communicating with the object store from raylet, check logs or "
         << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
-
-  } else {
-    return;
   }
 
   const auto &object_notification =
