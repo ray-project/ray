@@ -67,7 +67,6 @@ class TFPolicy(Policy):
                  max_seq_len=20,
                  batch_divisibility_req=1,
                  update_ops=None,
-                 exploration=None,
                  explore=None,
                  timestep=None):
         """Initialize the policy.
@@ -105,14 +104,12 @@ class TFPolicy(Policy):
             update_ops (list): override the batchnorm update ops to run when
                 applying gradients. Otherwise we run all update ops found in
                 the current variable scope.
-            exploration (Exploration): The exploration object to use for
-                computing actions.
             explore (Tensor): Placeholder for `explore` parameter into
                 call to Exploration.get_exploration_action.
             timestep (Tensor): Placeholder for the global sampling timestep.
         """
         self.framework = "tf"
-        super().__init__(observation_space, action_space, config, exploration)
+        super().__init__(observation_space, action_space, config)
         self.model = model
         self._sess = sess
         self._obs_input = obs_input

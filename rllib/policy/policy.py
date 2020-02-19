@@ -34,11 +34,7 @@ class Policy(metaclass=ABCMeta):
     """
 
     @DeveloperAPI
-    def __init__(self,
-                 observation_space,
-                 action_space,
-                 config,
-                 exploration=None):
+    def __init__(self, observation_space, action_space, config):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -55,8 +51,7 @@ class Policy(metaclass=ABCMeta):
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
-        self.exploration = exploration or \
-            self._create_exploration(action_space, config)
+        self.exploration = self._create_exploration(action_space, config)
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
@@ -360,13 +355,16 @@ class Policy(metaclass=ABCMeta):
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTfPolicy.
         TODO(sven): unify these cases."""
-        return from_config(
+        exploration = from_config(
             Exploration,
             config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=action_space,
             num_workers=config.get("num_workers"),
             worker_index=config.get("worker_index"),
             framework=getattr(self, "framework", "tf"))
+        # If config is further passed around, it'll contain an already
+        # instantiated object.
+        config["exploration_config"] = exploration
 
 
 def clip_action(action, space):
