@@ -3,6 +3,7 @@ import shutil
 import time
 import pytest
 import ray
+import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 
 
@@ -99,7 +100,7 @@ def test_raylet_tempfiles(shutdown_only):
     assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
 
-    if os.environ.get("RAY_GCS_SERVICE_ENABLED", None):
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
         assert log_files.issuperset({
             "log_monitor.out", "log_monitor.err", "plasma_store.out",
             "plasma_store.err", "monitor.out", "monitor.err",
@@ -127,7 +128,7 @@ def test_raylet_tempfiles(shutdown_only):
     time.sleep(3)  # wait workers to start
     log_files = set(os.listdir(node.get_logs_dir_path()))
 
-    if os.environ.get("RAY_GCS_SERVICE_ENABLED", None):
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
         assert log_files.issuperset({
             "log_monitor.out", "log_monitor.err", "plasma_store.out",
             "plasma_store.err", "monitor.out", "monitor.err",

@@ -84,7 +84,7 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_monitor()
     ray.worker._global_node.kill_raylet_monitor()
 
-    if os.environ.get("RAY_GCS_SERVICE_ENABLED", None):
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
         ray.worker._global_node.kill_gcs_server()
 
     # If the driver can reach the tearDown method, then it is still alive.
@@ -96,7 +96,7 @@ def test_driver_lives_sequential(ray_start_regular):
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
 
-    if os.environ.get("RAY_GCS_SERVICE_ENABLED", None):
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
         process_infos = (
             all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
             all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
