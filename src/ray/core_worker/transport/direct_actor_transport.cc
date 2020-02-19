@@ -290,8 +290,17 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       // TODO(edoakes): the plasma objects could be evicted between creating them
       // here and when raylet pins them.
       if (!plasma_return_ids.empty()) {
-        RAY_CHECK_OK(
-            local_raylet_client_->PinObjectIDs(caller_address, plasma_return_ids));
+        RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+            caller_address, plasma_return_ids,
+            [this, plasma_return_ids](const Status &status,
+                                      const rpc::PinObjectIDsReply &reply) {
+              for (const ObjectID &object_id : plasma_return_ids) {
+                if (!plasma_store_provider_->Release(object_id).ok()) {
+                  RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                                 << "), might cause a leak in plasma.";
+                }
+              }
+            }));
       }
       if (task_spec.IsActorCreationTask()) {
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()

@@ -137,9 +137,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
-    direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
-        new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
-                                         task_execution_service_, execute_task, exit));
+    direct_task_receiver_ =
+        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
+            worker_context_, local_raylet_client_, plasma_store_provider_,
+            task_execution_service_, execute_task, exit));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -187,7 +188,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id, &object_exists));
         if (!object_exists) {
           RAY_LOG(DEBUG) << "Pinning object promoted to plasma " << obj_id;
-          RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {obj_id}));
+          // XXX: add callback and release logic
+          RAY_CHECK_OK(
+              local_raylet_client_->PinObjectIDs(rpc_address_, {obj_id}, nullptr));
         }
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
@@ -353,7 +356,9 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
     if (!object_exists) {
       RAY_LOG(DEBUG) << "PromoteToPlasma: Pinning object promoted to plasma "
                      << object_id;
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
+      // XXX: add callback
+      RAY_CHECK_OK(
+          local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}, nullptr));
     }
   }
 
@@ -402,7 +407,8 @@ Status CoreWorker::Put(const RayObject &object,
                                      rpc_address_);
   RAY_RETURN_NOT_OK(Put(object, contained_object_ids, *object_id));
   // Tell the raylet to pin the object **after** it is created.
-  RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
+  // XXX: add callback
+  RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}, nullptr));
   return Status::OK();
 }
 
@@ -438,11 +444,20 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 }
 
 Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id, false));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning created object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
+    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+        rpc_address_, {object_id},
+        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          if (!plasma_store_provider_->Release(object_id).ok()) {
+            RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                           << "), might cause a leak in plasma.";
+          }
+        }));
+  } else {
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
   return Status::OK();
 }
@@ -1037,6 +1052,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       }
     }
   }
+
+  // XXX: pin here?
 
   // Get the reference counts for any IDs that we borrowed during this task and
   // return them to the caller. This will notify the caller of any IDs that we

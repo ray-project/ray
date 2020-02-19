@@ -40,7 +40,9 @@ class CoreWorkerPlasmaStoreProvider {
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID &object_id, bool release = true);
+
+  Status Release(const ObjectID &object_id);
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const WorkerContext &ctx,

@@ -17,6 +17,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -371,13 +372,15 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
-  CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               std::shared_ptr<raylet::RayletClient> &local_raylet_client,
-                               boost::asio::io_service &main_io_service,
-                               const TaskHandler &task_handler,
-                               const std::function<void(bool)> &exit_handler)
+  CoreWorkerDirectTaskReceiver(
+      WorkerContext &worker_context,
+      std::shared_ptr<raylet::RayletClient> &local_raylet_client,
+      std::shared_ptr<CoreWorkerPlasmaStoreProvider> &plasma_store_provider,
+      boost::asio::io_service &main_io_service, const TaskHandler &task_handler,
+      const std::function<void(bool)> &exit_handler)
       : worker_context_(worker_context),
         local_raylet_client_(local_raylet_client),
+        plasma_store_provider_(plasma_store_provider),
         task_handler_(task_handler),
         exit_handler_(exit_handler),
         task_main_io_service_(main_io_service) {}
@@ -425,6 +428,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Reference to the core worker's raylet client. This is a pointer ref so that it
   /// can be initialized by core worker after this class is constructed.
   std::shared_ptr<raylet::RayletClient> &local_raylet_client_;
+  /// Plasma store interface.
+  std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.
