@@ -32,24 +32,26 @@ fi
 # Upgrade pip and other packages to avoid incompatibility ERRORS.
 pip install --upgrade pip # setuptools cloudpickle urllib3
 
-if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
+if [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
+  conda install -y python=$PYTHON
   pip install -q scipy tensorflow==$tf_version \
     cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
     blist scikit-learn
-elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
+elif [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
+  conda install -y python=$PYTHON
   pip install -q scipy tensorflow==$tf_version \
     cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
