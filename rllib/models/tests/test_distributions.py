@@ -23,3 +23,8 @@ class TestDistributions(unittest.TestCase):
             counts[sample] += 1.0
         probs = np.exp(z) / np.sum(np.exp(z))
         self.assertTrue(np.sum(np.abs(probs - counts / num_samples)) <= 0.01)
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)
