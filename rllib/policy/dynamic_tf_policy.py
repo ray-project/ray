@@ -221,7 +221,6 @@ class DynamicTFPolicy(TFPolicy):
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
-            exploration=self.exploration,
             explore=explore,
             timestep=timestep)
 

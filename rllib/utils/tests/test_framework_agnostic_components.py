@@ -122,3 +122,8 @@ class AbstractDummyComponent(DummyComponent, metaclass=ABCMeta):
     @abstractmethod
     def some_abstract_method(self):
         raise NotImplementedError
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)

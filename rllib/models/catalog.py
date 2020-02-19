@@ -107,7 +107,7 @@ class ModelCatalog:
     @staticmethod
     @DeveloperAPI
     def get_action_dist(action_space,
-                        config=None,
+                        config,
                         dist_type=None,
                         framework="tf",
                         **kwargs):

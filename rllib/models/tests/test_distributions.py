@@ -101,3 +101,8 @@ class TestDistributions(unittest.TestCase):
 
             out = squashed_distribution.logp(values)
             check(out, log_prob)
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)

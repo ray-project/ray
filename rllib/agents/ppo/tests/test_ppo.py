@@ -220,3 +220,8 @@ class TestPPO(unittest.TestCase):
                                policy.config["vf_loss_coeff"] * vf_loss -
                                policy.entropy_coeff * entropy)
         return kl, entropy, pg_loss, vf_loss, overall_loss
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)
