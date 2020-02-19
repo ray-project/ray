@@ -15,12 +15,13 @@ def training_workflow(workers, config):
         num_microbatches = math.ceil(
             config["train_batch_size"] / config["microbatch_size"])
 
-        train_op = rollouts \
-            .combine(ConcatBatches(min_batch_size=config["microbatch_size"])) \
-            .for_each(ComputeGradients(workers)) \
-            .batch(num_microbatches) \
-            .for_each(AverageGradients()) \
-            .for_each(ApplyGradients(workers))
+        train_op = (
+            rollouts.combine(
+                ConcatBatches(min_batch_size=config["microbatch_size"]))
+            .for_each(ComputeGradients(workers))  # (grads, info)
+            .batch(num_microbatches)  # List[(grads, info)]
+            .for_each(AverageGradients())  # (avg_grads, info)
+            .for_each(ApplyGradients(workers)))
     else:
         train_op = rollouts \
             .combine(ConcatBatches(
