@@ -1,13 +1,14 @@
-RaySGD TensorFlow
-=================
-
-.. warning:: This is still an experimental API and is subject to change in the near future.
-
-.. tip:: Help us make RaySGD better; take this 1 minute `User Survey <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+Distributed TensorFlow
+======================
 
 RaySGD's ``TFTrainer`` simplifies distributed model training for Tensorflow. The ``TFTrainer`` is a wrapper around ``MultiWorkerMirroredStrategy`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to write custom logic of setting environments and starting separate processes.
 
-.. important:: This API has only been tested with TensorFlow2.0rc and is still highly experimental. Please file bug reports if you run into any - thanks!
+Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
+
+.. image:: raysgd-actors.svg
+    :align: center
+
+.. tip:: We need your feedback! RaySGD is currently early in its development, and we're hoping to get feedback from people using or considering it. We'd love `to get in touch <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 
 ----------
 
@@ -71,6 +72,6 @@ TFTrainer Example
 
 Below is an example of using Ray's TFTrainer. Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a worker.
 
-.. literalinclude:: ../../../python/ray/experimental/sgd/tf/examples/tensorflow_train_example.py
+.. literalinclude:: ../../../python/ray/util/sgd/tf/examples/tensorflow_train_example.py
    :language: python
 

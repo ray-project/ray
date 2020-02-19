@@ -39,8 +39,6 @@ FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor 
   default:
     break;
   }
-  RAY_LOG(DEBUG) << "Unknown function descriptor case: "
-                 << message.function_descriptor_case();
   // When TaskSpecification() constructed without function_descriptor set,
   // we should return a valid ray::FunctionDescriptor instance.
   return FunctionDescriptorBuilder::Empty();

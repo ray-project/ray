@@ -16,8 +16,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
   // The first access to plasma is slow, but don't want users to experience it so put a
   // small object in plasma to warm it up.
-  RAY_CHECK_OK(
-      Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE), ObjectID::FromRandom()));
+  RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                   ObjectID::FromRandom(), nullptr));
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
@@ -32,7 +32,8 @@ Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
-                                          const ObjectID &object_id) {
+                                          const ObjectID &object_id,
+                                          bool *object_exists) {
   RAY_CHECK(!object.IsInPlasmaError()) << object_id;
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
@@ -45,6 +46,11 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
       memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
     }
     RAY_RETURN_NOT_OK(Seal(object_id));
+    if (object_exists) {
+      *object_exists = false;
+    }
+  } else if (object_exists) {
+    *object_exists = true;
   }
   return Status::OK();
 }
@@ -120,7 +126,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
         metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
       }
-      const auto result_object = std::make_shared<RayObject>(data, metadata);
+      const auto result_object =
+          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
@@ -136,7 +143,9 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
-    if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+    // NOTE: for direct call actors, we still need to issue an unblock IPC to release
+    // get subscriptions, even if the worker isn't blocked.
+    if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
       return client->NotifyDirectCallTaskUnblocked();
     } else {
       return Status::OK();  // We don't need to release resources.
