@@ -11,6 +11,7 @@ from ray.util.iter import from_actors, LocalIterator, PipelineContext
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -147,21 +148,22 @@ class TrainOneStep:
         >>> print(next(train_op))  # This trains the policy on one batch.
         None
 
-    Updates the "learner" info field in the local iterator context.
+    Updates the "num_steps_trained" counter and "learner" info field in the
+    local iterator context.
     """
 
     def __init__(self, workers: WorkerSet):
         self.workers = workers
 
     def __call__(self, batch: SampleBatch) -> List[dict]:
+        info = self.workers.local_worker().learn_on_batch(batch)
         ctx = LocalIterator.get_context()
         ctx.counters["num_steps_trained"] += batch.count
-        info = self.workers.local_worker().learn_on_batch(batch)
+        ctx.info["learner"] = info[LEARNER_STATS_KEY]
         if self.workers.remote_workers():
             weights = ray.put(self.workers.local_worker().get_weights())
             for e in self.workers.remote_workers():
                 e.set_weights.remote(weights)
-        LocalIterator.get_context().info["learner"] = info
         return info
 
 
@@ -258,7 +260,7 @@ class ComputeGradients:
 
     def __call__(self, samples):
         grad, info = self.workers.local_worker().compute_gradients(samples)
-        LocalIterator.get_context().info["learner"] = info
+        LocalIterator.get_context().info["learner"] = info[LEARNER_STATS_KEY]
         return grad, samples.count
 
 
@@ -271,6 +273,8 @@ class ApplyGradients:
         >>> apply_op = grads_op.for_each(ApplyGradients(workers))
         >>> print(next(apply_op))
         None
+
+    Updates the "num_steps_trained" counter in the local iterator context.
     """
 
     def __init__(self, workers):
