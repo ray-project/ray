@@ -9,7 +9,7 @@ echo "PYTHON is $PYTHON"
 
 cython_examples="$ROOT_DIR/../../doc/examples/cython"
 
-if [[ "$PYTHON" == "3.6" ]]; then
+# if [[ "$PYTHON" == "3.6" ]]; then
    export PATH="$HOME/miniconda/bin:$PATH"
 
    pushd $cython_examples
@@ -17,14 +17,11 @@ if [[ "$PYTHON" == "3.6" ]]; then
    python setup.py install --user
    popd
 
-elif [[ "$LINT" == "1" ]]; then
+if [[ "$LINT" == "1" ]]; then
    export PATH="$HOME/miniconda/bin:$PATH"
 
    pushd $cython_examples
    python setup.py install --user
    popd
 
-else
-   echo "Unrecognized Python version."
-   exit 1
 fi
