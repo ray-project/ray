@@ -25,7 +25,7 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = ppo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        config["num_workers"] = 2  # Run locally.
 
         # tf.
         #trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -36,8 +36,7 @@ class TestPPO(unittest.TestCase):
 
         # Torch.
         config["use_pytorch"] = True
-        config["simple_optimizer"] = True
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+        trainer = ppo.PPOTrainer(config=config, env="SpaceInvadersNoFrameskip-v4")
         for i in range(num_iterations):
             trainer.train()
 

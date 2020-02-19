@@ -173,10 +173,10 @@ def kl_and_loss_stats(policy, train_batch):
 def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
-    print()
+    #print(policy.model.last_output().numpy())
     return {
-        SampleBatch.VF_PREDS: np.array([1.1]),
-        BEHAVIOUR_LOGITS: np.array([1.0 / policy.action_space.n] * policy.action_space.n), #policy.model.last_output().numpy(),
+        SampleBatch.VF_PREDS: np.array([-1.0]),  #policy.model.value_function().numpy(),
+        BEHAVIOUR_LOGITS: np.array([[1.0 / policy.action_space.n] * policy.action_space.n]), #policy.model.last_output().numpy(),
         ACTION_LOGP: np.array([-0.1]),  # action_dist.logp(input_dict[SampleBatch.ACTIONS]).numpy()
     }
 
