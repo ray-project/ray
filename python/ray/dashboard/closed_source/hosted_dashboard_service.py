@@ -26,7 +26,7 @@ if __name__ == "__main__":
         required=False,
         default=8080,
         type=str,
-        help="The port to use for the GRPC server.")
+        help="The port to use for a server.")
     args = parser.parse_args()
     app = web.Application()
     app.add_routes([
