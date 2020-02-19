@@ -6,11 +6,13 @@ cluster:
   config: ray-project/cluster.yaml
   params:
     - name: ray_version # Ray version string.
-      default: "0.8.1"
+      default: "0.8.2"
 
     - name: commit # Ray commit SHA string.
-      default: "38ec2e70524a277d5aea307f6c843065ff982da5"
+      default: "f5a1307a608fe5fdbdb04616b22c91f029af329a"
 
+    - name: ray_branch
+      default: "releases/0.8.2"
 
 commands:
   - name: test_many_tasks
