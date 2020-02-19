@@ -64,7 +64,7 @@ public class JobGraphBuilder {
       this.jobGraph.addEdge(jobEdge);
       processStream(parentStream);
     } else {
-      throw new UnsupportedOperationException("Unsupported stream " + stream);
+      throw new UnsupportedOperationException("Unsupported stream: " + stream);
     }
     this.jobGraph.addVertex(jobVertex);
   }
