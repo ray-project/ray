@@ -16,6 +16,9 @@ def ParallelRollouts(workers: WorkerSet,
                      mode="bulk_sync") -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
+    If there are no remote workers, experiences will be collected serially from
+    the local worker instance instead.
+
     Arguments:
         workers (WorkerSet): set of rollout workers to use.
         mode (str): One of {'async', 'bulk_sync'}.
@@ -39,7 +42,17 @@ def ParallelRollouts(workers: WorkerSet,
         200  # config.sample_batch_size * config.num_workers
     """
 
+    if not workers.remote_workers():
+        # Handle the serial sampling case.
+        def sampler(_):
+            while True:
+                yield workers.local_worker().sample()
+
+        return LocalIterator(sampler)
+
+    # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
+
     if mode == "bulk_sync":
         return rollouts \
             .batch_across_shards() \

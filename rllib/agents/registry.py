@@ -105,6 +105,11 @@ def _import_a2c_workflow():
     return a3c.A2CWorkflow
 
 
+def _import_pg_workflow():
+    from ray.rllib.agents import pg
+    return pg.PGWorkflow
+
+
 ALGORITHMS = {
     "SAC": _import_sac,
     "DDPG": _import_ddpg,
@@ -128,6 +133,7 @@ ALGORITHMS = {
 
     # Experimental workflow-based impls.
     "A2C_wf": _import_a2c_workflow,
+    "PG_wf": _import_pg_workflow,
 }
 
 

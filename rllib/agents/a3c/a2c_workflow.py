@@ -26,7 +26,7 @@ def training_workflow(workers, config):
         train_op = rollouts \
             .combine(ConcatBatches(
                 min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(workers)) \
+            .for_each(TrainOneStep(workers))
 
     return StandardMetricsReporting(train_op, workers, config)
 
