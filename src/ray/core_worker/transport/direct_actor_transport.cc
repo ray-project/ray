@@ -279,12 +279,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
             return_object->set_metadata(result->GetMetadata()->Data(),
                                         result->GetMetadata()->Size());
           }
-        }
-        // Set any nested IDs. This is used by the owner of the return IDs to
-        // make sure that all nested IDs are kept in scope as long as the
-        // return ID is in scope.
-        for (const auto &nested_id : result->GetNestedIds()) {
-          return_object->add_nested_ids(nested_id.Binary());
+          for (const auto &nested_id : result->GetNestedIds()) {
+            return_object->add_nested_inlined_ids(nested_id.Binary());
+          }
         }
       }
       // If we spilled any return objects to plasma, notify the raylet to pin them.

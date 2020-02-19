@@ -68,11 +68,11 @@ class ReferenceCounter {
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(
-      const std::vector<ObjectID> &argument_ids,
-      const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids,
-      const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
-      std::vector<ObjectID> *deleted) LOCKS_EXCLUDED(mutex_);
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                    const rpc::Address &worker_addr,
+                                    const ReferenceTableProto &borrowed_refs,
+                                    std::vector<ObjectID> *deleted)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
   /// Dependencies for each ObjectID must be set at most once. The local

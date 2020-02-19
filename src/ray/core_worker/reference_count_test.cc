@@ -142,8 +142,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
     }
-    rc_.UpdateFinishedTaskReferences(arguments, nested_return_ids, borrower_address,
-                                     borrower_refs, nullptr);
+    rc_.UpdateFinishedTaskReferences(arguments, borrower_address, borrower_refs, nullptr);
   }
 
   // Global map from Worker ID -> MockWorkerClient.
@@ -189,13 +188,13 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->UpdateSubmittedTaskReferences({id1});
   rc->UpdateSubmittedTaskReferences({id1, id2});
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
-  rc->UpdateFinishedTaskReferences({id1}, {}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, {}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
-  rc->UpdateFinishedTaskReferences({id1}, {}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 2);
   out.clear();
@@ -208,10 +207,10 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, {}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id1}, {}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
   rc->RemoveLocalReference(id2, &out);

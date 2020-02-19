@@ -63,9 +63,8 @@ message ReturnObject {
   bytes data = 3;
   // Metadata of the object.
   bytes metadata = 4;
-  // ObjectIDs that were nested in data. This is set for both
-  // inlined objects and objects in plasma.
-  repeated bytes nested_ids = 5;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated bytes nested_inlined_ids = 5;
 }
 
 message PushTaskRequest {

@@ -143,20 +143,9 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> &argument_ids,
-    const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids,
-    const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
-    std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> &argument_ids, const rpc::Address &worker_addr,
+    const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  for (const auto &return_object : nested_return_ids) {
-    const auto &return_id = return_object.first;
-    const auto &nested_ids = return_object.second;
-    for (const auto &nested_id : nested_ids) {
-      object_id_refs_.emplace(nested_id, Reference());
-    }
-    AddNestedObjectIdsInternal(return_id, nested_ids, rpc_address_);
-  }
-
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
   // the inner ID before decrementing the submitted_task_ref_count for the

@@ -110,9 +110,7 @@ class TaskManager : public TaskFinisherInterface {
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
   /// that were inlined in the task spec.
   void RemoveFinishedTaskReferences(
-      TaskSpecification &spec,
-      const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids,
-      const rpc::Address &worker_addr,
+      TaskSpecification &spec, const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
