@@ -52,11 +52,11 @@ idle_timeout_minutes: 5
 provider:
     type: azure
     location: westus2
-    service_principal: http://ray-service
+    service_principal: http://marcozo-ray-service
     # create credential json file to use an existing service principal 
     # https://docs.microsoft.com/en-us/azure/python/python-sdk-azure-authenticate#mgmt-auth-file
     # e.g. ~/.azure/azure_credentials_ray-service.json
-    resource_group: ray-cluster
+    resource_group: mc-ray-cluster3
     # set subscription id otherwise the default from az cli will be used
     # subscription_id: 00000000-0000-0000-0000-000000000000
 
@@ -80,9 +80,10 @@ head_node:
             create_option: FromImage
             caching: ReadWrite
         image_reference:
+            # Query using az vm image list --publisher microsoft-dsvm --location westus --output table --offer ubuntu-1804 --sku 1804-gen2 --all
             publisher: microsoft-dsvm
-            offer: linux-data-science-vm-ubuntu
-            sku: linuxdsvmubuntu
+            offer: ubuntu-1804
+            sku: 1804-gen2
             version: latest
     # Additional properties in the azure docs.
 
@@ -100,8 +101,8 @@ worker_nodes:
             caching: ReadWrite
         image_reference:
             publisher: microsoft-dsvm
-            offer: linux-data-science-vm-ubuntu
-            sku: linuxdsvmubuntu
+            offer: ubuntu-1804
+            sku: 1804-gen2
             version: latest
         # run workers on spot instances by default
         priority: Spot
@@ -125,7 +126,9 @@ file_mounts: {
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
-initialization_commands: []
+initialization_commands:
+    # get rid of annoying Ubuntu message
+    - touch ~/.sudo_as_admin_successful
 
 # List of shell commands to run to set up nodes.
 setup_commands:
@@ -135,7 +138,8 @@ setup_commands:
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true

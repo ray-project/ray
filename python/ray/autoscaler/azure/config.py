@@ -176,8 +176,6 @@ def _configure_service_principal(config):
             try:
                 rg_id = resource_client.resource_groups.get(resource_group).id
 
-                # TODO: check if service principal has correct role / scope
-                # set contributor role for service principal on new resource group
                 role = auth_client.role_definitions.list(
                     rg_id, filter="roleName eq 'Contributor'").next()
                 role_params = {
@@ -285,6 +283,10 @@ def _configure_network(config):
                     resource_group_name=resource_group,
                     filter="name eq '{}'".format(VNET_NAME)))
             break
+        except CloudError as ce:
+            # TODO: nested exception of other type?
+            # print("VNet {}".format(ce))
+            time.sleep(1)
         except AuthenticationError:
             # wait for service principal authorization to populate
             time.sleep(1)

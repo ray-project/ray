@@ -220,29 +220,30 @@ class AzureNodeProvider(NodeProvider):
     @synchronized
     def terminate_node(self, node_id):
         """Terminates the specified node."""
-        self.compute_client.virtual_machines.deallocate(
-            resource_group_name=self.provider_config["resource_group"],
-            vm_name=node_id)
-
-    @synchronized
-    def cleanup(self):
-        """Delete all created VM resources"""
+        # self.compute_client.virtual_machines.deallocate(
+        # resource_group_name=self.provider_config["resource_group"],
+        # vm_name=node_id)
         resource_group = self.provider_config["resource_group"]
         nodes = self._get_filtered_nodes(
             tag_filters={TAG_RAY_CLUSTER_NAME: self.cluster_name})
         for node, metadata in nodes.items():
-            self.compute_client.virtual_machines.delete(
-                resource_group_name=resource_group, vm_name=node).wait()
-            self.network_client.network_interfaces.delete(
-                resource_group_name=resource_group,
-                network_interface_name=metadata["nic_name"])
-            self.network_client.public_ip_addresses.delete(
-                resource_group_name=resource_group,
-                public_ip_address_name=metadata["public_ip_name"])
+            # gather disks to delete later
             vm = self.compute_client.virtual_machines.get(
                 resource_group_name=resource_group, vm_name=node)
             disks = vm.storage_profile.data_disks
             disks.append(vm.storage_profile.os_disk)
+           # delete machine
+            self.compute_client.virtual_machines.delete(
+                resource_group_name=resource_group, vm_name=node).wait()
+            # delete nic
+            self.network_client.network_interfaces.delete(
+                resource_group_name=resource_group,
+                network_interface_name=metadata["nic_name"])
+            # delete ip address
+            self.network_client.public_ip_addresses.delete(
+                resource_group_name=resource_group,
+                public_ip_address_name=metadata["public_ip_name"])
+            # delete disks
             for disk in disks:
                 self.compute_client.disks.delete(
                     resource_group_name=resource_group, disk_name=disk.name)
