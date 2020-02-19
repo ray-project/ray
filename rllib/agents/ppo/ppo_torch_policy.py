@@ -1,5 +1,5 @@
 import logging
-
+import numpy as np
 import ray
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
@@ -153,29 +153,31 @@ def kl_and_loss_stats(policy, train_batch):
         except:
             pass
     print("Tensor count = {}".format(count))
-    return {
-        "cur_kl_coeff": policy.kl_coeff,
-        "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.item(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.item(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.item(),
-        "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function(),
-            framework="torch").item(),
-        "kl": policy.loss_obj.mean_kl.item(),
-        "entropy": policy.loss_obj.mean_entropy.item(),
-        "entropy_coeff": policy.entropy_coeff,
-    }
+    return {}
+    #return {
+    #    "cur_kl_coeff": policy.kl_coeff,
+    #    "cur_lr": policy.cur_lr,
+    #    "total_loss": policy.loss_obj.loss.item(),
+    #    "policy_loss": policy.loss_obj.mean_policy_loss.item(),
+    #    "vf_loss": policy.loss_obj.mean_vf_loss.item(),
+    #    "vf_explained_var": explained_variance(
+    #        train_batch[Postprocessing.VALUE_TARGETS],
+    #        policy.model.value_function(),
+    #        framework="torch").item(),
+    #    "kl": policy.loss_obj.mean_kl.item(),
+    #    "entropy": policy.loss_obj.mean_entropy.item(),
+    #    "entropy_coeff": policy.entropy_coeff,
+    #}
 
 
 def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
+    print()
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function().numpy(),
-        BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
-        ACTION_LOGP: action_dist.logp(input_dict[SampleBatch.ACTIONS]).numpy(),
+        SampleBatch.VF_PREDS: np.array([1.1]),
+        BEHAVIOUR_LOGITS: np.array([1.0 / policy.action_space.n] * policy.action_space.n), #policy.model.last_output().numpy(),
+        ACTION_LOGP: np.array([-0.1]),  # action_dist.logp(input_dict[SampleBatch.ACTIONS]).numpy()
     }
 
 
