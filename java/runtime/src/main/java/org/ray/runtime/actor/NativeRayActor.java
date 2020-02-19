@@ -6,13 +6,11 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
-import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
-import org.ray.api.runtime.RayRuntime;
-import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.generated.Common.Language;
+import org.ray.runtime.util.RuntimeUtil;
 
 /**
  * RayActor abstract language-independent implementation for cluster mode. This is a wrapper class
@@ -102,13 +100,7 @@ public abstract class NativeRayActor implements RayActor, Externalizable {
   }
 
   private static long getNativeCoreWorkerPointer() {
-    RayRuntime runtime = Ray.internal();
-    if (runtime instanceof RayMultiWorkerNativeRuntime) {
-      runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
-    }
-    Preconditions.checkState(runtime instanceof RayNativeRuntime);
-
-    return ((RayNativeRuntime) runtime).getNativeCoreWorkerPointer();
+    return ((RayNativeRuntime) RuntimeUtil.getRuntime()).getNativeCoreWorkerPointer();
   }
 
   @Override

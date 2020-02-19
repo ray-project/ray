@@ -2,15 +2,12 @@ package org.ray.runtime.task;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
-import org.ray.api.runtime.RayRuntime;
-import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectSerializer;
+import org.ray.runtime.util.RuntimeUtil;
 
 /**
  * Helper methods to convert arguments from/to objects.
@@ -46,12 +43,7 @@ public class ArgumentsBuilder {
       } else {
         value = ObjectSerializer.serialize(arg);
         if (!isDirectCall && value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          RayRuntime runtime = Ray.internal();
-          if (runtime instanceof RayMultiWorkerNativeRuntime) {
-            runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
-          }
-          id = ((AbstractRayRuntime) runtime).getObjectStore()
-              .putRaw(value);
+          id = RuntimeUtil.getRuntime().getObjectStore().putRaw(value);
           value = null;
         }
       }

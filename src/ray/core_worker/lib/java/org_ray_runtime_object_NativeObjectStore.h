@@ -49,6 +49,25 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWa
 JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelete(
     JNIEnv *, jclass, jlong, jobject, jboolean, jboolean);
 
+/*
+ * Class:     org_ray_runtime_object_NativeObjectStore
+ * Method:    nativeAddLocalReference
+ * Signature: (J[B)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
+                                                                      jlong, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_object_NativeObjectStore
+ * Method:    nativeRemoveLocalReference
+ * Signature: (J[B)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
+                                                                         jlong,
+                                                                         jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif

@@ -164,4 +164,16 @@ public abstract class ObjectStore {
    */
   public abstract void delete(List<ObjectId> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
+
+  /**
+   * Increase the local reference count for this object ID.
+   * @param objectId The object ID to increase the reference count for.
+   */
+  public abstract void addLocalReference(ObjectId objectId);
+
+  /**
+   * Decrease the reference count for this object ID.
+   * @param objectId The object ID to decrease the reference count for.
+   */
+  public abstract void removeLocalReference(ObjectId objectId);
 }

@@ -78,6 +78,22 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelet
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
+      ->AddLocalReference(object_id);
+}
+
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
+      ->RemoveLocalReference(object_id);
+}
+
 #ifdef __cplusplus
 }
 #endif

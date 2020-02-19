@@ -1,14 +1,12 @@
 package org.ray.api;
 
-import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import java.util.function.Supplier;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
-import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.util.RuntimeUtil;
 import org.testng.Assert;
 import org.testng.SkipException;
 
@@ -22,13 +20,13 @@ public class TestUtils {
   private static final int WAIT_INTERVAL_MS = 5;
 
   public static void skipTestUnderSingleProcess() {
-    if (getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
+    if (RuntimeUtil.getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
       throw new SkipException("This test doesn't work under single-process mode.");
     }
   }
 
   public static void skipTestUnderClusterMode() {
-    if (getRuntime().getRayConfig().runMode == RunMode.CLUSTER) {
+    if (RuntimeUtil.getRuntime().getRayConfig().runMode == RunMode.CLUSTER) {
       throw new SkipException("This test doesn't work under cluster mode.");
     }
   }
@@ -94,11 +92,6 @@ public class TestUtils {
   }
 
   public static AbstractRayRuntime getRuntime() {
-    RayRuntime runtime = Ray.internal();
-    if (runtime instanceof RayMultiWorkerNativeRuntime) {
-      runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
-    }
-    Preconditions.checkState(runtime instanceof AbstractRayRuntime);
-    return (AbstractRayRuntime) runtime;
+    return RuntimeUtil.getRuntime();
   }
 }

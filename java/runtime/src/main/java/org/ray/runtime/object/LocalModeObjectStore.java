@@ -96,4 +96,12 @@ public class LocalModeObjectStore extends ObjectStore {
       pool.remove(objectId);
     }
   }
+
+  @Override
+  public void addLocalReference(ObjectId objectId) {
+  }
+
+  @Override
+  public void removeLocalReference(ObjectId objectId) {
+  }
 }

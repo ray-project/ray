@@ -1,9 +1,13 @@
 package org.ray.runtime.object;
 
+import com.google.common.base.Preconditions;
+import java.io.IOException;
 import java.io.Serializable;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
+import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.util.RuntimeUtil;
 
 /**
  * Implementation of {@link RayObject}.
@@ -12,32 +16,18 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
 
   private final ObjectId id;
 
-  /**
-   * Cache the result of `Ray.get()`.
-   *
-   * Note, this is necessary for direct calls, in which case, it's not allowed to call `Ray.get` on
-   * the same object twice.
-   */
-  private T object;
-
-  /**
-   * Whether the object is already gotten from the object store.
-   */
-  private boolean objectGotten;
+  // In GC thread, we don't know which runtime this object binds to, so we need to store a reference
+  // of the runtime for later uses.
+  private transient AbstractRayRuntime runtime;
 
   public RayObjectImpl(ObjectId id) {
     this.id = id;
-    object = null;
-    objectGotten = false;
+    addLocalReference();
   }
 
   @Override
   public synchronized T get() {
-    if (!objectGotten) {
-      object = Ray.get(id);
-      objectGotten = true;
-    }
-    return object;
+    return Ray.get(id);
   }
 
   @Override
@@ -45,4 +35,26 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
     return id;
   }
 
+  @Override
+  protected void finalize() throws Throwable {
+    try {
+      if (!runtime.isShutdown()) {
+        runtime.getObjectStore().removeLocalReference(id);
+      }
+    } finally {
+      super.finalize();
+    }
+  }
+
+  private void readObject(java.io.ObjectInputStream in)
+      throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    addLocalReference();
+  }
+
+  private void addLocalReference() {
+    runtime = RuntimeUtil.getRuntime();
+    Preconditions.checkState(!runtime.isShutdown(), "The runtime is already shutdown.");
+    runtime.getObjectStore().addLocalReference(id);
+  }
 }

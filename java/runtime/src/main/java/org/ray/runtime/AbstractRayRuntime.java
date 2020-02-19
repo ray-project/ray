@@ -52,6 +52,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
+  private boolean isShutdown = false;
+
   public AbstractRayRuntime(RayConfig rayConfig, FunctionManager functionManager) {
     this.rayConfig = rayConfig;
     this.functionManager = functionManager;
@@ -59,7 +61,13 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public abstract void shutdown();
+  public void shutdown() {
+    isShutdown = true;
+  }
+
+  public boolean isShutdown() {
+    return isShutdown;
+  }
 
   @Override
   public <T> RayObject<T> put(T obj) {

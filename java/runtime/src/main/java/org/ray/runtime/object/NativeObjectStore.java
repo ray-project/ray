@@ -50,6 +50,16 @@ public class NativeObjectStore extends ObjectStore {
     nativeDelete(nativeCoreWorkerPointer, toBinaryList(objectIds), localOnly, deleteCreatingTasks);
   }
 
+  @Override
+  public void addLocalReference(ObjectId objectId) {
+    nativeAddLocalReference(nativeCoreWorkerPointer, objectId.getBytes());
+  }
+
+  @Override
+  public void removeLocalReference(ObjectId objectId) {
+    nativeRemoveLocalReference(nativeCoreWorkerPointer, objectId.getBytes());
+  }
+
   private static List<byte[]> toBinaryList(List<ObjectId> ids) {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
@@ -67,4 +77,9 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native void nativeDelete(long nativeCoreWorkerPointer, List<byte[]> objectIds,
       boolean localOnly, boolean deleteCreatingTasks);
+
+  private static native void nativeAddLocalReference(long nativeCoreWorkerPointer, byte[] objectId);
+
+  private static native void nativeRemoveLocalReference(long nativeCoreWorkerPointer,
+      byte[] objectId);
 }
