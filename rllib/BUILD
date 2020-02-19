@@ -61,6 +61,7 @@ py_test(
 # DQNTrainer
 py_test(
     name = "test_dqn",
+    tags = ["agents_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
@@ -77,7 +78,7 @@ py_test(
 py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ppo/tests/test_ppo.py",
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
@@ -814,6 +815,7 @@ py_test(
     name = "test_framework_agnostic_components",
     tags = ["utils"],
     size = "small",
+    data = glob(["utils/tests/**"]),
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
