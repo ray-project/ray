@@ -47,7 +47,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *results, const ray::WorkerID &worker_id)>;
 
  public:
   /// Construct a CoreWorker instance.
@@ -157,11 +157,24 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// object.
   ///
   /// \param[in] object_id The object ID to deserialize.
+  /// \param[in] outer_object_id The object ID that contained object_id, if
+  /// any. This may be nil if the object ID was inlined directly in a task spec
+  /// or if it was passed out-of-band by the application (deserialized from a
+  /// byte string).
   /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
+                                             const ObjectID &outer_object_id,
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
+
+  /// Add metadata about the object IDs contained within another object ID.
+  /// This should be called during deserialization of the outer object ID.
+  ///
+  /// \param[in] object_id The object containing IDs.
+  /// \param[in] contained_object_ids The IDs contained in the object.
+  void AddContainedObjectIDs(const ObjectID &object_id,
+                             const std::vector<ObjectID> &contained_object_ids);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -177,16 +190,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const RayObject &object, ObjectID *object_id);
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
+             ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
   ///
   /// \param[in] object The ray object.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
   /// \return Status.
-  Status Put(const RayObject &object, const ObjectID &object_id);
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
+             const ObjectID &object_id);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -195,11 +212,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
+                std::shared_ptr<Buffer> *data);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -218,14 +237,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// a corresponding `Create()` call and then writing into the returned buffer.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
-  /// \param[in] owns_object Whether or not this worker owns the object. If true,
-  ///            the object will be added as owned to the reference counter as an
-  ///            owned object and this worker will be responsible for managing its
-  ///            lifetime.
-  /// \param[in] pin_object Whether or not to pin the object at the local raylet. This
-  ///            only applies when owns_object is true.
+  /// \param[in] pin_object Whether or not to pin the object at the local raylet.
   /// \return Status.
-  Status Seal(const ObjectID &object_id, bool owns_object, bool pin_object);
+  Status Seal(const ObjectID &object_id, bool pin_object);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -258,7 +272,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
               const int64_t timeout_ms, std::vector<bool> *results);
 
-  /// Delete a list of objects from the object store.
+  /// Delete a list of objects from the plasma object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
@@ -337,13 +351,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
-  /// \param[out] actor_handle Handle to the actor.
+  /// \param[in] extension_data Extension data of the actor handle,
+  /// see `ActorHandle` in `core_worker.proto`.
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     ActorID *actor_id);
+                     const std::string &extension_data, ActorID *actor_id);
 
   /// Submit an actor task.
   ///
@@ -409,12 +424,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids Object IDs of the return values.
   /// \param[in] data_sizes Sizes of the return values.
   /// \param[in] metadatas Metadata buffers of the return values.
+  /// \param[in] contained_object_ids IDs serialized within each return object.
   /// \param[out] return_objects RayObjects containing buffers to write results into.
   /// \return Status.
-  Status AllocateReturnObjects(const std::vector<ObjectID> &object_ids,
-                               const std::vector<size_t> &data_sizes,
-                               const std::vector<std::shared_ptr<Buffer>> &metadatas,
-                               std::vector<std::shared_ptr<RayObject>> *return_objects);
+  Status AllocateReturnObjects(
+      const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
+      const std::vector<std::shared_ptr<Buffer>> &metadatas,
+      const std::vector<std::vector<ObjectID>> &contained_object_ids,
+      std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Get a handle to an actor.
   ///
@@ -453,6 +470,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
                                    rpc::WaitForObjectEvictionReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
+                               rpc::WaitForRefRemovedReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
@@ -521,33 +543,47 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Execute a task.
   ///
-  /// \param spec[in] Task specification.
-  /// \param spec[in] Resource IDs of resources assigned to this worker. If nullptr,
-  ///                 reuse the previously assigned resources.
-  /// \param results[out] Result objects that should be returned by value (not via
-  ///                     plasma).
+  /// \param spec[in] task_spec Task specification.
+  /// \param spec[in] resource_ids Resource IDs of resources assigned to this
+  ///                 worker. If nullptr, reuse the previously assigned
+  ///                 resources.
+  /// \param results[out] return_objects Result objects that should be returned
+  ///                     by value (not via plasma).
+  /// \param results[out] borrowed_refs Refs that this task (or a nested task)
+  ///                     was or is still borrowing. This includes all
+  ///                     objects whose IDs we passed to the task in its
+  ///                     arguments and recursively, any object IDs that were
+  ///                     contained in those objects.
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *return_objects);
+                     std::vector<std::shared_ptr<RayObject>> *return_objects,
+                     ReferenceCounter::ReferenceTableProto *borrowed_refs);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
   /// fetch its content from store and; for arguments that are passed by value,
   /// just copy their content.
   ///
-  /// \param spec[in] Task specification.
-  /// \param args[out] Argument data as RayObjects.
-  /// \param args[out] ObjectIDs corresponding to each by reference argument. The length
-  ///                  of this vector will be the same as args, and by value arguments
-  ///                  will have ObjectID::Nil().
+  /// \param spec[in] task Task specification.
+  /// \param args[out] args Argument data as RayObjects.
+  /// \param args[out] arg_reference_ids ObjectIDs corresponding to each by
+  ///                  reference argument. The length of this vector will be
+  ///                  the same as args, and by value arguments will have
+  ///                  ObjectID::Nil().
   ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
+  /// \param args[out] borrowed_ids ObjectIDs that we are borrowing from the
+  ///                  task caller for the duration of the task execution. This
+  ///                  vector will be populated with all argument IDs that were
+  ///                  passed by reference and any ObjectIDs that were included
+  ///                  in the task spec's inlined arguments.
   /// \return The arguments for passing to task executor.
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
-                              std::vector<ObjectID> *arg_reference_ids);
+                              std::vector<ObjectID> *arg_reference_ids,
+                              std::vector<ObjectID> *borrowed_ids);
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies

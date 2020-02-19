@@ -10,7 +10,7 @@ To get started, take a look over the `custom env example <https://github.com/ray
 RLlib in 60 seconds
 -------------------
 
-The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__. Look out for the |tensorflow| and |pytorch| icons to see which algorithms are available for each framework.
+The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__. Look out for the |tensorflow| and |pytorch| icons to see which algorithms are `available <rllib-toc.html#algorithms>`__ for each framework.
 
 Running RLlib
 ~~~~~~~~~~~~~
@@ -25,13 +25,17 @@ Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v0  # --eager [--trace] for eager execution
+  rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
+                                           # --eager [--trace] for eager execution,
+                                           # --torch to use PyTorch
 
 .. code-block:: python
 
   from ray import tune
   from ray.rllib.agents.ppo import PPOTrainer
-  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "eager": True for eager execution
+  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
+                                                       # "eager": True for eager execution,
+                                                       # "torch": True for PyTorch
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 

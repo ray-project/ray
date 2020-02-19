@@ -15,7 +15,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `Distributed Training <https://ray.readthedocs.io/en/latest/distributed_training.html>`__
+- `RaySGD <https://ray.readthedocs.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://ray.readthedocs.io/en/latest/installation.html>`__.
@@ -182,7 +182,7 @@ RLlib Quick Start
 More Information
 ----------------
 
-- `Documentation`_
+- `Documentation`_, in particular `Building Ray and Contributing to Ray`_
 - `Tutorial`_
 - `Blog`_
 - `Ray paper`_
@@ -191,6 +191,7 @@ More Information
 - `Tune paper`_
 
 .. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
+.. _`Building Ray and Contributing to Ray`: https://ray.readthedocs.io/en/latest/development.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://ray-project.github.io/
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889

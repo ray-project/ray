@@ -2,12 +2,8 @@ import os
 
 import colorama
 
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
-
 import ray
+import setproctitle
 
 
 class RayError(Exception):

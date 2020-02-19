@@ -23,9 +23,6 @@ class Schedule(metaclass=ABCMeta):
     """
 
     def __init__(self, framework=None):
-        # TODO(sven): replace with .tf_value() / torch_value() methods that
-        # can be applied late binding, so no need to set framework during
-        # construction.
         self.framework = check_framework(framework)
 
     @abstractmethod

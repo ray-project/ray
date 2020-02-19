@@ -197,19 +197,19 @@ If we instantiate an actor, we can pass the handle around to various tasks.
       print(ray.get(counter.get_counter.remote()))
 
 
-Actor Pool (Experimental)
--------------------------
+Actor Pool
+----------
 
-The ``ray.experimental`` module contains a utility class, ``ActorPool``.
+The ``ray.util`` module contains a utility class, ``ActorPool``.
 This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
 
 .. code-block::
 
-  from ray.experimental import ActorPool
+  from ray.util import ActorPool
 
   a1, a2 = Actor.remote(), Actor.remote()
   pool = ActorPool([a1, a2])
   print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
   # [2, 4, 6, 8]
 
-See the `package reference <package-ref.html#ray.experimental.ActorPool>`_ for more information.
+See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.

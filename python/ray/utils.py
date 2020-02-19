@@ -6,14 +6,15 @@ import logging
 import numpy as np
 import os
 import six
-import subprocess
 import sys
 import threading
 import time
 import uuid
 
+import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -382,46 +383,6 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
-def vmstat(stat):
-    """Run vmstat and get a particular statistic.
-
-    Args:
-        stat: The statistic that we are interested in retrieving.
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(["vmstat", "-s"])
-    stat = stat.encode("ascii")
-    for line in out.split(b"\n"):
-        line = line.strip()
-        if stat in line:
-            return int(line.split(b" ")[0])
-    raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
-
-
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5e90b0a7f3fccb177445a186cc4fac62cfadb510/psutil/tests/test_osx.py#L29-L38  # noqa: E501
-def sysctl(command):
-    """Run a sysctl command and parse the output.
-
-    Args:
-        command: A sysctl command with an argument, for example,
-            ["sysctl", "hw.memsize"].
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(command)
-    result = out.split(b" ")[1]
-    try:
-        return int(result)
-    except ValueError:
-        return result
-
-
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
@@ -438,52 +399,50 @@ def get_system_memory():
             docker_limit = int(f.read())
 
     # Use psutil if it is available.
-    psutil_memory_in_bytes = None
-    try:
-        import psutil
-        psutil_memory_in_bytes = psutil.virtual_memory().total
-    except ImportError:
-        pass
-
-    if psutil_memory_in_bytes is not None:
-        memory_in_bytes = psutil_memory_in_bytes
-    elif sys.platform == "linux" or sys.platform == "linux2":
-        # Handle Linux.
-        bytes_in_kilobyte = 1024
-        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
-    else:
-        # Handle MacOS.
-        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+    psutil_memory_in_bytes = psutil.virtual_memory().total
 
     if docker_limit is not None:
-        return min(docker_limit, memory_in_bytes)
-    else:
-        return memory_in_bytes
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
+        return min(docker_limit, psutil_memory_in_bytes)
+
+    return psutil_memory_in_bytes
+
+
+def get_used_memory():
+    """Return the currently used system memory in bytes
+
+    Returns:
+        The total amount of used memory
+    """
+    # Try to accurately figure out the memory usage if we are in a docker
+    # container.
+    docker_usage = None
+    memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    if os.path.exists(memory_usage_filename):
+        with open(memory_usage_filename, "r") as f:
+            docker_usage = int(f.read())
+
+    # Use psutil if it is available.
+    psutil_memory_in_bytes = psutil.virtual_memory().used
+
+    if docker_usage is not None:
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
+        return min(docker_usage, psutil_memory_in_bytes)
+
+    return psutil_memory_in_bytes
 
 
 def estimate_available_memory():
     """Return the currently available amount of system memory in bytes.
 
     Returns:
-        The total amount of available memory in bytes. It may be an
-        overestimate if psutil is not installed.
+        The total amount of available memory in bytes. Based on the used
+        and total memory.
+
     """
-
-    # Use psutil if it is available.
-    try:
-        import psutil
-        return psutil.virtual_memory().available
-    except ImportError:
-        pass
-
-    # Handle Linux.
-    if sys.platform == "linux" or sys.platform == "linux2":
-        bytes_in_kilobyte = 1024
-        return (
-            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
-
-    # Give up
-    return get_system_memory()
+    return get_system_memory() - get_used_memory()
 
 
 def get_shared_memory_bytes():

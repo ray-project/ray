@@ -56,6 +56,7 @@ jfieldID java_actor_creation_options_default_use_direct_call;
 jfieldID java_actor_creation_options_max_reconstructions;
 jfieldID java_actor_creation_options_use_direct_call;
 jfieldID java_actor_creation_options_jvm_options;
+jfieldID java_actor_creation_options_max_concurrency;
 
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
@@ -69,6 +70,7 @@ jfieldID java_native_ray_object_metadata;
 
 jclass java_task_executor_class;
 jmethodID java_task_executor_execute;
+jmethodID java_task_executor_get;
 
 JavaVM *jvm;
 
@@ -164,7 +166,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "useDirectCall", "Z");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
-
+  java_actor_creation_options_max_concurrency =
+      env->GetFieldID(java_actor_creation_options_class, "maxConcurrency", "I");
   java_gcs_client_options_class = LoadClass(env, "org/ray/runtime/gcs/GcsClientOptions");
   java_gcs_client_options_ip =
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
@@ -185,6 +188,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
+
+  java_task_executor_get = env->GetStaticMethodID(
+      java_task_executor_class,
+      "get",
+      "([B)Lorg/ray/runtime/task/TaskExecutor;");
 
   return CURRENT_JNI_VERSION;
 }

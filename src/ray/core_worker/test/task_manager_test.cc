@@ -65,7 +65,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   return_object->set_object_id(return_id.Binary());
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
-  manager_.CompletePendingTask(spec.TaskId(), reply, nullptr);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);

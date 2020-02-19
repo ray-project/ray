@@ -84,8 +84,8 @@ public class FunctionManager {
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
       final String className = serializedLambda.getImplClass().replace('/', '.');
       final String methodName = serializedLambda.getImplMethodName();
-      final String typeDescriptor = serializedLambda.getImplMethodSignature();
-      functionDescriptor = new JavaFunctionDescriptor(className, methodName, typeDescriptor);
+      final String signature = serializedLambda.getImplMethodSignature();
+      functionDescriptor = new JavaFunctionDescriptor(className, methodName, signature);
       RAY_FUNC_CACHE.get().put(func.getClass(), functionDescriptor);
     }
     return getFunction(jobId, functionDescriptor);
@@ -167,13 +167,26 @@ public class FunctionManager {
           }
         }
       }
-      return classFunctions.get(ImmutablePair.of(descriptor.name, descriptor.typeDescriptor));
+      final Pair<String, String> key = ImmutablePair.of(descriptor.name, descriptor.signature);
+      RayFunction func = classFunctions.get(key);
+      if (func == null) {
+        if (classFunctions.containsKey(key)) {
+          throw new RuntimeException(
+                  String.format("RayFunction %s is overloaded, the signature can't be empty.",
+                          descriptor.toString()));
+        } else {
+          throw new RuntimeException(
+                  String.format("RayFunction %s not found", descriptor.toString()));
+        }
+      }
+      return func;
     }
 
     /**
      * Load all functions from a class.
      */
     Map<Pair<String, String>, RayFunction> loadFunctionsForClass(String className) {
+      // If RayFunction is null, the function is overloaded.
       Map<Pair<String, String>, RayFunction> map = new HashMap<>();
       try {
         Class clazz = Class.forName(className, true, classLoader);
@@ -187,10 +200,17 @@ public class FunctionManager {
           final String methodName = e instanceof Method ? e.getName() : CONSTRUCTOR_NAME;
           final Type type =
               e instanceof Method ? Type.getType((Method) e) : Type.getType((Constructor) e);
-          final String typeDescriptor = type.getDescriptor();
+          final String signature = type.getDescriptor();
           RayFunction rayFunction = new RayFunction(e, classLoader,
-              new JavaFunctionDescriptor(className, methodName, typeDescriptor));
-          map.put(ImmutablePair.of(methodName, typeDescriptor), rayFunction);
+              new JavaFunctionDescriptor(className, methodName, signature));
+          map.put(ImmutablePair.of(methodName, signature), rayFunction);
+          // For cross language call java function without signature
+          final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
+          if (map.containsKey(emptyDescriptor)) {
+            map.put(emptyDescriptor, null); // Mark this function as overloaded.
+          } else {
+            map.put(emptyDescriptor, rayFunction);
+          }
         }
       } catch (Exception e) {
         throw new RuntimeException("Failed to load functions from class " + className, e);

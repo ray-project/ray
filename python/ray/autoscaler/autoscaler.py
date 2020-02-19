@@ -75,6 +75,12 @@ CLUSTER_CONFIG_SCHEMA = {
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
             "namespace": (str, OPTIONAL),  # k8s namespace, if using k8s
 
+            # azure provider
+            "location": (str, OPTIONAL), # e.g. westus2
+            "service_principal": (str, OPTIONAL), # e.g. url to service principal
+            "resource_group": (str, OPTIONAL), # e.g. resource-group-1
+            "subscription_id": (str, OPTIONAL), # e.g. Azure subscription id
+
             # k8s autoscaler permissions, if using k8s
             "autoscaler_service_account": (dict, OPTIONAL),
             "autoscaler_role": (dict, OPTIONAL),

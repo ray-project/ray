@@ -13,7 +13,8 @@ class Checkpoint:
     Attributes:
         storage (str): Storage type.
         value (str): If storage==MEMORY, it is a Python object.
-            If storage==PERSISTENT, it is a path to persistent storage.
+            If storage==PERSISTENT, it is a path to persistent storage,
+            or a future that will be resolved to such a path.
     """
 
     MEMORY = "memory"
@@ -28,6 +29,18 @@ class Checkpoint:
     def from_object(value=None):
         """Creates a checkpoint from a Python object."""
         return Checkpoint(Checkpoint.MEMORY, value)
+
+    @property
+    def is_ready(self):
+        """Returns whether the checkpoint is ready to be used for restoration.
+
+        A PERSISTENT checkpoint is considered ready once its value is resolved
+        to an actual path. MEMORY checkpoints are always considered ready since
+        they are transient.
+        """
+        if self.storage == Checkpoint.PERSISTENT:
+            return isinstance(self.value, str)
+        return self.storage == Checkpoint.MEMORY
 
 
 class QueueItem:

@@ -77,6 +77,7 @@ from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--custom-eval", action="store_true")
+parser.add_argument("--num-cpus", type=int, default=0)
 args = parser.parse_args()
 
 
@@ -156,6 +157,8 @@ if __name__ == "__main__":
         eval_fn = custom_eval_function
     else:
         eval_fn = None
+
+    ray.init(num_cpus=args.num_cpus or None)
 
     tune.run(
         "PG",
