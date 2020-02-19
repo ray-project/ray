@@ -3074,8 +3074,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   auto it = worker_rpc_clients_.find(worker_id);
   if (it == worker_rpc_clients_.end()) {
     auto client = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(request.owner_address().ip_address(),
-                                  request.owner_address().port(), client_call_manager_));
+        new rpc::CoreWorkerClient(request.owner_address(), client_call_manager_));
     it = worker_rpc_clients_
              .emplace(worker_id,
                       std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
@@ -3107,11 +3106,17 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   for (const auto &object_id_binary : request.object_ids()) {
     ObjectID object_id = ObjectID::FromBinary(object_id_binary);
 
+    if (plasma_results[i].data == nullptr) {
+      RAY_LOG(ERROR) << "Plasma object " << object_id
+                     << " was evicted before the raylet could pin it.";
+      continue;
+    }
+
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
     pinned_objects_.emplace(
         object_id, std::unique_ptr<RayObject>(new RayObject(
                        std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata))));
+                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
     i++;
 
     // Send a long-running RPC request to the owner for each object. When we get a

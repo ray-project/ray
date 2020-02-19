@@ -24,8 +24,11 @@ Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
       client_call_manager_(client_call_manager),
       is_detached_actor_(false) {
   if (port_ > 0) {
+    rpc::Address addr;
+    addr.set_ip_address("127.0.0.1");
+    addr.set_port(port_);
     rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_));
+        new rpc::CoreWorkerClient(addr, client_call_manager_));
   }
 }
 
