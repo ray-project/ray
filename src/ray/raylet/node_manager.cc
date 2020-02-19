@@ -137,30 +137,31 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   // This just runs by default... Maybe should require some activiation in async_init()?
 
-  // ObjectID object_id;
-  // std::vector<std::shared_ptr<Worker>> objs =
-  // objs(this->async_plasma_objects_.extract(object_id));
-
   RAY_CHECK_OK(object_manager_.SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         RAY_LOG(DEBUG) << "NODE MANAGER...RAYLET...\n\n";
         ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
-        std::vector<int64_t> ports = std::vector<int64_t>();
+        // std::vector<int64_t> ports = std::vector<int64_t>();
+        std::vector<std::shared_ptr<Worker>> waiting_workers =
+            std::vector<std::shared_ptr<Worker>>();
         {
           absl::MutexLock guard(&plasma_object_lock_);
-          auto res = this->async_plasma_objects_.extract(object_id);
-          if (!res.empty()) {
-            ports.swap(res.mapped());
+          auto waiting = this->async_plasma_objects_.extract(object_id);
+          if (!waiting.empty()) {
+            // ports.swap(res.mapped());
+            waiting_workers.swap(waiting.mapped());
           }
         }
         rpc::PlasmaObjectReadyRequest request;
         request.set_object_id(object_id.Binary());
         request.set_metadata_size(object_info.metadata_size);
         request.set_data_size(object_info.data_size);
-        for (int port : ports) {
-          auto x = std::unique_ptr<rpc::CoreWorkerClient>(
-              new rpc::CoreWorkerClient("127.0.0.1", port, this->client_call_manager_));
-          RAY_CHECK_OK(x->PlasmaObjectReady(
+        // for (int port : ports) {
+        // auto x = std::unique_ptr<rpc::CoreWorkerClient>(
+        //     new rpc::CoreWorkerClient("127.0.0.1", port, this->client_call_manager_));
+        // RAY_CHECK_OK(x->PlasmaObjectReady(
+        for (auto worker : waiting_workers) {
+          RAY_CHECK_OK(worker->rpc_client()->PlasmaObjectReady(
               request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
                 if (!status.ok()) {
                   RAY_LOG(DEBUG)
@@ -172,25 +173,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
         }
         // rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_);
 
-        // ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
-        // std::vector<std::shared_ptr<Worker>> objs =
-        //     std::vector<std::shared_ptr<Worker>>();
-        // {
-        //   absl::MutexLock guard(&plasma_object_lock_);
-        //   auto res = this->async_plasma_objects_.extract(object_id);
-        //   if (!res.empty()) {
-        //     objs.swap(res.mapped());
-        //   }
-        //   // objs.swap(this->async_plasma_objects_.extract(object_id));
-        //   // objs.push_back(this->async_plasma_objects_.extract(object_id));
-        //   // objs();
-        //   // objs.insert(this->async_plasma_objects_.extract(object_id));
-        //   // objs.emplace_back(this->async_plasma_objects_.extract(object_id));
-        // }
-        // rpc::PlasmaObjectReadyRequest request;
-        // request.set_object_id(object_id.Binary());
-        // request.set_metadata_size(object_info.metadata_size);
-        // request.set_data_size(object_info.data_size);
         // for (auto worker : objs) {
         //   RAY_CHECK_OK(worker->rpc_client()->PlasmaObjectReady(
         //       request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
@@ -350,7 +332,8 @@ void NodeManager::Heartbeat() {
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
-  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
+  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
+  // directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
   for (const auto &resource_pair :
        local_resources.GetAvailableResources().GetResourceMap()) {
@@ -601,7 +584,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
       if (!worker_id.IsNil()) {
-        // If the failed worker was a leased worker's owner, then kill the leased worker.
+        // If the failed worker was a leased worker's owner, then kill the leased
+        // worker.
         if (owner_worker_id == worker_id) {
           RAY_LOG(INFO) << "Owner process " << owner_worker_id
                         << " died, killing leased worker " << worker->WorkerId();
@@ -703,7 +687,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   // the received heartbeat information.
   auto it = cluster_resource_map_.find(client_id);
   if (it == cluster_resource_map_.end()) {
-    // Haven't received the client registration for this client yet, skip this heartbeat.
+    // Haven't received the client registration for this client yet, skip this
+    // heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
                   << client_id;
     return;
@@ -1024,26 +1009,28 @@ void NodeManager::ProcessClientMessage(
     ProcessNotifyActorResumedFromCheckpoint(message_data);
   } break;
   case protocol::MessageType::SubscribePlasma: {
-    // std::shared_ptr<Worker> associated_worker =
-    // worker_pool_.GetRegisteredWorker(client); if (associated_worker == nullptr) {
-    //   RAY_LOG(DEBUG) << "NULL WORKER";
-    // }
-    // RAY_LOG(DEBUG) << "Reached Subscribe Plasma with associated worker: "
-    //                << associated_worker->Port();
     auto message = flatbuffers::GetRoot<protocol::SubscribePlasma>(message_data);
+    std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
+    if (associated_worker == nullptr) {
+      associated_worker = worker_pool_.GetRegisteredDriver(client);
+      if (associated_worker == nullptr) {
+        RAY_LOG(ERROR) << "No worker exists for CoreWorker with service on: "
+                       << message->port();
+        break;
+      }
+    }
     ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
     {
       absl::MutexLock guard(&plasma_object_lock_);
       if (!async_plasma_objects_.contains(id)) {
-        // async_plasma_objects_.emplace(id, std::vector<std::shared_ptr<Worker>>());
-        async_plasma_objects_.emplace(id, std::vector<int64_t>());
+        async_plasma_objects_.emplace(id, std::vector<std::shared_ptr<Worker>>());
+        // async_plasma_objects_.emplace(id, std::vector<int64_t>());
       }
-      // async_plasma_objects_[id].push_back(associated_worker);
-      async_plasma_objects_[id].push_back(message->port());
+      async_plasma_objects_[id].push_back(associated_worker);
+      // async_plasma_objects_[id].push_back(message->port());
     }
     RAY_LOG(DEBUG) << "There are " << async_plasma_objects_.size()
                    << " Objects in the waiting structure";
-    // rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_);
   } break;
 
   default:
@@ -1242,8 +1229,8 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.IsNil()) {
-      // If the worker was an actor, update actor state, reconstruct the actor if needed,
-      // and clean up actor's tasks if the actor is permanently dead.
+      // If the worker was an actor, update actor state, reconstruct the actor if
+      // needed, and clean up actor's tasks if the actor is permanently dead.
       HandleDisconnectedActor(actor_id, true, intentional_disconnect);
     }
 
@@ -1799,8 +1786,8 @@ void NodeManager::ProcessSetResourceRequest(
     return;
   }
 
-  // Submit to the resource table. This calls the ResourceCreateUpdated or ResourceDeleted
-  // callback, which updates cluster_resource_map_.
+  // Submit to the resource table. This calls the ResourceCreateUpdated or
+  // ResourceDeleted callback, which updates cluster_resource_map_.
   if (is_deletion) {
     RAY_CHECK_OK(
         gcs_client_->Nodes().AsyncDeleteResources(node_id, {resource_name}, nullptr));
@@ -1902,7 +1889,8 @@ void NodeManager::ScheduleTasks(
 
 bool NodeManager::CheckDependencyManagerInvariant() const {
   std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
-  // Assert that each pending task in the task dependency manager is in one of the queues.
+  // Assert that each pending task in the task dependency manager is in one of the
+  // queues.
   for (const auto &task_id : pending_task_ids) {
     if (!local_queues_.HasTask(task_id)) {
       return false;
@@ -2025,9 +2013,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     lineage_cache_.AddUncommittedLineage(task_id, uncommitted_lineage);
   } else {
     if (!lineage_cache_.CommitTask(task)) {
-      RAY_LOG(WARNING)
-          << "Task " << task_id
-          << " already committed to the GCS. This is most likely due to reconstruction.";
+      RAY_LOG(WARNING) << "Task " << task_id
+                       << " already committed to the GCS. This is most likely due to "
+                          "reconstruction.";
     }
   }
 
@@ -2848,15 +2836,15 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
                                                    waiting_task_ids.end());
 
     // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
-    // creation task ID, which will not be reset after the task finishes. And later tasks
-    // of this actor will reuse this task ID to require objects from plasma with
+    // creation task ID, which will not be reset after the task finishes. And later
+    // tasks of this actor will reuse this task ID to require objects from plasma with
     // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
-    // To support actor reconstruction for direct actor, raylet marks actor creation task
-    // as completed and removes it from `local_queues_` when it receives `TaskDone`
+    // To support actor reconstruction for direct actor, raylet marks actor creation
+    // task as completed and removes it from `local_queues_` when it receives `TaskDone`
     // message from worker. This is necessary because the actor creation task will be
-    // re-submitted during reconstruction, if the task is not removed previously, the new
-    // submitted task will be marked as duplicate and thus ignored.
-    // So here we check for direct actor creation task explicitly to allow this case.
+    // re-submitted during reconstruction, if the task is not removed previously, the
+    // new submitted task will be marked as duplicate and thus ignored. So here we check
+    // for direct actor creation task explicitly to allow this case.
     auto iter = waiting_task_id_set.begin();
     while (iter != waiting_task_id_set.end()) {
       if (IsDirectActorCreationTask(*iter)) {
@@ -3233,8 +3221,8 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
   }
   // Report tasks that are not scheduled because
   // resources are occupied by other actors/tasks.
-  // NOTE(sang): This solution is a workaround. It can be replaced by creating a new state
-  // like PENDING_UNTIL_RESOURCE_AVAILABLE.
+  // NOTE(sang): This solution is a workaround. It can be replaced by creating a new
+  // state like PENDING_UNTIL_RESOURCE_AVAILABLE.
   for (const auto task : local_queues_.GetTasks(TaskState::READY)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto ready_task = reply->add_ready_tasks();

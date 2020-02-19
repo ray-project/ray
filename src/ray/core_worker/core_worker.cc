@@ -1250,7 +1250,9 @@ void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
                                          rpc::PlasmaObjectReadyReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+                                         rpc::SendReplyCallback 
+                                         
+                                         send_reply_callback) {
   RAY_LOG(DEBUG) << "Core worker got notification from: " << request.object_id() << "\n";
   if (!this->plasma_done_callback_) {
     RAY_LOG(INFO) << "Async Init was not called before async callback";
@@ -1258,6 +1260,7 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
   }
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
