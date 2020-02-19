@@ -62,7 +62,7 @@ py_test(
 py_test(
     name = "test_dqn",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 
@@ -78,7 +78,7 @@ py_test(
 py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ppo/tests/test_ppo.py",
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
@@ -815,6 +815,7 @@ py_test(
     name = "test_framework_agnostic_components",
     tags = ["utils"],
     size = "small",
+    data = glob(["utils/tests/**"]),
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
@@ -902,12 +903,12 @@ py_test(
     srcs = ["tests/test_evaluators.py"]
 )
 
-#py_test(
-#    name = "tests/test_explorations",
-#    tags = ["tests_dir", "tests_dir_E"],
-#    size = "medium",
-#    srcs = ["tests/test_explorations.py"]
-#)
+py_test(
+    name = "tests/test_explorations",
+    tags = ["tests_dir", "tests_dir_E"],
+    size = "medium",
+    srcs = ["tests/test_explorations.py"]
+)
 
 py_test(
     name = "tests/test_external_env",
@@ -1190,18 +1191,25 @@ py_test(
 )
 
 py_test(
-    name = "examples/multiagent_cartpole",
+    name = "examples/multi_agent_cartpole",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_cartpole.py"],
+    srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--num-iters=2", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multiagent_two_trainers",
+    name = "examples/multi_agent_custom_policy",
+    tags = ["examples", "examples_M_xxx"],
+    size = "medium",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+)
+
+py_test(
+    name = "examples/multi_agent_two_trainers",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_two_trainers.py"],
+    srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--num-iters=2"]
 )
 

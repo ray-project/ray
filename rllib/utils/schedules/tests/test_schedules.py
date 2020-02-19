@@ -111,3 +111,8 @@ class TestSchedules(unittest.TestCase):
             for t, e in zip(ts, expected):
                 out = piecewise(t)
                 check(out, e, decimals=4)
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)
