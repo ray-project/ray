@@ -38,7 +38,7 @@ class TFPolicy(Policy):
 
     Examples:
         >>> policy = TFPolicySubclass(
-            sess, obs_input, action_sampler, loss, loss_inputs)
+            sess, obs_input, sampled_action, loss, loss_inputs)
 
         >>> print(policy.compute_actions([1, 0, 2]))
         (array([0, 1, 1]), [], {})
