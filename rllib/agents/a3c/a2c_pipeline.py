@@ -1,4 +1,4 @@
-"""Experimental workflow-based impl; run this with --run='A2C_wf'"""
+"""Experimental pipeline-based impl; run this with --run='A2C_pl'"""
 
 import math
 
@@ -8,7 +8,7 @@ from ray.rllib.utils.experimental_dsl import (
     ApplyGradients, TrainOneStep, StandardMetricsReporting)
 
 
-def training_workflow(workers, config):
+def training_pipeline(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["microbatch_size"]:
@@ -31,4 +31,4 @@ def training_workflow(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
-A2CWorkflow = A2CTrainer.with_updates(training_workflow=training_workflow)
+A2CPipeline = A2CTrainer.with_updates(training_pipeline=training_pipeline)

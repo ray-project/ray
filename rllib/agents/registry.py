@@ -100,14 +100,14 @@ def _import_marwil():
     return marwil.MARWILTrainer
 
 
-def _import_a2c_workflow():
+def _import_a2c_pipeline():
     from ray.rllib.agents import a3c
-    return a3c.A2CWorkflow
+    return a3c.A2CPipeline
 
 
-def _import_pg_workflow():
+def _import_pg_pipeline():
     from ray.rllib.agents import pg
-    return pg.PGWorkflow
+    return pg.PGPipeline
 
 
 ALGORITHMS = {
@@ -131,9 +131,9 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
 
-    # Experimental workflow-based impls.
-    "A2C_wf": _import_a2c_workflow,
-    "PG_wf": _import_pg_workflow,
+    # Experimental pipeline-based impls.
+    "A2C_pl": _import_a2c_pipeline,
+    "PG_pl": _import_pg_pipeline,
 }
 
 

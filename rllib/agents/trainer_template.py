@@ -23,7 +23,7 @@ def build_trainer(name,
                   collect_metrics_fn=None,
                   before_evaluate_fn=None,
                   mixins=None,
-                  training_workflow=None):
+                  training_pipeline=None):
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -67,8 +67,8 @@ def build_trainer(name,
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class
-        training_workflow (func): Experimental support for custom
-            training workflows. This overrides `make_policy_optimizer`.
+        training_pipeline (func): Experimental support for custom
+            training pipelines. This overrides `make_policy_optimizer`.
 
     Returns:
         a Trainer instance that uses the specified args.
@@ -103,11 +103,11 @@ def build_trainer(name,
             else:
                 self.workers = self._make_workers(env_creator, policy, config,
                                                   self.config["num_workers"])
-            self.train_workflow = None
+            self.train_pipeline = None
             self.optimizer = None
 
-            if training_workflow:
-                self.train_workflow = training_workflow(self.workers, config)
+            if training_pipeline:
+                self.train_pipeline = training_pipeline(self.workers, config)
             elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:
@@ -121,8 +121,8 @@ def build_trainer(name,
 
         @override(Trainer)
         def _train(self):
-            if self.train_workflow:
-                return self._train_workflow()
+            if self.train_pipeline:
+                return self._train_pipeline()
 
             if before_train_step:
                 before_train_step(self)
@@ -151,10 +151,10 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
-        def _train_workflow(self):
+        def _train_pipeline(self):
             if before_train_step:
                 before_train_step(self)
-            res = next(self.train_workflow)
+            res = next(self.train_pipeline)
             if after_train_result:
                 after_train_result(self, res)
             return res
