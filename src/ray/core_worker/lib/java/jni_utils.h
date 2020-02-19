@@ -105,6 +105,8 @@ extern jfieldID java_actor_creation_options_max_reconstructions;
 extern jfieldID java_actor_creation_options_use_direct_call;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
+/// maxConcurrency field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_concurrency;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
@@ -128,6 +130,9 @@ extern jfieldID java_native_ray_object_metadata;
 extern jclass java_task_executor_class;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
+
+/// The `get` method in TaskExecutor class
+extern jmethodID java_task_executor_get;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
@@ -181,7 +186,7 @@ class JavaByteArrayBuffer : public ray::Buffer {
 
   bool OwnsData() const override { return true; }
 
-  bool IsPlasmaBuffer() const { return false; }
+  bool IsPlasmaBuffer() const override { return false; }
 
   ~JavaByteArrayBuffer() {
     env_->ReleaseByteArrayElements(java_byte_array_, native_bytes_, JNI_ABORT);
@@ -327,7 +332,9 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
-  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
+  // TODO: Support nested IDs for Java.
+  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
+                                          std::vector<ray::ObjectID>());
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.

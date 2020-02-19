@@ -14,9 +14,9 @@ if "pickle5" in sys.modules:
                       "packaged along with Ray).")
 
 if "OMP_NUM_THREADS" not in os.environ:
-    logger.warning("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
-                   "degradation with many workers (issue #6998). You can "
-                   "override this by explicitly setting OMP_NUM_THREADS.")
+    logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+                 "degradation with many workers (issue #6998). You can "
+                 "override this by explicitly setting OMP_NUM_THREADS.")
     os.environ["OMP_NUM_THREADS"] = "1"
 
 # Add the directory containing pickle5 to the Python path so that we find the
@@ -143,6 +143,7 @@ import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
+from ray import util  # noqa: E402
 
 # Ray version string.
 __version__ = "0.9.0.dev0"
@@ -187,6 +188,7 @@ __all__ = [
     "Language",
     "java_function",
     "java_actor_class",
+    "util",
 ]
 
 # ID types

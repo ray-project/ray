@@ -402,8 +402,8 @@ def get_system_memory():
     psutil_memory_in_bytes = psutil.virtual_memory().total
 
     if docker_limit is not None:
-        if docker_limit > psutil_memory_in_bytes:
-            logger.warn("Container memory is larger than system memory.")
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
         return min(docker_limit, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
@@ -427,9 +427,8 @@ def get_used_memory():
     psutil_memory_in_bytes = psutil.virtual_memory().used
 
     if docker_usage is not None:
-        if docker_usage > psutil_memory_in_bytes:
-            logger.warn("Container is reporting more memory usage than the"
-                        "system.")
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
         return min(docker_usage, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes

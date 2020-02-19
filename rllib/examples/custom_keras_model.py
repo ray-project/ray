@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
 parser.add_argument("--stop", type=int, default=200)
 parser.add_argument("--use_vision_network", action="store_true")
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class MyKerasModel(TFModelV2):
@@ -86,8 +87,8 @@ class MyKerasQModel(DistributionalQModel):
 
 
 if __name__ == "__main__":
-    ray.init()
     args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model(
         "keras_model", MyVisionNetwork
         if args.use_vision_network else MyKerasModel)

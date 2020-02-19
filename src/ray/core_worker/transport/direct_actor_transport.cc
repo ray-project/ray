@@ -80,8 +80,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Create a new connection to the actor.
   // TODO(edoakes): are these clients cleaned up properly?
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
-        client_factory_(address.ip_address(), address.port()));
+    rpc_clients_[actor_id] =
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   }
   if (pending_requests_.count(actor_id) > 0) {
     SendPendingTasks(actor_id);
@@ -152,13 +152,14 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
   auto it = worker_ids_.find(actor_id);
   RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
   request->set_intended_worker_id(it->second);
+  rpc::Address addr(client.Addr());
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
-      [this, task_id](Status status, const rpc::PushTaskReply &reply) {
+      [this, addr, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, nullptr);
+          task_finisher_->CompletePendingTask(task_id, reply, addr);
         }
       }));
 }
@@ -252,7 +253,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    auto status = task_handler_(task_spec, resource_ids, &return_objects);
+    auto status = task_handler_(task_spec, resource_ids, &return_objects,
+                                reply->mutable_borrowed_refs());
+
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
       std::vector<ObjectID> plasma_return_ids;
@@ -275,6 +278,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
           if (result->GetMetadata() != nullptr) {
             return_object->set_metadata(result->GetMetadata()->Data(),
                                         result->GetMetadata()->Size());
+          }
+          for (const auto &inlined_id : result->GetInlinedIds()) {
+            return_object->add_inlined_ids(inlined_id.Binary());
           }
         }
       }
