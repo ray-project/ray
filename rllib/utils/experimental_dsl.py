@@ -3,12 +3,13 @@
 TODO(ekl): describe the concepts."""
 
 import logging
-from typing import List, Any
+from typing import List, Any, Tuple
 import time
 
 import ray
 from ray.util.iter import from_actors, LocalIterator, IteratorContext
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
@@ -75,6 +76,44 @@ def ParallelRollouts(workers: WorkerSet,
     else:
         raise ValueError(
             "mode must be one of 'bulk_sync', 'async', got '{}'".format(mode))
+
+
+def AsyncGradients(
+        workers: WorkerSet) -> LocalIterator[Tuple[Tuple[Any, dict], int]]:
+    """Operator to compute gradients in parallel from rollout workers.
+
+    Arguments:
+        workers (WorkerSet): set of rollout workers to use.
+
+    Returns:
+        A local iterator over policy gradients computed on rollout workers.
+
+    Examples:
+        >>> grads_op = AsyncGradients(workers)
+        >>> print(next(grads_op))
+        {"var_0": ..., ...}, 50  # grads, batch count
+
+    Updates the "num_steps_sampled" counter and "learner" info field in the
+    local iterator context.
+    """
+
+    # This function will be applied remotely on the workers.
+    def samples_to_grads(samples):
+        return get_global_worker().compute_gradients(samples), samples.count
+
+    # Record learner metrics and pass through (grads, count).
+    def record_metrics(item):
+        (grads, info), count = item
+        ctx = LocalIterator.get_context()
+        ctx.counters["num_steps_sampled"] += count
+        ctx.info["learner"] = info[LEARNER_STATS_KEY]
+        return grads, count
+
+    record_metrics._auto_timer_name = "grad_wait"
+
+    rollouts = from_actors(workers.remote_workers())
+    grads = rollouts.for_each(samples_to_grads)
+    return grads.gather_async().for_each(record_metrics)
 
 
 def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
