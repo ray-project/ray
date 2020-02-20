@@ -33,7 +33,7 @@ public class BinaryFileUtil {
    * @param fileName resource file name
    * @return extracted resource file
    */
-  public static File getFileSafe(String destDir, String fileName) {
+  public static File getFile(String destDir, String fileName) {
     final File dir = new File(destDir);
     if (!dir.exists()) {
       try {
