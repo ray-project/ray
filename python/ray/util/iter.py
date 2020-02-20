@@ -594,6 +594,9 @@ class LocalIterator(Generic[T]):
                 else:
                     yield fn(item)
 
+        # If the function has this attribute set, we will automatically create
+        # a perf timer with the given name. This allows for_each operators to
+        # automatically add certain metrics.
         if hasattr(fn, "_auto_timer_name"):
             timer = self.context.timers[fn._auto_timer_name]
             unwrapped = apply_foreach
