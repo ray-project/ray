@@ -103,6 +103,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::InstallFailureSignalHandler();
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
+
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
@@ -1346,8 +1347,7 @@ void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_cal
 }
 
 void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
-  RAY_CHECK_OK(
-      local_raylet_client_->SubscribeToPlasma(object_id));
+  RAY_CHECK_OK(local_raylet_client_->SubscribeToPlasma(object_id));
 }
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,

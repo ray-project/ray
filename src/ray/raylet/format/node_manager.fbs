@@ -80,7 +80,7 @@ enum MessageType:int {
   ConnectClient,
   // Set dynamic custom resource.
   SetResourceRequest,
-  // Subscrie to Plasma updates
+  // Subscribe to Plasma updates
   SubscribePlasma,
 }
 

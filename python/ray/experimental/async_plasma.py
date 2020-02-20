@@ -20,7 +20,6 @@ class PlasmaEventHandler:
         self._waiting_dict = defaultdict(list)
 
     def process_notifications(self, messages):
-        print("CALLED!!!", messages)
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
@@ -74,11 +73,9 @@ class PlasmaEventHandler:
 
         future = PlasmaObjectFuture(loop=self._loop)
         self._waiting_dict[object_id].append(future)
-        print("Calling raylet from async_plasma")
         if len(self._waiting_dict[object_id]) == 1:
             # Only subscribe once
             self._worker.core_worker.subscribe_to_plasma_object(object_id)
-        print("Past calling raylet from async_plasma")
         self.check_immediately(object_id)
 
         return future

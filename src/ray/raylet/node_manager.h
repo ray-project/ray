@@ -704,9 +704,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
 
+  /// Concurrency for the following map
   absl::Mutex plasma_object_lock_;
-  // TODO(ilr): Make this Vector into a hash set?  << Calling Wait MANY times...
-  //   absl::flat_hash_map<ObjectID, std::vector<int64_t>> async_plasma_objects_;
+
+  /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
       async_plasma_objects_;
 };

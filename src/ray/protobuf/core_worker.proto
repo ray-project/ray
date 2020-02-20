@@ -165,7 +165,6 @@ message GetCoreWorkerStatsReply {
   CoreWorkerStats core_worker_stats = 1;
 }
 
-
 message ObjectReference {
   // ObjectID that the worker has a reference to.
   bytes object_id = 1;
