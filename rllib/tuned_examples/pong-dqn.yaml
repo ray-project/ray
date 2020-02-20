@@ -13,7 +13,7 @@ pong-deterministic-dqn:
         buffer_size: 50000
         sample_batch_size: 4
         train_batch_size: 32
-        exploration:
+        exploration_config:
           epsilon_timesteps: 200000
           final_epsilon: .01
         model:
