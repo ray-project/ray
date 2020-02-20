@@ -1,6 +1,6 @@
-from typing import TypeVar, Generic, Iterable, List, Callable, Any
-import random
 import collections
+import random
+from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
 
@@ -281,9 +281,11 @@ class ParallelIterator(Generic[T]):
                 str(seed) if seed is not None else "None"))
 
     def repartition(self, num_partitions: int) -> "ParallelIterator[T]":
-        """Returns a new ParallelIterator instance containing the same data in
-        this instance except with num_partitions shards. The data is split
-        in round-robin fashion for the new ParallelIterator.
+        """Returns a new ParallelIterator instance with num_partitions shards.
+
+        The new iterator contains the same data in this instance except with
+        num_partitions shards. The data is split in round-robin fashion for
+        the new ParallelIterator.
 
         Args:
             num_partitions (int): The number of shards to use for the new
@@ -305,11 +307,14 @@ class ParallelIterator(Generic[T]):
             [2, 6]
         """
 
-        def base_iterator(all_actors, num_partitions, starting, timeout=None):
+        def base_iterator(all_actors,
+                          num_partitions,
+                          partition_index,
+                          timeout=None):
             futures = {}
             for a in all_actors:
-                futures[a.par_iter_next_ith.remote(num_partitions,
-                                                   starting)] = a
+                futures[a.par_iter_slice.remote(num_partitions,
+                                                partition_index)] = a
             while futures:
                 pending = list(futures)
                 if timeout is None:
@@ -326,8 +331,8 @@ class ParallelIterator(Generic[T]):
                     actor = futures.pop(obj_id)
                     try:
                         yield ray.get(obj_id)
-                        futures[actor.par_iter_next_ith.remote(
-                            num_partitions, starting)] = actor
+                        futures[actor.par_iter_slice.remote(
+                            num_partitions, partition_index)] = actor
                     except StopIteration:
                         pass
                 # Always yield after each round of wait with timeout.
@@ -795,30 +800,28 @@ class ParallelIteratorWorker(object):
         assert self.local_it is not None, "must call par_iter_init()"
         return next(self.local_it)
 
-    def par_iter_next_ith(self, i: int, starting: int):
-        """Returns every ith element from this ParallelIteratorWorker
-            beginning at index starting.
-        """
+    def par_iter_slice(self, step: int, start: int):
+        """Iterates in increments of step starting from start."""
         assert self.local_it is not None, "must call par_iter_init()"
 
         if self.next_ith_buffer is None:
             self.next_ith_buffer = collections.defaultdict(list)
 
-        index_buffer = self.next_ith_buffer[starting]
+        index_buffer = self.next_ith_buffer[start]
         if len(index_buffer) > 0:
             return index_buffer.pop(0)
         else:
-            for j in range(i):
+            for j in range(step):
                 try:
                     val = next(self.local_it)
                     self.next_ith_buffer[j].append(val)
                 except StopIteration:
                     pass
 
-            if not self.next_ith_buffer[starting]:
+            if not self.next_ith_buffer[start]:
                 raise StopIteration
 
-        return self.next_ith_buffer[starting].pop(0)
+        return self.next_ith_buffer[start].pop(0)
 
 
 class _NextValueNotReady(Exception):
