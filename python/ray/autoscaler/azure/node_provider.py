@@ -45,7 +45,6 @@ class AzureNodeProvider(NodeProvider):
         try:
             self.compute_client = get_client_from_cli_profile(ComputeManagementClient)
             self.network_client = get_client_from_cli_profile(NetworkManagementClient)
-            # self.auth_client = get_client_from_cli_profile(AuthorizationManagementClient)
         except Exception as e:
             println("Warning cli_profile failed. Trying MSI: {}".format(e))
 
@@ -54,7 +53,6 @@ class AzureNodeProvider(NodeProvider):
 
             self.compute_client = ComputeManagementClient(credentials, subscription_id)
             self.network_client = NetworkManagementClient(credentials, subscription_id)
-            # self.auth_client = AuthorizationManagementClient(credentials, subscription_id)
 
         self.lock = RLock()
 
@@ -216,13 +214,22 @@ class AzureNodeProvider(NodeProvider):
                 }
             })
 
-            print("MSI IDENTITY: '{}'".format(self.provider_config["msi_identity_id"]))
             config["identity"] = {
                 "type": ResourceIdentityType.user_assigned,
                 "user_assigned_identities": [
-                   self.provider_config["msi_identity_id"]
+                    {
+                        # zero-documentation.. *sigh*
+                        "key": self.provider_config["msi_identity_id"],
+                        "value": {
+                            "principal_id": self.provider_config["msi_identity_principal_id"],
+                            "client_id": self.provider_config["msi_identity_id"]
+                        }
+                    }
+                   
                 ]
             }
+            # according to example: https://github.com/Azure-Samples/compute-python-msi-vm
+            # FYI doesn't work :(
             # config["identity_ids"] = [
                 #    self.provider_config["msi_identity_id"]
                 # ]
@@ -233,28 +240,6 @@ class AzureNodeProvider(NodeProvider):
                 resource_group_name=self.provider_config["resource_group"],
                 vm_name=vm_name,
                 parameters=config)
-
-            # vm_result = vm_poller.result()
-
-            # role_name = 'Contributor'
-            # roles = list(self.auth_client.role_definitions.list(
-            #     resource_group.id,
-            #     filter="roleName eq '{}'".format(role_name)
-            # ))
-            # assert len(roles) == 1
-            # contributor_role = roles[0]
-
-            # # Add RG scope to the MSI token
-            # msi_identity = vm_result.identity.principal_id
-
-            # authorization_client.role_assignments.create(
-            #     resource_group.id,
-            #     uuid.uuid4(), # Role assignment random name
-            #     {
-            #         'role_definition_id': contributor_role.id,
-            #         'principal_id': msi_identity
-            #     }
-            # )
 
     @synchronized
     def set_node_tags(self, node_id, tags):

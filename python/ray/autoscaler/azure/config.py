@@ -10,7 +10,6 @@ import uuid
 
 from azure.common.exceptions import CloudError, AuthenticationError
 from azure.common.client_factory import get_client_from_cli_profile
-# from azure.common.client_factory import get_client_from_auth_file
 from azure.graphrbac import GraphRbacManagementClient
 from azure.mgmt.authorization import AuthorizationManagementClient
 from azure.mgmt.network import NetworkManagementClient
@@ -72,18 +71,18 @@ def bootstrap_azure(config):
     config = _configure_nodes(config)
     return config
 
+def _get_client_from_cli_profile_with_subscription_id(client_class, config):
+    kwargs = {}
+    if "subscription_id" in config["provider"]:
+        kwargs["subscription_id"] = config["provider"]["subscription_id"]
+
+    return get_client_from_cli_profile(client_class=client_class, **kwargs)
+
+
 def _configure_msi_user(config):
-    # TODO: move to helper method
-    # kwargs = {}
-    # if "subscription_id" in config["provider"]:
-        # kwargs["subscription_id"] = config["provider"]["subscription_id"]
-
-    msi_client = get_client_from_cli_profile(
-        client_class=ManagedServiceIdentityClient) # , **kwargs)
-
-    # TODO: use helper method
-    resource_client = get_client_from_cli_profile(ResourceManagementClient)
-    auth_client = get_client_from_cli_profile(AuthorizationManagementClient)
+    msi_client = _get_client_from_cli_profile_with_subscription_id(ManagedServiceIdentityClient, config)
+    resource_client = _get_client_from_cli_profile_with_subscription_id(ResourceManagementClient, config)
+    auth_client = _get_client_from_cli_profile_with_subscription_id(AuthorizationManagementClient, config)
 
     resource_group = config["provider"]["resource_group"]
     location = config["provider"]["location"]
@@ -105,8 +104,8 @@ def _configure_msi_user(config):
         location
     )
 
-    logger.info("Identity {}".format(user_assigned_identity.id))
     config["provider"]["msi_identity_id"] = user_assigned_identity.id
+    config["provider"]["msi_identity_principal_id"] = user_assigned_identity.principal_id
 
     def assign_role():
         for _ in range(RETRIES):
@@ -134,7 +133,7 @@ def _configure_msi_user(config):
                 return
             except CloudError as ce:
                 if str(ce.error).startswith("Azure Error: PrincipalNotFound"):
-                    time.sleep(5)
+                    time.sleep(3)
                 else:
                     raise
 
@@ -147,11 +146,7 @@ def _configure_msi_user(config):
 def _configure_resource_group(config):
     # TODO: look at availability sets
     # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
-    kwargs = {}
-    if "subscription_id" in config["provider"]:
-        kwargs["subscription_id"] = config["provider"]["subscription_id"]
-    resource_client = get_client_from_cli_profile(
-        client_class=ResourceManagementClient, **kwargs)
+    resource_client = _get_client_from_cli_profile_with_subscription_id(ResourceManagementClient, config)
 
     subscription_id = resource_client.config.subscription_id
     logger.info("Using subscription id: %s", subscription_id)
@@ -173,9 +168,9 @@ def _configure_resource_group(config):
 # Modeled after create_service_principal_for_rbac in
 #  https://github.com/Azure/azure-cli/blob/dev/src/azure-cli/azure/cli/command_modules/role/custom.py
 def _configure_service_principal(config):
-    graph_client = get_client_from_cli_profile(GraphRbacManagementClient)
-    resource_client = get_client_from_cli_profile(ResourceManagementClient)
-    auth_client = get_client_from_cli_profile(AuthorizationManagementClient)
+    graph_client = _get_client_from_cli_profile_with_subscription_id(GraphRbacManagementClient, config)
+    resource_client = _get_client_from_cli_profile_with_subscription_id(ResourceManagementClient, config)
+    auth_client = _get_client_from_cli_profile_with_subscription_id(AuthorizationManagementClient, config)
 
     sp_name = config["provider"]["service_principal"]
     if "://" not in sp_name:
@@ -348,10 +343,7 @@ def _configure_network(config):
 
     location = config["provider"]["location"]
     resource_group = config["provider"]["resource_group"]
-    network_client = get_client_from_cli_profile(NetworkManagementClient)
-    # auth_path = config["provider"]["auth_path"]
-    # network_client = get_client_from_auth_file(
-    #    NetworkManagementClient, auth_path=auth_path)
+    network_client = _get_client_from_cli_profile_with_subscription_id(NetworkManagementClient, config)
 
     vnets = []
     for _ in range(RETRIES):
