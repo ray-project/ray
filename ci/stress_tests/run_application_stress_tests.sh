@@ -127,7 +127,7 @@ test_sgd(){
 
         echo "Try running SGD stress test."
         {
-            SGD_DIR=$ROOT_DIR/../../python/ray/experimental/sgd/
+            SGD_DIR=$ROOT_DIR/../../python/ray/util/sgd/
             ray --logging-level=DEBUG up -y "$CLUSTER" &&
             # TODO: fix submit so that args work
             ray rsync_up "$CLUSTER" "$SGD_DIR/mnist_example.py" mnist_example.py &&

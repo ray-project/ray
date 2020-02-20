@@ -45,9 +45,6 @@ ctypedef void (*ray_callback_function) \
     (shared_ptr[CRayObject] result_object,
      CObjectID object_id, void* user_data)
 
-ctypedef void (*plasma_callback_function) \
-    (CObjectID object_id, int64_t data_size, int64_t metadata_size)
-
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -145,8 +142,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                                 CTaskID *owner_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
-                const CObjectID &object_id, const CTaskID &owner_id, const
-                CAddress &owner_address)
+                const CObjectID &object_id,
+                const CObjectID &outer_object_id,
+                const CTaskID &owner_id,
+                const CAddress &owner_address)
         void AddContainedObjectIDs(
             const CObjectID &object_id,
             const c_vector[CObjectID] &contained_object_ids)
@@ -164,7 +163,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                           CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_ids,
                           const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
@@ -196,5 +194,3 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CClientID &client_Id)
-
-        void SubscribeToAsyncPlasma(plasma_callback_function callback)
