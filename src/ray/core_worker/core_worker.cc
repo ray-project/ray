@@ -399,11 +399,14 @@ Status CoreWorker::Put(const RayObject &object,
                        const ObjectID &object_id, bool pin_object) {
   bool object_exists;
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
-  // Tell the raylet to pin the object **after** it is created.
   if (pin_object && !object_exists) {
+    // Tell the raylet to pin the object **after** it is created.
+    RAY_LOG(DEBUG) << "Pinning put object " << object_id;
     RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
         rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          // Only release the object once the raylet has responded to avoid the race
+          // condition that the object could be evicted before the raylet pins it.
           if (!plasma_store_provider_->Release(object_id).ok()) {
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
@@ -441,10 +444,12 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
-    RAY_LOG(DEBUG) << "Pinning created object " << object_id;
+    RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
     RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
         owner_address.has_value() ? *owner_address : rpc_address_, {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          // Only release the object once the raylet has responded to avoid the race
+          // condition that the object could be evicted before the raylet pins it.
           if (!plasma_store_provider_->Release(object_id).ok()) {
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
