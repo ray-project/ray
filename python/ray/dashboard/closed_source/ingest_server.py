@@ -13,7 +13,6 @@ from ray.core.generated import dashboard_pb2_grpc
 NODE_INFO_CHANNEL = "NODE_INFO_CHANNEL"
 RAY_INFO_CHANNEL = "RAY_INFO_CHANNEL"
 
-
 logger = logging.getLogger(__file__)
 
 
