@@ -383,7 +383,8 @@ class ClusterResourceScheduler {
   void AllocateRemoteTaskResources(std::string &node_id,
                                   const std::unordered_map<std::string, double> &task_resources);
 
-  void FreeTaskResources(TaskResourceInstances& task_allocation);
+
+  void FreeLocalTaskResources(TaskResourceInstances& task_allocation);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString();

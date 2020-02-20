@@ -1,0 +1,55 @@
+W0219 08:47:49.423257 143726016 node_manager.cc:575] ====x ResourceCreateUpdated -> UpdateResourceCapacity ====
+W0219 08:47:49.423391 143726016 node_manager.cc:575] ====x ResourceCreateUpdated -> UpdateResourceCapacity ====
+W0219 08:47:49.423502 143726016 node_manager.cc:575] ====x ResourceCreateUpdated -> UpdateResourceCapacity ====
+
+W0219 08:47:49.598166 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:50.408880 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:50.408973 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:50.415704 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:50.415794 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:50.417316 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:50.417342 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:50.417954 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:50.418031 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:50.511652 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:50.511687 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:50.512508 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:50.512634 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:50.823174 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:50.823212 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:50.824156 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:50.824326 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:50.824856 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:50.824895 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:50.825748 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:50.825884 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:50.920161 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:50.920202 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:50.921074 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:50.921177 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:51.022632 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:51.022662 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:51.023331 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:51.023416 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:51.125753 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:51.125784 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:51.126543 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:51.126631 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:51.228188 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:51.228219 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:51.229769 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:51.229877 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
+W0219 08:47:51.332478 143726016 node_manager.cc:1582] ====x HandleRequestWorkerLease->NewSchedulerSchedulePendingTasks ====
+W0219 08:47:51.332525 143726016 node_manager.cc:1449] ====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====
+W0219 08:47:51.333431 143726016 node_manager.cc:1650] ====x HandleReturnWorker -> FreeLocalTaskResources ====
+
+W0219 08:47:51.333657 143726016 node_manager.cc:1093] ====x HandleWorkerAvailable -> DispatchScheduledTasksToWorkers ====
