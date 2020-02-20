@@ -98,10 +98,6 @@ cdef class SubBuffer:
         """
         return self.len
 
-    @property
-    def readonly(self):
-        return self.readonly
-
     def tobytes(self):
         """
         Return this buffer as a Python bytes object. Memory is copied.
@@ -216,9 +212,7 @@ cdef class Pickle5Writer:
                                    cpython.PyBUF_FULL_RO)
         buffer.set_length(view.len)
         buffer.set_ndim(view.ndim)
-        # It should be 'view.readonly'. But for the sake of shared memory,
-        # we have to make it immutable.
-        buffer.set_readonly(1)
+        buffer.set_readonly(view.readonly)
         buffer.set_itemsize(view.itemsize)
         if view.format:
             buffer.set_format(view.format)

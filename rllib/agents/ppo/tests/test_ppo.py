@@ -28,18 +28,18 @@ class TestPPO(unittest.TestCase):
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with both frameworks."""
         config = ppo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2  # Run locally.
+        config["num_workers"] = 0  # Run locally.
 
         # tf.
-        #trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
-        num_iterations = 100
-        #for i in range(num_iterations):
-        #    trainer.train()
+        num_iterations = 2
+        for i in range(num_iterations):
+            trainer.train()
 
         # Torch.
         config["use_pytorch"] = True
-        trainer = ppo.PPOTrainer(config=config, env="SpaceInvadersNoFrameskip-v4")
+        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         for i in range(num_iterations):
             trainer.train()
 
