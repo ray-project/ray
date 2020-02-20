@@ -256,7 +256,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
-      std::vector<ObjectID> plasma_return_ids;
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
         ObjectID id = ObjectID::ForTaskReturn(
@@ -268,7 +267,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         const auto &result = return_objects[i];
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
-          plasma_return_ids.push_back(id);
         } else {
           if (result->GetData() != nullptr) {
             return_object->set_data(result->GetData()->Data(), result->GetData()->Size());

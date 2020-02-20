@@ -33,8 +33,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// the created object. Until then, the object is pinned and cannot be evicted.
   ///
   /// \param[in] object The object to create.
-  /// \param[in] object_id The ID of the object. This can be used as an
-  /// argument to Get to retrieve the object data.
+  /// \param[in] object_id The ID of the object.
   /// \param[out] object_exists Optional. Returns whether an object with the
   /// same ID already exists. If this is true, then the Put does not write any
   /// object data.
@@ -45,9 +44,7 @@ class CoreWorkerPlasmaStoreProvider {
   ///
   /// \param[in] metadata The metadata of the object.
   /// \param[in] data_size The size of the object.
-  /// argument to Get to retrieve the object data.
-  /// \param[in] object_id The ID of the object. This can be used as an
-  /// argument to Get to retrieve the object data.
+  /// \param[in] object_id The ID of the object.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data);

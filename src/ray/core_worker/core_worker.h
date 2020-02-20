@@ -239,9 +239,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] owner_address Address of the owner of the object who will be contacted
+  /// if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
   Status Seal(const ObjectID &object_id, bool pin_object,
-              absl::optional<rpc::Address> owner_address = absl::nullopt);
+              const absl::optional<rpc::Address> &owner_address = absl::nullopt);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
