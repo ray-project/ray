@@ -162,13 +162,7 @@ class RayTimeoutError(RayError):
     pass
 
 
-class PlasmaObjectNotAvailable(RayError):
-    """Called when an object was not available within the given timeout."""
-    pass
-
-
 RAY_EXCEPTION_TYPES = [
-    PlasmaObjectNotAvailable,
     RayError,
     RayTaskError,
     RayWorkerError,
