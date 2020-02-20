@@ -54,7 +54,7 @@ if __name__ == "__main__":
                 "policy_mapping_fn": policy_mapping_fn,
                 "policies_to_train": ["ppo_policy"],
             },
-            "exploration": False,
+            "explore": False,
             # disable filters, otherwise we would need to synchronize those
             # as well to the DQN agent
             "observation_filter": "NoFilter",

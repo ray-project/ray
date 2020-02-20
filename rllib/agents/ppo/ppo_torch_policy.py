@@ -4,12 +4,12 @@ import ray
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-   setup_config
+    setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
-   LearningRateSchedule
+    LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.torch_ops import sequence_mask
@@ -177,7 +177,6 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
     return {
         SampleBatch.VF_PREDS: np.array([-1.0]),  #policy.model.value_function().numpy(),
         BEHAVIOUR_LOGITS: np.array([[1.0 / policy.action_space.n] * policy.action_space.n]), #policy.model.last_output().numpy(),
-        ACTION_LOGP: np.array([-0.1]),  # action_dist.logp(input_dict[SampleBatch.ACTIONS]).numpy()
     }
 
 
