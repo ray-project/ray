@@ -327,7 +327,5 @@ cc_binary(
     deps = [
         ":jni",
         ":streaming_lib",
-        "//:core_worker_lib",
-        "//:ray_util",
     ],
 )

@@ -3,14 +3,13 @@ import logging
 import time
 import threading
 
-import pyarrow.plasma as plasma
-
 import ray.cloudpickle as pickle
 from ray import ray_constants, JobID
 import ray.utils
 from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
+    PlasmaObjectNotAvailable,
     RayActorError,
     RayWorkerError,
     UnreconstructableError,
@@ -156,6 +155,8 @@ class SerializationContext:
             self.add_contained_object_id(obj)
             owner_id = ""
             owner_address = ""
+            # TODO(swang): Remove this check. Otherwise, we will not be able to
+            # handle serialized plasma IDs correctly.
             if obj.is_direct_call_type():
                 worker = ray.worker.get_global_worker()
                 worker.check_connected()
@@ -176,14 +177,14 @@ class SerializationContext:
             # to 'self' here instead, but this function is itself pickled
             # somewhere, which causes an error.
             context = ray.worker.global_worker.get_serialization_context()
-            context.add_contained_object_id(deserialized_object_id)
             if owner_id:
                 worker = ray.worker.get_global_worker()
                 worker.check_connected()
                 # UniqueIDs are serialized as
                 # (class name, (unique bytes,)).
+                outer_id = context.get_outer_object_id()
                 worker.core_worker.deserialize_and_register_object_id(
-                    obj_id[1][0], owner_id[1][0], owner_address)
+                    obj_id[1][0], outer_id, owner_id[1][0], owner_address)
             return deserialized_object_id
 
         for id_type in ray._raylet._ID_TYPES:
@@ -203,6 +204,12 @@ class SerializationContext:
 
         # construct a reducer
         pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
+
+    def set_outer_object_id(self, outer_object_id):
+        self._thread_local.outer_object_id = outer_object_id
+
+    def get_outer_object_id(self):
+        return getattr(self._thread_local, "outer_object_id", None)
 
     def get_and_clear_contained_object_ids(self):
         if not hasattr(self._thread_local, "object_ids"):
@@ -225,7 +232,7 @@ class SerializationContext:
                 if not self.use_pickle:
                     raise ValueError("Receiving pickle5 serialized objects "
                                      "while the serialization context is "
-                                     "using pyarrow as the backend.")
+                                     "using a custom raw backend.")
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
                     if len(buffers) > 0:
@@ -235,18 +242,8 @@ class SerializationContext:
                 # cloudpickle does not provide error types
                 except pickle.pickle.PicklingError:
                     raise DeserializationError()
-
-                # Check that there are no ObjectIDs serialized in arguments
-                # that are inlined.
-                if object_id.is_nil():
-                    assert len(self.get_and_clear_contained_object_ids()) == 0
-                else:
-                    worker = ray.worker.global_worker
-                    worker.core_worker.add_contained_object_ids(
-                        object_id,
-                        self.get_and_clear_contained_object_ids(),
-                    )
                 return obj
+
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -272,7 +269,7 @@ class SerializationContext:
             # to the user. We should only reach this line if this object was
             # deserialized as part of a list, and another object in the list
             # throws an exception.
-            return plasma.ObjectNotAvailable
+            return PlasmaObjectNotAvailable
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -287,6 +284,8 @@ class SerializationContext:
         while i < len(object_ids):
             object_id = object_ids[i]
             data, metadata = data_metadata_pairs[i]
+            assert self.get_outer_object_id() is None
+            self.set_outer_object_id(object_id)
             try:
                 results.append(
                     self._deserialize_object(data, metadata, object_id))
@@ -310,6 +309,9 @@ class SerializationContext:
                             warning_message,
                             job_id=self.worker.current_job_id)
                     warning_sent = True
+            finally:
+                # Must clear ObjectID to not hold a reference.
+                self.set_outer_object_id(None)
 
         return results
 
@@ -328,6 +330,7 @@ class SerializationContext:
         assert self.worker.use_pickle
         assert ray.cloudpickle.FAST_CLOUDPICKLE_USED
         writer = Pickle5Writer()
+        # TODO(swang): Check that contained_object_ids is empty.
         inband = pickle.dumps(
             value, protocol=5, buffer_callback=writer.buffer_callback)
         return Pickle5SerializedObject(

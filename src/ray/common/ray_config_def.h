@@ -44,6 +44,44 @@ RAY_CONFIG(bool, fair_queueing_enabled, true)
 /// enabled, objects in scope in the cluster will not be LRU evicted.
 RAY_CONFIG(bool, object_pinning_enabled, true)
 
+/// Whether to enable distributed reference counting for objects. When this is
+/// enabled, an object's ref count will include any references held by other
+/// processes, such as when an ObjectID is serialized and passed as an argument
+/// to another task. It will also include any references due to nesting, i.e.
+/// if the object ID is nested inside another object that is still in scope.
+/// When this is disabled, an object's ref count will include only local
+/// information:
+///  1. Local Python references to the ObjectID.
+///  2. Pending tasks submitted by the local process that depend on the object.
+/// If both this flag and object_pinning_enabled are turned on, then an object
+/// will not be LRU evicted until it is out of scope in ALL processes in the
+/// cluster and all objects that contain it are also out of scope. If this flag
+/// is off and object_pinning_enabled is turned on, then an object will not be
+/// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
+RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. If set, then this is the duration between attempts to flush the
+/// local cache. If this is set to 0, then the objects will be freed as soon as
+/// they enter the cache. To disable eager eviction, set this to -1.
+/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
+/// likely cause spurious object lost errors for Object IDs that were
+/// serialized, then either passed as an argument or returned from a task.
+/// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
+/// this should be set to a value larger than
+/// raylet_heartbeat_timeout_milliseconds.
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
+
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. This is the maximum number of objects in the local cache before it
+/// is flushed. To disable eager eviction, set free_objects_period_milliseconds
+/// to -1.
+RAY_CONFIG(size_t, free_objects_batch_size, 100)
+
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
