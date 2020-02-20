@@ -14,7 +14,12 @@ steps:
     # Show explicitly which commands are currently running.
     set -x
 
-    find -L $BAZEL_OUTPUTROOT -path "**/com_github_ray_project_ray" -prune -o -name '*.log' -exec cp --parents {} $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel \;
+    mkdir -p $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel
+
+    echo "Log files to copy:"
+    find $BAZEL_OUTPUTROOT -name '*.log'
+
+    find $BAZEL_OUTPUTROOT -name '*.log' -exec cp --parents {} $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel \;
   displayName: 'Copy bazel output dir to staging'
   timeoutInMinutes: 5
   condition: always()
@@ -29,16 +34,6 @@ steps:
   timeoutInMinutes: 5
 - bash: |
     set -euo pipefail
-
-    remove_docker_services() {
-        echo "   Deleting docker services"
-        service_ids=$(docker service ls -q)
-        if [ "${service_ids:+x}" != '' ]; then
-            docker service rm ${service_ids}
-        else
-            echo "   ...No services found to delete"
-        fi
-    }
 
     stop_docker_containers() {
         echo "   Stopping any running containers"
@@ -119,7 +114,7 @@ steps:
     main
 
     echo "Running docker system prune..."
-    docker system prune -f --all --filter 'until=24h'
+    docker system prune -f --all
   displayName: 'Clean docker data'
   timeoutInMinutes: 10
   condition: always()
