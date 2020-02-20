@@ -24,44 +24,40 @@ public class BinaryFileUtil {
   public static final String CORE_WORKER_JAVA_LIBRARY =
       System.mapLibraryName("core_worker_library_java");
 
-  public static File getFile(String destDir, String fileName) {
-    File file = new File(String.format("%s/%s", destDir, fileName));
-    if (file.exists()) {
-      return file;
-    }
-
-    final File dir = file.getParentFile();
-    try {
-      if (!dir.exists()) {
-        FileUtils.forceMkdir(dir);
-      }
-    } catch (IOException e) {
-      throw new RuntimeException("Couldn't make directory: " + dir.getAbsolutePath(), e);
-    }
-    // File does not exist.
-    try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + fileName)) {
-      Preconditions.checkNotNull(is, "{} doesn't exist.", fileName);
-      Files.copy(is, Paths.get(file.getCanonicalPath()));
-    } catch (IOException e) {
-      throw new RuntimeException("Couldn't get temp file from resource " + fileName, e);
-    }
-    return file;
-  }
-
+  /**
+   * Extract a resource file to <code>destDir</code>.
+   * Note that this a process-safe operation. If multi processes extract the file to same
+   * directory concurrently, this operation will be protected by a file lock.
+   *
+   * @param destDir  a directory to extract resource file to
+   * @param fileName resource file name
+   * @return extracted resource file
+   */
   public static File getFileSafe(String destDir, String fileName) {
     final File dir = new File(destDir);
     if (!dir.exists()) {
       try {
         FileUtils.forceMkdir(dir);
       } catch (IOException e) {
-        throw new RuntimeException(
-            String.format("Create directory %s failed", destDir), e);
+        throw new RuntimeException("Couldn't make directory: " + dir.getAbsolutePath(), e);
       }
     }
     String lockFilePath = destDir + File.separator + "file_lock";
     try (FileLock ignored = new RandomAccessFile(lockFilePath, "rw")
         .getChannel().lock()) {
-      return getFile(destDir, fileName);
+      File file = new File(String.format("%s/%s", destDir, fileName));
+      if (file.exists()) {
+        return file;
+      }
+
+      // File does not exist.
+      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + fileName)) {
+        Preconditions.checkNotNull(is, "{} doesn't exist.", fileName);
+        Files.copy(is, Paths.get(file.getCanonicalPath()));
+      } catch (IOException e) {
+        throw new RuntimeException("Couldn't get temp file from resource " + fileName, e);
+      }
+      return file;
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
