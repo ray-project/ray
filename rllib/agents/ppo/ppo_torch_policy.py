@@ -3,9 +3,9 @@ import numpy as np
 import ray
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
+from ray.rllib.evaluation.postprocessing import Postprocessing, \
+    compute_advantages
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
@@ -174,13 +174,36 @@ def kl_and_loss_stats(policy, train_batch):
 def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
-    #print(policy.model.last_output().numpy())
     return {
-        #SampleBatch.VF_PREDS: np.array([-1.0]),  #policy.model.value_function().numpy(),
-        #BEHAVIOUR_LOGITS: np.array([[1.0 / policy.action_space.n] * policy.action_space.n]), #policy.model.last_output().numpy(),
         SampleBatch.VF_PREDS: policy.model.value_function().numpy(),
         BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
     }
+
+
+def postprocess_ppo_gae(policy,
+                        sample_batch,
+                        other_agent_batches=None,
+                        episode=None):
+    """Adds the policy logits, VF preds, and advantages to the trajectory."""
+    with torch.no_grad():
+        completed = sample_batch["dones"][-1]
+        if completed:
+            last_r = 0.0
+        else:
+            next_state = []
+            for i in range(policy.num_state_tensors()):
+                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                                   sample_batch[SampleBatch.ACTIONS][-1],
+                                   sample_batch[SampleBatch.REWARDS][-1],
+                                   *next_state)
+        batch = compute_advantages(
+            sample_batch,
+            last_r,
+            policy.config["gamma"],
+            policy.config["lambda"],
+            use_gae=policy.config["use_gae"])
+    return batch
 
 
 class KLCoeffMixin:
