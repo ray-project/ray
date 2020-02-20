@@ -531,6 +531,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
                         bool success);
 
+  /// Process worker subscribing to plasma.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return void.
+  void ProcessSubscribePlasma(const std::shared_ptr<LocalClientConnection> &client,
+                              const uint8_t *message_data);
+
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,

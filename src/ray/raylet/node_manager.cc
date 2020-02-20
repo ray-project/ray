@@ -1012,28 +1012,7 @@ void NodeManager::ProcessClientMessage(
     ProcessNotifyActorResumedFromCheckpoint(message_data);
   } break;
   case protocol::MessageType::SubscribePlasma: {
-    auto message = flatbuffers::GetRoot<protocol::SubscribePlasma>(message_data);
-    std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
-    if (associated_worker == nullptr) {
-      associated_worker = worker_pool_.GetRegisteredDriver(client);
-      if (associated_worker == nullptr) {
-        RAY_LOG(ERROR) << "No worker exists for CoreWorker with service on: "
-                       << message->port();
-        break;
-      }
-    }
-    ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
-    {
-      absl::MutexLock guard(&plasma_object_lock_);
-      if (!async_plasma_objects_.contains(id)) {
-        async_plasma_objects_.emplace(id, std::vector<std::shared_ptr<Worker>>());
-        // async_plasma_objects_.emplace(id, std::vector<int64_t>());
-      }
-      async_plasma_objects_[id].push_back(associated_worker);
-      // async_plasma_objects_[id].push_back(message->port());
-    }
-    RAY_LOG(DEBUG) << "There are " << async_plasma_objects_.size()
-                   << " Objects in the waiting structure";
+    ProcessSubscribePlasma(client, message_data);
   } break;
 
   default:
@@ -3081,6 +3060,32 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     local_queues_.QueueTasks({assigned_task}, TaskState::READY);
     DispatchTasks(MakeTasksByClass({assigned_task}));
   }
+}
+
+void NodeManager::ProcessSubscribePlasma(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::SubscribePlasma>(message_data);
+  std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
+  if (associated_worker == nullptr) {
+    associated_worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  if (associated_worker == nullptr) {
+    RAY_LOG(ERROR) << "No worker exists for CoreWorker with service on: "
+                   << message->port();
+    return;
+  }
+  ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
+  {
+    absl::MutexLock guard(&plasma_object_lock_);
+    if (!async_plasma_objects_.contains(id)) {
+      async_plasma_objects_.emplace(id, std::vector<std::shared_ptr<Worker>>());
+      // async_plasma_objects_.emplace(id, std::vector<int64_t>());
+    }
+    async_plasma_objects_[id].push_back(associated_worker);
+    // async_plasma_objects_[id].push_back(message->port());
+  }
+  RAY_LOG(DEBUG) << "There are " << async_plasma_objects_.size()
+                 << " Objects in the waiting structure";
 }
 
 void NodeManager::DumpDebugState() const {
