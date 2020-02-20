@@ -358,6 +358,7 @@ class ParallelIterator(Generic[T]):
         """
 
         def base_iterator(timeout=None):
+            ctx = LocalIterator.get_context()
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
@@ -380,6 +381,7 @@ class ParallelIterator(Generic[T]):
                 for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
+                        ctx.cur_actor = actor
                         yield ray.get(obj_id)
                         futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
@@ -465,11 +467,15 @@ class IteratorContext:
     Attributes:
         counters (defaultdict): dict storing increasing metrics.
         info (dict): dict storing misc metric values.
+        current_actor (ActorHandle): reference to the actor handle that
+            produced the current iterator output. This is automatically set
+            for gather_async().
     """
 
     def __init__(self):
         self.counters = collections.defaultdict(int)
         self.info = {}
+        self.current_actor = None
 
     def save(self):
         """Return a serializable copy of this context."""

@@ -7,7 +7,7 @@ from typing import List, Any
 import time
 
 import ray
-from ray.util.iter import from_actors, LocalIterator, PipelineContext
+from ray.util.iter import from_actors, LocalIterator, IteratorContext
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -59,8 +59,8 @@ def ParallelRollouts(workers: WorkerSet,
             while True:
                 yield workers.local_worker().sample()
 
-        return LocalIterator(sampler,
-                             PipelineContext()).for_each(report_timesteps)
+        return (LocalIterator(sampler, IteratorContext())
+                .for_each(report_timesteps))
 
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
@@ -277,18 +277,31 @@ class ApplyGradients:
     Updates the "num_steps_trained" counter in the local iterator context.
     """
 
-    def __init__(self, workers):
+    def __init__(self, workers, update_all=True):
         self.workers = workers
+        self.update_all = update_all
 
     def __call__(self, item):
+        if not isinstance(item, tuple) or len(item) != 2:
+            raise ValueError(
+                "Input must be a tuple of (grad_dict, count), got {}".format(
+                    item))
         gradients, count = item
         ctx = LocalIterator.get_context()
         ctx.counters["num_steps_trained"] += count
         self.workers.local_worker().apply_gradients(gradients)
-        if self.workers.remote_workers():
-            weights = ray.put(self.workers.local_worker().get_weights())
-            for e in self.workers.remote_workers():
-                e.set_weights.remote(weights)
+        if self.update_all:
+            if self.workers.remote_workers():
+                weights = ray.put(self.workers.local_worker().get_weights())
+                for e in self.workers.remote_workers():
+                    e.set_weights.remote(weights)
+        else:
+            if ctx.cur_actor is None:
+                raise ValueError(
+                    "Could not find actor to update. When update_all=False, "
+                    "`cur_actor` must be set in the iterator context.")
+            weights = self.workers.local_worker().get_weights()
+            ctx.cur_actor.set_weights.remote(weights)
 
 
 class AverageGradients:

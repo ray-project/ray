@@ -105,6 +105,11 @@ def _import_a2c_pipeline():
     return a3c.A2CPipeline
 
 
+def _import_a3c_pipeline():
+    from ray.rllib.agents import a3c
+    return a3c.A3CPipeline
+
+
 def _import_pg_pipeline():
     from ray.rllib.agents import pg
     return pg.PGPipeline
@@ -133,6 +138,7 @@ ALGORITHMS = {
 
     # Experimental pipeline-based impls.
     "A2C_pl": _import_a2c_pipeline,
+    "A3C_pl": _import_a3c_pipeline,
     "PG_pl": _import_pg_pipeline,
 }
 
