@@ -42,15 +42,6 @@ public interface ResourceManager {
   SlotAssignStrategy getSlotAssignStrategy();
 
   /**
-<<<<<<< HEAD
-=======
-   * Update resources content, for `failover`.
-   * @param resources The specified resources content.
-   */
-  void setResources(Resources resources);
-
-  /**
->>>>>>> add resource manager
    * Get resources from manager.
    *
    * @return Current resources in manager.
