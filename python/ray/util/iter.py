@@ -458,7 +458,7 @@ class ParallelIterator(Generic[T]):
 class IteratorContext:
     """Context object for a local iterator.
 
-    This can be used to store global data for a pipeline, e.g., metrics.
+    This can be used to share global data for a pipeline, e.g., for metrics.
 
     Attributes:
         counters (defaultdict): dict storing increasing metrics.
