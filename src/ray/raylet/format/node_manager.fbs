@@ -269,5 +269,4 @@ table SetResourceRequest {
 table SubscribePlasma {
   // ObjectID to wait for 
   object_id: string;
-  port: int;
 }

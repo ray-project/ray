@@ -1346,18 +1346,16 @@ void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_cal
 }
 
 void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Core worker is subscribing to: " << object_id.Binary() << "\n";
   RAY_CHECK_OK(
-      local_raylet_client_->SubscribeToPlasma(object_id, core_worker_server_.GetPort()));
+      local_raylet_client_->SubscribeToPlasma(object_id));
 }
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
                                          rpc::PlasmaObjectReadyReply *reply,
-                                         rpc::SendReplyCallback 
-                                         
-                                         send_reply_callback) {
-  RAY_LOG(DEBUG) << "Core worker got notification from: " << request.object_id() << "\n";
-  if (!this->plasma_done_callback_) {
+                                         rpc::SendReplyCallback
+
+                                             send_reply_callback) {
+  if (!plasma_done_callback_) {
     RAY_LOG(INFO) << "Async Init was not called before async callback";
     return;
   }

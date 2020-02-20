@@ -256,7 +256,7 @@ class RayletClient : public WorkerLeaseInterface {
   ray::Status PinObjectIDs(const rpc::Address &caller_address,
                            const std::vector<ObjectID> &object_ids);
 
-  ray::Status SubscribeToPlasma(const ObjectID &object_id, int64_t port);
+  ray::Status SubscribeToPlasma(const ObjectID &object_id);
 
   WorkerID GetWorkerID() const { return worker_id_; }
 

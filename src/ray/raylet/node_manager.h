@@ -539,6 +539,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessSubscribePlasma(const std::shared_ptr<LocalClientConnection> &client,
                               const uint8_t *message_data);
 
+  /// Setup callback with Object Manager.
+  ///
+  /// \return Status indicating whether setup was successful.
+  ray::Status SetupPlasmaSubscription();
+
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,
@@ -702,7 +707,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::Mutex plasma_object_lock_;
   // TODO(ilr): Make this Vector into a hash set?  << Calling Wait MANY times...
   //   absl::flat_hash_map<ObjectID, std::vector<int64_t>> async_plasma_objects_;
-  absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<Worker>>>
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
       async_plasma_objects_;
 };
 
