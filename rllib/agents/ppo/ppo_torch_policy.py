@@ -176,8 +176,10 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
     """Adds value function and logits outputs to experience train_batches."""
     #print(policy.model.last_output().numpy())
     return {
-        SampleBatch.VF_PREDS: np.array([-1.0]),  #policy.model.value_function().numpy(),
-        BEHAVIOUR_LOGITS: np.array([[1.0 / policy.action_space.n] * policy.action_space.n]), #policy.model.last_output().numpy(),
+        #SampleBatch.VF_PREDS: np.array([-1.0]),  #policy.model.value_function().numpy(),
+        #BEHAVIOUR_LOGITS: np.array([[1.0 / policy.action_space.n] * policy.action_space.n]), #policy.model.last_output().numpy(),
+        SampleBatch.VF_PREDS: policy.model.value_function().numpy(),
+        BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
     }
 
 
@@ -197,25 +199,25 @@ class KLCoeffMixin:
 
 class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
-        if config["use_gae"]:
-
-            def value(ob, prev_action, prev_reward, *state):
-                return 0.0
-                #model_out, _ = self.model({
-                #    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
-                #    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
-                #        self.device),
-                #    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
-                #        self.device),
-                #    "is_training": False,
-                #}, [torch.Tensor([s]).to(self.device) for s in state],
-                #                          torch.Tensor([1]).to(self.device))
-                #return self.model.value_function()[0]
-
-        else:
-
-            def value(ob, prev_action, prev_reward, *state):
-                return 0.0
+        with torch.no_grad():
+            if config["use_gae"]:
+    
+                def value(ob, prev_action, prev_reward, *state):
+                    model_out, _ = self.model({
+                        SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
+                        SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
+                            self.device),
+                        SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
+                            self.device),
+                        "is_training": False,
+                    }, [torch.Tensor([s]).to(self.device) for s in state],
+                                              torch.Tensor([1]).to(self.device))
+                    return self.model.value_function()[0]
+    
+            else:
+    
+                def value(ob, prev_action, prev_reward, *state):
+                    return 0.0
 
         self._value = value
 
