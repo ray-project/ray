@@ -12,8 +12,8 @@ def training_pipeline(workers, config):
     """Async gradients training pipeline.
 
     This pipeline asynchronously pulls and applies gradients from remote
-    workers, sending updated weights back as needed. This pipelines the
-    gradient computations on the remote workers.
+    workers, sending updated weights back as needed. This overlaps the
+    gradient computations on the remote workers with local application.
     """
 
     # We use the lower level from_actors() API instead of ParallelRollouts,
