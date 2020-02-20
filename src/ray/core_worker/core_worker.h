@@ -202,9 +202,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object The ray object.
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
+  /// \param[in] pin_object Whether or not to tell the raylet to pin this object.
   /// \return Status.
   Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
-             const ObjectID &object_id);
+             const ObjectID &object_id, bool pin_object = false);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -239,8 +240,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] owner_address Address of the owner of the object who will be contacted by
+  /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
-  Status Seal(const ObjectID &object_id, bool pin_object);
+  Status Seal(const ObjectID &object_id, bool pin_object,
+              const absl::optional<rpc::Address> &owner_address = absl::nullopt);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
