@@ -134,13 +134,6 @@ if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
             --target="$ROOT_DIR/python/ray/thirdparty_files"
 fi
 
-
-"$PYTHON_EXECUTABLE" -m pip install -q setproctitle \
-        --target="$ROOT_DIR/python/ray/setproctitle_files"
-
-"$PYTHON_EXECUTABLE" -m pip install -q psutil \
-        --target="$ROOT_DIR/python/ray/psutil_files"
-
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
