@@ -613,7 +613,7 @@ class Trainer(Trainable):
     def _stop(self):
         if hasattr(self, "workers"):
             self.workers.stop()
-        if hasattr(self, "optimizer"):
+        if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
