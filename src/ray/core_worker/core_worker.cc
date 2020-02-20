@@ -1066,7 +1066,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // return them to the caller. This will notify the caller of any IDs that we
   // (or a nested task) are still borrowing. It will also any new IDs that were
   // contained in a borrowed ID that we (or a nested task) are now borrowing.
-  reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
+  if (!borrowed_ids.empty()) {
+    reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
+  }
   // Unpin the borrowed IDs.
   std::vector<ObjectID> deleted;
   for (const auto &borrowed_id : borrowed_ids) {
