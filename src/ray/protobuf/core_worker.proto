@@ -217,8 +217,8 @@ message PlasmaObjectReadyRequest {
   int64 metadata_size = 3;
 }
 
- message PlasmaObjectReadyReply {
- }
+message PlasmaObjectReadyReply {
+}
 
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
@@ -243,5 +243,4 @@ service CoreWorkerService {
 
   // Plasma object ready.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
-
 }
