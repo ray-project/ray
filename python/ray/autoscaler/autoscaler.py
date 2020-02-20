@@ -79,6 +79,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "location": (str, OPTIONAL), # e.g. westus2
             "service_principal": (str, OPTIONAL), # e.g. url to service principal
             "resource_group": (str, OPTIONAL), # e.g. resource-group-1
+            "tags": (dict, OPTIONAL), # e.g. alias: user1
             "subscription_id": (str, OPTIONAL), # e.g. Azure subscription id
 
             # k8s autoscaler permissions, if using k8s

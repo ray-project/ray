@@ -85,8 +85,12 @@ def _configure_resource_group(config):
     config["provider"]["subscription_id"] = subscription_id
 
     resource_group = config["provider"]["resource_group"]
-    logger.info("Creating resource group: %s", resource_group)
     params = {"location": config["provider"]["location"]}
+
+    if "tags" in config["provider"]:
+        params["tags"] = config["provider"]["tags"]
+
+    logger.info("Creating resource group: %s", resource_group)
     resource_client.resource_groups.create_or_update(
         resource_group_name=resource_group, parameters=params)
 
