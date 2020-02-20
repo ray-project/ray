@@ -211,17 +211,19 @@ class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
         with torch.no_grad():
             if config["use_gae"]:
-    
+
                 def value(ob, prev_action, prev_reward, *state):
                     model_out, _ = self.model({
-                        SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
-                        SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
+                        SampleBatch.CUR_OBS: torch.Tensor([ob]).to(
                             self.device),
-                        SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
-                            self.device),
+                        SampleBatch.PREV_ACTIONS: torch.Tensor(
+                            [prev_action]).to(self.device),
+                        SampleBatch.PREV_REWARDS: torch.Tensor(
+                            [prev_reward]).to(self.device),
                         "is_training": False,
                     }, [torch.Tensor([s]).to(self.device) for s in state],
-                                              torch.Tensor([1]).to(self.device))
+                                              torch.Tensor([1]).to(
+                                                  self.device))
                     return self.model.value_function()[0]
 
             else:
