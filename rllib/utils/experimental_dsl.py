@@ -289,7 +289,6 @@ class ApplyGradients:
             weights = ray.put(self.workers.local_worker().get_weights())
             for e in self.workers.remote_workers():
                 e.set_weights.remote(weights)
-        return None
 
 
 class AverageGradients:
