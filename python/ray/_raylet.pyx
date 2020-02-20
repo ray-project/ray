@@ -98,14 +98,6 @@ from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_RETRIES,
 )
 
-# pyarrow cannot be imported until after _raylet finishes initializing
-# (see ray/__init__.py for details).
-# Unfortunately, Cython won't compile if 'pyarrow' is undefined, so we
-# "forward declare" it here and then replace it with a reference to the
-# imported package from ray/__init__.py.
-# TODO(edoakes): Fix this.
-pyarrow = None
-
 cimport cpython
 
 include "includes/unique_ids.pxi"
@@ -552,6 +544,14 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
+cdef void async_plasma_callback(CObjectID object_id,
+                                int64_t data_size,
+                                int64_t metadata_size) with gil:
+    message = [tuple([ObjectID(object_id.Binary()), data_size, metadata_size])]
+    core_worker = ray.worker.global_worker.core_worker
+    event_handler = core_worker.get_plasma_event_handler()
+    if event_handler is not None:
+        event_handler.process_notifications(message)
 
 cdef CRayStatus check_signals() nogil:
     with gil:
@@ -574,17 +574,20 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 
 cdef write_serialized_object(
         serialized_object, const shared_ptr[CBuffer]& buf):
-    # avoid initializing pyarrow before raylet
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
     if isinstance(serialized_object, RawSerializedObject):
         if buf.get() != NULL and buf.get().Size() > 0:
-            buffer = Buffer.make(buf)
-            # `Buffer` has a nullptr buffer underlying if size is 0,
-            # which will cause `pyarrow.py_buffer` crash
-            stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-            stream.set_memcopy_threads(MEMCOPY_THREADS)
-            stream.write(pyarrow.py_buffer(serialized_object.value))
+            size = serialized_object.total_bytes
+            if MEMCOPY_THREADS > 1 and size > kMemcopyDefaultThreshold:
+                parallel_memcopy(buf.get().Data(),
+                                 <const uint8_t*> serialized_object.value,
+                                 size, kMemcopyDefaultBlocksize,
+                                 MEMCOPY_THREADS)
+            else:
+                memcpy(buf.get().Data(),
+                       <const uint8_t*>serialized_object.value, size)
+
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)
@@ -597,9 +600,6 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port):
-        assert pyarrow is not None, ("Expected pyarrow to be imported from "
-                                     "outside _raylet. See __init__.py for "
-                                     "details.")
 
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
@@ -627,6 +627,13 @@ cdef class CoreWorker:
 
     def set_actor_title(self, title):
         self.core_worker.get().SetActorTitle(title)
+
+    def subscribe_to_plasma(self, plasma_event_handler):
+        self.plasma_event_handler = plasma_event_handler
+        self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback)
+
+    def get_plasma_event_handler(self):
+        return self.plasma_event_handler
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
