@@ -161,10 +161,10 @@ def kl_and_loss_stats(policy, train_batch):
         "total_loss": policy.loss_obj.loss.item(),
         "policy_loss": policy.loss_obj.mean_policy_loss.item(),
         "vf_loss": policy.loss_obj.mean_vf_loss.item(),
-        "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function(),
-            framework="torch").item(),
+        #"vf_explained_var": explained_variance(
+        #    train_batch[Postprocessing.VALUE_TARGETS],
+        #    policy.model.value_function(),
+        #    framework="torch").item(),
         "kl": policy.loss_obj.mean_kl.item(),
         "entropy": policy.loss_obj.mean_entropy.item(),
         "entropy_coeff": policy.entropy_coeff,
