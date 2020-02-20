@@ -182,12 +182,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       store_socket, local_raylet_client_, check_signals_));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
-        bool object_exists;
-        RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id, &object_exists));
-        if (!object_exists) {
-          RAY_LOG(DEBUG) << "Pinning object promoted to plasma " << obj_id;
-          RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {obj_id}));
-        }
+        RAY_LOG(DEBUG) << "Promoting object to plasma " << obj_id;
+        RAY_CHECK_OK(Put(obj, /*contained_object_ids=*/{}, obj_id, /*pin_object=*/true));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       check_signals_));
@@ -353,13 +349,8 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     RAY_LOG(DEBUG) << "Storing object promoted to plasma " << object_id;
-    bool object_exists;
-    RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id, &object_exists));
-    if (!object_exists) {
-      RAY_LOG(DEBUG) << "PromoteToPlasma: Pinning object promoted to plasma "
-                     << object_id;
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
-    }
+    RAY_CHECK_OK(
+        Put(*value, /*contained_object_ids=*/{}, object_id, /*pin_object=*/true));
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
@@ -405,20 +396,33 @@ Status CoreWorker::Put(const RayObject &object,
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                      rpc_address_);
-  RAY_RETURN_NOT_OK(Put(object, contained_object_ids, *object_id));
-  // Tell the raylet to pin the object **after** it is created.
-  RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
-  return Status::OK();
+  return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
-                       const ObjectID &object_id) {
-  RAY_CHECK(object_id.GetTransportType() ==
-            static_cast<uint8_t>(TaskTransportType::RAYLET))
-      << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
-  // TODO(edoakes,swang): add contained object IDs to the reference counter.
-  return plasma_store_provider_->Put(object, object_id, nullptr);
+                       const ObjectID &object_id, bool pin_object) {
+  bool object_exists;
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
+  if (!object_exists) {
+    if (pin_object) {
+      // Tell the raylet to pin the object **after** it is created.
+      RAY_LOG(DEBUG) << "Pinning put object " << object_id;
+      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+          rpc_address_, {object_id},
+          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+            // Only release the object once the raylet has responded to avoid the race
+            // condition that the object could be evicted before the raylet pins it.
+            if (!plasma_store_provider_->Release(object_id).ok()) {
+              RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                             << "), might cause a leak in plasma.";
+            }
+          }));
+    } else {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
+    }
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -442,12 +446,24 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
-Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
+Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
+                        const absl::optional<rpc::Address> &owner_address) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
-    RAY_LOG(DEBUG) << "Pinning created object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
+    RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
+    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+        owner_address.has_value() ? *owner_address : rpc_address_, {object_id},
+        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          // Only release the object once the raylet has responded to avoid the race
+          // condition that the object could be evicted before the raylet pins it.
+          if (!plasma_store_provider_->Release(object_id).ok()) {
+            RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                           << "), might cause a leak in plasma.";
+          }
+        }));
+  } else {
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
   return Status::OK();
 }
@@ -1024,6 +1040,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
 
+  absl::optional<rpc::Address> caller_address(
+      worker_context_.GetCurrentTask()->CallerAddress());
+
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
     if (!return_objects->at(i)) {
@@ -1031,7 +1050,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
     if (return_objects->at(i)->GetData() != nullptr &&
         return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
+      if (!Seal(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
