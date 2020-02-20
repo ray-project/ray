@@ -460,13 +460,15 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
     # from being garbage-collected without explicity invoking gc.collect.
+
+    # test a dynamic function
     def f():
         return 4669201609102990671853203821578
 
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads
+    from ray.cloudpickle import CloudPickler, loads, dumps
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
     new_f = loads(bio.getvalue())
@@ -476,6 +478,18 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     del f
 
     assert wr() is None
+
+    # test a dynamic class
+    class ShortlivedObject:
+        def __del__(self):
+            print("Went out of scope!")
+
+    obj = ShortlivedObject()
+    new_obj = weakref.ref(obj)
+
+    dumps(obj)
+    del obj
+    assert new_obj() is None
 
 
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
