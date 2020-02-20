@@ -508,6 +508,11 @@ class LocalIterator(Generic[T]):
     tasks and actors. However, it should be read from at most one process at
     a time."""
 
+    # If a function passed to LocalIterator.for_each() has this attribute set,
+    # we will automatically create a perf timer with the given name. This
+    # allows for_each operators to automatically add certain metrics.
+    AUTO_TIMER_ATTR = "_auto_timer_name"
+
     thread_local = threading.local()
 
     def __init__(self,
@@ -594,11 +599,9 @@ class LocalIterator(Generic[T]):
                 else:
                     yield fn(item)
 
-        # If the function has this attribute set, we will automatically create
-        # a perf timer with the given name. This allows for_each operators to
-        # automatically add certain metrics.
-        if hasattr(fn, "_auto_timer_name"):
-            timer = self.context.timers[fn._auto_timer_name]
+        if hasattr(fn, LocalIterator.AUTO_TIMER_ATTR):
+            timer = self.context.timers[getattr(fn,
+                                                LocalIterator.AUTO_TIMER_ATTR)]
             unwrapped = apply_foreach
 
             def wrap_timer(it):

@@ -109,6 +109,7 @@ def AsyncGradients(
         ctx.info["learner"] = info[LEARNER_STATS_KEY]
         return grads, count
 
+    # Exposes time to get each grad as a timer in the iterator context.
     record_metrics._auto_timer_name = "grad_wait"
 
     rollouts = from_actors(workers.remote_workers())
