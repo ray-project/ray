@@ -75,7 +75,7 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
   if (error) {
     if (exit_on_error_) {
       // When shutting down a cluster, it's possible that the plasma store is killed
-      // earlier than raylet, in this case we don't want raylet to crash, we instead
+      // earlier than raylet. In this case we don't want raylet to crash, we instead
       // log an error message and exit.
       RAY_LOG(ERROR) << "Failed to process store length: "
                      << boost_to_ray_status(error).ToString()
@@ -83,6 +83,12 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
       // Exit raylet process.
       _exit(kRayletStoreErrorExitCode);
     } else {
+      // The log level is set to debug so user don't see it on ctrl+c exit.
+      RAY_LOG(DEBUG) << "Failed to process store length: "
+                     << boost_to_ray_status(error).ToString()
+                     << ", most likely plasma store is down. "
+                     << "The error is silenced because exit_on_error_ "
+                     << "flag is set.";
       return;
     }
   }
@@ -101,6 +107,12 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
           << "Problem communicating with the object store from raylet, check logs or "
           << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
     } else {
+      // The log level is set to debug so user don't see it on ctrl+c exit.
+      RAY_LOG(DEBUG)
+          << "Problem communicating with the object store from raylet, check logs or "
+          << "dmesg for previous errors: " << boost_to_ray_status(error).ToString()
+          << " The error is silenced because exit_on_error_ "
+          << "flag is set.";
       return;
     }
   }
