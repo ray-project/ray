@@ -83,6 +83,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
+      free_objects_period_(config.free_objects_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
@@ -214,6 +215,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   last_debug_dump_at_ms_ = current_time_ms();
+  last_free_objects_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -312,6 +314,12 @@ void NodeManager::Heartbeat() {
     RecordMetrics();
     WarnResourceDeadlock();
     last_debug_dump_at_ms_ = now_ms;
+  }
+
+  // Evict all copies of freed objects from the cluster.
+  if (free_objects_period_ > 0 &&
+      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_) {
+    FlushObjectsToFree();
   }
 
   // Reset the timer.
@@ -3135,6 +3143,14 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
           RAY_LOG(DEBUG) << "Unpinning object " << object_id;
           pinned_objects_.erase(object_id);
 
+          // Try to evict all copies of the object from the cluster.
+          objects_to_free_.push_back(object_id);
+          if (objects_to_free_.size() ==
+                  RayConfig::instance().free_objects_batch_size() ||
+              free_objects_period_ == 0) {
+            FlushObjectsToFree();
+          }
+
           // Remove the cached worker client if there are no more pending requests.
           if (--worker_rpc_clients_[worker_id].second == 0) {
             worker_rpc_clients_.erase(worker_id);
@@ -3142,6 +3158,19 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
         }));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::FlushObjectsToFree() {
+  if (free_objects_period_ < 0) {
+    return;
+  }
+
+  if (!objects_to_free_.empty()) {
+    RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
+    object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);
+    objects_to_free_.clear();
+  }
+  last_free_objects_at_ms_ = current_time_ms();
 }
 
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
