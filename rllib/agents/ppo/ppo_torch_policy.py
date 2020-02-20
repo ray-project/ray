@@ -171,25 +171,22 @@ def postprocess_ppo_gae(policy,
                         other_agent_batches=None,
                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
-    # Do all post-processing always with no_grad().
-    # Not using this here will introduce a memory leak (issue #6962).
-    with torch.no_grad():
-        if sample_batch["dones"][-1]:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(policy.num_state_tensors()):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                   sample_batch[SampleBatch.ACTIONS][-1],
-                                   sample_batch[SampleBatch.REWARDS][-1],
-                                   *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            policy.config["gamma"],
-            policy.config["lambda"],
-            use_gae=policy.config["use_gae"])
+    if sample_batch["dones"][-1]:
+        last_r = 0.0
+    else:
+        next_state = []
+        for i in range(policy.num_state_tensors()):
+            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                               sample_batch[SampleBatch.ACTIONS][-1],
+                               sample_batch[SampleBatch.REWARDS][-1],
+                               *next_state)
+    batch = compute_advantages(
+        sample_batch,
+        last_r,
+        policy.config["gamma"],
+        policy.config["lambda"],
+        use_gae=policy.config["use_gae"])
     return batch
 
 
@@ -209,12 +206,13 @@ class KLCoeffMixin:
 
 class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
-        # Do all post-processing always with no_grad().
-        # Not using this here will introduce a memory leak (issue #6962).
-        with torch.no_grad():
-            if config["use_gae"]:
+        if config["use_gae"]:
 
-                def value(ob, prev_action, prev_reward, *state):
+            def value(ob, prev_action, prev_reward, *state):
+                # Do all post-processing always with no_grad().
+                # Not using this here will introduce a memory leak
+                # (issue #6962).
+                with torch.no_grad():
                     model_out, _ = self.model({
                         SampleBatch.CUR_OBS: torch.Tensor([ob]).to(
                             self.device),
@@ -228,10 +226,10 @@ class ValueNetworkMixin:
                                                   self.device))
                     return self.model.value_function()[0]
 
-            else:
+        else:
 
-                def value(ob, prev_action, prev_reward, *state):
-                    return 0.0
+            def value(ob, prev_action, prev_reward, *state):
+                return 0.0
 
         self._value = value
 
