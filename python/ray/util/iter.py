@@ -1,9 +1,11 @@
 import collections
 import random
+import time
 import threading
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
+from ray.util.timer import _Timer
 
 # The type of an iterator element.
 T = TypeVar("T")
@@ -357,8 +359,9 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
+        ctx = IteratorContext()
+
         def base_iterator(timeout=None):
-            ctx = LocalIterator.get_context()
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
@@ -391,7 +394,7 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, IteratorContext(), name=name)
+        return LocalIterator(base_iterator, ctx, name=name)
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -466,6 +469,7 @@ class IteratorContext:
 
     Attributes:
         counters (defaultdict): dict storing increasing metrics.
+        timers (defaultdict): dict storing latency timers.
         info (dict): dict storing misc metric values.
         current_actor (ActorHandle): reference to the actor handle that
             produced the current iterator output. This is automatically set
@@ -474,17 +478,23 @@ class IteratorContext:
 
     def __init__(self):
         self.counters = collections.defaultdict(int)
+        self.timers = collections.defaultdict(_Timer)
         self.info = {}
         self.current_actor = None
 
     def save(self):
         """Return a serializable copy of this context."""
-        return {"counters": dict(self.counters), "info": dict(self.info)}
+        return {
+            "counters": dict(self.counters),
+            "info": dict(self.info),
+            "timers": None,  # TODO(ekl) consider persisting timers too
+        }
 
     def restore(self, values):
         """Restores state given the output of save()."""
         self.counters.clear()
         self.counters.update(values["counters"])
+        self.timers.clear()
         self.info = values["info"]
 
 
@@ -583,6 +593,21 @@ class LocalIterator(Generic[T]):
                     yield item
                 else:
                     yield fn(item)
+
+        if hasattr(fn, "_auto_timer_name"):
+            timer = self.context.timers[fn._auto_timer_name]
+            unwrapped = apply_foreach
+
+            def wrap_timer(it):
+                it = unwrapped(it)
+                while True:
+                    start = time.perf_counter()
+                    item = next(it)
+                    if not isinstance(item, _NextValueNotReady):
+                        timer.push(time.perf_counter() - start)
+                    yield item
+
+            apply_foreach = wrap_timer
 
         return LocalIterator(
             self.base_iterator,
