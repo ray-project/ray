@@ -242,15 +242,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
-  plasma_notifier_.reset(new ObjectStoreNotificationManager(io_service_, store_socket,
-                                                            /*exit_on_error*/ false));
 }
 
 CoreWorker::~CoreWorker() {
-  // ObjectStoreNotificationManager depends on io_service_ so we need to shut it down
-  // first.
-  plasma_notifier_->Shutdown();
-
   io_service_.stop();
   io_thread_.join();
   if (log_dir_ != "") {
