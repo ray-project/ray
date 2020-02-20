@@ -113,6 +113,8 @@ def traced_eager_policy(eager_policy_cls):
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            explore=None,
+                            timestep=None,
                             **kwargs):
 
             obs_batch = tf.convert_to_tensor(obs_batch)
@@ -127,7 +129,7 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, **kwargs)
+                info_batch, episodes, explore, timestep, **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
@@ -193,6 +195,7 @@ def build_eager_tf_policy(name,
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
+            self.framework = "tf"
             Policy.__init__(self, observation_space, action_space, config)
             self._is_training = False
             self._loss_initialized = False
@@ -294,7 +297,12 @@ def build_eager_tf_policy(name,
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            explore=None,
+                            timestep=None,
                             **kwargs):
+
+            explore = explore if explore is not None else \
+                self.config["explore"]
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
@@ -322,24 +330,34 @@ def build_eager_tf_policy(name,
                 model_out, state_out = self.model(input_dict, state_batches,
                                                   seq_lens)
 
-            if self.dist_class:
-                action_dist = self.dist_class(model_out, self.model)
-                action = action_dist.sample()
-                logp = action_dist.sampled_action_logp()
-            else:
+            # Custom sampler fn given (which may handle self.exploration).
+            if action_sampler_fn is not None:
                 action, logp = action_sampler_fn(
                     self, self.model, input_dict, self.observation_space,
-                    self.action_space, self.config)
+                    self.action_space, explore, self.config, timestep)
+            # Use Exploration object.
+            else:
+                action, logp = self.exploration.get_exploration_action(
+                    model_out,
+                    self.model,
+                    action_dist_class=self.dist_class,
+                    explore=explore,
+                    timestep=timestep
+                    if timestep is not None else self.global_timestep)
 
-            fetches = {}
+            extra_fetches = {}
             if logp is not None:
-                fetches.update({
+                extra_fetches.update({
                     ACTION_PROB: tf.exp(logp),
                     ACTION_LOGP: logp,
                 })
             if extra_action_fetches_fn:
-                fetches.update(extra_action_fetches_fn(self))
-            return action, state_out, fetches
+                extra_fetches.update(extra_action_fetches_fn(self))
+
+            # Increase our global sampling timestep counter by 1.
+            self.global_timestep += 1
+
+            return action, state_out, extra_fetches
 
         @override(Policy)
         def apply_gradients(self, gradients):
@@ -364,6 +382,7 @@ def build_eager_tf_policy(name,
             """Return the list of all savable variables for this policy."""
             return self.model.variables()
 
+        @override(Policy)
         def is_recurrent(self):
             return len(self._state_in) > 0
 
@@ -504,7 +523,7 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = tf.convert_to_tensor(
                     np.array([1], dtype=np.int32))
 
-            # for IMPALA which expects a certain sample batch size
+            # for IMPALA which expects a certain sample batch size.
             def tile_to(tensor, n):
                 return tf.tile(tensor,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])

@@ -339,6 +339,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                          list(range(25)) * 6)
 
     def testMultiAgentSampleSyncRemote(self):
+        # Allow to be run via Unittest.
+        ray.init(num_cpus=4, ignore_reinit_error=True)
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
@@ -356,6 +358,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 200)
 
     def testMultiAgentSampleAsyncRemote(self):
+        # Allow to be run via Unittest.
+        ray.init(num_cpus=4, ignore_reinit_error=True)
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
@@ -448,6 +452,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
                                 episodes=None,
+                                explore=True,
+                                timestep=None,
                                 **kwargs):
                 return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
 
@@ -605,9 +611,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         workers = WorkerSet._from_existing(worker, remote_workers)
         optimizer = optimizer_cls(workers)
         for i in range(200):
-            worker.foreach_policy(lambda p, _: p.set_epsilon(
-                max(0.02, 1 - i * .02))
-                              if isinstance(p, DQNTFPolicy) else None)
             optimizer.step()
             result = collect_metrics(worker, remote_workers)
             if i % 20 == 0:
@@ -629,6 +632,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         self._testWithOptimizer(SyncSamplesOptimizer)
 
     def test_multi_agent_async_gradients_optimizer(self):
+        # Allow to be run via Unittest.
+        ray.init(num_cpus=4, ignore_reinit_error=True)
         self._testWithOptimizer(AsyncGradientsOptimizer)
 
     def test_multi_agent_replay_optimizer(self):

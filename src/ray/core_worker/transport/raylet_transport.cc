@@ -48,7 +48,10 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(task_spec, resource_ids, &results);
+  ReferenceCounter::ReferenceTableProto borrower_refs;
+  // NOTE(swang): Distributed ref counting does not work for the raylet
+  // transport.
+  auto status = task_handler_(task_spec, resource_ids, &results, &borrower_refs);
   if (status.IsSystemExit()) {
     exit_handler_(status.IsIntentionalSystemExit());
     return;

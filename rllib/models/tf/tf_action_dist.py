@@ -2,9 +2,9 @@ import numpy as np
 import functools
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.policy.policy import TupleActions
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
 
@@ -15,7 +15,7 @@ class TFActionDistribution(ActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model):
-        super(TFActionDistribution, self).__init__(inputs, model)
+        super().__init__(inputs, model)
         self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
@@ -42,8 +42,15 @@ class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
     @DeveloperAPI
-    def __init__(self, inputs, model=None):
-        super(Categorical, self).__init__(inputs, model)
+    def __init__(self, inputs, model=None, temperature=1.0):
+        temperature = max(0.0001, temperature)  # clamp for stability reasons
+        # Allow softmax formula w/ temperature != 1.0:
+        # Divide inputs by temperature.
+        super().__init__(inputs / temperature, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return tf.math.argmax(self.inputs, axis=1)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -52,26 +59,22 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def entropy(self):
-        a0 = self.inputs - tf.reduce_max(
-            self.inputs, reduction_indices=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
         ea0 = tf.exp(a0)
-        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(
-            self.inputs, reduction_indices=[1], keep_dims=True)
-        a1 = other.inputs - tf.reduce_max(
-            other.inputs, reduction_indices=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
+        a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keep_dims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
-        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
-        z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
+        z1 = tf.reduce_sum(ea1, axis=1, keep_dims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(
-            p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
+        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -96,6 +99,10 @@ class MultiCategorical(TFActionDistribution):
         self.sample_op = self._build_sample_op()
 
     @override(ActionDistribution)
+    def deterministic_sample(self):
+        return tf.math.argmax(self.inputs, axis=-1)
+
+    @override(ActionDistribution)
     def logp(self, actions):
         # If tensor is provided, unstack it into list
         if isinstance(actions, tf.Tensor):
@@ -114,7 +121,9 @@ class MultiCategorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def multi_kl(self, other):
-        return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
+        return tf.stack(
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)],
+            axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -142,14 +151,18 @@ class DiagGaussian(TFActionDistribution):
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
-        TFActionDistribution.__init__(self, inputs, model)
+        super().__init__(inputs, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return self.mean
 
     @override(ActionDistribution)
     def logp(self, x):
-        return (-0.5 * tf.reduce_sum(
-            tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
-                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-                tf.reduce_sum(self.log_std, reduction_indices=[1]))
+        return -0.5 * tf.reduce_sum(
+            tf.square((x - self.mean) / self.std), axis=1) - \
+               0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
+               tf.reduce_sum(self.log_std, axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -158,13 +171,12 @@ class DiagGaussian(TFActionDistribution):
             other.log_std - self.log_std +
             (tf.square(self.std) + tf.square(self.mean - other.mean)) /
             (2.0 * tf.square(other.std)) - 0.5,
-            reduction_indices=[1])
+            axis=1)
 
     @override(ActionDistribution)
     def entropy(self):
         return tf.reduce_sum(
-            self.log_std + .5 * np.log(2.0 * np.pi * np.e),
-            reduction_indices=[1])
+            self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -181,6 +193,10 @@ class Deterministic(TFActionDistribution):
 
     This is similar to DiagGaussian with standard deviation zero.
     """
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return self.inputs
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):
@@ -252,6 +268,11 @@ class MultiActionDistribution(TFActionDistribution):
     def sample(self):
         return TupleActions([s.sample() for s in self.child_distributions])
 
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return TupleActions(
+            [s.deterministic_sample() for s in self.child_distributions])
+
     @override(TFActionDistribution)
     def sampled_action_logp(self):
         p = self.child_distributions[0].sampled_action_logp()
@@ -281,12 +302,12 @@ class Dirichlet(TFActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        TFActionDistribution.__init__(self, concentration, model)
+        super().__init__(concentration, model)
 
     @override(ActionDistribution)
     def logp(self, x):
-        # Support of Dirichlet are positive real numbers. x is already be
-        # an array of positive number, but we clip to avoid zeros due to
+        # Support of Dirichlet are positive real numbers. x is already
+        # an array of positive numbers, but we clip to avoid zeros due to
         # numerical errors.
         x = tf.maximum(x, self.epsilon)
         x = x / tf.reduce_sum(x, axis=-1, keepdims=True)

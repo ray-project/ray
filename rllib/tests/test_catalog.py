@@ -118,7 +118,9 @@ class ModelCatalogTest(unittest.TestCase):
         class Model():
             pass
 
-        ray.init(object_store_memory=1000 * 1024 * 1024)
+        ray.init(
+            object_store_memory=1000 * 1024 * 1024,
+            ignore_reinit_error=True)  # otherwise fails sometimes locally
         # registration
         ModelCatalog.register_custom_action_dist("test",
                                                  CustomActionDistribution)
