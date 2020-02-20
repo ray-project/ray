@@ -172,7 +172,7 @@ def postprocess_ppo_gae(policy,
                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
     # Do all post-processing always with no_grad().
-    # Not using this here will be a
+    # Not using this here will introduce a memory leak (issue #6962).
     with torch.no_grad():
         if sample_batch["dones"][-1]:
             last_r = 0.0
@@ -209,6 +209,8 @@ class KLCoeffMixin:
 
 class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak (issue #6962).
         with torch.no_grad():
             if config["use_gae"]:
 
