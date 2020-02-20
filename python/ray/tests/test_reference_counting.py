@@ -1,6 +1,5 @@
 # coding: utf-8
 import copy
-import gc
 import json
 import logging
 import os
@@ -294,9 +293,6 @@ def test_basic_serialized_reference(one_worker_100MiB):
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
     del array_oid
-    # Needed due to Python GC issue in cloudpickle.
-    # https://github.com/cloudpipe/cloudpickle/issues/343
-    gc.collect()
 
     # Check that the remote reference pins the object.
     _fill_object_store_and_get(array_oid_bytes)
@@ -317,9 +313,6 @@ def test_recursive_serialized_reference(one_worker_100MiB):
     def recursive(ref, dep, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
-            # Needed due to Python GC issue in cloudpickle.
-            # https://github.com/cloudpipe/cloudpickle/issues/343
-            gc.collect()
             return ray.get(dep[0])
         else:
             return recursive.remote(ref, dep, max_depth, depth + 1)
@@ -388,9 +381,6 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
     del array_oid
-    # Needed due to Python GC issue in cloudpickle.
-    # https://github.com/cloudpipe/cloudpickle/issues/343
-    gc.collect()
 
     # Test that the remote references still pin the object.
     _fill_object_store_and_get(array_oid_bytes)
@@ -407,7 +397,6 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
-@pytest.mark.skip("TODO(edoakes): race condition in raylet pinning.")
 def test_worker_holding_serialized_reference(one_worker_100MiB):
     @ray.remote
     def child(dep1, dep2):
@@ -450,9 +439,6 @@ def test_basic_nested_ids(one_worker_100MiB):
     # Remove the local reference to the inner object.
     inner_oid_bytes = inner_oid.binary()
     del inner_oid
-    # Needed due to Python GC issue in cloudpickle.
-    # https://github.com/cloudpipe/cloudpickle/issues/343
-    gc.collect()
 
     # Check that the outer reference pins the inner object.
     _fill_object_store_and_get(inner_oid_bytes)
@@ -469,9 +455,6 @@ def test_recursively_nest_ids(one_worker_100MiB):
     def recursive(ref, dep, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
         if depth == max_depth:
-            # Needed due to Python GC issue in cloudpickle.
-            # https://github.com/cloudpipe/cloudpickle/issues/343
-            gc.collect()
             return ray.get(dep[0])
         else:
             return recursive.remote(unwrapped, dep, max_depth, depth + 1)
@@ -585,9 +568,6 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     def recursive(ref, dep, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
-            # Needed due to Python GC issue in cloudpickle.
-            # https://github.com/cloudpipe/cloudpickle/issues/343
-            gc.collect()
             return ray.get(dep[0])
         else:
             return recursive.remote(ref, dep, max_depth, depth + 1)
