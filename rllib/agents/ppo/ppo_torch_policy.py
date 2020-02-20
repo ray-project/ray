@@ -141,19 +141,6 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
 
 
 def kl_and_loss_stats(policy, train_batch):
-    #import torch
-    #import gc
-    #count = 0
-    #for obj in gc.get_objects():
-    #    try:
-    #        if torch.is_tensor(obj) or (
-    #                hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-    #            # print(type(obj), obj.size())
-    #            count += 1
-    #    except:
-    #        pass
-    #print("Tensor count = {}".format(count))
-    #return {}
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
@@ -184,6 +171,8 @@ def postprocess_ppo_gae(policy,
                         other_agent_batches=None,
                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
+    # Do all post-processing always with no_grad().
+    # Not using this here will be a
     with torch.no_grad():
         if sample_batch["dones"][-1]:
             last_r = 0.0
