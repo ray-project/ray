@@ -15,8 +15,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
                                  const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
-  std::pair<TaskSpecification, int> entry = {spec, max_retries};
-  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
+  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries)).second);
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
@@ -79,7 +78,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.first;
+    spec = it->second.spec;
     pending_tasks_.erase(it);
   }
 
@@ -131,13 +130,12 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.first;
-    num_retries_left = it->second.second;
-    if (num_retries_left == 0) {
+    spec = it->second.spec;
+    if (it->second.num_retries_left == 0) {
       pending_tasks_.erase(it);
     } else {
-      RAY_CHECK(num_retries_left > 0);
-      it->second.second--;
+      RAY_CHECK(it->second.num_retries_left > 0);
+      it->second.num_retries_left--;
     }
   }
 
@@ -243,7 +241,7 @@ TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());
-  return it->second.first;
+  return it->second.spec;
 }
 
 }  // namespace ray

@@ -100,6 +100,13 @@ class TaskManager : public TaskFinisherInterface {
   int NumPendingTasks() const { return pending_tasks_.size(); }
 
  private:
+  struct TaskEntry {
+    TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg)
+        : spec(spec_arg), num_retries_left(num_retries_left_arg) {}
+    const TaskSpecification spec;
+    int num_retries_left;
+  };
+
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
   void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
@@ -147,8 +154,7 @@ class TaskManager : public TaskFinisherInterface {
   /// the worker fails. We could avoid this by either not caching the full
   /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
   /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-  absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
-      GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, TaskEntry> pending_tasks_ GUARDED_BY(mu_);
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
