@@ -537,13 +537,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
-  if (object_id.IsDirectCallType()) {
-    bool in_plasma = false;
-    found = memory_store_->Contains(object_id, &in_plasma);
-    if (!found || in_plasma) {
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
-    }
-  } else {
+  bool in_plasma = false;
+  found = memory_store_->Contains(object_id, &in_plasma);
+  if (in_plasma) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
@@ -666,14 +662,9 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects are always handled by ref counting only.
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
-  for (const auto &obj_id : object_ids) {
-    plasma_object_ids.insert(obj_id);
-  }
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
-                                                   delete_creating_tasks));
-
-  return Status::OK();
+  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only,
+                                        delete_creating_tasks);
 }
 
 std::string CoreWorker::MemoryUsageString() {

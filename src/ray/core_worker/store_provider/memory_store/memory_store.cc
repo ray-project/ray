@@ -421,7 +421,6 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   if (it != objects_.end()) {
     if (it->second->IsInPlasmaError()) {
       *in_plasma = true;
-      return false;
     }
     return true;
   }
