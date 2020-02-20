@@ -73,12 +73,9 @@ class PlasmaEventHandler:
 
         future = PlasmaObjectFuture(loop=self._loop)
         self._waiting_dict[object_id].append(future)
-<<<<<<< HEAD
         if len(self._waiting_dict[object_id]) == 1:
             # Only subscribe once
             self._worker.core_worker.subscribe_to_plasma_object(object_id)
-=======
->>>>>>> master
         self.check_immediately(object_id)
 
         return future
