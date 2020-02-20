@@ -2,32 +2,13 @@ import unittest
 import numpy as np
 from numpy.testing import assert_allclose
 
-from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.agents.ppo.utils import flatten, concatenate
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
 
-# TODO(ekl): move to rllib/models dir
-class DistributionsTest(unittest.TestCase):
-    def testCategorical(self):
-        num_samples = 100000
-        logits = tf.placeholder(tf.float32, shape=(None, 10))
-        z = 8 * (np.random.rand(10) - 0.5)
-        data = np.tile(z, (num_samples, 1))
-        c = Categorical(logits, {})  # dummy config dict
-        sample_op = c.sample()
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
-        samples = sess.run(sample_op, feed_dict={logits: data})
-        counts = np.zeros(10)
-        for sample in samples:
-            counts[sample] += 1.0
-        probs = np.exp(z) / np.sum(np.exp(z))
-        self.assertTrue(np.sum(np.abs(probs - counts / num_samples)) <= 0.01)
-
-
+# TODO(sven): Move to utils/tests/.
 class UtilsTest(unittest.TestCase):
     def testFlatten(self):
         d = {

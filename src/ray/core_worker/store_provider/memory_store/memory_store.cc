@@ -155,8 +155,8 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
 Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
-  auto object_entry =
-      std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
+  auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
+                                                  object.GetInlinedIds(), true);
 
   {
     absl::MutexLock lock(&mu_);
@@ -236,6 +236,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
       if (iter != objects_.end()) {
         (*results)[i] = iter->second;
         if (remove_after_get) {
+          RAY_LOG(ERROR) << "REMOVE_AFTER_GET";
           // Note that we cannot remove the object_id from `objects_` now,
           // because `object_ids` might have duplicate ids.
           ids_to_remove.insert(object_id);
@@ -353,8 +354,8 @@ Status CoreWorkerMemoryStore::Get(
     bool *got_exception) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
-  RAY_RETURN_NOT_OK(
-      Get(id_vector, id_vector.size(), timeout_ms, ctx, true, &result_objects));
+  RAY_RETURN_NOT_OK(Get(id_vector, id_vector.size(), timeout_ms, ctx,
+                        /*remove_after_get=*/false, &result_objects));
 
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {

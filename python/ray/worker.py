@@ -535,6 +535,7 @@ def print_failed_task(task_status):
 
 def init(address=None,
          redis_address=None,
+         redis_port=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -593,6 +594,8 @@ def init(address=None,
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_address (str): Deprecated; same as address.
+        redis_port (int): The port that the primary Redis shard should listen
+            to. If None, then a random port will be chosen.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -716,6 +719,7 @@ def init(address=None,
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
+            redis_port=redis_port,
             node_ip_address=node_ip_address,
             object_id_seed=object_id_seed,
             local_mode=local_mode,
@@ -1361,6 +1365,7 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
+    ray.actor.ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager

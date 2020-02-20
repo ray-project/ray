@@ -236,8 +236,6 @@ class SSHCommandRunner:
 
         self.set_ssh_ip_if_required()
 
-        logger.info(self.log_prefix +
-                    "Running {} on {}...".format(cmd, self.ssh_ip))
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
@@ -246,12 +244,16 @@ class SSHCommandRunner:
             if not isinstance(port_forward, list):
                 port_forward = [port_forward]
             for local, remote in port_forward:
-                ssh += ["-L", "{}:localhost:{}".format(local, remote)]
+                logger.info(self.log_prefix + "Forwarding " +
+                            "{} -> localhost:{}".format(local, remote))
+                ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
         final_cmd = ssh + self.get_default_ssh_options(timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
+            logger.info(self.log_prefix +
+                        "Running {} on {}...".format(cmd, self.ssh_ip))
             final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
