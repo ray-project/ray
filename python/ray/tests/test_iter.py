@@ -1,9 +1,35 @@
 import time
 from collections import Counter
+import pytest
 
 import ray
 from ray.util.iter import from_items, from_iterators, from_range, \
-    from_actors, ParallelIteratorWorker
+    from_actors, ParallelIteratorWorker, LocalIterator
+
+
+def test_context(ray_start_regular_shared):
+    it = from_items([1, 2, 3, 4], num_shards=1)
+    it2 = from_items([1, 2, 3, 4], num_shards=1)
+
+    def f(x):
+        ctx = LocalIterator.get_context()
+        ctx.counters["foo"] += x
+        return ctx.counters["foo"]
+
+    it = it.gather_sync().for_each(f)
+    it2 = it2.gather_sync().for_each(f)
+
+    # Context cannot be accessed outside the iterator.
+    with pytest.raises(ValueError):
+        LocalIterator.get_context()
+
+    # Tests iterators have isolated contexts.
+    assert it.take(4) == [1, 3, 6, 10]
+    assert it2.take(4) == [1, 3, 6, 10]
+
+    # Context cannot be accessed outside the iterator.
+    with pytest.raises(ValueError):
+        LocalIterator.get_context()
 
 
 def test_from_items(ray_start_regular_shared):

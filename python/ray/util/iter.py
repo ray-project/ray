@@ -339,7 +339,7 @@ class ParallelIterator(Generic[T]):
                     futures = [a.par_iter_next.remote() for a in active]
 
         name = "{}.batch_across_shards()".format(self)
-        return LocalIterator(base_iterator, PipelineContext(), name=name)
+        return LocalIterator(base_iterator, IteratorContext(), name=name)
 
     def gather_async(self) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
@@ -389,7 +389,7 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, PipelineContext(), name=name)
+        return LocalIterator(base_iterator, IteratorContext(), name=name)
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -452,18 +452,29 @@ class ParallelIterator(Generic[T]):
                     break
 
         name = self.name + ".shard[{}]".format(shard_index)
-        return LocalIterator(base_iterator, PipelineContext(), name=name)
+        return LocalIterator(base_iterator, IteratorContext(), name=name)
 
 
-class PipelineContext:
+class IteratorContext:
+    """Context object for a local iterator.
+
+    This can be used to store global data for a pipeline, e.g., metrics.
+
+    Attributes:
+        counters (defaultdict): dict storing increasing metrics.
+        info (dict): dict storing misc metric values.
+    """
+
     def __init__(self):
         self.counters = collections.defaultdict(int)
         self.info = {}
 
     def save(self):
-        return {"counters": dict(self.counters), "info": self.info}
+        """Return a serializable copy of this context."""
+        return {"counters": dict(self.counters), "info": dict(self.info)}
 
     def restore(self, values):
+        """Restores state given the output of save()."""
         self.counters.clear()
         self.counters.update(values["counters"])
         self.info = values["info"]
@@ -483,7 +494,7 @@ class LocalIterator(Generic[T]):
 
     def __init__(self,
                  base_iterator: Callable[[], Iterable[T]],
-                 context: PipelineContext,
+                 context: IteratorContext,
                  local_transforms: List[Callable[[Iterable], Any]] = None,
                  timeout: int = None,
                  name=None):
@@ -493,6 +504,8 @@ class LocalIterator(Generic[T]):
             base_iterator (func): A function that produces the base iterator.
                 This is a function so that we can ensure LocalIterator is
                 serializable.
+            context (IteratorContext): Existing iterator context or a new
+                context. Should be the same for each chained iterator.
             local_transforms (list): A list of transformation functions to be
                 applied on top of the base iterator. When iteration begins, we
                 create the base iterator and apply these functions. This lazy
@@ -512,6 +525,9 @@ class LocalIterator(Generic[T]):
 
     @staticmethod
     def get_context():
+        if (not hasattr(LocalIterator.thread_local, "ctx")
+                or LocalIterator.thread_local.ctx is None):
+            raise ValueError("Cannot access context outside an iterator.")
         return LocalIterator.thread_local.ctx
 
     def _build_once(self):
@@ -520,6 +536,8 @@ class LocalIterator(Generic[T]):
             for fn in self.local_transforms:
                 it = fn(it)
 
+            # This sets the iterator context during iterator execution, and
+            # clears it after so that multiple iterators can be used at a time.
             def set_restore_context(it):
                 self.thread_local.ctx = self.context
                 try:
@@ -760,7 +778,7 @@ class ParallelIteratorWorker(object):
     def par_iter_init(self, transforms):
         """Implements ParallelIterator worker init."""
         it = LocalIterator(lambda timeout: self.item_generator,
-                           PipelineContext())
+                           IteratorContext())
         for fn in transforms:
             it = fn(it)
             assert it is not None, fn
