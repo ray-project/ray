@@ -183,14 +183,14 @@ def postprocess_ppo_gae(policy,
     #                           sample_batch[SampleBatch.ACTIONS][-1],
     #                           sample_batch[SampleBatch.REWARDS][-1],
     #                           *next_state)
-    #batch = compute_advantages(
-    #    sample_batch,
-    #    last_r,
-    #    policy.config["gamma"],
-    #    policy.config["lambda"],
-    #    use_gae=policy.config["use_gae"])
-    #return batch
-    return sample_batch
+    batch = compute_advantages(
+        sample_batch,
+        last_r,
+        policy.config["gamma"],
+        policy.config["lambda"],
+        use_gae=policy.config["use_gae"])
+    return batch
+    #return sample_batch
 
 
 def clip_gradients(policy, optimizer, loss):
