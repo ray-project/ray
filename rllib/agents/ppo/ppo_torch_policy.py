@@ -154,21 +154,21 @@ def kl_and_loss_stats(policy, train_batch):
     #    except:
     #        pass
     #print("Tensor count = {}".format(count))
-    return {}
-    #return {
-    #    "cur_kl_coeff": policy.kl_coeff,
-    #    "cur_lr": policy.cur_lr,
-    #    "total_loss": policy.loss_obj.loss.item(),
-    #    "policy_loss": policy.loss_obj.mean_policy_loss.item(),
-    #    "vf_loss": policy.loss_obj.mean_vf_loss.item(),
-    #    "vf_explained_var": explained_variance(
-    #        train_batch[Postprocessing.VALUE_TARGETS],
-    #        policy.model.value_function(),
-    #        framework="torch").item(),
-    #    "kl": policy.loss_obj.mean_kl.item(),
-    #    "entropy": policy.loss_obj.mean_entropy.item(),
-    #    "entropy_coeff": policy.entropy_coeff,
-    #}
+    #return {}
+    return {
+        "cur_kl_coeff": policy.kl_coeff,
+        "cur_lr": policy.cur_lr,
+        "total_loss": policy.loss_obj.loss.item(),
+        "policy_loss": policy.loss_obj.mean_policy_loss.item(),
+        "vf_loss": policy.loss_obj.mean_vf_loss.item(),
+        "vf_explained_var": explained_variance(
+            train_batch[Postprocessing.VALUE_TARGETS],
+            policy.model.value_function(),
+            framework="torch").item(),
+        "kl": policy.loss_obj.mean_kl.item(),
+        "entropy": policy.loss_obj.mean_entropy.item(),
+        "entropy_coeff": policy.entropy_coeff,
+    }
 
 
 def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
