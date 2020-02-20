@@ -99,23 +99,18 @@ def test_raylet_tempfiles(shutdown_only):
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
+    log_files_expected = {
+        "log_monitor.out", "log_monitor.err", "plasma_store.out",
+        "plasma_store.err", "monitor.out", "monitor.err",
+        "raylet_monitor.out", "raylet_monitor.err", "redis-shard_0.out",
+        "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
+        "raylet.err"
+    }
 
     if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
-        assert log_files.issuperset({
-            "log_monitor.out", "log_monitor.err", "plasma_store.out",
-            "plasma_store.err", "monitor.out", "monitor.err",
-            "raylet_monitor.out", "raylet_monitor.err", "redis-shard_0.out",
-            "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-            "raylet.err", "gcs_server.out", "gcs_server.err"
-        })  # with raylet logs
-    else:
-        assert log_files.issuperset({
-            "log_monitor.out", "log_monitor.err", "plasma_store.out",
-            "plasma_store.err", "monitor.out", "monitor.err",
-            "raylet_monitor.out", "raylet_monitor.err", "redis-shard_0.out",
-            "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-            "raylet.err"
-        })  # with raylet logs
+        log_files_expected.update({"gcs_server.out", "gcs_server.err"})
+
+    assert log_files.issuperset(log_files_expected)
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
