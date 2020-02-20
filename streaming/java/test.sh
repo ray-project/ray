@@ -13,8 +13,8 @@ bazel build //streaming/java:all
 # Check that ray libstreaming_java doesn't include symbols from ray by accident.
 # Otherwise the symbols may conflict.
 symbols_conflict=$(nm bazel-bin/streaming/libstreaming_java.so | grep TaskFinisherInterface || true)
-if [[ -n "${symbols_conflict}" ]]; then
-    echo "found ray symbol streaming: ${symbols_conflict}"
+if [ -n "${symbols_conflict}" ]; then
+    echo "streaming should not include symbols from ray: ${symbols_conflict}"
     exit 1
 fi
 
@@ -22,8 +22,8 @@ echo "Linting Java code with checkstyle."
 bazel test //streaming/java:all --test_tag_filters="checkstyle" --build_tests_only
 
 echo "Running streaming tests."
-java -cp $ROOT_DIR/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
- org.testng.TestNG -d /tmp/ray_streaming_java_test_output $ROOT_DIR/testng.xml
+java -cp "$ROOT_DIR"/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
+ org.testng.TestNG -d /tmp/ray_streaming_java_test_output "$ROOT_DIR"/testng.xml
 exit_code=$?
 echo "Streaming TestNG results"
 cat /tmp/ray_streaming_java_test_output/testng-results.xml
