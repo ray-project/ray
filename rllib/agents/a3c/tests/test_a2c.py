@@ -16,7 +16,7 @@ class TestA2C(unittest.TestCase):
     def test_a2c_pipeline(ray_start_regular):
         trainer = a2c_pipeline.A2CPipeline(
             env="CartPole-v0", config={"min_iter_time_s": 0})
-        result = trainer.train()
+        assert isinstance(trainer.train(), dict)
 
     def test_a2c_pipeline_microbatch(ray_start_regular):
         trainer = a2c_pipeline.A2CPipeline(
