@@ -313,8 +313,8 @@ class ParallelIterator(Generic[T]):
                           timeout=None):
             futures = {}
             for a in all_actors:
-                futures[a.par_iter_slice.remote(num_partitions,
-                                                partition_index)] = a
+                futures[a.par_iter_slice.remote(
+                    step=num_partitions, start=partition_index)] = a
             while futures:
                 pending = list(futures)
                 if timeout is None:
@@ -332,7 +332,8 @@ class ParallelIterator(Generic[T]):
                     try:
                         yield ray.get(obj_id)
                         futures[actor.par_iter_slice.remote(
-                            num_partitions, partition_index)] = actor
+                            step=num_partitions,
+                            start=partition_index)] = actor
                     except StopIteration:
                         pass
                 # Always yield after each round of wait with timeout.
