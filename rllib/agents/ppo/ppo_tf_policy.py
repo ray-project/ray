@@ -172,17 +172,17 @@ def postprocess_ppo_gae(policy,
                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
 
-    #completed = sample_batch["dones"][-1]
-    #if completed:
-    last_r = 0.0
-    #else:
-    #    next_state = []
-    #    for i in range(policy.num_state_tensors()):
-    #        next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-    #    last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-    #                           sample_batch[SampleBatch.ACTIONS][-1],
-    #                           sample_batch[SampleBatch.REWARDS][-1],
-    #                           *next_state)
+    completed = sample_batch["dones"][-1]
+    if completed:
+        last_r = 0.0
+    else:
+        next_state = []
+        for i in range(policy.num_state_tensors()):
+            next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
+                               sample_batch[SampleBatch.ACTIONS][-1],
+                               sample_batch[SampleBatch.REWARDS][-1],
+                               *next_state)
     batch = compute_advantages(
         sample_batch,
         last_r,
@@ -190,7 +190,6 @@ def postprocess_ppo_gae(policy,
         policy.config["lambda"],
         use_gae=policy.config["use_gae"])
     return batch
-    #return sample_batch
 
 
 def clip_gradients(policy, optimizer, loss):
