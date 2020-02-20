@@ -2,9 +2,13 @@ import logging
 from threading import RLock
 from uuid import uuid4
 
-from azure.common.client_factory import get_client_from_auth_file
+from azure.common.client_factory import get_client_from_cli_profile
+from msrestazure.azure_active_directory import MSIAuthentication
+# from azure.common.client_factory import get_client_from_auth_file
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
+from azure.mgmt.compute.models import ResourceIdentityType
+
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -38,10 +42,20 @@ class AzureNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.compute_client = get_client_from_auth_file(
-            ComputeManagementClient, auth_path=provider_config["auth_path"])
-        self.network_client = get_client_from_auth_file(
-            NetworkManagementClient, auth_path=provider_config["auth_path"])
+        try:
+            self.compute_client = get_client_from_cli_profile(ComputeManagementClient)
+            self.network_client = get_client_from_cli_profile(NetworkManagementClient)
+            # self.auth_client = get_client_from_cli_profile(AuthorizationManagementClient)
+        except Exception as e:
+            println("Warning cli_profile failed. Trying MSI: {}".format(e))
+
+            credentials = MSIAuthentication()
+            subscription_id = provider_config["subscription_id"]
+
+            self.compute_client = ComputeManagementClient(credentials, subscription_id)
+            self.network_client = NetworkManagementClient(credentials, subscription_id)
+            # self.auth_client = AuthorizationManagementClient(credentials, subscription_id)
+
         self.lock = RLock()
 
         # cache node objects
@@ -201,10 +215,46 @@ class AzureNodeProvider(NodeProvider):
                     }]
                 }
             })
-            self.compute_client.virtual_machines.create_or_update(
+
+            print("MSI IDENTITY: '{}'".format(self.provider_config["msi_identity_id"]))
+            config["identity"] = {
+                "type": ResourceIdentityType.user_assigned,
+                "user_assigned_identities": [
+                   self.provider_config["msi_identity_id"]
+                ]
+            }
+            # config["identity_ids"] = [
+                #    self.provider_config["msi_identity_id"]
+                # ]
+            
+            print(config)
+
+            vm_poller = self.compute_client.virtual_machines.create_or_update(
                 resource_group_name=self.provider_config["resource_group"],
                 vm_name=vm_name,
                 parameters=config)
+
+            # vm_result = vm_poller.result()
+
+            # role_name = 'Contributor'
+            # roles = list(self.auth_client.role_definitions.list(
+            #     resource_group.id,
+            #     filter="roleName eq '{}'".format(role_name)
+            # ))
+            # assert len(roles) == 1
+            # contributor_role = roles[0]
+
+            # # Add RG scope to the MSI token
+            # msi_identity = vm_result.identity.principal_id
+
+            # authorization_client.role_assignments.create(
+            #     resource_group.id,
+            #     uuid.uuid4(), # Role assignment random name
+            #     {
+            #         'role_definition_id': contributor_role.id,
+            #         'principal_id': msi_identity
+            #     }
+            # )
 
     @synchronized
     def set_node_tags(self, node_id, tags):

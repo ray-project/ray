@@ -10,11 +10,12 @@ import uuid
 
 from azure.common.exceptions import CloudError, AuthenticationError
 from azure.common.client_factory import get_client_from_cli_profile
-from azure.common.client_factory import get_client_from_auth_file
+# from azure.common.client_factory import get_client_from_auth_file
 from azure.graphrbac import GraphRbacManagementClient
 from azure.mgmt.authorization import AuthorizationManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
 from ray.autoscaler.tags import TAG_RAY_NODE_NAME
 
@@ -64,12 +65,84 @@ logger = logging.getLogger(__name__)
 
 def bootstrap_azure(config):
     config = _configure_resource_group(config)
-    config = _configure_service_principal(config)
+    config = _configure_msi_user(config)
+    # config = _configure_service_principal(config)
     config = _configure_key_pair(config)
     config = _configure_network(config)
     config = _configure_nodes(config)
     return config
 
+def _configure_msi_user(config):
+    # TODO: move to helper method
+    # kwargs = {}
+    # if "subscription_id" in config["provider"]:
+        # kwargs["subscription_id"] = config["provider"]["subscription_id"]
+
+    msi_client = get_client_from_cli_profile(
+        client_class=ManagedServiceIdentityClient) # , **kwargs)
+
+    # TODO: use helper method
+    resource_client = get_client_from_cli_profile(ResourceManagementClient)
+    auth_client = get_client_from_cli_profile(AuthorizationManagementClient)
+
+    resource_group = config["provider"]["resource_group"]
+    location = config["provider"]["location"]
+
+    logger.info("Creating MSI user assigned identity")
+
+    rg_id = resource_client.resource_groups.get(resource_group).id
+    
+    # TODO: figure how to re-use existing
+    # identities = list(msi_client.user_assigned_identities.list_for_scope(rg_id))
+
+    # if len(identities) > 0:
+        # print("found existing")
+        # user_assigned_identity = identities[0]
+    # else:
+    user_assigned_identity = msi_client.user_assigned_identities.create_or_update(
+        resource_group,
+        str(uuid.uuid4()), # Any name, just a human readable ID
+        location
+    )
+
+    logger.info("Identity {}".format(user_assigned_identity.id))
+    config["provider"]["msi_identity_id"] = user_assigned_identity.id
+
+    def assign_role():
+        for _ in range(RETRIES):
+            try:
+
+                role = auth_client.role_definitions.list(
+                    rg_id, filter="roleName eq 'Contributor'").next()
+                role_params = {
+                    "role_definition_id": role.id,
+                    "principal_id": user_assigned_identity.principal_id
+                }
+
+                for assignment in auth_client.role_assignments.list_for_scope(
+                    rg_id, 
+                    filter="principalId eq '{principal_id}'".format(**role_params)):
+
+                    if (assignment.role_definition_id == role.id):
+                        return
+
+                auth_client.role_assignments.create(
+                    scope=rg_id,
+                    role_assignment_name=uuid.uuid4(),
+                    parameters=role_params)
+                logger.info("Creating contributor role assignment")
+                return
+            except CloudError as ce:
+                if str(ce.error).startswith("Azure Error: PrincipalNotFound"):
+                    time.sleep(5)
+                else:
+                    raise
+
+        raise Exception("Failed to create contributor role assignment")
+
+    assign_role()
+
+    return config
 
 def _configure_resource_group(config):
     # TODO: look at availability sets
@@ -275,9 +348,10 @@ def _configure_network(config):
 
     location = config["provider"]["location"]
     resource_group = config["provider"]["resource_group"]
-    auth_path = config["provider"]["auth_path"]
-    network_client = get_client_from_auth_file(
-        NetworkManagementClient, auth_path=auth_path)
+    network_client = get_client_from_cli_profile(NetworkManagementClient)
+    # auth_path = config["provider"]["auth_path"]
+    # network_client = get_client_from_auth_file(
+    #    NetworkManagementClient, auth_path=auth_path)
 
     vnets = []
     for _ in range(RETRIES):
