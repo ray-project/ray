@@ -18,6 +18,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tuple_actions import TupleActions
 
+# Torch must be installed.
 torch, nn = try_import_torch(error=True)
 
 logger = logging.getLogger(__name__)
