@@ -16,7 +16,15 @@ def training_pipeline(workers, config):
     gradient computations on the remote workers.
     """
 
-    rollouts = from_actors(workers.remote_workers())
+    # We use the lower level from_actors() API instead of ParallelRollouts,
+    # since we want to compute gradients remotely on workers.
+    grads = (
+        from_actors(workers.remote_workers())  # SampleBatches
+        .for_each(  # This lambda will be applied remotely on the workers.
+            lambda samples: ( \
+                get_global_worker().compute_gradients(samples), \
+                samples.count))
+        .gather_async())  # -> (grads, info), count
 
     # Record learner metrics and pass through (grads, count).
     def record_metrics(item):
@@ -27,13 +35,8 @@ def training_pipeline(workers, config):
         return grads, count
 
     train_op = (
-        rollouts  # Asynchronously gen experiences and get policy grads.
-        .for_each(
-            lambda samples: ( \
-                get_global_worker().compute_gradients(samples), \
-                samples.count)
-        ).gather_async()  # -> (grads, info), count
-        .for_each(record_metrics)
+        grads  # (grad, info), count
+        .for_each(record_metrics)  # (grad, count)
         .for_each(ApplyGradients(workers, update_all=False)))
 
     return StandardMetricsReporting(train_op, workers, config)
