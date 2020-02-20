@@ -38,8 +38,9 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
   @Override
   protected void finalize() throws Throwable {
     try {
-      if (!runtime.isShutdown()) {
-        runtime.getObjectStore().removeLocalReference(id);
+      // Maybe the reference is already removed in unit test.
+      if (runtime != null) {
+        removeLocalReference();
       }
     } finally {
       super.finalize();
@@ -53,8 +54,19 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
   }
 
   private void addLocalReference() {
+    Preconditions.checkState(runtime == null);
     runtime = RuntimeUtil.getRuntime();
     Preconditions.checkState(!runtime.isShutdown(), "The runtime is already shutdown.");
     runtime.getObjectStore().addLocalReference(id);
+  }
+
+  // This method is public for test purposes only.
+  public void removeLocalReference() {
+    Preconditions.checkState(runtime != null);
+    // It's possible that GC is executed after the runtime is shutdown.
+    if (!runtime.isShutdown()) {
+      runtime.getObjectStore().removeLocalReference(id);
+    }
+    runtime = null;
   }
 }

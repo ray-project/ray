@@ -134,7 +134,7 @@ public class ActorTest extends BaseTest {
     TestUtils.skipTestIfDirectActorCallEnabled();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     // Call an actor method.
-    RayObject value = Ray.call(Counter::getValue, counter);
+    RayObject value = Ray.calCounter::getValue, counter);
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);

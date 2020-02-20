@@ -68,6 +68,15 @@ Java_org_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv 
                                                                          jlong,
                                                                          jbyteArray);
 
+/*
+ * Class:     org_ray_runtime_object_NativeObjectStore
+ * Method:    nativeGetAllReferenceCounts
+ * Signature: (J)Ljava/util/Map;
+ */
+JNIEXPORT jobject JNICALL
+Java_org_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *, jclass,
+                                                                          jlong);
+
 #ifdef __cplusplus
 }
 #endif

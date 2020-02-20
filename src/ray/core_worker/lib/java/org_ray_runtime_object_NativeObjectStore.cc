@@ -61,7 +61,9 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWa
                     ->Wait(object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
-    return env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
+    jobject java_item = env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    return java_item;
   });
 }
 
@@ -92,6 +94,25 @@ Java_org_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
       ->RemoveLocalReference(object_id);
+}
+
+JNIEXPORT jobject JNICALL
+Java_org_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *env, jclass,
+    jlong nativeCoreWorkerPointer) {
+  auto reference_counts = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
+      ->GetAllReferenceCounts();
+  return NativeMapToJavaMap<ray::ObjectID, std::pair<size_t, size_t>>(env, reference_counts,
+      [](JNIEnv *env, const ray::ObjectID &key) {
+        return IdToJavaByteArray<ObjectID>(env, key);
+      },
+      [](JNIEnv *env, const std::pair<size_t, size_t> &value) {
+        jlongArray array = env->NewLongArray(2);
+        jlong *elements = env->GetLongArrayElements(array, nullptr);
+        elements[0] = static_cast<jlong>(value.first);
+        elements[1] = static_cast<jlong>(value.second);
+        env->ReleaseLongArrayElements(array, elements, 0);
+        return array;
+      });
 }
 
 #ifdef __cplusplus
