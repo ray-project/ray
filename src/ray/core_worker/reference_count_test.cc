@@ -1670,8 +1670,10 @@ TEST_F(ReferenceCountTest, TestBasicLineage) {
 
   ObjectID id = ObjectID::FromRandom();
 
-  rc->SetDeleteLineageCallback(
-      [&](const ObjectID &object_id) { lineage_deleted.push_back(object_id); });
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+      });
 
   // Local references.
   rc->AddLocalReference(id);
@@ -1693,7 +1695,7 @@ TEST_F(ReferenceCountTest, TestBasicLineage) {
   rc->UpdateSubmittedTaskReferences({id});
   rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
   ASSERT_TRUE(lineage_deleted.empty());
-  rc->RemoveLineageRefCount({id});
+  rc->ReleaseLineageReferences({id});
   ASSERT_FALSE(rc->HasReference(id));
   ASSERT_EQ(lineage_deleted.size(), 1);
 }

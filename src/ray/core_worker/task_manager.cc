@@ -72,18 +72,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
-  TaskSpecification spec;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = pending_tasks_.find(task_id);
-    RAY_CHECK(it != pending_tasks_.end())
-        << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.spec;
-    pending_tasks_.erase(it);
-  }
 
-  RemoveFinishedTaskReferences(spec, worker_addr, reply.borrowed_refs());
-
+  size_t num_plasma_returns = 0;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -92,6 +82,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       // Mark it as in plasma with a dummy object.
       RAY_CHECK_OK(
           in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+      num_plasma_returns++;
     } else {
       std::shared_ptr<LocalMemoryBuffer> data_buffer;
       if (return_object.data().size() > 0) {
@@ -114,6 +105,30 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = pending_tasks_.find(task_id);
+    RAY_CHECK(it != pending_tasks_.end())
+        << "Tried to complete task that was not pending " << task_id;
+    spec = it->second.spec;
+    if (lineage_pinning_enabled_ && !it->second.num_plasma_returns.has_value()) {
+      it->second.num_plasma_returns = num_plasma_returns;
+    } else {
+      // We already finished this task before, so we already added to the
+      // lineage_ref_count of each of the plasma args.
+      num_plasma_returns = 0;
+    }
+    // Only erase the task entry if there are no retries left.
+    if (!lineage_pinning_enabled_) {
+      pending_tasks_.erase(it);
+    } else if (it->second.num_retries_left == 0) {
+      pending_tasks_.erase(it);
+    }
+  }
+  RemoveFinishedTaskReferences(spec, num_plasma_returns, worker_addr,
+                               reply.borrowed_refs());
+
   ShutdownIfNeeded();
 }
 
@@ -131,7 +146,8 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
-    if (it->second.num_retries_left == 0) {
+    num_retries_left = it->second.num_retries_left;
+    if (num_retries_left == 0) {
       pending_tasks_.erase(it);
     } else {
       RAY_CHECK(it->second.num_retries_left > 0);
@@ -168,7 +184,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     }
     // The worker failed to execute the task, so it cannot be borrowing any
     // objects.
-    RemoveFinishedTaskReferences(spec, rpc::Address(),
+    RemoveFinishedTaskReferences(spec, /*num_plasma_returns=*/0, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     MarkPendingTaskFailed(task_id, spec, error_type);
   }
@@ -195,7 +211,7 @@ void TaskManager::OnTaskDependenciesInlined(
 }
 
 void TaskManager::RemoveFinishedTaskReferences(
-    TaskSpecification &spec, const rpc::Address &borrower_addr,
+    TaskSpecification &spec, size_t num_plasma_returns, const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
@@ -212,9 +228,45 @@ void TaskManager::RemoveFinishedTaskReferences(
 
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateFinishedTaskReferences(
-      plasma_dependencies,
-      /*num_plasma_returns=*/0, borrower_addr, borrowed_refs, &deleted);
+      plasma_dependencies, num_plasma_returns, borrower_addr, borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
+}
+
+void TaskManager::RemoveLineageReference(const ObjectID &object_id,
+                                         std::vector<ObjectID> *released_objects) {
+  if (!lineage_pinning_enabled_) {
+    return;
+  }
+
+  {
+    absl::MutexLock lock(&mu_);
+    const TaskID &task_id = object_id.TaskId();
+    auto it = pending_tasks_.find(task_id);
+    if (it == pending_tasks_.end()) {
+      RAY_LOG(WARNING) << "Failed to find lineage for object " << object_id;
+      return;
+    }
+
+    RAY_CHECK(it->second.num_plasma_returns.has_value());
+    (*it->second.num_plasma_returns)--;
+    if (it->second.num_plasma_returns == 0) {
+      for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
+        if (it->second.spec.ArgByRef(i)) {
+          for (size_t j = 0; j < it->second.spec.ArgIdCount(i); j++) {
+            released_objects->push_back(it->second.spec.ArgId(i, j));
+          }
+        } else {
+          const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
+          released_objects->insert(released_objects->end(), inlined_ids.begin(),
+                                   inlined_ids.end());
+        }
+      }
+
+      // None of the return IDs are in scope anymore, so it is safe to remove
+      // the task spec.
+      pending_tasks_.erase(it);
+    }
+  }
 }
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,

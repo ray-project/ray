@@ -30,7 +30,7 @@ class MockActorManager : public ActorManagerInterface {
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest()
+  TaskManagerTest(bool lineage_pinning_enabled = false)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         reference_counter_(
             std::shared_ptr<ReferenceCounter>(new ReferenceCounter(rpc::Address()))),
@@ -39,13 +39,19 @@ class TaskManagerTest : public ::testing::Test {
                  [this](const TaskSpecification &spec) {
                    num_retries_++;
                    return Status::OK();
-                 }) {}
+                 },
+                 lineage_pinning_enabled) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManagerInterface> actor_manager_;
   TaskManager manager_;
   int num_retries_ = 0;
+};
+
+class TaskManagerLineageTest : public TaskManagerTest {
+ public:
+  TaskManagerLineageTest() : TaskManagerTest(true) {}
 };
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
@@ -139,6 +145,7 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
 
   auto error = rpc::ErrorType::WORKER_DIED;
   for (int i = 0; i < num_retries; i++) {
+    RAY_LOG(INFO) << "Retry " << i;
     manager_.PendingTaskFailed(spec.TaskId(), error);
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -153,7 +160,7 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store_->Get({return_id}, 1, -0, ctx, false, &results));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
   ASSERT_EQ(results.size(), 1);
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
@@ -164,6 +171,41 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+}
+
+TEST_F(TaskManagerLineageTest, TestLineagePinned) {
+  TaskID caller_id = TaskID::Nil();
+  rpc::Address caller_address;
+  // Submit a task with 2 arguments.
+  ObjectID dep1 = ObjectID::FromRandom();
+  ObjectID dep2 = ObjectID::FromRandom();
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  auto spec = CreateTaskHelper(1, {dep1, dep2});
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_id, caller_address, spec, num_retries);
+  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  reference_counter_->AddLocalReference(return_id);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+  WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
+
+  // The task completes.
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  // The task should still be in the pending map because its return ID is in scope.
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+
+  std::vector<ObjectID> deleted;
+  reference_counter_->RemoveLocalReference(return_id, &deleted);
+  ASSERT_EQ(deleted.size(), 1);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 }
 
 }  // namespace ray

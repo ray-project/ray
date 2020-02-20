@@ -1,16 +1,16 @@
 #include "ray/core_worker/reference_count.h"
 
-#define PRINT_REF_COUNT(it)                                                             \
-  RAY_LOG(INFO) << "REF " << it->first << " borrowers: " << it->second.borrowers.size() \
-                << " local_ref_count: " << it->second.local_ref_count                   \
-                << " submitted_count: " << it->second.submitted_task_ref_count          \
-                << " contained_in_owned: " << it->second.contained_in_owned.size()      \
-                << " contained_in_borrowed: "                                           \
-                << (it->second.contained_in_borrowed_id.has_value()                     \
-                        ? *it->second.contained_in_borrowed_id                          \
-                        : ObjectID::Nil())                                              \
-                << " contains: " << it->second.contains.size()                          \
-                << " lineage_ref_count: " << it->second.lineage_ref_count;
+#define PRINT_REF_COUNT(it)                                                              \
+  RAY_LOG(DEBUG) << "REF " << it->first << " borrowers: " << it->second.borrowers.size() \
+                 << " local_ref_count: " << it->second.local_ref_count                   \
+                 << " submitted_count: " << it->second.submitted_task_ref_count          \
+                 << " contained_in_owned: " << it->second.contained_in_owned.size()      \
+                 << " contained_in_borrowed: "                                           \
+                 << (it->second.contained_in_borrowed_id.has_value()                     \
+                         ? *it->second.contained_in_borrowed_id                          \
+                         : ObjectID::Nil())                                              \
+                 << " contains: " << it->second.contains.size()                          \
+                 << " lineage_ref_count: " << it->second.lineage_ref_count;
 
 namespace {}  // namespace
 
@@ -165,12 +165,13 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
                                 deleted);
 }
 
-void ReferenceCounter::RemoveLineageRefCount(const std::vector<ObjectID> &argument_ids) {
+void ReferenceCounter::ReleaseLineageReferences(
+    const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
-  RemoveLineageRefCountInternal(argument_ids);
+  ReleaseLineageReferencesInternal(argument_ids);
 }
 
-void ReferenceCounter::RemoveLineageRefCountInternal(
+void ReferenceCounter::ReleaseLineageReferencesInternal(
     const std::vector<ObjectID> &argument_ids) {
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
@@ -304,9 +305,12 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   if (it->second.CanDelete()) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
-    if (on_lineage_deleted_) {
-      on_lineage_deleted_(id);
+    if (on_lineage_released_) {
+      std::vector<ObjectID> ids_to_release;
+      on_lineage_released_(id, &ids_to_release);
+      ReleaseLineageReferencesInternal(ids_to_release);
     }
+
     object_id_refs_.erase(it);
   }
 }
@@ -658,10 +662,10 @@ void ReferenceCounter::SetRefRemovedCallback(
   }
 }
 
-void ReferenceCounter::SetDeleteLineageCallback(
-    const ReferenceRemovedCallback &callback) {
-  RAY_CHECK(on_lineage_deleted_ == nullptr);
-  on_lineage_deleted_ = callback;
+void ReferenceCounter::SetReleaseLineageCallback(
+    const LineageReleasedCallback &callback) {
+  RAY_CHECK(on_lineage_released_ == nullptr);
+  on_lineage_released_ = callback;
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

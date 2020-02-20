@@ -22,6 +22,8 @@ class ReferenceCounter {
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
+  using LineageReleasedCallback =
+      std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    bool distributed_ref_counting_enabled = true,
@@ -75,7 +77,7 @@ class ReferenceCounter {
                                     std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
-  void RemoveLineageRefCount(const std::vector<ObjectID> &argument_ids)
+  void ReleaseLineageReferences(const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -147,7 +149,7 @@ class ReferenceCounter {
                              const ReferenceRemovedCallback &ref_removed_callback)
       LOCKS_EXCLUDED(mutex_);
 
-  void SetDeleteLineageCallback(const ReferenceRemovedCallback &callback);
+  void SetReleaseLineageCallback(const LineageReleasedCallback &callback);
 
   /// Respond to the object's owner once we are no longer borrowing it.  The
   /// sender is the owner of the object ID. We will send the reply when our
@@ -435,7 +437,7 @@ class ReferenceCounter {
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void RemoveLineageRefCountInternal(const std::vector<ObjectID> &argument_ids)
+  void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
@@ -463,7 +465,7 @@ class ReferenceCounter {
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
 
-  ReferenceRemovedCallback on_lineage_deleted_;
+  LineageReleasedCallback on_lineage_released_;
 };
 
 }  // namespace ray

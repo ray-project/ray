@@ -35,11 +35,19 @@ class TaskManager : public TaskFinisherInterface {
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
-              RetryTaskCallback retry_task_callback)
+              RetryTaskCallback retry_task_callback, bool lineage_pinning_enabled)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback) {}
+        retry_task_callback_(retry_task_callback),
+        lineage_pinning_enabled_(lineage_pinning_enabled) {
+    if (lineage_pinning_enabled_) {
+      reference_counter_->SetReleaseLineageCallback(
+          [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+            RemoveLineageReference(object_id, ids_to_release);
+          });
+    }
+  }
 
   /// Add a task that is pending execution.
   ///
@@ -105,7 +113,12 @@ class TaskManager : public TaskFinisherInterface {
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {}
     const TaskSpecification spec;
     int num_retries_left;
+    // Number of plasma objects returned by this task that are still in scope.
+    absl::optional<size_t> num_plasma_returns;
   };
+
+  void RemoveLineageReference(const ObjectID &object_id,
+                              std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
 
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
@@ -117,7 +130,7 @@ class TaskManager : public TaskFinisherInterface {
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
   /// that were inlined in the task spec.
   void RemoveFinishedTaskReferences(
-      TaskSpecification &spec, const rpc::Address &worker_addr,
+      TaskSpecification &spec, size_t num_plasma_returns, const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
@@ -136,6 +149,8 @@ class TaskManager : public TaskFinisherInterface {
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
+
+  const bool lineage_pinning_enabled_;
 
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
