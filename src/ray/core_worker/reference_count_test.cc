@@ -142,7 +142,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
     }
-    rc_.UpdateFinishedTaskReferences(arguments, borrower_address, borrower_refs, nullptr);
+    rc_.UpdateFinishedTaskReferences(arguments, 0, borrower_address, borrower_refs,
+                                     nullptr);
   }
 
   // Global map from Worker ID -> MockWorkerClient.
@@ -188,13 +189,13 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->UpdateSubmittedTaskReferences({id1});
   rc->UpdateSubmittedTaskReferences({id1, id2});
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, 0, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, 0, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, 0, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 2);
   out.clear();
@@ -207,10 +208,10 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id2}, 0, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id1}, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id1}, 0, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
   rc->RemoveLocalReference(id2, &out);
@@ -1662,6 +1663,40 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
 }
 
 // TODO: Test Pop and Merge individually.
+
+TEST_F(ReferenceCountTest, TestBasicLineage) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  ObjectID id = ObjectID::FromRandom();
+
+  rc->SetDeleteLineageCallback(
+      [&](const ObjectID &object_id) { lineage_deleted.push_back(object_id); });
+
+  // Local references.
+  rc->AddLocalReference(id);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Submit 2 dependent tasks.
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Both tasks finish, 1 is retryable.
+  rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id}, 1, empty_borrower, empty_refs, &out);
+  ASSERT_EQ(out.size(), 1);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // Simulate retrying the task.
+  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
+  ASSERT_TRUE(lineage_deleted.empty());
+  rc->RemoveLineageRefCount({id});
+  ASSERT_FALSE(rc->HasReference(id));
+  ASSERT_EQ(lineage_deleted.size(), 1);
+}
 
 }  // namespace ray
 

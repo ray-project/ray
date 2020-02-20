@@ -213,8 +213,9 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
 
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(plasma_dependencies, borrower_addr,
-                                                   borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(
+      plasma_dependencies,
+      /*num_plasma_returns=*/0, borrower_addr, borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
 

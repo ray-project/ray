@@ -69,9 +69,13 @@ class ReferenceCounter {
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
   void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                    size_t num_plasma_returns,
                                     const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
+      LOCKS_EXCLUDED(mutex_);
+
+  void RemoveLineageRefCount(const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -142,6 +146,8 @@ class ReferenceCounter {
                              const TaskID &owner_id, const rpc::Address &owner_address,
                              const ReferenceRemovedCallback &ref_removed_callback)
       LOCKS_EXCLUDED(mutex_);
+
+  void SetDeleteLineageCallback(const ReferenceRemovedCallback &callback);
 
   /// Respond to the object's owner once we are no longer borrowing it.  The
   /// sender is the owner of the object ID. We will send the reply when our
@@ -235,19 +241,24 @@ class ReferenceCounter {
       return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
     }
 
-    /// Whether we can delete this reference. A reference can NOT be deleted if
-    /// any of the following are true:
+    /// Whether this reference is no longer in scope. A reference is in scope
+    /// if any of the following are true:
     /// - The reference is still being used by this process.
     /// - The reference was contained in another ID that we were borrowing, and
     ///   we haven't told the process that gave us that ID yet.
     /// - We gave the reference to at least one other process.
-    bool CanDelete() const {
+    bool OutOfScope() const {
       bool in_scope = RefCount() > 0;
       bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
       bool has_borrowers = borrowers.size() > 0;
       bool was_stored_in_objects = stored_in_objects.size() > 0;
       return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
                was_stored_in_objects);
+    }
+
+    bool CanDelete() const {
+      bool lineage_needed = lineage_ref_count > 0;
+      return OutOfScope() && !lineage_needed;
     }
 
     /// Whether we own the object. If we own the object, then we are
@@ -313,6 +324,7 @@ class ReferenceCounter {
     /// task's caller is also a borrower. The key is the task's return ID, and
     /// the value is the task ID and address of the task's caller.
     absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    size_t lineage_ref_count = 0;
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.
@@ -336,6 +348,7 @@ class ReferenceCounter {
   /// inlined dependencies are inlined or when the task finishes for plasma
   /// dependencies.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                     size_t increment_lineage_by,
                                      std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -422,6 +435,9 @@ class ReferenceCounter {
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  void RemoveLineageRefCountInternal(const std::vector<ObjectID> &argument_ids)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
@@ -446,6 +462,8 @@ class ReferenceCounter {
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  ReferenceRemovedCallback on_lineage_deleted_;
 };
 
 }  // namespace ray
