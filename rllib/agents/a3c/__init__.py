@@ -7,6 +7,10 @@ A2CAgent = renamed_agent(A2CTrainer)
 A3CAgent = renamed_agent(A3CTrainer)
 
 __all__ = [
-    "A2CAgent", "A3CAgent", "A2CTrainer", "A3CTrainer", "DEFAULT_CONFIG",
+    "A2CAgent",
+    "A3CAgent",
+    "A2CTrainer",
+    "A3CTrainer",
+    "DEFAULT_CONFIG",
     "A2CPipeline"
 ]
