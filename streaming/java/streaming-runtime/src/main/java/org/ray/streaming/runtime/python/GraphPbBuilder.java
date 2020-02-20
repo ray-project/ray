@@ -19,7 +19,7 @@ public class GraphPbBuilder {
   private MsgPackSerializer serializer = new MsgPackSerializer();
 
   /**
-   * For simple scenario, a single ExecutionNode is enough. Buf some cases may need
+   * For simple scenario, a single ExecutionNode is enough. But some cases may need
    * sub-graph information, so we serialize entire graph.
    */
   public RemoteCall.ExecutionGraph buildExecutionGraphPb(ExecutionGraph graph) {

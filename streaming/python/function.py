@@ -102,8 +102,8 @@ class FilterFunction(Function):
 
 class KeyFunction(Function):
     """
-    A key function is extractor takes an object and returns the deterministic
-    key for that object.
+    A key function is extractor which takes an object and returns the
+    deterministic key for that object.
     """
 
     def key_by(self, value):
