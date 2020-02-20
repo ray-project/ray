@@ -24,8 +24,8 @@ class PPOLoss:
     def __init__(self,
                  dist_class,
                  model,
-                 #value_targets,
-                 #advantages,
+                 value_targets,
+                 advantages,
                  actions,
                  prev_logits,
                  prev_actions_logp,
@@ -33,7 +33,7 @@ class PPOLoss:
                  curr_action_dist,
                  value_fn,
                  cur_kl_coeff,
-                 #valid_mask,
+                 valid_mask,
                  entropy_coeff=0,
                  clip_param=0.1,
                  vf_clip_param=0.1,
@@ -69,7 +69,7 @@ class PPOLoss:
         """
 
         def reduce_mean_valid(t):
-            return torch.mean(t)  # * valid_mask)
+            return torch.mean(t * valid_mask)
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -81,48 +81,47 @@ class PPOLoss:
         curr_entropy = curr_action_dist.entropy()
         self.mean_entropy = reduce_mean_valid(curr_entropy)
 
-        #surrogate_loss = torch.min(
-        #    advantages * logp_ratio,
-        #    advantages * torch.clamp(logp_ratio, 1 - clip_param,
-        #                             1 + clip_param))
-        #self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+        surrogate_loss = torch.min(
+            advantages * logp_ratio,
+            advantages * torch.clamp(logp_ratio, 1 - clip_param,
+                                     1 + clip_param))
+        self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         if use_gae:
-            #vf_loss1 = torch.pow(value_fn - value_targets, 2.0)
-            vf_loss1 = torch.pow(value_fn, 2.0)
+            vf_loss1 = torch.pow(value_fn - value_targets, 2.0)
             vf_clipped = vf_preds + torch.clamp(value_fn - vf_preds,
                                                 -vf_clip_param, vf_clip_param)
-            #vf_loss2 = torch.pow(vf_clipped - value_targets, 2.0)
-            vf_loss = vf_loss1  #torch.max(vf_loss1, vf_loss2)
+            vf_loss2 = torch.pow(vf_clipped - value_targets, 2.0)
+            vf_loss = torch.max(vf_loss1, vf_loss2)
             self.mean_vf_loss = reduce_mean_valid(vf_loss)
             loss = reduce_mean_valid(
-                cur_kl_coeff * action_kl +
+                -surrogate_loss + cur_kl_coeff * action_kl +
                 vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = 0.0
-            loss = reduce_mean_valid(
+            loss = reduce_mean_valid(-surrogate_loss +
                                      cur_kl_coeff * action_kl -
                                      entropy_coeff * curr_entropy)
-        self.loss = self.mean_policy_loss = loss
+        self.loss = loss
 
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
-    #if state:
-    #    max_seq_len = torch.max(train_batch["seq_lens"])
-    #    mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
-    #    mask = torch.reshape(mask, [-1])
-    #else:
-    #    mask = torch.ones_like(
-    #        train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
+    if state:
+        max_seq_len = torch.max(train_batch["seq_lens"])
+        mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = torch.reshape(mask, [-1])
+    else:
+        mask = torch.ones_like(
+            train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
 
     policy.loss_obj = PPOLoss(
         dist_class,
         model,
-        #train_batch[Postprocessing.VALUE_TARGETS],
-        #train_batch[Postprocessing.ADVANTAGES],
+        train_batch[Postprocessing.VALUE_TARGETS],
+        train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
         train_batch[BEHAVIOUR_LOGITS],
         train_batch[ACTION_LOGP],
@@ -130,7 +129,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         action_dist,
         model.value_function(),
         policy.kl_coeff,
-        #mask,
+        mask,
         entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
@@ -161,10 +160,10 @@ def kl_and_loss_stats(policy, train_batch):
         "total_loss": policy.loss_obj.loss.item(),
         "policy_loss": policy.loss_obj.mean_policy_loss.item(),
         "vf_loss": policy.loss_obj.mean_vf_loss.item(),
-        #"vf_explained_var": explained_variance(
-        #    train_batch[Postprocessing.VALUE_TARGETS],
-        #    policy.model.value_function(),
-        #    framework="torch").item(),
+        "vf_explained_var": explained_variance(
+            train_batch[Postprocessing.VALUE_TARGETS],
+            policy.model.value_function(),
+            framework="torch").item(),
         "kl": policy.loss_obj.mean_kl.item(),
         "entropy": policy.loss_obj.mean_entropy.item(),
         "entropy_coeff": policy.entropy_coeff,
@@ -186,8 +185,7 @@ def postprocess_ppo_gae(policy,
                         episode=None):
     """Adds the policy logits, VF preds, and advantages to the trajectory."""
     with torch.no_grad():
-        completed = sample_batch["dones"][-1]
-        if completed:
+        if sample_batch["dones"][-1]:
             last_r = 0.0
         else:
             next_state = []
@@ -236,9 +234,9 @@ class ValueNetworkMixin:
                     }, [torch.Tensor([s]).to(self.device) for s in state],
                                               torch.Tensor([1]).to(self.device))
                     return self.model.value_function()[0]
-    
+
             else:
-    
+
                 def value(ob, prev_action, prev_reward, *state):
                     return 0.0
 
