@@ -1,5 +1,5 @@
 import logging
-import numpy as np
+
 import ray
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
@@ -141,43 +141,28 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
 
 
 def kl_and_loss_stats(policy, train_batch):
-    import torch
-    import gc
-    count = 0
-    for obj in gc.get_objects():
-        try:
-            if torch.is_tensor(obj) or (
-                    hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                # print(type(obj), obj.size())
-                count += 1
-        except:
-            pass
-    print("Tensor count = {}".format(count))
-    return {}
-    #return {
-    #    "cur_kl_coeff": policy.kl_coeff,
-    #    "cur_lr": policy.cur_lr,
-    #    "total_loss": policy.loss_obj.loss.item(),
-    #    "policy_loss": policy.loss_obj.mean_policy_loss.item(),
-    #    "vf_loss": policy.loss_obj.mean_vf_loss.item(),
-    #    "vf_explained_var": explained_variance(
-    #        train_batch[Postprocessing.VALUE_TARGETS],
-    #        policy.model.value_function(),
-    #        framework="torch").item(),
-    #    "kl": policy.loss_obj.mean_kl.item(),
-    #    "entropy": policy.loss_obj.mean_entropy.item(),
-    #    "entropy_coeff": policy.entropy_coeff,
-    #}
+    return {
+        "cur_kl_coeff": policy.kl_coeff,
+        "cur_lr": policy.cur_lr,
+        "total_loss": policy.loss_obj.loss.item(),
+        "policy_loss": policy.loss_obj.mean_policy_loss.item(),
+        "vf_loss": policy.loss_obj.mean_vf_loss.item(),
+        "vf_explained_var": explained_variance(
+            train_batch[Postprocessing.VALUE_TARGETS],
+            policy.model.value_function(),
+            framework="torch").item(),
+        "kl": policy.loss_obj.mean_kl.item(),
+        "entropy": policy.loss_obj.mean_entropy.item(),
+        "entropy_coeff": policy.entropy_coeff,
+    }
 
 
 def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
-    #print(policy.model.last_output().numpy())
     return {
-        SampleBatch.VF_PREDS: np.array([-1.0]),  #policy.model.value_function().numpy(),
-        BEHAVIOUR_LOGITS: np.array([[1.0 / policy.action_space.n] * policy.action_space.n]), #policy.model.last_output().numpy(),
-        ACTION_LOGP: np.array([-0.1]),  # action_dist.logp(input_dict[SampleBatch.ACTIONS]).numpy()
+        SampleBatch.VF_PREDS: policy.model.value_function().numpy(),
+        BEHAVIOUR_LOGITS: policy.model.last_output().numpy()
     }
 
 
@@ -200,17 +185,16 @@ class ValueNetworkMixin:
         if config["use_gae"]:
 
             def value(ob, prev_action, prev_reward, *state):
-                return 0.0
-                #model_out, _ = self.model({
-                #    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
-                #    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
-                #        self.device),
-                #    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
-                #        self.device),
-                #    "is_training": False,
-                #}, [torch.Tensor([s]).to(self.device) for s in state],
-                #                          torch.Tensor([1]).to(self.device))
-                #return self.model.value_function()[0]
+                model_out, _ = self.model({
+                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
+                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
+                        self.device),
+                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
+                        self.device),
+                    "is_training": False,
+                }, [torch.Tensor([s]).to(self.device) for s in state],
+                                          torch.Tensor([1]).to(self.device))
+                return self.model.value_function()[0]
 
         else:
 
