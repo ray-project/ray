@@ -293,17 +293,6 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     # This test makes sure resource capacity is updated (increment) correctly
     # when a task has already acquired some of the resource.
 
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     cluster = ray_start_cluster
 
     res_name = "test_res"
@@ -340,6 +329,17 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     @ray.remote
     def test_func():
         return 1
+
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
 
     running_signal = Signal.remote()
     finish_signal = Signal.remote()
@@ -387,17 +387,6 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     num_nodes = 5
     TIMEOUT_DURATION = 1
 
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     for i in range(num_nodes):
         cluster.add_node()
 
@@ -426,6 +415,17 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     @ray.remote
     def test_func():
         return 1
+
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
 
     running_signal = Signal.remote()
     finish_signal = Signal.remote()
@@ -471,12 +471,6 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     num_nodes = 5
     TIMEOUT_DURATION = 1
 
-    # Create a object ID to have the task wait on
-    WAIT_OBJECT_ID_STR = ("a" * 20).encode("ascii")
-
-    # Create a object ID to signal that the task is running
-    TASK_RUNNING_OBJECT_ID_STR = ("b" * 20).encode("ascii")
-
     for i in range(num_nodes):
         cluster.add_node()
 
@@ -510,6 +504,17 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     @ray.remote
     def test_func():
         return 1
+
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
 
     running_signal = Signal.remote()
     finish_signal = Signal.remote()
