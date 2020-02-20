@@ -459,6 +459,8 @@ class IteratorContext:
     """Context object for a local iterator.
 
     This can be used to share global data for a pipeline, e.g., for metrics.
+    It can be accessed by calling LocalIterator.get_context(), which is only
+    allowable inside an iterator function.
 
     Attributes:
         counters (defaultdict): dict storing increasing metrics.
@@ -524,7 +526,10 @@ class LocalIterator(Generic[T]):
         self.name = name or "unknown"
 
     @staticmethod
-    def get_context():
+    def get_context() -> IteratorContext:
+        """Return the current iterator context.
+
+        This can only be called within an iterator function."""
         if (not hasattr(LocalIterator.thread_local, "ctx")
                 or LocalIterator.thread_local.ctx is None):
             raise ValueError("Cannot access context outside an iterator.")
