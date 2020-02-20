@@ -1,6 +1,8 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
+from torch.optim import RMSprop
+from torch.distributions import Categorical
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
@@ -16,10 +18,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tuple_actions import TupleActions
 
-# Must be installed.
 torch, nn = try_import_torch(error=True)
-from torch.optim import RMSprop
-from torch.distributions import Categorical
 
 logger = logging.getLogger(__name__)
 
