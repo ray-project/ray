@@ -80,8 +80,8 @@ def choose_policy_optimizer(workers, config):
             workers,
             num_sgd_iter=config["num_sgd_iter"],
             train_batch_size=config["train_batch_size"],
-            sgd_minibatch_size=config["sgd_minibatch_size"],
-            standardize_fields=["advantages"])
+            sgd_minibatch_size=config["sgd_minibatch_size"])
+            #standardize_fields=["advantages"])
 
     return LocalMultiGPUOptimizer(
         workers,
@@ -91,7 +91,7 @@ def choose_policy_optimizer(workers, config):
         sample_batch_size=config["sample_batch_size"],
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
-        standardize_fields=["advantages"],
+        #standardize_fields=["advantages"],
         shuffle_sequences=config["shuffle_sequences"])
 
 
