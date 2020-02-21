@@ -15,7 +15,6 @@ public class ExecutionNode implements Serializable {
   private int parallelism;
   private NodeType nodeType;
   private StreamOperator streamOperator;
-  private Language language;
   private List<ExecutionTask> executionTasks;
   private List<ExecutionEdge> inputsEdges;
   private List<ExecutionEdge> outputEdges;
@@ -80,12 +79,8 @@ public class ExecutionNode implements Serializable {
     this.streamOperator = streamOperator;
   }
 
-  public void setLanguage(Language language) {
-    this.language = language;
-  }
-
   public Language getLanguage() {
-    return language;
+    return streamOperator.getLanguage();
   }
 
   public NodeType getNodeType() {

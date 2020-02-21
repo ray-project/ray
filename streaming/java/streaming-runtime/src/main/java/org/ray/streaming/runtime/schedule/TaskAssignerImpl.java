@@ -41,7 +41,6 @@ public class TaskAssignerImpl implements TaskAssigner {
       }
       executionNode.setExecutionTasks(vertexTasks);
       executionNode.setStreamOperator(jobVertex.getStreamOperator());
-      executionNode.setLanguage(jobVertex.getLanguage());
       idToExecutionNode.put(executionNode.getNodeId(), executionNode);
     }
 
