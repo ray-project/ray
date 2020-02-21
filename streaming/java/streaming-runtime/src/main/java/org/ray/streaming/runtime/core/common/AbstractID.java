@@ -11,11 +11,12 @@ public class AbstractID implements Comparable<AbstractID>, Serializable {
 
   private static final long serialVersionUID = 1L;
   private static final Random RANDOM = new Random();
-  private static final int SIZE_OF_UPPERPART = 8;
-   private static final int SIZE_OF_LOWERRPART = 8;
+  private static final int SIZE_OF_LONG = 8;
+  private static final int SIZE_OF_UPPER_PART = 8;
+  private static final int SIZE_OF_LOWER_PART = 8;
 
   //lowerPart(long type) + upperPart(long type)
-  public static final int SIZE = SIZE_OF_UPPERPART + SIZE_OF_LOWERPART;
+  public static final int SIZE = SIZE_OF_UPPER_PART + SIZE_OF_LOWER_PART;
 
   protected final long upperPart;
   protected final long lowerPart;
