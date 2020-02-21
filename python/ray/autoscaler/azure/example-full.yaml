@@ -52,10 +52,6 @@ idle_timeout_minutes: 5
 provider:
     type: azure
     location: westus2
-    service_principal: http://ray-service
-    # create credential json file to use an existing service principal 
-    # https://docs.microsoft.com/en-us/azure/python/python-sdk-azure-authenticate#mgmt-auth-file
-    # e.g. ~/.azure/azure_credentials_ray-service.json
     resource_group: ray-cluster
     # set subscription id otherwise the default from az cli will be used
     # subscription_id: 00000000-0000-0000-0000-000000000000
