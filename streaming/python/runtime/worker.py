@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 @ray.remote
 class JobWorker(object):
-    """A streaming job worker is used to execute used-defined function and
+    """A streaming job worker is used to execute user-defined function and
     interact with `JobMaster`"""
 
     def __init__(self):

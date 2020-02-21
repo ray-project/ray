@@ -65,7 +65,8 @@ class Stream(ABC):
 
 
 class DataStream(Stream):
-    """Represents a stream of data which applies a transformation executed by
+    """
+    Represents a stream of data which applies a transformation executed by
     python. It's also a wrapper of java
     `org.ray.streaming.python.stream.PythonDataStream`
     """
@@ -201,8 +202,12 @@ class DataStream(Stream):
     def sink(self, func):
         """
         Create a StreamSink with the given sink.
-        :param func: sink function.
-        :return: a StreamSink.
+
+        Args:
+            func: sink function.
+
+        Returns:
+            a StreamSink.
         """
         if not isinstance(func, function.SinkFunction):
             func = function.SimpleSinkFunction(func)
