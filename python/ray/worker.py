@@ -1458,7 +1458,7 @@ def get(object_ids, timeout=None):
     object has been created). If object_ids is a list, then the objects
     corresponding to each object in the list will be returned.
 
-    This method issue a warning if it's running inside async context,
+    This method will issue a warning if it's running inside async context,
     you can use ``await object_id`` instead of ``ray.get(object_id)``. For
     a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
 
