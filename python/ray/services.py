@@ -584,14 +584,14 @@ def start_reaper():
         os.setpgrp()
     except OSError as e:
         if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
-            # Nothing to do; we're already a session leader
+            # Nothing to do; we're already a session leader.
             pass
         else:
             logger.warning("setpgrp failed, processes may not be "
                            "cleaned up properly: {}.".format(e))
             # Don't start the reaper in this case as it could result in killing
             # other user processes.
-        return None
+            return None
 
     reaper_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
