@@ -578,16 +578,7 @@ cdef write_serialized_object(
 
     if isinstance(serialized_object, RawSerializedObject):
         if buf.get() != NULL and buf.get().Size() > 0:
-            size = serialized_object.total_bytes
-            if MEMCOPY_THREADS > 1 and size > kMemcopyDefaultThreshold:
-                parallel_memcopy(buf.get().Data(),
-                                 <const uint8_t*> serialized_object.value,
-                                 size, kMemcopyDefaultBlocksize,
-                                 MEMCOPY_THREADS)
-            else:
-                memcpy(buf.get().Data(),
-                       <const uint8_t*>serialized_object.value, size)
-
+            RawDataWrite(serialized_object.value, buf, MEMCOPY_THREADS)
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)

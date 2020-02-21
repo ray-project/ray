@@ -10,9 +10,20 @@ DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 
-cdef extern from "ray/util/memory.h" namespace "ray" nogil:
-    void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
-                          uintptr_t block_size, int num_threads)
+cdef extern from "ray/python/buffer_writer.h" nogil:
+    cdef cppclass CPythonObjectBuilder "ray::python::PythonObjectBuilder":
+        CPythonObjectBuilder()
+        void AppendBuffer(uint8_t *buf, int64_t length, int64_t itemsize, int32_t ndim,
+                          char* format, int64_t *shape, int64_t *strides)
+        int64_t GetTotalBytes()
+        int64_t GetInbandDataSize()
+        void SetInbandDataSize(int64_t size)
+        int WriteTo(const c_string &inband, const shared_ptr[CBuffer] &data, int memcopy_threads)
+
+    int CRawDataWrite "ray::python::RawDataWrite" (const c_string &raw_data,
+                      const shared_ptr[CBuffer] &data,
+                      int memcopy_threads)
+
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
@@ -60,12 +71,17 @@ cdef extern from "ray/protobuf/serialization.pb.h" nogil:
         c_bool ParseFromArray(void* data, int size)
 
 
-cdef int64_t padded_length(int64_t offset, int64_t alignment):
-    return ((offset + alignment - 1) // alignment) * alignment
-
-
-cdef int64_t padded_length_u64(uint64_t offset, uint64_t alignment):
-    return ((offset + alignment - 1) // alignment) * alignment
+cdef RawDataWrite(const c_string &raw_data,
+                  const shared_ptr[CBuffer] &data,
+                  int memcopy_threads):
+    status = CRawDataWrite(raw_data, data, memcopy_threads)
+    if status != 0:
+        if status == -1:
+            raise ValueError("The size of output buffer is insufficient. "
+                             "(buffer size: %d, expected minimal size: %d)" %
+                             (data.get().Size(), raw_data.length()))
+        else:
+            raise ValueError("Writing to the buffer failed with unknown status %d" % status)
 
 
 cdef class SubBuffer:
@@ -195,108 +211,52 @@ def unpack_pickle5_buffers(Buffer buf):
 
 cdef class Pickle5Writer:
     cdef:
-        CPythonObject python_object
+        CPythonObjectBuilder builder
         c_vector[Py_buffer] buffers
-        # Address of end of the current buffer, relative to the
-        # begin offset of our buffers.
-        uint64_t _curr_buffer_addr
-        uint64_t _protobuf_offset
-        int64_t _total_bytes
 
     def __cinit__(self):
-        self._curr_buffer_addr = 0
-        self._total_bytes = -1
+        # TODO(suquark): 32-bit OS support
+        if sizeof(Py_ssize_t) != sizeof(int64_t):
+            raise ValueError("Py_ssize_t isn't equal to int64_t")
 
     def buffer_callback(self, pickle_buffer):
-        cdef:
-            Py_buffer view
-            int32_t i
-            CPythonBuffer* buffer = self.python_object.add_buffer()
+        cdef Py_buffer view
         cpython.PyObject_GetBuffer(pickle_buffer, &view,
                                    cpython.PyBUF_FULL_RO)
-        buffer.set_length(view.len)
-        buffer.set_ndim(view.ndim)
-        # It should be 'view.readonly'. But for the sake of shared memory,
-        # we have to make it immutable.
-        buffer.set_readonly(1)
-        buffer.set_itemsize(view.itemsize)
-        if view.format:
-            buffer.set_format(view.format)
-        if view.shape:
-            for i in range(view.ndim):
-                buffer.add_shape(view.shape[i])
-        if view.strides:
-            for i in range(view.ndim):
-                buffer.add_strides(view.strides[i])
-
-        # Increase buffer address.
-        if view.len < kMajorBufferSize:
-            self._curr_buffer_addr = padded_length(
-                self._curr_buffer_addr, kMinorBufferAlign)
-        else:
-            self._curr_buffer_addr = padded_length(
-                self._curr_buffer_addr, kMajorBufferAlign)
-        buffer.set_address(self._curr_buffer_addr)
-        self._curr_buffer_addr += view.len
+        self.builder.AppendBuffer(<uint8_t *>view.buf, view.len, view.itemsize, view.ndim, view.format,
+                                  <int64_t*>view.shape, <int64_t*>view.strides)
         self.buffers.push_back(view)
 
-    def get_total_bytes(self, const c_string &inband):
-        cdef:
-            size_t protobuf_bytes = 0
-            uint64_t inband_data_offset = sizeof(int64_t) * 2
-            uint64_t raw_buffers_offset = padded_length_u64(
-                inband_data_offset + inband.length(), kMajorBufferAlign)
-        self.python_object.set_inband_data_offset(inband_data_offset)
-        self.python_object.set_inband_data_size(inband.length())
-        self.python_object.set_raw_buffers_offset(raw_buffers_offset)
-        self.python_object.set_raw_buffers_size(self._curr_buffer_addr)
-        # Since calculating the output size is expensive, we will
-        # reuse the cached size.
-        # So we MUST NOT change 'python_object' afterwards.
-        # This is because protobuf could change the output size
-        # according to different values.
-        protobuf_bytes = self.python_object.ByteSizeLong()
-        if protobuf_bytes > INT32_MAX:
-            raise ValueError("Total buffer metadata size is bigger than %d. "
-                             "Consider reduce the number of buffers "
-                             "(number of numpy arrays, etc)." % INT32_MAX)
-        self._protobuf_offset = padded_length_u64(
-            raw_buffers_offset + self._curr_buffer_addr, kMinorBufferAlign)
-        self._total_bytes = self._protobuf_offset + protobuf_bytes
-        return self._total_bytes
+    def get_total_bytes(self):
+        return self.builder.GetTotalBytes()
+
+    def set_inband_data_size(self, size):
+        self.builder.SetInbandDataSize(size)
 
     cdef void write_to(self, const c_string &inband, shared_ptr[CBuffer] data,
                        int memcopy_threads):
-        cdef uint8_t *ptr = data.get().Data()
-        cdef int32_t protobuf_size
-        cdef uint64_t buffer_addr
-        cdef uint64_t buffer_len
-        cdef int i
-        if self._total_bytes < 0:
-            raise ValueError("Must call 'get_total_bytes()' first "
-                             "to get the actual size")
-        # Write protobuf size for deserialization.
-        protobuf_size = self.python_object.GetCachedSize()
-        (<int64_t*>ptr)[0] = self._protobuf_offset
-        (<int64_t*>ptr)[1] = protobuf_size
-        # Write protobuf data.
-        self.python_object.SerializeWithCachedSizesToArray(
-            ptr + self._protobuf_offset)
-        # Write inband data.
-        memcpy(ptr + self.python_object.inband_data_offset(),
-               inband.data(), inband.length())
-        # Write buffer data.
-        ptr += self.python_object.raw_buffers_offset()
-        for i in range(self.python_object.buffer_size()):
-            buffer_addr = self.python_object.buffer(i).address()
-            buffer_len = self.python_object.buffer(i).length()
-            if (memcopy_threads > 1 and
-                    buffer_len > kMemcopyDefaultThreshold):
-                parallel_memcopy(ptr + buffer_addr,
-                                 <const uint8_t*> self.buffers[i].buf,
-                                 buffer_len,
-                                 kMemcopyDefaultBlocksize, memcopy_threads)
+        cdef:
+            int i
+            int64_t total_bytes
+            int status
+
+        if self.builder.GetInbandDataSize() < 0:
+            self.builder.SetInbandDataSize(inband.length())
+
+        status = self.builder.WriteTo(inband, data, memcopy_threads)
+        if status != 0:
+            if status == -1:
+                total_bytes = self.builder.GetTotalBytes()
+                raise ValueError("The size of output buffer is insufficient. "
+                                 "(buffer size: %d, expected minimal size: %d)" %
+                                 (data.get().Size(), total_bytes))
+            elif status == -2:
+                raise ValueError("Total buffer metadata size is bigger than %d. "
+                                 "Consider reduce the number of buffers in the python"
+                                 "object (number of numpy arrays, etc)." % INT32_MAX)
             else:
-                memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
+                raise ValueError("Writing to the buffer failed with unknown status %d" % status)
+
+        for i in range(self.buffers.size()):
             # We must release the buffer, or we could experience memory leaks.
             cpython.PyBuffer_Release(&self.buffers[i])

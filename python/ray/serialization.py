@@ -58,14 +58,11 @@ class Pickle5SerializedObject(SerializedObject):
                                                       contained_object_ids)
         self.inband = inband
         self.writer = writer
-        # cached total bytes
-        self._total_bytes = None
+        self.writer.set_inband_data_size(len(self.inband))
 
     @property
     def total_bytes(self):
-        if self._total_bytes is None:
-            self._total_bytes = self.writer.get_total_bytes(self.inband)
-        return self._total_bytes
+        return self.writer.get_total_bytes()
 
 
 class RawSerializedObject(SerializedObject):
