@@ -234,9 +234,8 @@ class AzureNodeProvider(NodeProvider):
                 #    self.provider_config["msi_identity_id"]
                 # ]
             
-            print(config)
-
-            vm_poller = self.compute_client.virtual_machines.create_or_update(
+            # TODO: do we need to wait or fire and forget is fine?
+            self.compute_client.virtual_machines.create_or_update(
                 resource_group_name=self.provider_config["resource_group"],
                 vm_name=vm_name,
                 parameters=config)
