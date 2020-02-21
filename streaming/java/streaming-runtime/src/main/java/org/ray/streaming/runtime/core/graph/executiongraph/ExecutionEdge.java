@@ -58,7 +58,6 @@ public class ExecutionEdge implements Serializable {
   public String toString() {
     return MoreObjects.toStringHelper(this)
         .add("srcVertex", sourceVertex)
-        .add("targetVertex", targetVertex)
         .add("executionEdgeIndex", executionEdgeIndex)
         .toString();
   }

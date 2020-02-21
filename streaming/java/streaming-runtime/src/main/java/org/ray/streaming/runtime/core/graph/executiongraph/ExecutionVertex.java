@@ -156,8 +156,6 @@ public class ExecutionVertex implements Serializable {
         .add("state", state)
         .add("slot", slot)
         .add("workerActor", workerActor)
-        .add("inputEdges", inputEdges)
-        .add("outputEdges", outputEdges)
         .toString();
   }
 }
