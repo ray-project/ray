@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "sac"
+version = "0.1.0"
+description = ""
+authors = ["Aditya Gudimella <aditya.gudimella@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.6.1"
+ray = {extras = ["rllib"], version = "^0.8.1"}
+pandas = "^1.0.1"
+tensorflow = "1.15.2"
+tensorflow-probability = "^0.8.0"
+pybullet = "^2.6.5"
+requests = "^2.23.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+ray = {extras = ["rllib"], version = "^0.8.1"}
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
