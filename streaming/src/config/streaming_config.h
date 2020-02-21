@@ -33,14 +33,16 @@ class StreamingConfig {
 
   std::string task_job_id_ = JobID::Nil().Hex();
 
+  // Default flow control type is unconsumed sequence flow control. More detail
+  // introducation and implemention in ray/streaming/src/flow_control.h.
   streaming::proto::FlowControlType flow_control_type_ =
-      streaming::proto::FlowControlType::UnconsumedSeq;
+      streaming::proto::FlowControlType::UnconsumedSeqFlowControl;
 
   // Default writer and reader consumed step.
   uint32_t writer_consumed_step_ = 1000;
   uint32_t reader_consumed_step_ = 100;
 
-  uint32_t event_driven_flow_control_interval = 1;
+  uint32_t event_driven_flow_control_interval_ = 1;
 
  public:
   void FromProto(const uint8_t *, uint32_t size);
@@ -60,7 +62,7 @@ class StreamingConfig {
   DECL_GET_SET_PROPERTY(streaming::proto::FlowControlType, FlowControlType,
                         flow_control_type_)
   DECL_GET_SET_PROPERTY(uint32_t, EventDrivenFlowControlInterval,
-                        event_driven_flow_control_interval)
+                        event_driven_flow_control_interval_)
 
   uint32_t GetRingBufferCapacity() const;
   /// Note(lingxuan.zlx), RingBufferCapacity's valid range is from 1 to

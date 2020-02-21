@@ -199,7 +199,7 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
 
 StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
                                       std::shared_ptr<DataBundle> &message) {
-  // Notify last fetched item consumed.
+  // Notify upstream that last fetched item has been consumed.
   if (last_fetched_queue_item_) {
     NotifyConsumed(last_fetched_queue_item_);
   }

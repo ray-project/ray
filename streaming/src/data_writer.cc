@@ -152,8 +152,8 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   }
 
   switch (runtime_context_->GetConfig().GetFlowControlType()) {
-  case proto::FlowControlType::UnconsumedSeq:
-    flow_controller_ = std::make_shared<UnconsumedSeq>(
+  case proto::FlowControlType::UnconsumedSeqFlowControl:
+    flow_controller_ = std::make_shared<UnconsumedSeqFlowControl>(
         channel_map_, runtime_context_->GetConfig().GetWriterConsumedStep());
     break;
   default:
@@ -353,7 +353,7 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
       ++channel_info.queue_full_cnt;
       STREAMING_LOG(DEBUG) << "FullChannel after writing to channel, queue_full_cnt:"
                            << channel_info.queue_full_cnt;
-      NotifyConsumedByRefresh(channel_info);
+      RefreshChannelAndNotifyConsumed(channel_info);
     } else if (StreamingStatus::EmptyRingBuffer != write_status) {
       STREAMING_LOG(INFO) << channel_info.channel_id
                           << ":something wrong when WriteToQueue "
@@ -431,7 +431,7 @@ void DataWriter::EmptyMessageTimerCallback() {
   }
 }
 
-void DataWriter::NotifyConsumedByRefresh(ProducerChannelInfo &channel_info) {
+void DataWriter::RefreshChannelAndNotifyConsumed(ProducerChannelInfo &channel_info) {
   // Refresh current downstream consumed seq id.
   channel_map_[channel_info.channel_id]->RefreshChannelInfo();
   // Notify the consumed information to local channel.

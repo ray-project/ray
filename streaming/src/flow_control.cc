@@ -3,15 +3,16 @@
 namespace ray {
 namespace streaming {
 
-UnconsumedSeq::UnconsumedSeq(
+UnconsumedSeqFlowControl::UnconsumedSeqFlowControl(
     std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> &channel_map,
     uint32_t step)
     : channel_map_(channel_map), consumed_step_(step){};
 
-bool UnconsumedSeq::ShouldFlowControl(ProducerChannelInfo &channel_info) {
+bool UnconsumedSeqFlowControl::ShouldFlowControl(ProducerChannelInfo &channel_info) {
   auto &queue_info = channel_info.queue_info;
   if (queue_info.target_seq_id <= channel_info.current_seq_id) {
     channel_map_[channel_info.channel_id]->RefreshChannelInfo();
+    // Target seq id is maximum upper limit in current condition.
     channel_info.queue_info.target_seq_id =
         channel_info.queue_info.consumed_seq_id + consumed_step_;
     STREAMING_LOG(DEBUG) << "Flow control stop writing to downstream, current max id => "
@@ -22,7 +23,7 @@ bool UnconsumedSeq::ShouldFlowControl(ProducerChannelInfo &channel_info) {
                          << ". if this log keeps printing, it means something wrong "
                             "with queue's info API, or downstream node is not "
                             "consuming data.";
-    // Double check after refreshing.
+    // Double check after refreshing if target seq id is changed.
     if (queue_info.target_seq_id <= channel_info.current_seq_id) {
       return true;
     }

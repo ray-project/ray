@@ -13,7 +13,7 @@ enum OperatorType {
 
 enum FlowControlType {
   UNKNOWN_FLOW_CONTROL_TYPE = 0;
-  UnconsumedSeq = 1;
+  UnconsumedSeqFlowControl = 1;
   NoFlowControl = 2;
 }
 

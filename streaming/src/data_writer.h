@@ -48,9 +48,9 @@ class DataWriter {
   ///  which means we merge a lot of message to a message bundle and no message will be
   ///  pushed into queue directly util daemon thread does this action.
   ///  Additionally, writing will block when buffer ring is full intentionly.
-  ///  \param q_id
-  ///  \param data
-  ///  \param data_size
+  ///  \param q_id, destination channel id
+  ///  \param data, pointer of raw data
+  ///  \param data_size, raw data size
   ///  \param message_type
   ///  \return message seq iq
   uint64_t WriteMessageToBufferRing(
@@ -104,8 +104,8 @@ class DataWriter {
 
   void EmptyMessageTimerCallback();
 
-  /// Notify channel consumed by refreshing downstream queue stats.
-  void NotifyConsumedByRefresh(ProducerChannelInfo &channel_info);
+  /// Notify channel consumed  refreshing downstream queue stats.
+  void RefreshChannelAndNotifyConsumed(ProducerChannelInfo &channel_info);
 
   /// Notify channel consumed by given offset.
   void NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset);
@@ -120,7 +120,7 @@ class DataWriter {
   std::shared_ptr<std::thread> flow_control_thread_;
   // One channel have unique identity.
   std::vector<ObjectID> output_queue_ids_;
-  // Flow controller makes decision when it's should be blocked and avoid
+  // Flow controller makes a decision when it's should be blocked and avoid
   // unnecessary overflow.
   std::shared_ptr<FlowControl> flow_controller_;
 

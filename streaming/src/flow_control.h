@@ -6,8 +6,8 @@ namespace ray {
 namespace streaming {
 class ProducerTransfer;
 /// We devise a flow control system in queue channel, and that's called flow
-/// control by unconsumed seq. Upstream worker will detect consumer stat via
-/// api so it can keep fixed length messages in this process, which make a
+/// control by unconsumed seq. Upstream worker will detect consumer statistics via
+/// api so it can keep fixed length messages in this process, which makes a
 /// continuous datastream in channel or on the transporting way, then downstream
 /// can read them from channel immediately.
 /// To debug or compare with theses flow control methods, we also support
@@ -24,12 +24,12 @@ class NoFlowControl : public FlowControl {
   ~NoFlowControl() = default;
 };
 
-class UnconsumedSeq : public FlowControl {
+class UnconsumedSeqFlowControl : public FlowControl {
  public:
-  UnconsumedSeq(
+  UnconsumedSeqFlowControl(
       std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> &channel_map,
       uint32_t step);
-  ~UnconsumedSeq() = default;
+  ~UnconsumedSeqFlowControl() = default;
   bool ShouldFlowControl(ProducerChannelInfo &channel_info);
 
  private:

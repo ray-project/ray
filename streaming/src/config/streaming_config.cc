@@ -40,10 +40,10 @@ void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
   if (config.flow_control_type() != proto::FlowControlType::UNKNOWN_FLOW_CONTROL_TYPE) {
     SetFlowControlType(config.flow_control_type());
   }
-  if (config.writer_consumed_step()) {
+  if (config.writer_consumed_step() != 0) {
     SetWriterConsumedStep(config.writer_consumed_step());
   }
-  if (config.reader_consumed_step()) {
+  if (config.reader_consumed_step() != 0) {
     SetReaderConsumedStep(config.reader_consumed_step());
   }
   if (config.event_driven_flow_control_interval()) {

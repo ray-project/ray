@@ -98,12 +98,11 @@ class DataReader {
 
   /// Notify input queues to clear data whose seq id is equal or less than offset.
   /// It's used when checkpoint is done.
-  ///  \param channel_info
-  ///  \param offset
-  ///
+  ///  \param channel_info consumer's channel info
+  ///  \param offset consumed channel offset
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
 
-  //// Notify input queues to clear data who channel of message belongs to.
+  //// Notify message related channel to clear data.
   void NotifyConsumed(std::shared_ptr<DataBundle> &message);
 
  private:

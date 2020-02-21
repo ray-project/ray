@@ -51,13 +51,13 @@ struct ConsumerChannelInfo {
 
   StreamingQueueInfo queue_info;
 
-  uint64_t last_queue_item_delay;
-  uint64_t last_queue_item_latency;
-  uint64_t last_queue_target_diff;
-  uint64_t get_queue_item_times;
+  uint64_t last_queue_item_delay = 0;
+  uint64_t last_queue_item_latency = 0;
+  uint64_t last_queue_target_diff = 0;
+  uint64_t get_queue_item_times = 0;
   ActorID actor_id;
   // Total count of notify request.
-  uint64_t notify_cnt;
+  uint64_t notify_cnt = 0;
 };
 
 /// Two types of channel are presented:
