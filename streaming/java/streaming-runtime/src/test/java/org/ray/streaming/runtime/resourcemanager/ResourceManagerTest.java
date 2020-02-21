@@ -49,7 +49,7 @@ public class ResourceManagerTest extends BaseUnitTest {
     LOG.warn("Do tear down");
   }
 
-  @Test
+  @Test(enabled = false)
   public void testApi() {
     Map<String, String> conf = new HashMap<String, String>();
     conf.put(CommonConfig.JOB_NAME, "testApi");

@@ -72,7 +72,7 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     maxParallelism = executionGraph.getMaxParallelism();
   }
 
-  @Test
+  @Test(enabled = false)
   public int testSlotNumPerContainer() {
     int slotNumPerContainer = strategy.getSlotNumPerContainer(containers, maxParallelism);
     Assert.assertEquals(slotNumPerContainer,
@@ -80,7 +80,7 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     return slotNumPerContainer;
   }
 
-  @Test
+  @Test(enabled = false)
   public void testAllocateSlot() {
     int slotNumPerContainer = testSlotNumPerContainer();
     strategy.allocateSlot(containers, slotNumPerContainer);
@@ -89,7 +89,7 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     }
   }
 
-  @Test
+  @Test(enabled = false)
   public void testAssignSlot() {
     Map<ContainerID, List<Slot>> allocatingMap = strategy.assignSlot(executionGraph);
     for (Entry<ContainerID, List<Slot>> containerSlotEntry : allocatingMap.entrySet()) {
