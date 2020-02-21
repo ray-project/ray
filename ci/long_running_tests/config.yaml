@@ -52,7 +52,7 @@ setup_commands:
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
     # Install nightly Ray wheels.
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
-    - pip install ray[rllib] ray[debug] tensorflow
+    - pip install ray[rllib] ray[debug] tensorflow==1.15.0
     - pip install -U dask  # fix error importing lz4
 
 # Custom commands that will be run on the head node after common setup.

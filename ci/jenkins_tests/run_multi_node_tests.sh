@@ -13,7 +13,12 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
-echo "Using Docker image" $DOCKER_SHA
+if [[ -n $DOCKER_SHA ]]; then 
+    echo "Using Docker image" $DOCKER_SHA
+else
+    echo "Base Docker image was not builded!!!"
+    exit 1
+fi
 
 ######################## RLLIB TESTS #################################
 

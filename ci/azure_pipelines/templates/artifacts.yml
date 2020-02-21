@@ -1,0 +1,120 @@
+# This template includes the steps for collecting
+# logs and files generated during the build process
+
+steps:
+- task: ComponentGovernanceComponentDetection@0
+  inputs:
+    scanType: 'Register'
+    verbosity: 'Verbose'
+    # dockerImagesToScan: 'docker-image'
+    alertWarningLevel: 'Critical'
+    failOnAlert: true
+    # ignoreDirectories: '**/_bazel_runner'
+- bash: |
+    # Show explicitly which commands are currently running.
+    set -x
+
+    mkdir -p $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel
+
+    echo "Log files to copy:"
+    find $BAZEL_OUTPUTROOT -name '*.log'
+
+    find $BAZEL_OUTPUTROOT -name '*.log' -exec cp --parents {} $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel \;
+  displayName: 'Copy bazel output dir to staging'
+  timeoutInMinutes: 5
+  condition: always()
+  env:
+    BAZEL_OUTPUTROOT: '$(bazel.outputRoot)'
+- task: PublishBuildArtifacts@1
+  condition: always()
+  inputs:
+    pathToPublish: $(Build.ArtifactStagingDirectory)
+    artifactName: Logs
+  displayName: 'Publishing artifacts'
+  timeoutInMinutes: 5
+- bash: |
+    set -euo pipefail
+
+    stop_docker_containers() {
+        echo "   Stopping any running containers"
+        running_containers=$(docker ps -q)
+        if [ "${running_containers:+x}" != '' ]; then
+            docker stop $(docker ps -q)
+        else
+            echo "   ...No running containers found"
+        fi
+    }
+
+    remove_docker_containers() {
+        echo "   Deleting docker containers in exited state"
+        exited_ids=$(docker ps -q -a -f status=exited)
+        if [ "${exited_ids:+x}" != '' ]; then
+            docker rm ${exited_ids}
+        else
+            echo "   ...No containers found to delete"
+        fi
+
+        echo "   Deleting docker containers in created state"
+        created_ids=$(docker ps -q -a -f status=created)
+        if [ "${created_ids:+x}" != '' ]; then
+            docker rm ${created_ids}
+        else
+            echo "   ...No containers found to delete"
+        fi
+
+        echo "   Deleting docker containers in dead state"
+        dead_ids=$(docker ps -q -a -f status=dead)
+        if [ "${dead_ids:+x}" != '' ]; then
+            docker rm ${dead_ids}
+        else
+            echo "   ...No containers found to delete"
+        fi
+    }
+
+    remove_docker_volumes() {
+        echo "   Deleting dangling docker volumes"
+        volume_ids=$(docker volume ls -q -f dangling=true)
+        if [ "${volume_ids:+x}" != '' ]; then
+            docker volume rm ${volume_ids}
+        else
+            echo "   ...No volumes found to delete"
+        fi
+    }
+
+    remove_dangling_images() {
+        echo "   Deleting dangling docker images"
+        image_ids=$(docker images -q -f dangling=true)
+        if [ "${image_ids:+x}" != '' ]; then
+            docker rmi ${image_ids}
+        else
+            echo "   ...No images found to delete"
+        fi
+    }
+
+    remove_docker_networks() {
+        echo "   Deleting unused docker networks"
+        docker network prune -f
+    }
+
+    main() {
+        echo "[$0] Cleaning up Docker artifacts from previous test runs"
+        remove_docker_services || true
+        stop_docker_containers || true
+        remove_docker_containers || true
+        remove_docker_volumes || true
+        remove_dangling_images || true
+        remove_docker_networks || true
+    }
+
+    if [[ $AGENT_OS == "Darwin" ]]; then 
+      echo "Docker is not being used in MacOS"
+      exit 0
+    fi
+
+    main
+
+    echo "Running docker system prune..."
+    docker system prune -f --all
+  displayName: 'Clean docker data'
+  timeoutInMinutes: 10
+  condition: always()

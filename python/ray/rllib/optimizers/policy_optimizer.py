@@ -4,9 +4,9 @@ from __future__ import print_function
 
 import logging
 
-import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class PolicyOptimizer(object):
         """Apply the given function to each evaluator instance."""
 
         local_result = [func(self.local_evaluator)]
-        remote_results = ray.get(
+        remote_results = ray_get_and_free(
             [ev.apply.remote(func) for ev in self.remote_evaluators])
         return local_result + remote_results
 
@@ -152,7 +152,7 @@ class PolicyOptimizer(object):
         """
 
         local_result = [func(self.local_evaluator, 0)]
-        remote_results = ray.get([
+        remote_results = ray_get_and_free([
             ev.apply.remote(func, i + 1)
             for i, ev in enumerate(self.remote_evaluators)
         ])

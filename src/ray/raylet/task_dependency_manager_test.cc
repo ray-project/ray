@@ -41,7 +41,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
         reconstruction_policy_mock_(),
         io_service_(),
         gcs_mock_(),
-        initial_lease_period_ms_(100),
+        initial_lease_period_ms_(300),
         task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_,
                                  io_service_, ClientID::nil(), initial_lease_period_ms_,
                                  gcs_mock_) {}

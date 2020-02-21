@@ -1402,13 +1402,13 @@ def test_actor_init_fails(ray_start_cluster_head):
             return self.x
 
     # Create many actors. It should take a while to finish initializing them.
-    actors = [Counter.remote() for _ in range(100)]
+    actors = [Counter.remote() for _ in range(15)]
     # Allow some time to forward the actor creation tasks to the other node.
     time.sleep(0.1)
     # Kill the second node.
     cluster.remove_node(remote_node)
 
-    # Get all of the results
+    # Get all of the results.
     results = ray.get([actor.inc.remote() for actor in actors])
     assert results == [1 for actor in actors]
 

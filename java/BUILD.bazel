@@ -7,33 +7,32 @@ exports_files([
     "streaming/testng.xml",
 ])
 
-java_binary(
-    name = "bazel_deps",
-    main_class = "com.github.johnynek.bazel_deps.ParseProject",
-    runtime_deps = ["@bazel_deps//jar"],
-)
+all_modules = [
+    "api",
+    "runtime",
+    "test",
+    "tutorial",
+    "streaming",
+]
 
 java_import(
     name = "all_modules",
     jars = [
-        "liborg_ray_ray_api.jar",
-        "liborg_ray_ray_api-src.jar",
-        "liborg_ray_ray_runtime.jar",
-        "liborg_ray_ray_runtime-src.jar",
-        "liborg_ray_ray_tutorial.jar",
-        "liborg_ray_ray_tutorial-src.jar",
-        "liborg_ray_ray_streaming.jar",
-        "liborg_ray_ray_streaming-src.jar",
+        "liborg_ray_ray_" + module + ".jar"
+        for module in all_modules
+    ] + [
+        "liborg_ray_ray_" + module + "-src.jar"
+        for module in all_modules
+    ] + [
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
         "streaming_tests_deploy.jar",
         "streaming_tests_deploy-src.jar",
     ],
     deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
-        ":org_ray_ray_tutorial",
-        ":org_ray_ray_streaming",
+        ":org_ray_ray_" + module
+        for module in all_modules
+    ] + [
         ":all_tests",
         ":streaming_tests",
     ],
@@ -41,49 +40,48 @@ java_import(
 
 define_java_module(
     name = "api",
+    visibility = ["//visibility:public"],
     deps = [
-        "@org_slf4j_slf4j_log4j12//jar",
-        "@log4j_log4j//jar",
-        "@javax_xml_bind_jaxb_api//jar",
-        "@com_sun_xml_bind_jaxb_core//jar",
-        "@com_sun_xml_bind_jaxb_impl//jar",
+        "@maven//:com_sun_xml_bind_jaxb_core",
+        "@maven//:com_sun_xml_bind_jaxb_impl",
+        "@maven//:javax_xml_bind_jaxb_api",
+        "@maven//:log4j_log4j",
+        "@maven//:org_slf4j_slf4j_log4j12",
     ],
 )
 
 define_java_module(
     name = "runtime",
-    additional_srcs = [
-        ":generate_java_gcs_fbs",
-    ],
     additional_resources = [
         ":java_native_deps",
+    ],
+    additional_srcs = [
+        ":generate_java_gcs_fbs",
     ],
     define_test_lib = True,
     test_deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@org_apache_commons_commons_lang3//jar",
-        "@com_beust_jcommander//jar",
-        "@org_testng_testng//jar",
-        "@commons_io_commons_io//jar",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:com_beust_jcommander",
+        "@maven//:org_testng_testng",
+        "@maven//:commons_io_commons_io",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":org_ray_ray_api",
         "@plasma//:org_apache_arrow_arrow_plasma",
-        "@org_slf4j_slf4j_api//jar",
-        "@com_fasterxml_jackson_core_jackson_core//jar",
-        "@org_apache_commons_commons_pool2//jar",
-        "@org_javassist_javassist//jar",
-        "@org_objenesis_objenesis//jar",
-        "@com_typesafe_config//jar",
-        "@org_apache_commons_commons_lang3//jar",
-        "@de_ruedigermoeller_fst//jar",
-        "@com_github_davidmoten_flatbuffers_java//jar",
-        "@redis_clients_jedis//jar",
-        "@commons_io_commons_io//jar",
-        "@com_google_guava_guava//jar",
-        "@org_slf4j_slf4j_log4j12//jar",
-        "@org_ow2_asm_asm//jar",
+        "@maven//:com_github_davidmoten_flatbuffers_java",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_typesafe_config",
+        "@maven//:commons_io_commons_io",
+        "@maven//:de_ruedigermoeller_fst",
+        "@maven//:net_java_dev_jna_jna",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_ow2_asm_asm",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:redis_clients_jedis",
     ],
 )
 
@@ -92,7 +90,7 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@com_google_guava_guava//jar",
+        "@maven//:com_google_guava_guava",
     ],
 )
 
@@ -101,12 +99,13 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@org_apache_commons_commons_lang3//jar",
-        "@org_slf4j_slf4j_api//jar",
         "@plasma//:org_apache_arrow_arrow_plasma",
-        "@org_testng_testng//jar",
-        "@com_google_guava_guava//jar",
-        "@commons_io_commons_io//jar",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+        "@maven//:com_google_guava_guava",
+        "@maven//:commons_io_commons_io",
+        "@maven//:javax_xml_bind_jaxb_api",
     ],
 )
 
@@ -115,31 +114,31 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
-        "@com_google_guava_guava//jar",
-        "@org_slf4j_slf4j_api//jar",
-        "@org_slf4j_slf4j_log4j12//jar",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
     ],
     define_test_lib = True,
     test_deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
         ":org_ray_ray_streaming",
-        "@com_beust_jcommander//jar",
-        "@com_google_guava_guava//jar",
-        "@org_slf4j_slf4j_api//jar",
-        "@org_slf4j_slf4j_log4j12//jar",
-        "@org_testng_testng//jar",
+        "@maven//:com_beust_jcommander",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:org_testng_testng",
     ],
 )
 
 java_binary(
     name = "all_tests",
-    main_class = "org.testng.TestNG",
-    data = ["testng.xml"],
     args = ["java/testng.xml"],
+    data = ["testng.xml"],
+    main_class = "org.testng.TestNG",
     runtime_deps = [
-        ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
+        ":org_ray_ray_test",
     ],
 )
 
@@ -209,15 +208,28 @@ genrule(
     local = 1,
 )
 
+# plasma_store_server binary should be located in jar root path
+# and keep in sync with mvn resource
+genrule(
+    name = "cp_plasma_store_server",
+    srcs = [
+        "@plasma//:plasma_store_server",
+    ],
+    outs = ["plasma_store_server"],
+    cmd = """
+        cp -f $(location @plasma//:plasma_store_server) $@
+    """,
+)
+
 filegroup(
     name = "java_native_deps",
     srcs = [
-        "//:redis-server",
+        ":cp_plasma_store_server",
+        "//:raylet_library_java",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:raylet_library_java",
-        "@plasma//:plasma_store_server",
         "@plasma//:plasma_client_java",
+        "//:redis-server",
     ],
 )
 
@@ -228,6 +240,7 @@ genrule(
         ":java_native_deps",
         ":generate_java_gcs_fbs",
         "@plasma//:org_apache_arrow_arrow_plasma",
+        ":copy_pom_file",
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
@@ -255,3 +268,36 @@ genrule(
     """,
     local = 1,
 )
+
+genrule(
+    name = "copy_pom_file",
+    srcs = [
+        "//java:org_ray_ray_" + module + "_pom"
+        for module in all_modules
+    ],
+    outs = ["copy_pom_file.out"],
+    cmd = """
+        set -x
+        WORK_DIR=$$(pwd)
+        cp -f $(location //java:org_ray_ray_api_pom) $$WORK_DIR/java/api/pom.xml
+        cp -f $(location //java:org_ray_ray_runtime_pom) $$WORK_DIR/java/runtime/pom.xml
+        cp -f $(location //java:org_ray_ray_tutorial_pom) $$WORK_DIR/java/tutorial/pom.xml
+        cp -f $(location //java:org_ray_ray_test_pom) $$WORK_DIR/java/test/pom.xml
+        cp -f $(location //java:org_ray_ray_streaming_pom) $$WORK_DIR/java/streaming/pom.xml
+        echo $$(date) > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
+# From Diff PR Fix building Java with maven #6764
+#genrule(
+#    name = "ray_java_pkg",
+#    remove -> srcs = ["//java:ray_dist_deploy.jar"],
+#    srcs = [
+#        "//java:ray_dist_deploy.jar",
+#        "//java:gen_maven_deps",
+#    ],
+#    outs = ["ray_java_pkg.out"],
+#    cmd = """
+#        WORK_DIR=$$(pwd)

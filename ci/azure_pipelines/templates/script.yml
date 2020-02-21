@@ -1,0 +1,60 @@
+# This template includes the steps of the general script phase
+# that is specified in the .travis.yml of the upstream repo.
+# This is the default script phase that is reused by some of the
+# parallel jobs in the build matrix of the .travis.yml file.
+# Tips:
+# - TRAVIS_BUILD_DIR got replaced by BUILD_SOURCESDIRECTORY
+steps:
+- bash: |
+    echo Running script phase of the original travis.yml
+
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # TODO: [CI] remove after CI get stable
+    set -x
+
+    # Initialize travis script expected variables.
+    export PYTHON=$PYTHON_VERSION
+    echo "Determined PYTHON variable: $PYTHON"
+
+    # Make bazel available
+    export PATH="$HOME/bin:$PATH"
+    source $HOME/.bazel/bin/bazel-complete.bash
+
+    # Start Original script
+    export PATH="$HOME/miniconda/bin:$PATH"
+    # The following is needed so cloudpickle can find some of the
+    # class definitions: The main module of tests that are run
+    # with pytest have the same name as the test file -- and this
+    # module is only found if the test directory is in the PYTHONPATH.
+    # - export PYTHONPATH="$PYTHONPATH:./ci/"
+
+    # ray tune tests
+    # Originally with ./ci/suppress_output
+    if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python python/ray/tune/tests/test_dependency.py; fi
+    # `cluster_tests.py` runs on Jenkins, not Travis.
+    if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest --durations=10 --timeout=300 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
+
+    # ray rllib tests
+    # Originally with ./ci/suppress_output
+    if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python python/ray/rllib/tests/test_catalog.py; fi
+    # Originally with ./ci/suppress_output
+    if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python python/ray/rllib/tests/test_filters.py; fi
+    # Originally with ./ci/suppress_output
+    if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python python/ray/rllib/tests/test_optimizers.py; fi
+    # Originally with ./ci/suppress_output
+    if [ $RAY_CI_RLLIB_AFFECTED == "1" ]; then python python/ray/rllib/tests/test_evaluators.py; fi
+
+    # ray tests
+    # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests; fi
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+  displayName: 'Run original script phase'
+  timeoutInMinutes: 60

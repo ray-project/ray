@@ -8,7 +8,8 @@ namespace {
 
 static constexpr const char *task_state_strings[] = {
     "placeable", "waiting",    "ready",
-    "running",   "infeasible", "waiting for actor creation"};
+    "running",   "infeasible", "waiting for actor creation",
+    "swap"};
 static_assert(sizeof(task_state_strings) / sizeof(const char *) ==
                   static_cast<int>(ray::raylet::TaskState::kNumTaskQueues),
               "Must specify a TaskState name for every task queue");
@@ -171,6 +172,9 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   case TaskState::INFEASIBLE:
     FilterStateFromQueue(task_ids, TaskState::INFEASIBLE);
     break;
+  case TaskState::SWAP:
+    FilterStateFromQueue(task_ids, TaskState::SWAP);
+    break;
   case TaskState::BLOCKED: {
     const auto blocked_ids = GetBlockedTaskIds();
     for (auto it = task_ids.begin(); it != task_ids.end();) {
@@ -228,8 +232,13 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
   std::vector<Task> removed_tasks;
   // Try to find the tasks to remove from the queues.
   for (const auto &task_state : {
-           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
-           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::PLACEABLE,
+           TaskState::WAITING,
+           TaskState::READY,
+           TaskState::RUNNING,
+           TaskState::INFEASIBLE,
+           TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::SWAP,
        }) {
     RemoveTasksFromQueue(task_state, task_ids, &removed_tasks);
   }
@@ -243,8 +252,13 @@ Task SchedulingQueue::RemoveTask(const TaskID &task_id, TaskState *removed_task_
   std::unordered_set<TaskID> task_id_set = {task_id};
   // Try to find the task to remove in the queues.
   for (const auto &task_state : {
-           TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY, TaskState::RUNNING,
-           TaskState::INFEASIBLE, TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::PLACEABLE,
+           TaskState::WAITING,
+           TaskState::READY,
+           TaskState::RUNNING,
+           TaskState::INFEASIBLE,
+           TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::SWAP,
        }) {
     RemoveTasksFromQueue(task_state, task_id_set, &removed_tasks);
     if (task_id_set.empty()) {
@@ -286,6 +300,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
   case TaskState::INFEASIBLE:
     RemoveTasksFromQueue(TaskState::INFEASIBLE, task_ids, &removed_tasks);
     break;
+  case TaskState::SWAP:
+    RemoveTasksFromQueue(TaskState::SWAP, task_ids, &removed_tasks);
+    break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks from unrecognized state "
                    << static_cast<std::underlying_type<TaskState>::type>(src_state);
@@ -310,6 +327,9 @@ void SchedulingQueue::MoveTasks(std::unordered_set<TaskID> &task_ids, TaskState 
     break;
   case TaskState::INFEASIBLE:
     QueueTasks(removed_tasks, TaskState::INFEASIBLE);
+    break;
+  case TaskState::SWAP:
+    QueueTasks(removed_tasks, TaskState::SWAP);
     break;
   default:
     RAY_LOG(FATAL) << "Attempting to move tasks to unrecognized state "

@@ -1,0 +1,44 @@
+# This template includes the basic steps needed for
+# setting up python in different jobs. The version
+# of python to use is expected in the environment
+# variable python.version
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '$(python.version)'
+  displayName: 'Use Python $(python.version)'
+- script: |
+    python -m pip install --upgrade pip
+    pip install pytest pytest-azurepipelines
+    pip install wheel
+    pip install twine
+  displayName: 'Install dependencies'
+- script: |
+    set -xe
+    echo "BUILD_BUILDID: $BUILD_BUILDID"
+    VERSION_SUFIX="$(echo $BUILD_BUILDID | sed -E 's/[- ]/_/g')"
+    echo "VERSION_SUFIX: $VERSION_SUFIX"
+    VERSION_FILE="$BUILD_SOURCESDIRECTORY/python/ray/__init__.py"
+    if [[ $AGENT_OS == "Darwin" ]]; then 
+      sed -i -e -E "s+__version__ = (['\"])([^'\"]*)(['\"])+__version__ = \1\2$VERSION_SUFIX\3+1" $VERSION_FILE
+    else
+      sed -ier "s+__version__ = \(['\"]\)\([^'\"]*\)\(['\"]\)+__version__ = \1\2$VERSION_SUFIX\3+1" $VERSION_FILE
+    fi
+    cat $BUILD_SOURCESDIRECTORY/python/ray/__init__.py | grep "__version__ ="
+  displayName: 'Change version of Ray to use'
+- task: PythonScript@0
+  inputs:
+    scriptSource: 'inline'
+    script: |
+      import platform
+      print(platform.platform())
+      import wheel.pep425tags
+      print(wheel.pep425tags.get_impl_ver())
+      print(wheel.pep425tags.get_abi_tag())
+      print(wheel.pep425tags.get_platform(None))
+      tags = wheel.pep425tags.get_supported(None)
+      print(tags)
+      print(('cp36', 'cp36m', 'macosx_10_14_x86_64') in tags)
+      print(platform.mac_ver())
+    failOnStderr: false
+  displayName: 'Print system info'

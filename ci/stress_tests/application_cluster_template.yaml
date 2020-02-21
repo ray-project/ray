@@ -92,7 +92,7 @@ setup_commands:
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_<<<PYTHON_VERSION>>>/bin:$PATH"' >> ~/.bashrc
     - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.7.0.dev2-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
     - rllib || pip install -U ray-0.7.0.dev2-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
-    - pip install tensorflow-gpu==1.12.0
+    - pip install tensorflow-gpu==1.15.0
     - echo "sudo halt" | at now + 60 minutes
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true

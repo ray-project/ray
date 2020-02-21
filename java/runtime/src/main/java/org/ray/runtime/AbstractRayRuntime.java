@@ -32,7 +32,6 @@ import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.TaskLanguage;
 import org.ray.runtime.task.TaskSpec;
-import org.ray.runtime.util.ResourceUtil;
 import org.ray.runtime.util.UniqueIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -355,11 +354,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       resources = new HashMap<>();
     } else {
       resources = new HashMap<>(taskOptions.resources);
-    }
-
-    if (!resources.containsKey(ResourceUtil.CPU_LITERAL)
-        && !resources.containsKey(ResourceUtil.CPU_LITERAL.toLowerCase())) {
-      resources.put(ResourceUtil.CPU_LITERAL, 0.0);
     }
 
     int maxActorReconstruction = 0;

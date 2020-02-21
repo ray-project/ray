@@ -17,19 +17,23 @@ namespace ray {
 namespace raylet {
 
 /// The status of a lineage cache entry according to its status in the GCS.
+/// Tasks can only transition to a higher GcsStatus (e.g., an UNCOMMITTED state
+/// can become COMMITTING but not vice versa). If a task is evicted from the
+/// local cache, it implicitly goes back to state `NONE`, after which it may be
+/// added to the local cache again (e.g., if it is forwarded to us again).
 enum class GcsStatus {
   /// The task is not in the lineage cache.
   NONE = 0,
-  /// The task is being executed or created on a remote node.
-  UNCOMMITTED_REMOTE,
-  /// The task is waiting to be executed or created locally.
-  UNCOMMITTED_WAITING,
-  /// The task has started execution, but the entry has not been written to the
-  /// GCS yet.
-  UNCOMMITTED_READY,
-  /// The task has been written to the GCS and we are waiting for an
-  /// acknowledgement of the commit.
+  /// The task is uncommitted. Unless there is a failure, we will expect a
+  /// different node to commit this task.
+  UNCOMMITTED,
+  /// We flushed this task and are waiting for the commit acknowledgement.
   COMMITTING,
+  // TODO(swang): Add a COMMITTED state for tasks for which we received a
+  // commit acknowledgement, but which we cannot evict yet (due to an ancestor
+  // that has not been evicted). This is to allow a performance optimization
+  // that avoids unnecessary subscribes when we receive tasks that were
+  // already COMMITTED at the sender.
 };
 
 /// \class LineageEntry
@@ -220,37 +224,30 @@ class LineageCache {
                gcs::TableInterface<TaskID, protocol::Task> &task_storage,
                gcs::PubsubInterface<TaskID> &task_pubsub, uint64_t max_lineage_size);
 
-  /// Add a task that is waiting for execution and its uncommitted lineage.
-  /// These entries will not be written to the GCS until set to ready.
+  /// Asynchronously commit a task to the GCS.
   ///
-  /// \param task The waiting task to add.
+  /// \param task The task to commit. It will be moved to the COMMITTING state.
+  /// \return Whether the task was successfully committed. This can fail if the
+  /// task was already in the COMMITTING state.
+  bool CommitTask(const Task &task);
+
+  /// Flush all tasks in the local cache that are not already being
+  /// committed. This is equivalent to all tasks in the UNCOMMITTED
+  /// state.
+  ///
+  /// \return Void.
+  void FlushAllUncommittedTasks();
+
+  /// Add a task and its (estimated) uncommitted lineage to the local cache. We
+  /// will subscribe to commit notifications for all uncommitted tasks to
+  /// determine when it is safe to evict the lineage from the local cache.
+  ///
+  /// \param task_id The ID of the uncommitted task to add.
   /// \param uncommitted_lineage The task's uncommitted lineage. These are the
   /// tasks that the given task is data-dependent on, but that have not
-  /// been made durable in the GCS, as far the task's submitter knows.
-  /// \return Whether the task was successfully marked as waiting to be
-  /// committed. This will return false if the task is already waiting to be
-  /// committed (UNCOMMITTED_WAITING), ready to be committed
-  /// (UNCOMMITTED_READY), or committing (COMMITTING).
-  bool AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
-
-  /// Add a task that is ready for GCS writeback. This overwrites the task’s
-  /// mutable fields in the execution specification.
-  ///
-  /// \param task The task to set as ready.
-  /// \return Whether the task was successfully marked as ready to be
-  /// committed. This will return false if the task is already ready to be
-  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
-  bool AddReadyTask(const Task &task);
-
-  /// Remove a task that was waiting for execution. Its uncommitted lineage
-  /// will remain unchanged.
-  ///
-  /// \param task_id The ID of the waiting task to remove.
-  /// \return Whether the task was successfully removed. This will return false
-  /// if the task is not waiting to be committed. Then, the waiting task has
-  /// already been removed (UNCOMMITTED_REMOTE), or if it's ready to be
-  /// committed (UNCOMMITTED_READY) or committing (COMMITTING).
-  bool RemoveWaitingTask(const TaskID &task_id);
+  /// been committed to the GCS. This must contain the given task ID.
+  /// \return Void.
+  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage);
 
   /// Mark a task as having been explicitly forwarded to a node.
   /// The lineage of the task is implicitly assumed to have also been forwarded.
@@ -314,9 +311,6 @@ class LineageCache {
   /// Unsubscribe from notifications for a task. Returns whether the operation
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
-  /// Add a task and its uncommitted lineage to the local stash.
-  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage,
-                             std::unordered_set<TaskID> &subscribe_tasks);
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
