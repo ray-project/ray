@@ -12,6 +12,8 @@ from collections import defaultdict
 import numpy as np
 import ray.services as services
 import yaml
+import jsonschema
+from importlib_resources import read_text
 from ray.worker import global_worker
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
@@ -764,61 +766,13 @@ class StandardAutoscaler:
             len(nodes)))
 
 
-def typename(v):
-    if isinstance(v, type):
-        return v.__name__
-    else:
-        return type(v).__name__
-
-
-def check_required(config, schema):
-    # Check required schema entries
-    if not isinstance(config, dict):
-        raise ValueError("Config is not a dictionary")
-
-    for k, (v, kreq) in schema.items():
-        if v is None:
-            continue  # None means we don't validate the field
-        if kreq is REQUIRED:
-            if k not in config:
-                type_str = typename(v)
-                raise ValueError(
-                    "Missing required config key `{}` of type {}".format(
-                        k, type_str))
-            if not isinstance(v, type):
-                check_required(config[k], v)
-
-
-def check_extraneous(config, schema):
-    """Make sure all items of config are in schema"""
-    if not isinstance(config, dict):
-        raise ValueError("Config {} is not a dictionary".format(config))
-    for k in config:
-        if k not in schema:
-            raise ValueError("Unexpected config key `{}` not in {}".format(
-                k, list(schema.keys())))
-        v, kreq = schema[k]
-        if v is None:
-            continue
-        elif isinstance(v, type):
-            if not isinstance(config[k], v):
-                if v is str and isinstance(config[k], string_types):
-                    continue
-                raise ValueError(
-                    "Config key `{}` has wrong type {}, expected {}".format(
-                        k,
-                        type(config[k]).__name__, v.__name__))
-        else:
-            check_extraneous(config[k], v)
-
-
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     """Required Dicts indicate that no extra fields can be introduced."""
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    check_required(config, schema)
-    check_extraneous(config, schema)
+    schema = read_text('ray', 'ray-schema.json')
+    jsonschema.validate(config, json.loads(schema))
 
 
 def fillout_defaults(config):
