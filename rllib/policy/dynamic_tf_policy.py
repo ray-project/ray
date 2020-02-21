@@ -132,6 +132,7 @@ class DynamicTFPolicy(TFPolicy):
             if not make_model:
                 raise ValueError(
                     "`make_model` is required if `action_sampler_fn` is given")
+            self.dist_class = None
         else:
             self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
@@ -165,13 +166,6 @@ class DynamicTFPolicy(TFPolicy):
         model_out, self._state_out = self.model(self._input_dict,
                                                 self._state_in, self._seq_lens)
 
-        #if action_sampler_fn:
-        #    self.dist_class, dist_inputs = dist_class_and_inputs_fn(
-        #        self, self.model, self._input_dict, obs_space, action_space,
-        #        self.config)
-        #else:
-        #    dist_inputs = model_out
-
         # Create the Exploration object to use for this Policy.
         self.exploration = self._create_exploration(action_space, config)
         timestep = tf.placeholder(tf.int32, (), name="timestep")
@@ -199,11 +193,15 @@ class DynamicTFPolicy(TFPolicy):
         else:
             batch_divisibility_req = 1
 
+        # Generate the log-likelihood op.
+        log_likelihood = None
+        # From a given function.
         if log_likelihood_fn:
             log_likelihood = log_likelihood_fn(
                 self, self.model, action_input, self._input_dict,
                 obs_space, action_space, config)
-        else:
+        # Create default, iff we have a distribution class.
+        elif self.dist_class is not None:
             log_likelihood = self.dist_class(
                 model_out, self.model).logp(action_input)
 
