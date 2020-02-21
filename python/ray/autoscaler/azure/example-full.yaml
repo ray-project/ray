@@ -51,10 +51,11 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: azure
+    # https://azure.microsoft.com/en-us/global-infrastructure/locations
     location: westus2
-    resource_group: ray-cluster
+    resource_group: ay-cluster
     # set subscription id otherwise the default from az cli will be used
-    # subscription_id: 00000000-0000-0000-0000-000000000000
+    # subscription_id: 00000000-0000-0000-0000-000000000000   
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -64,7 +65,7 @@ auth:
 # This should match the public key configuration in each head/worker nodes
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+# Ray will auto-configure unspecified fields based on example-full.yaml
 # The Azure Python SDK client expects slug_style property names
 # For more documentation on available fields, see:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
@@ -80,11 +81,10 @@ head_node:
             publisher: microsoft-dsvm
             offer: ubuntu-1804
             sku: 1804-gen2
-            version: latest
-    # Additional properties in the azure docs.
+            version: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+# Ray will auto-configure unspecified fields based on example-full.yaml
 # The Azure Python SDK client expects slug_style property names
 # For more documentation on available fields, see:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
@@ -99,7 +99,7 @@ worker_nodes:
             publisher: microsoft-dsvm
             offer: ubuntu-1804
             sku: 1804-gen2
-            version: latest
+            version: 20.02.01
         # run workers on spot instances by default
         priority: Spot
         eviction_policy: Deallocate
@@ -109,8 +109,6 @@ worker_nodes:
         # You can provision additional disk space as follows
         # data_disks:
         #    - disk_size_gb: 1024
-
-    # Additional properties in the azure docs.
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -131,15 +129,21 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+    #- echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    #- pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
     # - sudo dpkg --configure -a
+    - git clone https://github.com/gramhagen/ray || true
+    - cd ray; git checkout gramhagen/azure_autoscaler
+    - ray/ci/travis/install-bazel.sh
+    - cd ray/python/ray/dashboard/client; npm ci; npm run build
+    - pip install azure-cli-core azure-core azure-mgmt-msi paramiko aiohttp grpcio psutil setproctitle
+    - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

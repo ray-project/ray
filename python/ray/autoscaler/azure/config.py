@@ -12,7 +12,6 @@ from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
 from ray.autoscaler.tags import TAG_RAY_NODE_NAME
 
-
 RAY = "ray-autoscaler"
 PASSWORD_MIN_LENGTH = 16
 RETRIES = 10
@@ -61,13 +60,13 @@ logger = logging.getLogger(__name__)
 def bootstrap_azure(config):
     config = _configure_resource_group(config)
     config = _configure_msi_user(config)
-    # config = _configure_service_principal(config)
     config = _configure_key_pair(config)
     config = _configure_network(config)
     config = _configure_nodes(config)
     return config
 
-def _get_client_from_cli_profile_with_subscription_id(client_class, config):
+
+def _get_client(client_class, config):
     kwargs = {}
     if "subscription_id" in config["provider"]:
         kwargs["subscription_id"] = config["provider"]["subscription_id"]
@@ -75,81 +74,21 @@ def _get_client_from_cli_profile_with_subscription_id(client_class, config):
     return get_client_from_cli_profile(client_class=client_class, **kwargs)
 
 
-def _configure_msi_user(config):
-    msi_client = _get_client_from_cli_profile_with_subscription_id(ManagedServiceIdentityClient, config)
-    resource_client = _get_client_from_cli_profile_with_subscription_id(ResourceManagementClient, config)
-    auth_client = _get_client_from_cli_profile_with_subscription_id(AuthorizationManagementClient, config)
-
-    resource_group = config["provider"]["resource_group"]
-    location = config["provider"]["location"]
-
-    logger.info("Creating MSI user assigned identity")
-
-    rg_id = resource_client.resource_groups.get(resource_group).id
-
-    identities = list(msi_client.user_assigned_identities.list_by_resource_group(resource_group))
-    if len(identities) > 0:
-        user_assigned_identity = identities[0]
-    else:
-        user_assigned_identity = msi_client.user_assigned_identities.create_or_update(
-            resource_group,
-            str(uuid.uuid4()), # Any name, just a human readable ID
-            location
-        )
-
-    config["provider"]["msi_identity_id"] = user_assigned_identity.id
-    config["provider"]["msi_identity_principal_id"] = user_assigned_identity.principal_id
-
-    def assign_role():
-        for _ in range(RETRIES):
-            try:
-                role = auth_client.role_definitions.list(
-                    rg_id, filter="roleName eq 'Contributor'").next()
-                role_params = {
-                    "role_definition_id": role.id,
-                    "principal_id": user_assigned_identity.principal_id
-                }
-
-                for assignment in auth_client.role_assignments.list_for_scope(
-                    rg_id, 
-                    filter="principalId eq '{principal_id}'".format(**role_params)):
-
-                    if (assignment.role_definition_id == role.id):
-                        return
-
-                auth_client.role_assignments.create(
-                    scope=rg_id,
-                    role_assignment_name=uuid.uuid4(),
-                    parameters=role_params)
-                logger.info("Creating contributor role assignment")
-                return
-            except CloudError as ce:
-                if str(ce.error).startswith("Azure Error: PrincipalNotFound"):
-                    time.sleep(3)
-                else:
-                    raise Exception("Failed to create contributor role assignment")
-
-            logger.info("Creating contributor role assignment")
-            auth_client.role_assignments.create(
-                scope=rg_id,
-                role_assignment_name=uuid.uuid4(),
-                parameters=role_params)
-            break
-
-    assign_role()
-    return config
-
-
 def _configure_resource_group(config):
     # TODO: look at availability sets
     # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
-    resource_client = _get_client_from_cli_profile_with_subscription_id(ResourceManagementClient, config)
+    resource_client = _get_client(ResourceManagementClient, config)
 
     subscription_id = resource_client.config.subscription_id
     logger.info("Using subscription id: %s", subscription_id)
     config["provider"]["subscription_id"] = subscription_id
 
+    assert "resource_group" in config["provider"], (
+        "Provider config must include resource_group field")
     resource_group = config["provider"]["resource_group"]
+
+    assert "location" in config["provider"], (
+        "Provider config must include location field")
     params = {"location": config["provider"]["location"]}
 
     if "tags" in config["provider"]:
@@ -159,6 +98,77 @@ def _configure_resource_group(config):
     resource_client.resource_groups.create_or_update(
         resource_group_name=resource_group, parameters=params)
 
+    return config
+
+
+def _configure_msi_user(config):
+    msi_client = _get_client(ManagedServiceIdentityClient, config)
+    resource_client = _get_client(ResourceManagementClient, config)
+    auth_client = _get_client(AuthorizationManagementClient, config)
+
+    resource_group = config["provider"]["resource_group"]
+    location = config["provider"]["location"]
+
+    logger.info("Creating MSI user assigned identity")
+
+    resource_group_id = resource_client.resource_groups.get(resource_group).id
+
+    identities = list(
+        msi_client.user_assigned_identities.list_by_resource_group(
+            resource_group))
+    if len(identities) > 0:
+        identity = identities[0]
+    else:
+        identity = msi_client.user_assigned_identities.create_or_update(
+            resource_group,
+            str(uuid.uuid4()),  # Any name, just a human readable ID
+            location)
+
+    identity_id = identity.id
+    principal_id = identity.principal_id
+    config["provider"]["msi_identity_id"] = identity_id
+    config["provider"]["msi_identity_principal_id"] = principal_id
+
+    def assign_role():
+        for _ in range(RETRIES):
+            try:
+                role_id = auth_client.role_definitions.list(
+                    resource_group_id,
+                    filter="roleName eq 'Contributor'").next().id
+                role_params = {
+                    "role_definition_id": role_id,
+                    "principal_id": principal_id
+                }
+
+                filter_expr = "principalId eq '{}'".format(principal_id)
+                assignments = auth_client.role_assignments.list_for_scope(
+                    resource_group_id, filter=filter_expr)
+
+                for assignment in assignments:
+                    if assignment.role_definition_id == role_id:
+                        return
+
+                auth_client.role_assignments.create(
+                    scope=resource_group_id,
+                    role_assignment_name=uuid.uuid4(),
+                    parameters=role_params)
+                logger.info("Creating contributor role assignment")
+                return
+            except CloudError as ce:
+                if str(ce.error).startswith("Azure Error: PrincipalNotFound"):
+                    time.sleep(3)
+                else:
+                    raise Exception(
+                        "Failed to create contributor role assignment")
+
+            logger.info("Creating contributor role assignment")
+            auth_client.role_assignments.create(
+                scope=resource_group_id,
+                role_assignment_name=uuid.uuid4(),
+                parameters=role_params)
+            break
+
+    assign_role()
     return config
 
 
@@ -213,7 +223,7 @@ def _configure_network(config):
 
     location = config["provider"]["location"]
     resource_group = config["provider"]["resource_group"]
-    network_client = _get_client_from_cli_profile_with_subscription_id(NetworkManagementClient, config)
+    network_client = _get_client(NetworkManagementClient, config)
 
     vnets = []
     for _ in range(RETRIES):
@@ -223,9 +233,7 @@ def _configure_network(config):
                     resource_group_name=resource_group,
                     filter="name eq '{}'".format(VNET_NAME)))
             break
-        except CloudError as ce:
-            # TODO: nested exception of other type?
-            # print("VNet {}".format(ce))
+        except CloudError:
             time.sleep(1)
         except AuthenticationError:
             # wait for service principal authorization to populate

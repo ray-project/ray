@@ -11,8 +11,7 @@ from azure.mgmt.compute.models import ResourceIdentityType
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
-
-INSTANCE_NAME_MAX_LEN = 15
+INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 4
 
 logger = logging.getLogger(__name__)
@@ -43,16 +42,20 @@ class AzureNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         try:
-            self.compute_client = get_client_from_cli_profile(ComputeManagementClient)
-            self.network_client = get_client_from_cli_profile(NetworkManagementClient)
+            self.compute_client = get_client_from_cli_profile(
+                ComputeManagementClient)
+            self.network_client = get_client_from_cli_profile(
+                NetworkManagementClient)
         except Exception as e:
             logger.info("Warning cli_profile failed. Trying MSI: {}".format(e))
 
             credentials = MSIAuthentication()
             subscription_id = provider_config["subscription_id"]
 
-            self.compute_client = ComputeManagementClient(credentials, subscription_id)
-            self.network_client = NetworkManagementClient(credentials, subscription_id)
+            self.compute_client = ComputeManagementClient(
+                credentials, subscription_id)
+            self.network_client = NetworkManagementClient(
+                credentials, subscription_id)
 
         self.lock = RLock()
 
@@ -175,7 +178,7 @@ class AzureNodeProvider(NodeProvider):
             try:
                 assert len(vm_name) <= INSTANCE_NAME_MAX_LEN
             except AssertionError as e:
-                e.args += ('name', vm_name)
+                e.args += ("name", vm_name)
                 raise
 
             # get public ip address
@@ -215,24 +218,17 @@ class AzureNodeProvider(NodeProvider):
 
             config["identity"] = {
                 "type": ResourceIdentityType.user_assigned,
-                "user_assigned_identities": [
-                    {
-                        # zero-documentation.. *sigh*
-                        "key": self.provider_config["msi_identity_id"],
-                        "value": {
-                            "principal_id": self.provider_config["msi_identity_principal_id"],
-                            "client_id": self.provider_config["msi_identity_id"]
-                        }
+                "user_assigned_identities": [{
+                    # zero-documentation.. *sigh*
+                    "key": self.provider_config["msi_identity_id"],
+                    "value": {
+                        "principal_id": self.provider_config[
+                            "msi_identity_principal_id"],
+                        "client_id": self.provider_config["msi_identity_id"]
                     }
-                   
-                ]
+                }]
             }
-            # according to example: https://github.com/Azure-Samples/compute-python-msi-vm
-            # FYI doesn't work :(
-            # config["identity_ids"] = [
-                #    self.provider_config["msi_identity_id"]
-                # ]
-            
+
             # TODO: do we need to wait or fire and forget is fine?
             self.compute_client.virtual_machines.create_or_update(
                 resource_group_name=self.provider_config["resource_group"],
