@@ -176,7 +176,7 @@ def build_eager_tf_policy(name,
                           after_init=None,
                           make_model=None,
                           action_sampler_fn=None,
-                          dist_class_and_inputs_fn=None,
+                          log_likelihood_fn=None,
                           mixins=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
@@ -209,12 +209,12 @@ def build_eager_tf_policy(name,
                 before_init(self, observation_space, action_space, config)
 
             self.config = config
+            self.dist_class = None
 
             if action_sampler_fn:
-                if not make_model or not dist_class_and_inputs_fn:
-                    raise ValueError(
-                        "`make_model` AND `dist_class_and_inputs_fn` are "
-                        "required if `action_sampler_fn` is given")
+                if not make_model:
+                    raise ValueError("`make_model` is required if "
+                                     "`action_sampler_fn` is given")
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"])
@@ -244,11 +244,6 @@ def build_eager_tf_policy(name,
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
             self.model(input_dict, self._state_in, tf.convert_to_tensor([1]))
-
-            if action_sampler_fn:
-                self.dist_class, _ = dist_class_and_inputs_fn(
-                    self, self.model, input_dict, self.observation_space,
-                    self.action_space, self.config)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -387,15 +382,18 @@ def build_eager_tf_policy(name,
                         prev_reward_batch),
                 })
 
-            if dist_class_and_inputs_fn:
-                _, dist_inputs = dist_class_and_inputs_fn(
-                    self, self.model, input_dict, self.observation_space,
-                    self.action_space, self.config)
+            # Custom log_likelihood function given.
+            if log_likelihood_fn:
+                log_likelihoods = log_likelihood_fn(
+                    self, self.model, actions, input_dict,
+                    self.observation_space, self.action_space, self.config)
+            # Default log-likelihood calculation.
             else:
-                dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+                dist_inputs, _ = self.model(
+                    input_dict, state_batches, seq_lens)
+                action_dist = self.dist_class(dist_inputs, self.model)
+                log_likelihoods = action_dist.logp(actions)
 
-            action_dist = self.dist_class(dist_inputs, self.model)
-            log_likelihoods = action_dist.logp(actions)
             return log_likelihoods
 
         @override(Policy)
