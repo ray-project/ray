@@ -313,9 +313,7 @@ class ParallelIterator(Generic[T]):
             actor_set.init_actors()
             all_actors.extend(actor_set.actors)
 
-        def base_iterator(num_partitions,
-                          partition_index,
-                          timeout=None):
+        def base_iterator(num_partitions, partition_index, timeout=None):
             futures = {}
             for a in all_actors:
                 futures[a.par_iter_slice.remote(
@@ -348,7 +346,8 @@ class ParallelIterator(Generic[T]):
         def make_gen_i(i):
             return lambda: base_iterator(num_partitions, i)
 
-        name = self.name + ".repartition[num_partitions={}]".format(num_partitions)
+        name = self.name + ".repartition[num_partitions={}]".format(
+            num_partitions)
 
         generators = [make_gen_i(s) for s in range(num_partitions)]
         worker_cls = ray.remote(ParallelIteratorWorker)
