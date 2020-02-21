@@ -46,7 +46,7 @@ class StochasticSampling(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_parameters,
+                               distribution_inputs,
                                action_dist_class,
                                model=None,
                                explore=True,
@@ -60,7 +60,7 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(distribution_parameters, model,
+        action_dist = action_dist_class(distribution_inputs, model,
                                         **kwargs)
 
         if self.framework == "torch":

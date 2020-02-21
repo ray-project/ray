@@ -88,27 +88,27 @@ def postprocess_trajectory(policy,
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
-def dist_class_and_parameters_fn(policy, model, input_dict, obs_space,
+def dist_class_and_inputs_fn(policy, model, input_dict, obs_space,
                                  action_space, config):
 
     model_out, _ = model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-    distribution_parameters = model.action_model(model_out)
+    distribution_inputs = model.action_model(model_out)
 
     return SquashedGaussian if policy.config["normalize_actions"] else \
-        DiagGaussian, distribution_parameters
+        DiagGaussian, distribution_inputs
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
                         explore, config, timestep):
-    dist_class, dist_parameters = dist_class_and_parameters_fn(
+    dist_class, dist_inputs = dist_class_and_inputs_fn(
         policy, model, input_dict, obs_space, action_space, config)
 
     policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
-            dist_parameters, dist_class, model, explore, timestep)
+            dist_inputs, dist_class, model, explore, timestep)
 
     return policy.output_actions, policy.sampled_action_logp
 
@@ -400,7 +400,7 @@ SACTFPolicy = build_tf_policy(
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
     action_sampler_fn=build_action_output,
-    dist_class_and_parameters_fn=dist_class_and_parameters_fn,
+    dist_class_and_inputs_fn=dist_class_and_inputs_fn,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     gradients_fn=gradients,

@@ -31,13 +31,13 @@ class Random(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_parameters,
+                               distribution_inputs,
                                action_dist_class,
                                model=None,
                                explore=True,
                                timestep=None):
         # Instantiate the distribution object.
-        action_dist = action_dist_class(distribution_parameters, model)
+        action_dist = action_dist_class(distribution_inputs, model)
 
         if self.framework == "tf":
             return self._get_tf_exploration_action_op(action_dist, explore,

@@ -63,17 +63,17 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_parameters,
+                               distribution_inputs,
                                action_dist_class=None,
                                model=None,
                                explore=True,
                                timestep=None):
 
         if self.framework == "tf":
-            return self._get_tf_exploration_action_op(distribution_parameters,
+            return self._get_tf_exploration_action_op(distribution_inputs,
                                                       explore, timestep)
         else:
-            return self._get_torch_exploration_action(distribution_parameters,
+            return self._get_torch_exploration_action(distribution_inputs,
                                                       explore, timestep)
 
     def _get_tf_exploration_action_op(self, q_values, explore, timestep):

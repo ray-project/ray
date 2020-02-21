@@ -60,8 +60,8 @@ class TFPolicy(Policy):
                  model=None,
                  sampled_action_logp=None,
                  action_input=None,
-                 action_dist_class=None,
-                 action_dist_parameters=None,
+                 log_likelihood=None,
+                 #action_dist_inputs=None,
                  state_inputs=None,
                  state_outputs=None,
                  prev_action_input=None,
@@ -96,11 +96,13 @@ class TFPolicy(Policy):
                 action.
             action_input (Optional[Tensor]): Input placeholder for actions for
                 logp/log-likelihood calculations.
-            action_dist_class (Optional[class]): An optional action
-                distribution class to be used for aciton log-likelihood
-                calculations.
-            action_dist_parameters (Optional[Tensor]): An optional placeholder
-                for action log-likelihood calculations.
+            log_likelihood (Optional[Tensor]): Tensor to calculate the
+                log_likelihood (given action_input and obs_input).
+            #action_dist_class (Optional[class]): An optional action
+            #    distribution class to be used for action log-likelihood
+            #    calculations.
+            action_dist_inputs (Optional[Tensor]): An optional placeholder
+                for action distribution inputs (parameterization of the dist).
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
@@ -135,8 +137,8 @@ class TFPolicy(Policy):
                                      if self._sampled_action_logp is not None
                                      else None)
         self._action_input = action_input  # For logp calculations.
-        self._action_dist_class = action_dist_class
-        self._action_dist_parameters = action_dist_parameters
+        self._log_likelihood = log_likelihood
+        #self._action_dist_inputs = action_dist_inputs
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
@@ -168,11 +170,11 @@ class TFPolicy(Policy):
                 "seq_lens tensor must be given if state inputs are defined")
 
         # Generate the log-likelihood calculator.
-        self._log_likelihood = None
-        if self._action_dist_class:
-            self._log_likelihood = self._action_dist_class(
-                self._action_dist_parameters,
-                self.model).logp(self._action_input)
+        self._log_likelihood = log_likelihood
+        #if self._action_dist_class:
+        #    self._log_likelihood = self._action_dist_class(
+        #        self._action_dist_inputs,
+        #        self.model).logp(self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""

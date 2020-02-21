@@ -31,7 +31,7 @@ class Exploration:
         self.framework = check_framework(framework)
 
     def get_exploration_action(self,
-                               distribution_parameters,
+                               distribution_inputs,
                                action_dist_class,
                                model=None,
                                explore=True,
@@ -42,7 +42,7 @@ class Exploration:
         exploratory action.
 
         Args:
-            distribution_parameters (any): The output coming from the model,
+            distribution_inputs (any): The output coming from the model,
                 ready for parameterizing a distribution
                 (e.g. q-values or PG-logits).
             action_dist_class (class): The action distribution class
