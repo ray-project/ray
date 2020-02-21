@@ -69,14 +69,14 @@ public class MsgPackSerializer {
   public Object deserialize(byte[] bytes) {
     try {
       MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(bytes);
-      return convert(unpacker.unpackValue());
+      return deserialize(unpacker.unpackValue());
     } catch (Exception e) {
       String hex = BaseEncoding.base16().lowerCase().encode(bytes);
       throw new RuntimeException("Deserialize error: " + hex, e);
     }
   }
 
-  private Object convert(Value value) {
+  private Object deserialize(Value value) {
     switch (value.getValueType()) {
       case NIL:
         return null;
@@ -102,14 +102,14 @@ public class MsgPackSerializer {
         ArrayValue arrayValue = value.asArrayValue();
         List<Object> list = new ArrayList<>(arrayValue.size());
         for (Value elem : arrayValue) {
-          list.add(convert(elem));
+          list.add(deserialize(elem));
         }
         return list;
       case MAP:
         MapValue mapValue = value.asMapValue();
         Map<Object, Object> map = new HashMap<>();
         for (Map.Entry<Value, Value> entry : mapValue.entrySet()) {
-          map.put(convert(entry.getKey()), convert(entry.getValue()));
+          map.put(deserialize(entry.getKey()), deserialize(entry.getValue()));
         }
         return map;
       default:
