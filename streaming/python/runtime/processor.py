@@ -98,7 +98,7 @@ class TwoInputProcessor(StreamingProcessor):
 
 
 def build_processor(operator_instance):
-    """Create processor for operator"""
+    """Create a processor for the given operator."""
     operator_type = operator_instance.operator_type()
     logger.info(
         "Building StreamProcessor, operator type = {}, operator = {}.".format(
