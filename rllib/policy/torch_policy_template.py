@@ -4,6 +4,9 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -97,8 +100,12 @@ def build_torch_policy(name,
                                    episode=None):
             if not postprocess_fn:
                 return sample_batch
-            return postprocess_fn(self, sample_batch, other_agent_batches,
-                                  episode)
+
+            # Do all post-processing always with no_grad().
+            # Not using this here will introduce a memory leak (issue #6962).
+            with torch.no_grad():
+                return postprocess_fn(self, sample_batch, other_agent_batches,
+                                      episode)
 
         @override(TorchPolicy)
         def extra_grad_process(self):

@@ -209,22 +209,18 @@ class ValueNetworkMixin:
         if config["use_gae"]:
 
             def value(ob, prev_action, prev_reward, *state):
-                # Do all post-processing always with no_grad().
-                # Not using this here will introduce a memory leak
-                # (issue #6962).
-                with torch.no_grad():
-                    model_out, _ = self.model({
-                        SampleBatch.CUR_OBS: torch.Tensor([ob]).to(
-                            self.device),
-                        SampleBatch.PREV_ACTIONS: torch.Tensor(
-                            [prev_action]).to(self.device),
-                        SampleBatch.PREV_REWARDS: torch.Tensor(
-                            [prev_reward]).to(self.device),
-                        "is_training": False,
-                    }, [torch.Tensor([s]).to(self.device) for s in state],
-                                              torch.Tensor([1]).to(
-                                                  self.device))
-                    return self.model.value_function()[0]
+                model_out, _ = self.model({
+                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(
+                        self.device),
+                    SampleBatch.PREV_ACTIONS: torch.Tensor(
+                        [prev_action]).to(self.device),
+                    SampleBatch.PREV_REWARDS: torch.Tensor(
+                        [prev_reward]).to(self.device),
+                    "is_training": False,
+                }, [torch.Tensor([s]).to(self.device) for s in state],
+                                          torch.Tensor([1]).to(
+                                              self.device))
+                return self.model.value_function()[0]
 
         else:
 
