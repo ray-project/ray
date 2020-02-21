@@ -23,9 +23,9 @@ def training_pipeline(workers, config):
 
     # Alternate between (1) and (2). We set deterministic=True so that we
     # always execute one train step per replay buffer update.
-    train_op = InterleavedExecution([save_op, replay_op], deterministic=True)
+    combined = InterleavedExecution([save_op, replay_op], deterministic=True)
 
-    return StandardMetricsReporting(train_op, workers, config)
+    return StandardMetricsReporting(combined, workers, config)
 
 
 DQNPipeline = DQNTrainer.with_updates(training_pipeline=training_pipeline)
