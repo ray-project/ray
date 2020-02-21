@@ -1,7 +1,7 @@
 #include "invocation_executor.h"
+#include "../../agent.h"
 #include "../../util/blob_util.h"
 #include "../ray_runtime.h"
-#include "../../agent.h"
 
 namespace ray {
 

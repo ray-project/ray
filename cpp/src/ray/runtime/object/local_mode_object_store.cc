@@ -1,16 +1,16 @@
 
-#include <iostream>
 #include <algorithm>
-#include<chrono>
-#include<thread>
+#include <chrono>
+#include <iostream>
+#include <thread>
 
-#include "local_mode_object_store.h"
 #include "../../util/blob_util.h"
+#include "local_mode_object_store.h"
 
 namespace ray {
 
 void LocalModeObjectStore::putRaw(const UniqueId &objectId,
-                              std::vector< ::ray::blob> &&data) {
+                                  std::vector< ::ray::blob> &&data) {
   _dataMutex.lock();
   if (_data.find(objectId) != _data.end()) {
     // TODO: throw an exception
@@ -23,7 +23,7 @@ void LocalModeObjectStore::putRaw(const UniqueId &objectId,
 void LocalModeObjectStore::del(const UniqueId &objectId) {}
 
 del_unique_ptr< ::ray::blob> LocalModeObjectStore::getRaw(const UniqueId &objectId,
-                                                      int timeoutMs) {
+                                                          int timeoutMs) {
   waitInternal(&objectId, 1, 1, -1);
 
   ::ray::blob *ret = nullptr;
@@ -43,15 +43,15 @@ del_unique_ptr< ::ray::blob> LocalModeObjectStore::getRaw(const UniqueId &object
 }
 
 void LocalModeObjectStore::waitInternal(const UniqueId *ids, int count, int minNumReturns,
-                                     int timeoutMs) {
+                                        int timeoutMs) {
   static const int GET_CHECK_INTERVAL_MS = 100;
   int ready = 0;
   int remainingTime = timeoutMs;
   bool firstCheck = true;
   while (ready < minNumReturns && (timeoutMs < 0 || remainingTime > 0)) {
     if (!firstCheck) {
-      long sleepTime =
-          timeoutMs < 0 ? GET_CHECK_INTERVAL_MS : std::min(remainingTime, GET_CHECK_INTERVAL_MS);
+      long sleepTime = timeoutMs < 0 ? GET_CHECK_INTERVAL_MS
+                                     : std::min(remainingTime, GET_CHECK_INTERVAL_MS);
       std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
       remainingTime -= sleepTime;
     }
@@ -62,15 +62,14 @@ void LocalModeObjectStore::waitInternal(const UniqueId *ids, int count, int minN
       if (_data.find(uid) != _data.end()) {
         ready += 1;
       }
-       _dataMutex.unlock();
+      _dataMutex.unlock();
     }
     firstCheck = false;
   }
 }
 
 WaitResult LocalModeObjectStore::wait(const UniqueId *ids, int count, int minNumReturns,
-                                     int timeoutMs) {
-
+                                      int timeoutMs) {
   return WaitResult();
 }
 }  // namespace ray

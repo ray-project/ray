@@ -6,8 +6,7 @@
 namespace ray {
 
 std::unique_ptr<UniqueId> TaskExcuter::execute(const InvocationSpec &invocation) {
-      std::unique_ptr<UniqueId> dummy(new UniqueId());
+  std::unique_ptr<UniqueId> dummy(new UniqueId());
   return dummy;
-
 };
 }  // namespace ray

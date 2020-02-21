@@ -6,9 +6,9 @@
 #include <ray/api.h>
 #include <ray/api/ray_mode.h>
 #include "../agent.h"
-#include "task/invocation_executor.h"
 #include "ray_dev_runtime.h"
 #include "ray_native_runtime.h"
+#include "task/invocation_executor.h"
 
 namespace ray {
 
@@ -55,7 +55,7 @@ std::unique_ptr<UniqueId> RayRuntime::put(std::vector< ::ray::blob> &&data) {
 }
 
 del_unique_ptr< ::ray::blob> RayRuntime::get(const UniqueId &objectId) {
-  return  _objectStore->get(objectId, 0);
+  return _objectStore->get(objectId, 0);
 }
 
 std::unique_ptr<UniqueId> RayRuntime::call(remote_function_ptr_holder &fptr,

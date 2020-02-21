@@ -1,8 +1,8 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
-#include <thread> 
-#include <chrono> 
+#include <chrono>
+#include <thread>
 
 using namespace ray;
 
@@ -14,7 +14,7 @@ int slow_function(int i) {
 TEST(ray_slow_function_case, base_test) {
   Ray::init();
   auto time1 = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::system_clock::now().time_since_epoch());
+      std::chrono::system_clock::now().time_since_epoch());
   auto r0 = Ray::call(slow_function, 1);
   auto r1 = Ray::call(slow_function, 2);
   auto r2 = Ray::call(slow_function, 3);
@@ -25,7 +25,7 @@ TEST(ray_slow_function_case, base_test) {
   int result2 = *(r2.get());
   int result3 = *(r3.get());
   auto time2 = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::system_clock::now().time_since_epoch());
+      std::chrono::system_clock::now().time_since_epoch());
 
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 2);
@@ -33,9 +33,4 @@ TEST(ray_slow_function_case, base_test) {
   EXPECT_EQ(result3, 4);
 
   EXPECT_LT(time2.count() - time1.count(), 4100);
-
-
-
-
 }
-

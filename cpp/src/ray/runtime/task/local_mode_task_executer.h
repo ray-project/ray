@@ -7,9 +7,7 @@
 namespace ray {
 
 class LocalModeTaskExcuter : public TaskExcuter {
-
  public:
-   std::unique_ptr<UniqueId> execute(const InvocationSpec &invocation);
-
+  std::unique_ptr<UniqueId> execute(const InvocationSpec &invocation);
 };
 }  // namespace ray

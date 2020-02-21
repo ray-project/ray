@@ -5,6 +5,5 @@
 
 namespace ray {
 
-TaskSubmitter::TaskSubmitter() {
-};
+TaskSubmitter::TaskSubmitter(){};
 }  // namespace ray

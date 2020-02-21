@@ -4,16 +4,10 @@
 
 using namespace ray;
 
-int foo0() {
-  return 1;
-}
-int foo(int x) {
-  return x + 1;
-}
+int foo0() { return 1; }
+int foo(int x) { return x + 1; }
 
-int bar(int x, int y) {
-  return x + y;
-}
+int bar(int x, int y) { return x + y; }
 
 class Foo {
  public:
@@ -26,26 +20,18 @@ class Foo {
     return foo;
   }
 
-  int foo(int x) {
-    return x + 1;
-  }
+  int foo(int x) { return x + 1; }
 
-  int bar(int x, int y) {
-    return x + y;
-  }
+  int bar(int x, int y) { return x + y; }
 
   int add(int x) {
     count += x;
     return count;
   }
 
-  static int foo_s(int x) {
-    return x + 1;
-  }
+  static int foo_s(int x) { return x + 1; }
 
-  static int bar_s(int x, int y) {
-    return x + y;
-  }
+  static int bar_s(int x, int y) { return x + y; }
 };
 
 namespace ray {

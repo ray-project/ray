@@ -21,9 +21,7 @@ typedef struct WaitResult_s {
 
 class ObjectStore {
  private:
-
  public:
-
   void put(const UniqueId &objectId, std::vector< ::ray::blob> &&data);
 
   del_unique_ptr< ::ray::blob> get(const UniqueId &objectId,
@@ -33,9 +31,11 @@ class ObjectStore {
 
   virtual void del(const UniqueId &objectId) = 0;
 
-  virtual del_unique_ptr< ::ray::blob> getRaw(const UniqueId &objectId, int timeoutMs) = 0;
+  virtual del_unique_ptr< ::ray::blob> getRaw(const UniqueId &objectId,
+                                              int timeoutMs) = 0;
 
-  virtual WaitResult wait(const UniqueId *ids, int count, int minNumReturns, int timeoutMs) = 0;
+  virtual WaitResult wait(const UniqueId *ids, int count, int minNumReturns,
+                          int timeoutMs) = 0;
 
   virtual ~ObjectStore(){};
 };

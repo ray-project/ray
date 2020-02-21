@@ -29,14 +29,8 @@ int main() {
   int result3 = *(r3.get());
   int result4 = *(r4.get());
 
-  std::cout << "Ray::call with value results: " 
-            << result0 << " "
-            << result1 << " "
-            << result2 << " "
-            << result3 << " "
-            << result4 << " "
-            << std::endl;
-
+  std::cout << "Ray::call with value results: " << result0 << " " << result1 << " "
+            << result2 << " " << result3 << " " << result4 << " " << std::endl;
 
   auto rt0 = Ray::call(foo0);
   auto rt1 = Ray::call(foo, rt0);
@@ -50,13 +44,8 @@ int main() {
   int return3 = *(rt3.get());
   int return4 = *(rt4.get());
 
-  std::cout << "Ray::call with reference results: " 
-       << return0 << " "
-       << return1 << " "
-       << return2 << " "
-       << return3 << " "
-       << return4 << " "
-       << std::endl;
+  std::cout << "Ray::call with reference results: " << return0 << " " << return1 << " "
+            << return2 << " " << return3 << " " << return4 << " " << std::endl;
 
   RayActor<Foo> fobj = Ray::create(Foo::create);
   auto rt5 = Ray::call(&Foo::foo, fobj, 1);
@@ -73,12 +62,7 @@ int main() {
   int return9 = *(rt9.get());
   int return10 = *(rt10.get());
 
-  std::cout << "Ray::call with actor results: " 
-       << return5 << " "
-       << return6 << " "
-       << return7 << " "
-       << return8 << " "
-       << return9 << " "
-       << return10 << " "
-       << std::endl;
+  std::cout << "Ray::call with actor results: " << return5 << " " << return6 << " "
+            << return7 << " " << return8 << " " << return9 << " " << return10 << " "
+            << std::endl;
 }

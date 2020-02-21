@@ -17,8 +17,7 @@ class LocalModeObjectStore : public ObjectStore {
 
   std::mutex _dataMutex;
 
-  void waitInternal(const UniqueId *ids, int count, int minNumReturns,
-                                     int timeoutMs);
+  void waitInternal(const UniqueId *ids, int count, int minNumReturns, int timeoutMs);
 
  public:
   void putRaw(const UniqueId &objectId, std::vector< ::ray::blob> &&data);

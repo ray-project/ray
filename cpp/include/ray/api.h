@@ -1,8 +1,8 @@
 
 #pragma once
 
+#include <iostream>
 #include <memory>
-#include <iostream> 
 
 #include "api/blob.h"
 #include "api/impl/function_argument.h"

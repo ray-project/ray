@@ -7,17 +7,14 @@
 namespace ray {
 
 class ActorContext {
-  public:
-    std::unique_ptr<::ray::blob> currentActor = NULL;
+ public:
+  std::unique_ptr<::ray::blob> currentActor = NULL;
 
-    ActorContext() {
-    }
- };
+  ActorContext() {}
+};
 
 class TaskExcuter {
-
  public:
-
   /// TODO: support multiple tasks execution
   std::unique_ptr<UniqueId> execute(const InvocationSpec &invocation);
 

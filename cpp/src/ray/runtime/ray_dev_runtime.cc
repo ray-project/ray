@@ -3,10 +3,10 @@
 
 #include <ray/api.h>
 #include "../agent.h"
-#include "./object/object_store.h"
-#include "./object/local_mode_object_store.h"
-#include "./task/local_mode_task_submitter.h"
 #include "../util/blob_util.h"
+#include "./object/local_mode_object_store.h"
+#include "./object/object_store.h"
+#include "./task/local_mode_task_submitter.h"
 
 namespace ray {
 

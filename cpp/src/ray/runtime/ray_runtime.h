@@ -7,10 +7,10 @@
 #include <ray/api/ray_api.h>
 #include <ray/api/ray_config.h>
 #include <ray/util/type_util.h>
-#include "./object/object_store.h"
-#include "./task/task_submitter.h"
-#include "./task/task_executer.h"
 #include "./context/worker_context.h"
+#include "./object/object_store.h"
+#include "./task/task_executer.h"
+#include "./task/task_submitter.h"
 
 namespace ray {
 
@@ -18,7 +18,6 @@ class RayRuntime : public RayApi {
   friend class Ray;
 
  private:
-
  protected:
   static std::unique_ptr<RayRuntime> _ins;
   static std::once_flag isInited;
