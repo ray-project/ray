@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.ray.api.id.UniqueId;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 
