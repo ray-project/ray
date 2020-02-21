@@ -422,7 +422,7 @@ Status CoreWorker::Put(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  return Status::OK();
+  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -481,8 +481,10 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   auto start_time = current_time_ms();
 
   if (!memory_object_ids.empty()) {
+    RAY_LOG(ERROR) << "doing in-memory get";
     RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
                                          &result_map, &got_exception));
+    RAY_LOG(ERROR) << "in-memory get done";
   }
 
   if (!got_exception) {
@@ -491,7 +493,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     // the transport type again and return them for the original direct call ids.
     for (const auto &pair : result_map) {
       if (pair.second->IsInPlasmaError()) {
-        RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
+        RAY_LOG(ERROR) << pair.first << " in plasma, doing fetch-and-get";
         plasma_object_ids.insert(pair.first);
       }
     }
