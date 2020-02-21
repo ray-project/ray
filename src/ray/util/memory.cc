@@ -1,5 +1,6 @@
 #include "ray/util/memory.h"
 
+#include <cstring>
 #include <thread>
 #include <vector>
 
@@ -32,12 +33,12 @@ void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
 
   // Start all threads first and handle leftovers while threads run.
   for (int i = 0; i < num_threads; i++) {
-    threadpool[i] = std::thread(memcpy, dst + prefix + i * chunk_size,
+    threadpool[i] = std::thread(std::memcpy, dst + prefix + i * chunk_size,
                                 left + i * chunk_size, chunk_size);
   }
 
-  memcpy(dst, src, prefix);
-  memcpy(dst + prefix + num_threads * chunk_size, right, suffix);
+  std::memcpy(dst, src, prefix);
+  std::memcpy(dst + prefix + num_threads * chunk_size, right, suffix);
 
   for (auto &t : threadpool) {
     if (t.joinable()) {
