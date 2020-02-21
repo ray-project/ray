@@ -99,7 +99,6 @@ py_test(
     srcs = ["agents/impala/tests/test_vtrace.py"]
 )
 
-
 # --------------------------------------------------------------------
 # contrib Agents
 # --------------------------------------------------------------------
@@ -1028,7 +1027,7 @@ py_test(
 
 
 py_test(
-    name = "autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    name = "examples/autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
