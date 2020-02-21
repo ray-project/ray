@@ -89,6 +89,8 @@ def _configure_msi_user(config):
 
     logger.info("Creating MSI user assigned identity")
 
+    rg_id = resource_client.resource_groups.get(resource_group).id
+
     identities = list(msi_client.user_assigned_identities.list_by_resource_group(resource_group))
     if len(identities) > 0:
         user_assigned_identity = identities[0]
@@ -105,7 +107,6 @@ def _configure_msi_user(config):
     def assign_role():
         for _ in range(RETRIES):
             try:
-
                 role = auth_client.role_definitions.list(
                     rg_id, filter="roleName eq 'Contributor'").next()
                 role_params = {
