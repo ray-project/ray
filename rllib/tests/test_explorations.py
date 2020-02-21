@@ -31,14 +31,16 @@ def test_explorations(run,
                         impala.ImpalaTrainer, sac.SACTrainer]:
             continue
         print("Testing {} in framework={}".format(run, fw))
-        config["eager"] = True if fw == "eager" else False
-        config["use_pytorch"] = True if fw == "torch" else False
+        config["eager"] = (fw == "eager")
+        config["use_pytorch"] = (fw == "torch")
 
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
         for exploration in [None, "Random"]:
             if exploration == "Random":
-                if env == "Pendulum-v0":
+                # TODO(sven): Random doesn't work for cont. action spaces
+                #  or IMPALA yet.
+                if env == "Pendulum-v0" or run is impala.ImpalaTrainer:
                     continue
                 config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
