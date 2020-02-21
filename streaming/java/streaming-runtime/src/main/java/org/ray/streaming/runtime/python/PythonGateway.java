@@ -55,7 +55,7 @@ public class PythonGateway {
       Map<String, String> config = (Map<String, String>) serializer.deserialize(confBytes);
       LOG.info("Set config {}", config);
       streamingContext.withConfig(config);
-      // We can't using `return void`, that will make `ray.get()` hang forever.
+      // We can't use `return void`, that will make `ray.get()` hang forever.
       // We can't using `return new byte[0]`, that will make `ray::CoreWorker::ExecuteTask` crash.
       // So we `return new byte[1]` for method execution success.
       // Same for other methods in this class which return new byte[1].
