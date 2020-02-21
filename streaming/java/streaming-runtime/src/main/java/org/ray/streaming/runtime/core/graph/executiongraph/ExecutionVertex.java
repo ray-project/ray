@@ -12,6 +12,7 @@ import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.resource.Slot;
+import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
@@ -38,21 +39,17 @@ public class ExecutionVertex implements Serializable {
    */
   private final Map<String, Double> resources;
 
-  private final Map<String, String> jobConfig;
-
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private Slot slot;
   private RayActor<JobWorker> workerActor;
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
 
-  public ExecutionVertex(int jobVertexId, int index, ExecutionJobVertex executionJobVertex,
-      Map<String, String> jobConfig) {
+  public ExecutionVertex(int jobVertexId, int index, ExecutionJobVertex executionJobVertex) {
     this.vertexId = generateExecutionVertexId(jobVertexId, index);
     this.vertexIndex = index;
     this.vertexName = executionJobVertex.getJobVertexName() + "-" + vertexIndex;
-    this.resources = generateResources();
-    this.jobConfig = jobConfig;
+    this.resources = generateResources(executionJobVertex.getRuntimeContext());
   }
 
   private int generateExecutionVertexId(int jobVertexId, int index) {
@@ -139,9 +136,9 @@ public class ExecutionVertex implements Serializable {
     }
   }
 
-  private Map<String, Double> generateResources() {
+  private Map<String, Double> generateResources(JobRuntimeContext runtimeContext) {
     Map<String, Double> resourceMap = new HashMap<>();
-    ResourceConfig resourceConfig = ConfigCache.getOrCreate(ResourceConfig.class, jobConfig);
+    ResourceConfig resourceConfig = runtimeContext.getConf().masterConfig.resourceConfig;
     if (resourceConfig.isTaskCpuResourceLimit()) {
       resourceMap.put(ResourceConfig.RESOURCE_KEY_CPU, resourceConfig.taskCpuResource());
     }
