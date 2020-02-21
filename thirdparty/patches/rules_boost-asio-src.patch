@@ -1,0 +1,20 @@
+diff --git BUILD.boost BUILD.boost
+--- BUILD.boost
++++ BUILD.boost
+@@ -305,7 +305,13 @@ boost_library(
+ boost_library(
+     name = "asio",
++    srcs = [
++        "boost/asio/impl/src.cpp",
++        "boost/asio/impl/src.hpp",
++    ],
+-    defines = select({
++    defines = [
++        "BOOST_ASIO_SEPARATE_COMPILATION",
++    ] + select({
+         ":osx_x86_64": [
+             "BOOST_ASIO_DISABLE_STD_EXPERIMENTAL_STRING_VIEW",
+         ],
+         "//conditions:default": [],
+     }),
+--

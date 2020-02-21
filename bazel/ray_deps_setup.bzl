@@ -133,6 +133,7 @@ def ray_deps_setup():
         remote = "https://github.com/nelhage/rules_boost",
         sha256 = "3775c5ab217e0c9cc380f56e243a4d75fe6fee8eaee1447899eaa04c5d582cf1",
         patches = [
+            "//thirdparty/patches:rules_boost-asio-src.patch",
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
             "//thirdparty/patches:rules_boost-windows-linkopts.patch",
         ],
