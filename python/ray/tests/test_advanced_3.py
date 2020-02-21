@@ -151,14 +151,13 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_unique_id_hex = ray.UniqueID.nil().hex()
     nil_actor_id_hex = ray.ActorID.nil().hex()
 
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_actor_id_hex
     assert task_spec["Args"] == []
     assert task_spec["JobID"] == job_id.hex()
-    assert task_spec["FunctionID"] == nil_unique_id_hex
+    assert task_spec["FunctionDescriptor"]["type"] == "EmptyFunctionDescriptor"
     assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.nodes()
@@ -172,7 +171,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    _ = Actor.remote()
+    _ = Actor.remote()  # noqa: F841
     # Wait for actor to be created
     wait_for_num_actors(1)
 

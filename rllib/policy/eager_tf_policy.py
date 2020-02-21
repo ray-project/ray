@@ -113,6 +113,8 @@ def traced_eager_policy(eager_policy_cls):
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            explore=None,
+                            timestep=None,
                             **kwargs):
 
             obs_batch = tf.convert_to_tensor(obs_batch)
@@ -127,7 +129,7 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, **kwargs)
+                info_batch, episodes, explore, timestep, **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
@@ -193,6 +195,7 @@ def build_eager_tf_policy(name,
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
+            self.framework = "tf"
             Policy.__init__(self, observation_space, action_space, config)
             self._is_training = False
             self._loss_initialized = False
@@ -227,16 +230,18 @@ def build_eager_tf_policy(name,
                     framework="tf",
                 )
 
+            self._state_in = [
+                tf.convert_to_tensor(np.array([s]))
+                for s in self.model.get_initial_state()
+            ]
+
             self.model({
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
                 SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
                     [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
-            }, [
-                tf.convert_to_tensor(np.array([s]))
-                for s in self.model.get_initial_state()
-            ], tf.convert_to_tensor([1]))
+            }, self._state_in, tf.convert_to_tensor([1]))
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -292,7 +297,12 @@ def build_eager_tf_policy(name,
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            explore=None,
+                            timestep=None,
                             **kwargs):
+
+            explore = explore if explore is not None else \
+                self.config["explore"]
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
@@ -303,7 +313,7 @@ def build_eager_tf_policy(name,
             else:
                 n = obs_batch.shape[0]
 
-            seq_lens = tf.ones(n)
+            seq_lens = tf.ones(n, dtype=tf.int32)
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
@@ -320,24 +330,34 @@ def build_eager_tf_policy(name,
                 model_out, state_out = self.model(input_dict, state_batches,
                                                   seq_lens)
 
-            if self.dist_class:
-                action_dist = self.dist_class(model_out, self.model)
-                action = action_dist.sample()
-                logp = action_dist.sampled_action_logp()
-            else:
+            # Custom sampler fn given (which may handle self.exploration).
+            if action_sampler_fn is not None:
                 action, logp = action_sampler_fn(
                     self, self.model, input_dict, self.observation_space,
-                    self.action_space, self.config)
+                    self.action_space, explore, self.config, timestep)
+            # Use Exploration object.
+            else:
+                action, logp = self.exploration.get_exploration_action(
+                    model_out,
+                    self.model,
+                    action_dist_class=self.dist_class,
+                    explore=explore,
+                    timestep=timestep
+                    if timestep is not None else self.global_timestep)
 
-            fetches = {}
+            extra_fetches = {}
             if logp is not None:
-                fetches.update({
+                extra_fetches.update({
                     ACTION_PROB: tf.exp(logp),
                     ACTION_LOGP: logp,
                 })
             if extra_action_fetches_fn:
-                fetches.update(extra_action_fetches_fn(self))
-            return action, state_out, fetches
+                extra_fetches.update(extra_action_fetches_fn(self))
+
+            # Increase our global sampling timestep counter by 1.
+            self.global_timestep += 1
+
+            return action, state_out, extra_fetches
 
         @override(Policy)
         def apply_gradients(self, gradients):
@@ -362,12 +382,17 @@ def build_eager_tf_policy(name,
             """Return the list of all savable variables for this policy."""
             return self.model.variables()
 
+        @override(Policy)
         def is_recurrent(self):
             return len(self._state_in) > 0
 
         @override(Policy)
         def num_state_tensors(self):
             return len(self._state_in)
+
+        @override(Policy)
+        def get_initial_state(self):
+            return self.model.get_initial_state()
 
         def get_session(self):
             return None  # None implies eager
@@ -404,9 +429,18 @@ def build_eager_tf_policy(name,
             self._is_training = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
-                # TODO: set seq len and state in properly
-                self._seq_lens = tf.ones(samples[SampleBatch.CUR_OBS].shape[0])
-                self._state_in = []
+                # TODO: set seq len and state-in properly
+                state_in = []
+                for i in range(self.num_state_tensors()):
+                    state_in.append(samples["state_in_{}".format(i)])
+                self._state_in = state_in
+
+                self._seq_lens = None
+                if len(state_in) > 0:
+                    self._seq_lens = tf.ones(
+                        samples[SampleBatch.CUR_OBS].shape[0], dtype=tf.int32)
+                    samples["seq_lens"] = self._seq_lens
+
                 model_out, _ = self.model(samples, self._state_in,
                                           self._seq_lens)
                 loss = loss_fn(self, self.model, self.dist_class, samples)
@@ -481,20 +515,15 @@ def build_eager_tf_policy(name,
                     SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
                     SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
                 })
-            state_init = self.get_initial_state()
-            state_batches = []
-            for i, h in enumerate(state_init):
-                dummy_batch["state_in_{}".format(i)] = tf.convert_to_tensor(
-                    np.expand_dims(h, 0))
-                dummy_batch["state_out_{}".format(i)] = tf.convert_to_tensor(
-                    np.expand_dims(h, 0))
-                state_batches.append(
-                    tf.convert_to_tensor(np.expand_dims(h, 0)))
-            if state_init:
+            for i, h in enumerate(self._state_in):
+                dummy_batch["state_in_{}".format(i)] = h
+                dummy_batch["state_out_{}".format(i)] = h
+
+            if self._state_in:
                 dummy_batch["seq_lens"] = tf.convert_to_tensor(
                     np.array([1], dtype=np.int32))
 
-            # for IMPALA which expects a certain sample batch size
+            # for IMPALA which expects a certain sample batch size.
             def tile_to(tensor, n):
                 return tf.tile(tensor,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])
@@ -508,7 +537,7 @@ def build_eager_tf_policy(name,
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
             _, _, fetches = self.compute_actions(
-                dummy_batch[SampleBatch.CUR_OBS], state_batches,
+                dummy_batch[SampleBatch.CUR_OBS], self._state_in,
                 dummy_batch.get(SampleBatch.PREV_ACTIONS),
                 dummy_batch.get(SampleBatch.PREV_REWARDS))
             dummy_batch.update(fetches)

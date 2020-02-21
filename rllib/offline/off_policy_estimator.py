@@ -57,6 +57,11 @@ class OffPolicyEstimator:
             if k.startswith("state_in_"):
                 num_state_inputs += 1
         state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+
+        # TODO(sven): This is wrong. The info["action_prob"] needs to refer
+        #  to the old action (from the batch). It might be the action-prob of
+        #  a different action (as the policy has changed).
+        #  https://github.com/ray-project/ray/issues/7107
         _, _, info = self.policy.compute_actions(
             obs_batch=batch["obs"],
             state_batches=[batch[k] for k in state_keys],

@@ -156,7 +156,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     std::vector<rpc::GcsNodeInfo> nodes;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
         [&nodes, &promise](Status status, const std::vector<rpc::GcsNodeInfo> &result) {
-          assert(result);
+          assert(!result.empty());
           nodes.assign(result.begin(), result.end());
           promise.set_value(status.ok());
         }));

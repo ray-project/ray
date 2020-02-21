@@ -237,12 +237,8 @@ scripts. Some of the examples include:
     * ``bazel test --build_tests_only //:all``
 
 * Ray serving test commands:
-    * ``python -m pytest python/ray/experimental/serve/tests``
-    * ``python python/ray/experimental/serve/examples/echo_full.py``
-
-* Ray test commands:
-    * ``python/ray/experimental/test/async_test.py``
-    * ``python/ray/tests/py3_test.py``
+    * ``python -m pytest python/ray/serve/tests``
+    * ``python python/ray/serve/examples/echo_full.py``
 
 If a Travis-CI build exception doesn't appear to be related to your change,
 please visit `this link <https://ray-travis-tracker.herokuapp.com/>`_ to 

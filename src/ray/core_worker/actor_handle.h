@@ -21,7 +21,8 @@ class ActorHandle {
   ActorHandle(const ActorID &actor_id, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
               bool is_direct_call,
-              const std::vector<std::string> &actor_creation_task_function_descriptor);
+              const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
+              const std::string &extension_data);
 
   /// Constructs an ActorHandle from a serialized string.
   ActorHandle(const std::string &serialized);
@@ -34,9 +35,12 @@ class ActorHandle {
 
   Language ActorLanguage() const { return inner_.actor_language(); };
 
-  std::vector<std::string> ActorCreationTaskFunctionDescriptor() const {
-    return VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
+  ray::FunctionDescriptor ActorCreationTaskFunctionDescriptor() const {
+    return ray::FunctionDescriptorBuilder::FromProto(
+        inner_.actor_creation_task_function_descriptor());
   };
+
+  std::string ExtensionData() const { return inner_.extension_data(); }
 
   bool IsDirectCallActor() const { return inner_.is_direct_call(); }
 

@@ -1,8 +1,7 @@
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer, \
-    update_worker_explorations
+from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
-from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -109,9 +108,8 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
-    # Fraction of entire training period over which the beta parameter is
-    # annealed
-    "beta_annealing_fraction": 0.2,
+    # Time steps over which the beta parameter is annealed.
+    "prioritized_replay_beta_annealing_timesteps": 20000,
     # Final value of beta
     "final_prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
@@ -178,11 +176,11 @@ def make_exploration_schedule(config, worker_index):
             # run properly
             return ConstantSchedule(0.0)
     elif config["exploration_should_anneal"]:
-        return LinearSchedule(
-            schedule_timesteps=int(config["exploration_fraction"] *
-                                   config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=config["exploration_final_scale"])
+        return PiecewiseSchedule(
+            endpoints=[(0, 1.0), (int(config["exploration_fraction"] *
+                                      config["schedule_max_timesteps"]),
+                                  config["exploration_final_scale"])],
+            outside_value=config["exploration_final_scale"])
     else:
         # *always* add exploration noise
         return ConstantSchedule(1.0)
@@ -194,6 +192,19 @@ def setup_ddpg_exploration(trainer):
         make_exploration_schedule(trainer.config, i)
         for i in range(trainer.config["num_workers"])
     ]
+
+
+def update_worker_explorations(trainer):
+    global_timestep = trainer.optimizer.num_steps_sampled
+    exp_vals = [trainer.exploration0.value(global_timestep)]
+    trainer.workers.local_worker().foreach_trainable_policy(
+        lambda p, _: p.set_epsilon(exp_vals[0]))
+    for i, e in enumerate(trainer.workers.remote_workers()):
+        exp_val = trainer.explorations[i].value(global_timestep)
+        e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+        exp_vals.append(exp_val)
+    trainer.train_start_timestep = global_timestep
+    trainer.exploration_infos = exp_vals
 
 
 def add_pure_exploration_phase(trainer):

@@ -411,6 +411,16 @@ def _property_reduce(obj):
     return property, (obj.fget, obj.fset, obj.fdel, obj.__doc__)
 
 
+def _numpy_frombuffer(buffer, dtype, shape, order):
+    # Get the _frombuffer() function for reconstruction
+    from numpy.core.numeric import _frombuffer
+    array = _frombuffer(buffer, dtype, shape, order)
+    # Unfortunately, numpy does not follow the standard, so we still
+    # have to set the readonly flag for it here.
+    array.setflags(write=not buffer.readonly)
+    return array
+
+
 def _numpy_ndarray_reduce(array):
     # This function is implemented according to 'array_reduce_ex_picklebuffer'
     # in numpy C backend. This is a workaround for python3.5 pickling support.
@@ -443,10 +453,7 @@ def _numpy_ndarray_reduce(array):
         # (gh-12745).
         return array.__reduce__()
 
-    # Get the _frombuffer() function for reconstruction
-    import numpy.core.numeric as numeric_mod
-    from_buffer_func = numeric_mod._frombuffer
-    return from_buffer_func, (buffer, array.dtype, array.shape, order)
+    return _numpy_frombuffer, (buffer, array.dtype, array.shape, order)
 
 
 class CloudPickler(Pickler):
