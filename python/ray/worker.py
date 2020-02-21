@@ -1576,8 +1576,8 @@ def wait(object_ids, num_returns=1, timeout=None):
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
 
-    This method will issue a warning if it's running inside an async context. 
-    Instead of ``ray.wait(object_ids)``, you can use 
+    This method will issue a warning if it's running inside an async context.
+    Instead of ``ray.wait(object_ids)``, you can use
     ``await asyncio.wait(object_ids)``.
 
     Args:
