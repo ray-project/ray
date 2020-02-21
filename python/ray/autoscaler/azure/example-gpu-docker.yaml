@@ -49,7 +49,7 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: azure
-    region: westus2
+    location: westus2
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -58,7 +58,7 @@ auth:
 #    ssh_private_key: /path/to/your/key.pem
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+# Ray will auto-configure unspecified fields based on example-full.yaml
 # The Azure Python SDK client expects slug_style property names
 # For more documentation on available fields, see:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
@@ -73,11 +73,10 @@ head_node:
             publisher: microsoft-dsvm
             offer: linux-data-science-vm-ubuntu
             sku: linuxdsvmubuntu
-            version: latest
-    # Additional properties in the azure docs.
+            version: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+# Ray will auto-configure unspecified fields based on example-full.yaml
 # The Azure Python SDK client expects slug_style property names
 # For more documentation on available fields, see:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
@@ -92,18 +91,12 @@ worker_nodes:
             publisher: microsoft-dsvm
             offer: linux-data-science-vm-ubuntu
             sku: linuxdsvmubuntu
-            version: latest
+            version: 20.02.01
         # run workers on spot instances by default
         priority: Spot
         eviction_policy: Deallocate
         billing_profile:
             max_price: -1
-
-        # You can provision additional disk space as follows
-        # data_disks:
-        #    - disk_size_gb: 1024
-
-    # Additional properties in the azure docs.
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -119,8 +112,7 @@ setup_commands:
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
