@@ -3,7 +3,7 @@ package org.ray.streaming.runtime.core.graph;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import org.ray.streaming.jobgraph.Language;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
 

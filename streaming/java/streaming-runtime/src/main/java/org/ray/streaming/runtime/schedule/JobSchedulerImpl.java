@@ -8,7 +8,7 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.streaming.jobgraph.JobGraph;
-import org.ray.streaming.jobgraph.Language;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;

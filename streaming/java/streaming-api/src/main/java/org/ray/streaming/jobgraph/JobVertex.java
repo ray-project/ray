@@ -2,8 +2,8 @@ package org.ray.streaming.jobgraph;
 
 import com.google.common.base.MoreObjects;
 import java.io.Serializable;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.python.PythonOperator;
 
 /**
  * Job vertex is a cell node where logic is executed.
@@ -22,11 +22,7 @@ public class JobVertex implements Serializable {
     this.parallelism = parallelism;
     this.vertexType = vertexType;
     this.streamOperator = streamOperator;
-    if (streamOperator instanceof PythonOperator) {
-      language = Language.PYTHON;
-    } else {
-      language = Language.JAVA;
-    }
+    this.language = streamOperator.getLanguage();
   }
 
   public int getVertexId() {
