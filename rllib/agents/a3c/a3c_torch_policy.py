@@ -52,7 +52,7 @@ def add_advantages(policy,
 
 def model_value_predictions(policy, input_dict, state_batches, model,
                             action_dist):
-    return {SampleBatch.VF_PREDS: model.value_function().cpu().numpy()}
+    return {SampleBatch.VF_PREDS: model.value_function()}
 
 
 def apply_grad_clipping(policy):
