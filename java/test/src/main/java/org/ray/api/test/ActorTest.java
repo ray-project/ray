@@ -16,7 +16,7 @@ import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"directCall"})
+@Test
 public class ActorTest extends BaseTest {
 
   @RayRemote
