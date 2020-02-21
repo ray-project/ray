@@ -1,4 +1,5 @@
 import collections
+import errno
 import json
 import logging
 import multiprocessing
@@ -282,10 +283,10 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # connection.
         s.connect((ip_address, int(port)))
         node_ip_address = s.getsockname()[0]
-    except Exception as e:
+    except OSError as e:
         node_ip_address = "127.0.0.1"
         # [Errno 101] Network is unreachable
-        if e.errno == 101:
+        if e.errno == errno.ENETUNREACH:
             try:
                 # try get node ip address from host name
                 host_name = socket.getfqdn(socket.gethostname())
@@ -582,11 +583,15 @@ def start_reaper():
     try:
         os.setpgrp()
     except OSError as e:
-        logger.warning("setpgrp failed, processes may not be "
-                       "cleaned up properly: {}.".format(e))
-        # Don't start the reaper in this case as it could result in killing
-        # other user processes.
-        return None
+        if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
+            # Nothing to do; we're already a session leader.
+            pass
+        else:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+            # Don't start the reaper in this case as it could result in killing
+            # other user processes.
+            return None
 
     reaper_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
