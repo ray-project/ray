@@ -151,6 +151,10 @@ cc_grpc_library(
 # Node manager server and client.
 cc_library(
     name = "node_manager_rpc",
+    srcs = glob([
+        "src/ray/rpc/node_manager/*.cc",
+        "src/ray/rpc/node_manager/*.h",
+    ]),
     hdrs = glob([
         "src/ray/rpc/node_manager/*.h",
     ]),
@@ -175,10 +179,16 @@ cc_grpc_library(
 # gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
-    hdrs = glob([
-        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+    srcs = [
+        "src/ray/rpc/gcs_server/gcs_rpc_client.cc",
         "src/ray/rpc/gcs_server/gcs_rpc_client.h",
-    ]),
+        "src/ray/rpc/gcs_server/gcs_rpc_server.cc",
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+    ],
+    hdrs = [
+        "src/ray/rpc/gcs_server/gcs_rpc_client.h",
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+    ],
     copts = COPTS,
     deps = [
         ":gcs_service_cc_grpc",
@@ -200,6 +210,10 @@ cc_grpc_library(
 # Object manager rpc server and client.
 cc_library(
     name = "object_manager_rpc",
+    srcs = glob([
+        "src/ray/rpc/object_manager/*.cc",
+        "src/ray/rpc/object_manager/*.h",
+    ]),
     hdrs = glob([
         "src/ray/rpc/object_manager/*.h",
     ]),
@@ -224,6 +238,10 @@ cc_grpc_library(
 # worker server and client.
 cc_library(
     name = "worker_rpc",
+    srcs = glob([
+        "src/ray/rpc/worker/*.h",
+        "src/ray/rpc/worker/*.cc",
+    ]),
     hdrs = glob([
         "src/ray/rpc/worker/*.h",
     ]),
@@ -438,7 +456,6 @@ cc_library(
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
-            "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",
@@ -813,6 +830,7 @@ cc_library(
     srcs = glob(
         [
             "src/ray/util/*.cc",
+            "src/ray/common/status.h",
         ],
         exclude = [
             "src/ray/util/*_test.cc",
@@ -883,6 +901,7 @@ cc_library(
     srcs = glob(
         [
             "src/ray/gcs/*.cc",
+            "src/ray/gcs/test/accessor_test_base.cc",
         ],
         exclude = [
             "src/ray/gcs/*_test.cc",
