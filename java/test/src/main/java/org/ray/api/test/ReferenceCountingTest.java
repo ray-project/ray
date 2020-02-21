@@ -11,13 +11,13 @@ import org.ray.api.id.ObjectId;
 import org.ray.runtime.object.NativeObjectStore;
 import org.ray.runtime.object.RayObjectImpl;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 @Test
 public class ReferenceCountingTest extends BaseTest {
 
-  @BeforeClass
+  @BeforeMethod
   public void setUp() {
     TestUtils.skipTestUnderSingleProcess();
     TestUtils.skipTestIfDirectActorCallDisabled();
