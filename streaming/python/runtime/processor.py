@@ -67,7 +67,7 @@ class OneInputProcessor(StreamingProcessor):
 
 
 class TwoInputProcessor(StreamingProcessor):
-    """Processor for stream operator with two input"""
+    """Processor for stream operator with two inputs"""
 
     def __init__(self, operator):
         super().__init__(operator)
