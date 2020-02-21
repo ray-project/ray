@@ -27,7 +27,6 @@ from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, MEMORY_RESOURCE_UNIT_BYTES
-from six import string_types
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -771,7 +770,7 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    schema = read_text('ray', 'ray-schema.json')
+    schema = read_text("ray", "ray-schema.json")
     jsonschema.validate(config, json.loads(schema))
 
 
