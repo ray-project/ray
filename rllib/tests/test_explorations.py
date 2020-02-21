@@ -37,6 +37,7 @@ def test_explorations(run,
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
         for exploration in [None]:  # , "Random"]:
+            print("exploration={}".format(exploration or "default"))
             if exploration == "Random":
                 config["exploration_config"] = {"type": "Random"}
 
