@@ -307,8 +307,13 @@ class ParallelIterator(Generic[T]):
             [2, 6]
         """
 
-        def base_iterator(all_actors,
-                          num_partitions,
+        # initialize the local iterators for all the actors
+        all_actors = []
+        for actor_set in self.actor_sets:
+            actor_set.init_actors()
+            all_actors.extend(actor_set.actors)
+
+        def base_iterator(num_partitions,
                           partition_index,
                           timeout=None):
             futures = {}
@@ -340,20 +345,18 @@ class ParallelIterator(Generic[T]):
                 if timeout is not None:
                     yield _NextValueNotReady()
 
-        # initialize the local iterators for all the actors
-        all_actors = []
-        for actor_set in self.actor_sets:
-            actor_set.init_actors()
-            all_actors.extend(actor_set.actors)
-
         def make_gen_i(i):
-            return lambda: base_iterator(all_actors, num_partitions, i)
+            return lambda: base_iterator(num_partitions, i)
+
+        name = self.name + ".repartition[num_partitions={}]".format(num_partitions)
 
         generators = [make_gen_i(s) for s in range(num_partitions)]
-        return from_iterators(
-            generators,
-            name=self.name +
-            ".repartition[num_partitions={}]".format(num_partitions))
+        worker_cls = ray.remote(ParallelIteratorWorker)
+        actors = [worker_cls.remote(g, repeat=False) for g in generators]
+        x = ParallelIterator([_ActorSet(actors, [])], name)
+        # need explicit reference to self so actors in this instance do not die
+        x.parent_iterator = self
+        return x
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
