@@ -89,20 +89,15 @@ def _configure_msi_user(config):
 
     logger.info("Creating MSI user assigned identity")
 
-    rg_id = resource_client.resource_groups.get(resource_group).id
-    
-    # TODO: figure how to re-use existing
-    # identities = list(msi_client.user_assigned_identities.list_for_scope(rg_id))
-
-    # if len(identities) > 0:
-        # print("found existing")
-        # user_assigned_identity = identities[0]
-    # else:
-    user_assigned_identity = msi_client.user_assigned_identities.create_or_update(
-        resource_group,
-        str(uuid.uuid4()), # Any name, just a human readable ID
-        location
-    )
+    identities = list(msi_client.user_assigned_identities.list_by_resource_group(resource_group))
+    if len(identities) > 0:
+        user_assigned_identity = identities[0]
+    else:
+        user_assigned_identity = msi_client.user_assigned_identities.create_or_update(
+            resource_group,
+            str(uuid.uuid4()), # Any name, just a human readable ID
+            location
+        )
 
     config["provider"]["msi_identity_id"] = user_assigned_identity.id
     config["provider"]["msi_identity_principal_id"] = user_assigned_identity.principal_id
@@ -163,134 +158,6 @@ def _configure_resource_group(config):
         resource_group_name=resource_group, parameters=params)
 
     return config
-
-
-# Modeled after create_service_principal_for_rbac in
-#  https://github.com/Azure/azure-cli/blob/dev/src/azure-cli/azure/cli/command_modules/role/custom.py
-def _configure_service_principal(config):
-    graph_client = _get_client_from_cli_profile_with_subscription_id(GraphRbacManagementClient, config)
-    resource_client = _get_client_from_cli_profile_with_subscription_id(ResourceManagementClient, config)
-    auth_client = _get_client_from_cli_profile_with_subscription_id(AuthorizationManagementClient, config)
-
-    sp_name = config["provider"]["service_principal"]
-    if "://" not in sp_name:
-        app_name = sp_name
-        sp_name = "http://" + sp_name
-    else:
-        app_name = sp_name.split("://", 1)[-1]
-
-    resource_group = config["provider"]["resource_group"]
-    auth_name = "azure_credentials_{}.json".format(app_name)
-    auth_path = os.path.expanduser("~/.azure/{}".format(auth_name))
-
-    new_auth = False
-    if os.path.exists(auth_path):
-        with open(auth_path, "r") as f:
-            credentials = json.load(f)
-        password = credentials["clientSecret"]
-    else:
-        new_auth = True
-        logger.info("Generating new password for auth file")
-        # TODO: seems like uuid4 is possible? revisit simplifying password
-        alphabet = "".join([
-            string.ascii_lowercase, string.ascii_uppercase, string.digits,
-            string.punctuation
-        ])
-        while True:
-            password = "".join(
-                secrets.choice(alphabet) for _ in range(PASSWORD_MIN_LENGTH))
-            if (any(c.islower() for c in password) and any(c.isupper()
-                                                           for c in password)
-                    and any(c.isdigit() for c in password)
-                    and any(not c.isalnum() for c in password)):
-                break
-
-    try:
-        # find existing application
-        app = graph_client.applications.list(
-            filter="displayName eq '{}'".format(app_name)).next()
-        logger.info("Found Application: %s", app_name)
-    except StopIteration:
-        # create new application
-        new_auth = True
-        logger.info("Creating Application: %s", app_name)
-        app_start_date = datetime.datetime.now(datetime.timezone.utc)
-        app_end_date = app_start_date.replace(year=app_start_date.year + 1)
-
-        app_params = {
-            "display_name": app_name,
-            "identifier_uris": [sp_name],
-            "available_to_other_tenants": False,
-            "password_credentials": [{
-                "start_date": app_start_date,
-                "end_date": app_end_date,
-                "key_id": uuid.uuid4().hex,
-                "value": password
-            }]
-        }
-        app = graph_client.applications.create(parameters=app_params)
-
-    try:
-        query_exp = "servicePrincipalNames/any(x:x eq '{}')".format(sp_name)
-        sp = graph_client.service_principals.list(filter=query_exp).next()
-        logger.info("Found Service Principal: %s", sp_name)
-    except StopIteration:
-        # create new service principal
-        logger.info("Creating Service Principal: %s", sp_name)
-        sp_params = {
-            "app_id": app.app_id,
-            "account_enabled": True
-        }
-        sp = graph_client.service_principals.create(parameters=sp_params)
-
-    def assign_role():
-        for _ in range(RETRIES):
-            try:
-                rg_id = resource_client.resource_groups.get(resource_group).id
-
-                role = auth_client.role_definitions.list(
-                    rg_id, filter="roleName eq 'Contributor'").next()
-                role_params = {
-                    "role_definition_id": role.id,
-                    "principal_id": sp.object_id
-                }
-
-                for assignment in auth_client.role_assignments.list_for_scope(
-                    rg_id, 
-                    filter="principalId eq '{principal_id}'".format(**role_params)):
-
-                    if (assignment.role_definition_id == role.id):
-                        return
-
-                logger.info("Creating contributor role assignment")
-                auth_client.role_assignments.create(
-                    scope=rg_id,
-                    role_assignment_name=uuid.uuid4(),
-                    parameters=role_params)
-                break
-            except CloudError as ce:
-                logger.info("error: " + ce.message)
-                time.sleep(1)
-
-    assign_role()
-
-    if new_auth:
-        credentials = {
-            "clientSecret": password,
-            "clientId": app.app_id,
-            "subscriptionId": config["provider"]["subscription_id"],
-            "tenantId": graph_client.config.tenant_id
-        }
-        credentials.update(AUTH_ENDPOINTS)
-
-        # make sure the directory exists
-        pathlib.Path(os.path.dirname(auth_path)).mkdir(parents=True, exist_ok=True)
-        with open(auth_path, "w") as f:
-            json.dump(credentials, f)
-
-    config["provider"]["auth_path"] = auth_path
-    return config
-
 
 def _configure_key_pair(config):
     # skip key generation if it is manually specified
