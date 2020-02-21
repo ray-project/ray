@@ -7,7 +7,7 @@ import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.Resources;
 
 /**
- * The central role of resource management in JobMaster.
+ * The resource manager is responsible for resource de-/allocation and monitoring ray cluster.
  */
 public interface ResourceManager {
 

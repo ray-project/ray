@@ -21,10 +21,6 @@ import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * ResourceManager implementation. The resource manager is responsible for resource de-/allocation
- * and monitoring ray cluster.
- */
 public class ResourceManagerImpl implements ResourceManager {
 
   private static final Logger LOG = LoggerFactory.getLogger(ResourceManagerImpl.class);
