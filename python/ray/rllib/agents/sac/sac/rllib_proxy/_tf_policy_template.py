@@ -1,8 +1,7 @@
 from sac.rllib_proxy._constants import LEARNER_STATS_KEY
 from sac.rllib_proxy._utils import add_mixins
 from sac.rllib_proxy._tf_policy import DynamicTFPolicy
-from sac.rllib_proxy._unchanged import DeveloperAPI, override
-from sac.rllib_proxy._todo import Policy
+from sac.rllib_proxy._unchanged import DeveloperAPI, override, Policy
 from sac.rllib_proxy._needs_patches import TFPolicy
 
 

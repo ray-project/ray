@@ -7,7 +7,7 @@ import tensorflow as tf
 from sac.rllib_proxy._unchanged import (
     log_once, override,
 )
-from sac.rllib_proxy._todo import (
+from sac.rllib_proxy._tf_utils import (
     linear, normc_initializer,
     scope_vars,
 )

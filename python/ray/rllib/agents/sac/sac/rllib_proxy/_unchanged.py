@@ -1,6 +1,7 @@
 from ray.tune.registry import RLLIB_MODEL, _global_registry
 from ray.rllib.agents.trainer import Trainer, with_base_config
 from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.evaluation.policy_graph import PolicyGraph as Policy
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI, override
@@ -33,4 +34,5 @@ __all__ = [
     "TensorFlowVariables",
     "RLLIB_MODEL",
     "_global_registry",
+    "Policy",
 ]

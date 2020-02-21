@@ -9,12 +9,12 @@ import tensorflow as tf
 
 from sac.rllib_proxy._unchanged import (
     log_once,
+    Policy,
     summarize,
     SampleBatch,
     override,
 )
-from sac.rllib_proxy._todo import (
-    Policy,
+from sac.rllib_proxy._utils import (
     UsageTrackingDict,
 )
 from sac.rllib_proxy._needs_patches import TFPolicy, ModelCatalog
