@@ -238,9 +238,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   }
 
-  const rpc::Address &caller_address = request.caller_address();
-  auto accept_callback = [this, caller_address, reply, send_reply_callback, task_spec,
-                          resource_ids]() {
+  auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
     // We have posted an exit task onto the main event loop,
     // so shouldn't bother executing any further work.
     if (exiting_) return;
@@ -258,7 +256,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
-      std::vector<ObjectID> plasma_return_ids;
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
         ObjectID id = ObjectID::ForTaskReturn(
@@ -270,7 +267,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         const auto &result = return_objects[i];
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
-          plasma_return_ids.push_back(id);
         } else {
           if (result->GetData() != nullptr) {
             return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
@@ -283,15 +279,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
             return_object->add_inlined_ids(inlined_id.Binary());
           }
         }
-      }
-      // If we spilled any return objects to plasma, notify the raylet to pin them.
-      // The raylet will then coordinate with the caller to manage the objects'
-      // lifetimes.
-      // TODO(edoakes): the plasma objects could be evicted between creating them
-      // here and when raylet pins them.
-      if (!plasma_return_ids.empty()) {
-        RAY_CHECK_OK(
-            local_raylet_client_->PinObjectIDs(caller_address, plasma_return_ids));
       }
       if (task_spec.IsActorCreationTask()) {
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()

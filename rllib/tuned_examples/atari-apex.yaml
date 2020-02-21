@@ -17,7 +17,7 @@ apex:
         adam_epsilon: .00015
         hiddens: [512]
         buffer_size: 1000000
-        exploration:
+        exploration_config:
           final_epsilon: 0.01
           epsilon_timesteps: 200000
         prioritized_replay_alpha: 0.5
