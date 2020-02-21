@@ -84,6 +84,14 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(plasma_id));
+  }
+  return Status::OK();
+}
+
+Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
+  auto plasma_id = object_id.ToPlasmaId();
+  {
+    std::lock_guard<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(store_client_.Release(plasma_id));
   }
   return Status::OK();

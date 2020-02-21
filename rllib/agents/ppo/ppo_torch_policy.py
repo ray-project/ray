@@ -163,8 +163,6 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
     return {
         SampleBatch.VF_PREDS: policy.model.value_function().cpu().numpy(),
         BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
-        ACTION_LOGP: action_dist.logp(
-            input_dict[SampleBatch.ACTIONS]).cpu().numpy(),
     }
 
 

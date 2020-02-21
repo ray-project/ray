@@ -160,7 +160,8 @@ class TestExternalEnv(unittest.TestCase):
             "test3", lambda _: PartOffPolicyServing(
                 gym.make("CartPole-v0"), off_pol_frac=0.2))
         dqn = DQNTrainer(
-            env="test3", config={"exploration": {
+            env="test3",
+            config={"exploration_config": {
                 "epsilon_timesteps": 100
             }})
         for i in range(100):

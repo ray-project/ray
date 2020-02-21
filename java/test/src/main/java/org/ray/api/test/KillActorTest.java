@@ -10,7 +10,7 @@ import org.ray.api.exception.RayActorException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = { "directCall" })
+@Test
 public class KillActorTest extends BaseTest {
 
   @RayRemote
