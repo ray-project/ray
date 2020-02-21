@@ -171,10 +171,6 @@ class TFPolicy(Policy):
 
         # Generate the log-likelihood calculator.
         self._log_likelihood = log_likelihood
-        #if self._action_dist_class:
-        #    self._log_likelihood = self._action_dist_class(
-        #        self._action_dist_inputs,
-        #        self.model).logp(self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -286,9 +282,9 @@ class TFPolicy(Policy):
                                 state_batches=None,
                                 prev_action_batch=None,
                                 prev_reward_batch=None):
-        if self._action_dist_class is None:
-            raise ValueError("Cannot compute log-prob/likelihood w/o an "
-                             "action distribution!")
+        if self._log_likelihood is None:
+            raise ValueError("Cannot compute log-prob/likelihood w/o a "
+                             "self._log_likelihood op!")
 
         # Do the forward pass through the model to capture the parameters
         # for the action distribution, then do a logp on that distribution.
