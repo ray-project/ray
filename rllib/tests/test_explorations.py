@@ -24,8 +24,6 @@ def test_explorations(run,
     if run not in [a3c.A3CTrainer]:
         config["num_workers"] = 0
 
-    eager_mode_ctx = None
-
     # Test all frameworks.
     for fw in ["torch", "eager", "tf"]:
         if fw == "torch" and \
@@ -47,8 +45,8 @@ def test_explorations(run,
                 config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
 
+            eager_mode_ctx = eager_mode()
             if fw == "eager":
-                eager_mode_ctx = eager_mode()
                 eager_mode_ctx.__enter__()
 
             trainer = run(config=config, env=env)
