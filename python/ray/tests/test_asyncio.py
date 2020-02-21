@@ -99,8 +99,8 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
             return sorted(self.batch)
 
     batch_size = sys.getrecursionlimit() * 4
-    actor = AsyncConcurrencyBatcher.options(
-        max_concurrency=batch_size * 2).remote(batch_size)
+    actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size *
+                                            2).remote(batch_size)
     result = ray.get([actor.add.remote(i) for i in range(batch_size)])
     assert result[0] == list(range(batch_size))
     assert result[-1] == list(range(batch_size))
@@ -175,8 +175,8 @@ def test_asyncio_actor_async_get(ray_start_regular_shared):
             return await plasma_object
 
     getter = AsyncGetter.remote()
-    #assert ray.get(getter.get.remote()) == 1
-    #assert ray.get(getter.plasma_get.remote()) == 2
+    assert ray.get(getter.get.remote()) == 1
+    assert ray.get(getter.plasma_get.remote()) == 2
 
 
 if __name__ == "__main__":

@@ -919,7 +919,9 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
-        cdef CActorHandle* c_actor_handle
+        cdef:
+            CActorHandle* c_actor_handle
+
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         manager = worker.function_actor_manager
@@ -999,6 +1001,7 @@ cdef class CoreWorker:
             CObjectID c_outer_object_id = outer_object_id.native()
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
+
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
