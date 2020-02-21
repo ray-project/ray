@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 import org.msgpack.core.Preconditions;
 import org.ray.api.annotation.RayRemote;
 import org.ray.streaming.api.context.StreamingContext;
@@ -44,6 +43,10 @@ public class PythonGateway {
     LOG.info("StreamingContext created");
     referenceMap.put(getReferenceId(streamingContext), streamingContext);
     return serializer.serialize(getReferenceId(streamingContext));
+  }
+
+  public StreamingContext getStreamingContext() {
+    return streamingContext;
   }
 
   public byte[] withConfig(byte[] confBytes) {
