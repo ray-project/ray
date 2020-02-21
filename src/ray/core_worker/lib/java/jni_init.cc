@@ -113,7 +113,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_map_class = LoadClass(env, "java/util/Map");
   java_map_entry_set = env->GetMethodID(java_map_class, "entrySet", "()Ljava/util/Set;");
-  java_map_put = env->GetMethodID(java_map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)V");
+  java_map_put = env->GetMethodID(
+      java_map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
 
   java_hash_map_class = LoadClass(env, "java/util/HashMap");
   java_hash_map_init = env->GetMethodID(java_hash_map_class, "<init>", "()V");
@@ -198,9 +199,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
 
   java_task_executor_get = env->GetStaticMethodID(
-      java_task_executor_class,
-      "get",
-      "([B)Lorg/ray/runtime/task/TaskExecutor;");
+      java_task_executor_class, "get", "([B)Lorg/ray/runtime/task/TaskExecutor;");
 
   return CURRENT_JNI_VERSION;
 }

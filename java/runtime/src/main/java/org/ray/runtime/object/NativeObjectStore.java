@@ -1,7 +1,7 @@
 package org.ray.runtime.object;
 
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.ray.api.id.BaseId;
@@ -64,7 +64,8 @@ public class NativeObjectStore extends ObjectStore {
 
   public Map<ObjectId, long[]> getAllReferenceCounts() {
     Map<ObjectId, long[]> referenceCounts = new HashMap<>();
-    for (Map.Entry<byte[], long[]> entry : nativeGetAllReferenceCounts(nativeCoreWorkerPointer).entrySet()) {
+    for (Map.Entry<byte[], long[]> entry :
+        nativeGetAllReferenceCounts(nativeCoreWorkerPointer).entrySet()) {
       referenceCounts.put(new ObjectId(entry.getKey()), entry.getValue());
     }
     return referenceCounts;
@@ -93,5 +94,6 @@ public class NativeObjectStore extends ObjectStore {
   private static native void nativeRemoveLocalReference(long nativeCoreWorkerPointer,
       byte[] objectId);
 
-  private static native Map<byte[], long[]> nativeGetAllReferenceCounts(long nativeCoreWorkerPointer);
+  private static native Map<byte[], long[]> nativeGetAllReferenceCounts(
+      long nativeCoreWorkerPointer);
 }

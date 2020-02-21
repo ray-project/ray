@@ -61,7 +61,8 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWa
                     ->Wait(object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
-    jobject java_item = env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
+    jobject java_item =
+        env->NewObject(java_boolean_class, java_boolean_init, (jboolean)item);
     RAY_CHECK_JAVA_EXCEPTION(env);
     return java_item;
   });
@@ -97,11 +98,12 @@ Java_org_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(
 }
 
 JNIEXPORT jobject JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *env, jclass,
-    jlong nativeCoreWorkerPointer) {
+Java_org_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
   auto reference_counts = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
-      ->GetAllReferenceCounts();
-  return NativeMapToJavaMap<ray::ObjectID, std::pair<size_t, size_t>>(env, reference_counts,
+                              ->GetAllReferenceCounts();
+  return NativeMapToJavaMap<ray::ObjectID, std::pair<size_t, size_t>>(
+      env, reference_counts,
       [](JNIEnv *env, const ray::ObjectID &key) {
         return IdToJavaByteArray<ObjectID>(env, key);
       },

@@ -334,10 +334,10 @@ inline std::unordered_map<key_type, value_type> JavaMapToNativeMap(
 
 /// Convert a C++ std::unordered_map<?, ?> to a Java Map<?, ?>
 template <typename key_type, typename value_type>
-inline jobject NativeMapToJavaMap(JNIEnv *env,
-    const std::unordered_map<key_type, value_type> &native_map,
-    const std::function<jobject(JNIEnv *, const key_type&)> &key_converter,
-    const std::function<jobject(JNIEnv *, const value_type&)> &value_converter) {
+inline jobject NativeMapToJavaMap(
+    JNIEnv *env, const std::unordered_map<key_type, value_type> &native_map,
+    const std::function<jobject(JNIEnv *, const key_type &)> &key_converter,
+    const std::function<jobject(JNIEnv *, const value_type &)> &value_converter) {
   jobject java_map = env->NewObject(java_hash_map_class, java_hash_map_init);
   RAY_CHECK_JAVA_EXCEPTION(env);
   for (const auto &entry : native_map) {
