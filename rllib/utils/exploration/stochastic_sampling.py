@@ -2,6 +2,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -73,18 +74,19 @@ class StochasticSampling(Exploration):
 
     def _get_tf_exploration_action_op(self, action_dist, explore):
 
+        action = tf.cond(
+            tf.constant(explore) if isinstance(explore, bool) else explore,
+            true_fn=lambda: action_dist.sample(),
+            false_fn=lambda: action_dist.deterministic_sample())
+
         def logp_false_fn():
             # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-            if isinstance(self.action_space, Tuple):
+            if isinstance(action, TupleActions):
                 batch_size = tf.shape(action[0][0])[0]
             else:
                 batch_size = tf.shape(action)[0]
             return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
 
-        action = tf.cond(
-            tf.constant(explore) if isinstance(explore, bool) else explore,
-            true_fn=lambda: action_dist.sample(),
-            false_fn=lambda: action_dist.deterministic_sample())
         logp = tf.cond(
             tf.constant(explore) if isinstance(explore, bool) else explore,
             true_fn=lambda: action_dist.sampled_action_logp(),
