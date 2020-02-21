@@ -1,9 +1,7 @@
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    tf_function
-from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -73,21 +71,25 @@ class StochasticSampling(Exploration):
         else:
             return self._get_tf_exploration_action_op(action_dist, explore)
 
-    @staticmethod
-    @tf_function(tf)
-    def _get_tf_exploration_action_op(action_dist, explore):
-        if explore:
-            action = action_dist.sample()
-            # TODO(sven): Change `sample` to accept `sample(logp=True|False)`
-            logp = action_dist.sampled_action_logp()
-        else:
-            action = action_dist.deterministic_sample()
+    def _get_tf_exploration_action_op(self, action_dist, explore):
+
+        def logp_false_fn():
             # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-            if isinstance(action, TupleActions):
+            if isinstance(self.action_space, Tuple):
                 batch_size = tf.shape(action[0][0])[0]
             else:
                 batch_size = tf.shape(action)[0]
-            logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+            return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+
+        action = tf.cond(
+            tf.constant(explore) if isinstance(explore, bool) else explore,
+            true_fn=lambda: action_dist.sample(),
+            false_fn=lambda: action_dist.deterministic_sample())
+        logp = tf.cond(
+            tf.constant(explore) if isinstance(explore, bool) else explore,
+            true_fn=lambda: action_dist.sampled_action_logp(),
+            false_fn=logp_false_fn)
+
         return action, logp
 
     @staticmethod
