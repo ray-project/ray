@@ -50,10 +50,10 @@ public class GraphPbBuilder {
 
       // build edges
       for (ExecutionEdge edge : node.getInputsEdges()) {
-        nodeBuilder.addInputEdges(buildEdge(edge));
+        nodeBuilder.addInputEdges(buildEdgePb(edge));
       }
       for (ExecutionEdge edge : node.getOutputEdges()) {
-        nodeBuilder.addOutputEdges(buildEdge(edge));
+        nodeBuilder.addOutputEdges(buildEdgePb(edge));
       }
 
       builder.addExecutionNodes(nodeBuilder.build());
@@ -62,7 +62,7 @@ public class GraphPbBuilder {
     return builder.build();
   }
 
-  private RemoteCall.ExecutionGraph.ExecutionEdge buildEdge(ExecutionEdge edge) {
+  private RemoteCall.ExecutionGraph.ExecutionEdge buildEdgePb(ExecutionEdge edge) {
     RemoteCall.ExecutionGraph.ExecutionEdge.Builder edgeBuilder =
         RemoteCall.ExecutionGraph.ExecutionEdge.newBuilder();
     edgeBuilder.setSrcNodeId(edge.getSrcNodeId());

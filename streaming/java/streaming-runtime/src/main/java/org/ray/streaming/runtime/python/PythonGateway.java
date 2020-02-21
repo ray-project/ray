@@ -12,7 +12,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonPartition;
 import org.ray.streaming.python.stream.PythonStreamSource;
-import org.ray.streaming.util.ReflectionUtils;
+import org.ray.streaming.runtime.util.ReflectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,12 +21,12 @@ import org.slf4j.LoggerFactory;
  * All calls on DataStream in python will be mapped to DataStream call in java by this
  * PythonGateway using ray calls.
  * <p>
- * Note: this class needs to be in sync with `ray.streaming.gateway_client.GatewayClient`
+ * Note: this class needs to be in sync with `ray.streaming.runtime.gateway_client.GatewayClient`
  */
 @SuppressWarnings("unchecked")
 @RayRemote
 public class PythonGateway {
-  private static final Logger LOGGER = LoggerFactory.getLogger(PythonGateway.class);
+  private static final Logger LOG = LoggerFactory.getLogger(PythonGateway.class);
   private static final String REFERENCE_ID_PREFIX = "__gateway_reference_id__";
 
   private MsgPackSerializer serializer;
@@ -36,12 +36,12 @@ public class PythonGateway {
   public PythonGateway() {
     serializer = new MsgPackSerializer();
     referenceMap = new HashMap<>();
-    LOGGER.info("PythonGateway created");
+    LOG.info("PythonGateway created");
   }
 
   public byte[] createStreamingContext() {
     streamingContext = StreamingContext.buildContext();
-    LOGGER.info("StreamingContext created");
+    LOG.info("StreamingContext created");
     referenceMap.put(getReferenceId(streamingContext), streamingContext);
     return serializer.serialize(getReferenceId(streamingContext));
   }
@@ -50,8 +50,12 @@ public class PythonGateway {
     Preconditions.checkNotNull(streamingContext);
     try {
       Map<String, String> config = (Map<String, String>) serializer.deserialize(confBytes);
-      LOGGER.info("Set config {}", config);
+      LOG.info("Set config {}", config);
       streamingContext.withConfig(config);
+      // We can't using `return void`, that will make `ray.get()` hang forever.
+      // We can't using `return new byte[0]`, that will make `ray::CoreWorker::ExecuteTask` crash.
+      // So we `return new byte[1]` for method execution success.
+      // Same for other methods in this class which return new byte[1].
       return new byte[1];
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -71,8 +75,9 @@ public class PythonGateway {
   }
 
   public byte[] execute(byte[] jobNameBytes) {
-    LOGGER.info("Starting executing");
+    LOG.info("Starting executing");
     streamingContext.execute((String) serializer.deserialize(jobNameBytes));
+    // see `withConfig` method.
     return new byte[1];
   }
 
@@ -92,7 +97,7 @@ public class PythonGateway {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
       params = processReferenceParameters(params);
-      LOGGER.info("callFunction params {}", params);
+      LOG.info("callFunction params {}", params);
       String className = (String) params.get(0);
       String funcName = (String) params.get(1);
       Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
@@ -109,7 +114,7 @@ public class PythonGateway {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
       params = processReferenceParameters(params);
-      LOGGER.info("callMethod params {}", params);
+      LOG.info("callMethod params {}", params);
       Object obj = params.get(0);
       String methodName = (String) params.get(1);
       Method method = ReflectionUtils.findMethod(obj.getClass(), methodName);
