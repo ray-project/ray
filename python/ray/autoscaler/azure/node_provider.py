@@ -46,7 +46,7 @@ class AzureNodeProvider(NodeProvider):
             self.compute_client = get_client_from_cli_profile(ComputeManagementClient)
             self.network_client = get_client_from_cli_profile(NetworkManagementClient)
         except Exception as e:
-            println("Warning cli_profile failed. Trying MSI: {}".format(e))
+            logger.info("Warning cli_profile failed. Trying MSI: {}".format(e))
 
             credentials = MSIAuthentication()
             subscription_id = provider_config["subscription_id"]
