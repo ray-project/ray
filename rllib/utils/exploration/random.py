@@ -49,7 +49,7 @@ class Random(Exploration):
     @tf_function(tf)
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
         if explore:
-            action = self.action_space.sample()
+            action = tf.py_function(self.action_space.sample, [], tf.int64)
             # Will be unnecessary, once we support batch/time-aware Spaces.
             action = tf.expand_dims(tf.cast(action, dtype=tf.int32), 0)
         else:
@@ -67,8 +67,8 @@ class Random(Exploration):
         if explore:
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.
-            action = torch.IntTensor(self.action_space.sample()).unsqueeze(0)
+            action = torch.LongTensor(self.action_space.sample()).unsqueeze(0)
         else:
-            action = torch.IntTensor(action_dist.deterministic_sample())
+            action = torch.LongTensor(action_dist.deterministic_sample())
         logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
         return action, logp

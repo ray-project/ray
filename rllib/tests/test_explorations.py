@@ -36,10 +36,12 @@ def test_explorations(run,
 
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
-        for exploration in [None]:  # , "Random"]:
-            print("exploration={}".format(exploration or "default"))
+        for exploration in [None, "Random"]:
             if exploration == "Random":
+                if env == "Pendulum-v0":
+                    continue
                 config["exploration_config"] = {"type": "Random"}
+            print("exploration={}".format(exploration or "default"))
 
             eager_mode_ctx = eager_mode()
             if fw == "eager":
