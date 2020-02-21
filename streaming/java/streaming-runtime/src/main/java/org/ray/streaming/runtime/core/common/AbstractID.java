@@ -5,6 +5,7 @@ import java.util.Random;
 
 /**
  * Streaming system unique identity base class.
+ * For example, ${@link org.ray.streaming.runtime.core.resource.ContainerID }
  */
 public class AbstractID implements Comparable<AbstractID>, Serializable {
 
