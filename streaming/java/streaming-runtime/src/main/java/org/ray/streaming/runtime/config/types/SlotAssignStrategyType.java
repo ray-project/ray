@@ -2,6 +2,9 @@ package org.ray.streaming.runtime.config.types;
 
 public enum SlotAssignStrategyType {
 
+  /**
+   * Resource scheduling strategy base on FF(First Fit) algorithm and pipeline.
+   */
   PIPELINE_FIRST_STRATEGY("pipeline_first_strategy", 0);
 
   private String value;

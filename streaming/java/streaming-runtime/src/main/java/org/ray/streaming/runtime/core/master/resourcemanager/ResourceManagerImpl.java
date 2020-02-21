@@ -8,13 +8,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
 import org.ray.api.Ray;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.streaming.runtime.config.StreamingMasterConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.config.types.SlotAssignStrategyType;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategyFactory;
 import org.ray.streaming.runtime.core.resource.Container;
@@ -80,17 +78,14 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   @Override
-  public Map<String, Double> allocateResource(final ExecutionVertex executionVertex) {
-    //executionVertex -> slot -> container
-    Container container = resources.getRegisterContainerByContainerId(
-        executionVertex.getSlot().getContainerID());
+  public Map<String, Double> allocateResource(final Container container,
+      final Map<String, Double> requireResource) {
     LOG.info("Start to allocate resource for actor with container: {}.", container);
 
     // allocate resource to actor
     Map<String, Double> resources = new HashMap<>();
     Map<String, Double> containResource = container.getAvailableResource();
     for (Map.Entry<String, Double> entry : containResource.entrySet()) {
-      Map<String, Double> requireResource = executionVertex.getResources();
       if (requireResource.containsKey(entry.getKey())) {
         double availableResource = entry.getValue() - requireResource.get(entry.getKey());
         entry.setValue(availableResource);
@@ -98,28 +93,24 @@ public class ResourceManagerImpl implements ResourceManager {
       }
     }
 
-    LOG.info("Allocate resource: {} to actor [vertexId={}] succeeded with container {}.",
-        executionVertex.getResources(), executionVertex.getVertexId(), container);
+    LOG.info("Allocate resource: {} to container {}.", requireResource, container);
     return resources;
   }
 
   @Override
-  public void deallocateResource(final ExecutionVertex executionVertex) {
-    LOG.info("Start deallocate resource for actor {}.", executionVertex.getWorkerActorId());
-    Container container = resources.getRegisterContainerByContainerId(
-        executionVertex.getSlot().getContainerID());
+  public void deallocateResource(final Container container, final Map<String, Double> releaseResource) {
+    LOG.info("Start deallocate resource for container {}.", container);
 
     Map<String, Double> containResource = container.getAvailableResource();
     for (Map.Entry<String, Double> entry : containResource.entrySet()) {
-      Map<String, Double> requireResource = executionVertex.getResources();
-      if (requireResource.containsKey(entry.getKey())) {
-        double availableResource = entry.getValue() + requireResource.get(entry.getKey());
-        LOG.info("Release source {}:{}", entry.getKey(), requireResource.get(entry.getKey()));
+      if (releaseResource.containsKey(entry.getKey())) {
+        double availableResource = entry.getValue() + releaseResource.get(entry.getKey());
+        LOG.info("Release source {}:{}", entry.getKey(), releaseResource.get(entry.getKey()));
         entry.setValue(availableResource);
       }
     }
 
-    LOG.info("Deallocate resource for actor {} success.", executionVertex.getWorkerActorId());
+    LOG.info("Deallocate resource for container {} success.", container);
   }
 
   @Override

@@ -89,7 +89,9 @@ public class ResourceManagerTest {
     Assert.assertEquals(allocatingMap.size(), 2);
 
     executionGraph.getAllAddedExecutionVertices().forEach(vertex -> {
-      Map<String, Double> resource = resourceManager.allocateResource(vertex);
+      Container container = resourceManager.getResources()
+          .getRegisterContainerByContainerId(vertex.getSlot().getContainerID());
+      Map<String, Double> resource = resourceManager.allocateResource(container, vertex.getResources());
       Assert.assertNotNull(resource);
     });
     Assert.assertEquals(container1.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_CPU), 14.0);

@@ -2,7 +2,6 @@ package org.ray.streaming.runtime.core.master.resourcemanager;
 
 import java.util.List;
 import java.util.Map;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.Resources;
@@ -22,17 +21,21 @@ public interface ResourceManager {
   /**
    * Allocate resource to actor.
    *
-   * @param exeVertex The specified worker vertex.
+   * @param container Specify the container to be allocated.
+   * @param requireResource Resource size to be requested.
    * @return Allocated resource.
    */
-  Map<String, Double> allocateResource(final ExecutionVertex exeVertex);
+  Map<String, Double> allocateResource(final Container container,
+      final Map<String, Double> requireResource);
 
   /**
    * Deallocate resource to actor.
    *
-   * @param exeVertex The specified worker vertex.
+   * @param container  Specify the container to be deallocate.
+   * @param releaseResource Resource to be released.
    */
-  void deallocateResource(final ExecutionVertex exeVertex);
+  void deallocateResource(final Container container,
+      final Map<String, Double> releaseResource);
 
   /**
    * Get the current slot-assign strategy from manager.
