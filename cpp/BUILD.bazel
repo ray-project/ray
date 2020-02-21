@@ -24,8 +24,10 @@ cc_binary(
         "src/ray/app/*.h",
         "src/ray/runtime/*.cc",
         "src/ray/runtime/*.h",
-        "src/ray/spi/*.cc",
-        "src/ray/spi/*.h",
+        "src/ray/runtime/**/*.cc",
+        "src/ray/runtime/**/*.h",
+        "src/ray/runtime/task/*.cc",
+        "src/ray/runtime/task/*.h",
         "src/ray/util/*.cc",
         "src/ray/util/*.h",
         "src/ray/*.cc",
@@ -33,6 +35,8 @@ cc_binary(
     ]),
     deps = [
         "libray_api_hdr",
+        "@boost//:asio",
+        "@boost//:thread",
     ],
     linkshared = 1,
     linkstatic = 1,
@@ -74,6 +78,19 @@ cc_binary(
     testonly = 1,
     srcs = [
         "src/ray/test/wrap_test.cc"
+        ],
+    deps = [
+        "ray_api",
+        "libray_api_hdr",
+        "@com_google_googletest//:gtest_main"
+    ],
+)
+
+cc_binary(
+    name = "slow_function_test",
+    testonly = 1,
+    srcs = [
+        "src/ray/test/slow_function_test.cc"
         ],
     deps = [
         "ray_api",

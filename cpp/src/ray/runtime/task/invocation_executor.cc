@@ -1,13 +1,12 @@
 #include "invocation_executor.h"
-#include "../util/blob_util.h"
-#include "ray_runtime.h"
+#include "../../util/blob_util.h"
+#include "../ray_runtime.h"
+#include "../../agent.h"
 
 namespace ray {
 
-void InvocationExecutor::execute(const TaskSpec &taskSpec, uintptr_t dylib_base_addr,
-                                 char *actor) {
-  if (actor != NULL) {
-    ::ray::blob *actor_blob = (::ray::blob *)actor;
+void InvocationExecutor::execute(const TaskSpec &taskSpec, ::ray::blob *actor_blob) {
+  if (actor_blob != NULL) {
     typedef std::vector< ::ray::blob> (*EXEC_FUNCTION)(
         uintptr_t base_addr, int32_t func_offset, const ::ray::blob &args,
         ::ray::blob &object);

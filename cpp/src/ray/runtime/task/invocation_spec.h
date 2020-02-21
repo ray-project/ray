@@ -13,7 +13,6 @@ class InvocationSpec {
   UniqueId taskId;
   UniqueId actorId;
   int actorCounter;
-  // UniqueId                    functionId;
   int32_t func_offset;
   int32_t exec_func_offset;
   std::vector< ::ray::blob> args;

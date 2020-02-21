@@ -5,16 +5,13 @@
 using namespace ray;
 
 int foo0() {
-  // std::cout << "foo0 returns 1" << std::endl;
   return 1;
 }
 int foo(int x) {
-  // std::cout << "foo returns " << (x + 1) << std::endl;
   return x + 1;
 }
 
 int bar(int x, int y) {
-  // std::cout << "bar returns " << (x + y) << std::endl;
   return x + y;
 }
 
@@ -30,28 +27,23 @@ class Foo {
   }
 
   int foo(int x) {
-    // std::cout << "foo returns " << (x + 1) << std::endl;
     return x + 1;
   }
 
   int bar(int x, int y) {
-    // std::cout << "bar returns " << (x + y) << std::endl;
     return x + y;
   }
 
   int add(int x) {
     count += x;
-    // std::cout << "add returns " << count << std::endl;
     return count;
   }
 
   static int foo_s(int x) {
-    // std::cout << "foo returns " << (x + 1) << std::endl;
     return x + 1;
   }
 
   static int bar_s(int x, int y) {
-    // std::cout << "bar returns " << (x + y) << std::endl;
     return x + y;
   }
 };

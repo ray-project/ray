@@ -6,7 +6,7 @@
 #include <ray/api.h>
 #include <ray/api/ray_mode.h>
 #include "../agent.h"
-#include "invocation_executor.h"
+#include "task/invocation_executor.h"
 #include "ray_dev_runtime.h"
 #include "ray_native_runtime.h"
 
@@ -15,19 +15,19 @@ namespace ray {
 std::unique_ptr<RayRuntime> RayRuntime::_ins;
 std::once_flag RayRuntime::isInited;
 
-RayRuntime &RayRuntime::init(std::shared_ptr<RayConfig> params) {
-  doInit(params);
+RayRuntime &RayRuntime::init(std::shared_ptr<RayConfig> config) {
+  doInit(config);
   Ray::init();
   return *_ins;
 }
 
-RayRuntime &RayRuntime::doInit(std::shared_ptr<RayConfig> params) {
-  std::call_once(isInited, [params] {
-    if (params->runMode == RunMode::SINGLE_PROCESS) {
-      _ins.reset(new RayDevRuntime(params));
+RayRuntime &RayRuntime::doInit(std::shared_ptr<RayConfig> config) {
+  std::call_once(isInited, [config] {
+    if (config->runMode == RunMode::SINGLE_PROCESS) {
+      _ins.reset(new RayDevRuntime(config));
       Ray_agent_init();
     } else {
-      _ins.reset(new RayNativeRuntime(params));
+      _ins.reset(new RayNativeRuntime(config));
     }
   });
 
@@ -44,8 +44,7 @@ RayRuntime &RayRuntime::getInstance() {
 
 void RayRuntime::put(std::vector< ::ray::blob> &&data, const UniqueId &objectId,
                      const UniqueId &taskId) {
-  _taskProxy->markTaskPutDependency(taskId, objectId);
-  _objectProxy->put(objectId, std::forward<std::vector< ::ray::blob> >(data));
+  _objectStore->put(objectId, std::forward<std::vector< ::ray::blob> >(data));
 }
 
 std::unique_ptr<UniqueId> RayRuntime::put(std::vector< ::ray::blob> &&data) {
@@ -56,32 +55,7 @@ std::unique_ptr<UniqueId> RayRuntime::put(std::vector< ::ray::blob> &&data) {
 }
 
 del_unique_ptr< ::ray::blob> RayRuntime::get(const UniqueId &objectId) {
-  bool wasBlocked = false;
-
-  // Do an initial fetch.
-  _objectProxy->fetch(objectId);
-
-  // Get the object. We initially try to get the object immediately.
-  auto ret = _objectProxy->get(objectId, 0);
-
-  wasBlocked = (!ret);
-
-  // Try reconstructing the object. Try to get it until at least getTimeoutMs
-  // milliseconds passes, then repeat.
-  while (!ret) {
-    _taskProxy->reconstructObject(objectId);
-
-    // Do another fetch
-    _objectProxy->fetch(objectId);
-
-    ret = _objectProxy->get(objectId);
-  }
-
-  if (wasBlocked) {
-    _taskProxy->notifyUnblocked();
-  }
-
-  return ret;
+  return  _objectStore->get(objectId, 0);
 }
 
 std::unique_ptr<UniqueId> RayRuntime::call(remote_function_ptr_holder &fptr,
@@ -94,14 +68,7 @@ std::unique_ptr<UniqueId> RayRuntime::call(remote_function_ptr_holder &fptr,
   invocationSpec.args = args;
   invocationSpec.func_offset = (int32_t)(fptr.value[0] - dylib_base_addr);
   invocationSpec.exec_func_offset = (int32_t)(fptr.value[1] - dylib_base_addr);
-  if (_worker->getCurrentWorkerRunMode() == RunMode::SINGLE_PROCESS) {
-    std::unique_ptr<UniqueId> uId = _taskProxy->submit(invocationSpec);
-    auto ts = _taskProxy->getTask();
-    execute(*ts);
-    return uId;
-  } else {
-    return _taskProxy->submit(invocationSpec);
-  }
+  return _taskSubmitter->submitTask(invocationSpec);
 }
 
 std::unique_ptr<UniqueId> RayRuntime::create(remote_function_ptr_holder &fptr,
@@ -120,27 +87,7 @@ std::unique_ptr<UniqueId> RayRuntime::call(const remote_function_ptr_holder &fpt
   invocationSpec.args = args;
   invocationSpec.func_offset = (int32_t)(fptr.value[0] - dylib_base_addr);
   invocationSpec.exec_func_offset = (int32_t)(fptr.value[1] - dylib_base_addr);
-  if (_worker->getCurrentWorkerRunMode() == RunMode::SINGLE_PROCESS) {
-    std::unique_ptr<UniqueId> uId = _taskProxy->submit(invocationSpec);
-    auto ts = _taskProxy->getTask();
-    execute(*ts);
-    return uId;
-  } else {
-    return _taskProxy->submit(invocationSpec);
-  }
-}
-
-void RayRuntime::execute(const TaskSpec &taskSpec) {
-  if (_worker->getCurrentWorkerRunMode() == RunMode::SINGLE_PROCESS) {
-    char *actor = NULL;
-    if (taskSpec.actorId == nilUniqueId) {
-    } else {
-      actor = get_actor_ptr(taskSpec.actorId);
-    }
-    InvocationExecutor::execute(taskSpec, dylib_base_addr, actor);
-  } else {
-    // TODO:singlebox and cluster mode process
-  }
+  return _taskSubmitter->submitActorTask(invocationSpec);
 }
 
 char *RayRuntime::get_actor_ptr(const UniqueId &id) { return _ins->get_actor_ptr(id); }

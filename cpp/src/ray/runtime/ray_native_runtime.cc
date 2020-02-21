@@ -3,10 +3,9 @@
 
 namespace ray {
 
-RayNativeRuntime::RayNativeRuntime(std::shared_ptr<RayConfig> params) {
-  _params = params;
-  std::unique_ptr<Worker> ptr(new Worker(params));
-  _worker = std::move(ptr);
+RayNativeRuntime::RayNativeRuntime(std::shared_ptr<RayConfig> config) {
+  _config = config;
+  _worker = std::unique_ptr<Worker>(new Worker(config));
 }
 
 }  // namespace ray

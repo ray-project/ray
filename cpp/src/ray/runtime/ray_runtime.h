@@ -7,9 +7,10 @@
 #include <ray/api/ray_api.h>
 #include <ray/api/ray_config.h>
 #include <ray/util/type_util.h>
-#include "../spi/object_proxy.h"
-#include "../spi/task_proxy.h"
-#include "../spi/worker.h"
+#include "./object/object_store.h"
+#include "./task/task_submitter.h"
+#include "./task/task_executer.h"
+#include "./context/worker_context.h"
 
 namespace ray {
 
@@ -17,21 +18,19 @@ class RayRuntime : public RayApi {
   friend class Ray;
 
  private:
-  // RayRuntime() = delete;
-  // RayRuntime(RayRuntime&) = delete;
-  // RayRuntime& operator=(RayRuntime const&) = delete;
 
  protected:
   static std::unique_ptr<RayRuntime> _ins;
   static std::once_flag isInited;
 
-  std::shared_ptr<RayConfig> _params;
+  std::shared_ptr<RayConfig> _config;
   std::unique_ptr<Worker> _worker;
-  std::unique_ptr<TaskProxy> _taskProxy;
-  std::unique_ptr<ObjectProxy> _objectProxy;
+  std::unique_ptr<TaskSubmitter> _taskSubmitter;
+  std::unique_ptr<TaskExcuter> _taskExcuter;
+  std::unique_ptr<ObjectStore> _objectStore;
 
  public:
-  static RayRuntime &init(std::shared_ptr<RayConfig> params);
+  static RayRuntime &init(std::shared_ptr<RayConfig> config);
 
   static RayRuntime &getInstance();
 
@@ -62,7 +61,7 @@ class RayRuntime : public RayApi {
   virtual ~RayRuntime(){};
 
  private:
-  static RayRuntime &doInit(std::shared_ptr<RayConfig> params);
+  static RayRuntime &doInit(std::shared_ptr<RayConfig> config);
 
   virtual char *get_actor_ptr(const UniqueId &id);
 

@@ -1,11 +1,11 @@
 
-#include "worker.h"
+#include "worker_context.h"
 
 namespace ray {
 
 static TaskSpec dummyTaskSpec;
 
-Worker::Worker(std::shared_ptr<RayConfig> params) {
+Worker::Worker(std::shared_ptr<RayConfig> config) {
   // TODO: workerId =
   // TODO: actorId =
   _taskCounter = 0;
@@ -16,12 +16,12 @@ Worker::Worker(std::shared_ptr<RayConfig> params) {
 
   UniqueId uid;
   uid.random();                  // TODO: make it deterministic
-  _currentTask->driverId = uid;  // TODO: parse for params
+  _currentTask->driverId = uid;  // TODO: parse for config
   //_currentTask->driverId = &UniqueId.from_random(); //???
   //_currentTask->parentTaskId = nilUniqueId;
   uid.random();  // TODO: make it deterministic
   _currentTask->taskId = uid;
-  _params = *params;
+  _config = *config;
 }
 
 void Worker::onSubmitTask() { _taskCounter++; }
@@ -42,6 +42,6 @@ std::unique_ptr<UniqueId> Worker::getCurrentTaskNextPutId() {
   return _currentTask->taskId.taskComputePutId(getNextPutIndex());
 }
 
-RunMode Worker::getCurrentWorkerRunMode() { return _params.runMode; }
+RunMode Worker::getCurrentWorkerRunMode() { return _config.runMode; }
 
 }  // namespace ray

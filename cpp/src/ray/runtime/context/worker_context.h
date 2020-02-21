@@ -3,7 +3,7 @@
 
 #include <ray/api/ray_config.h>
 #include <ray/api/uniqueId.h>
-#include "task_spec.h"
+#include "../task/task_spec.h"
 
 namespace ray {
 
@@ -15,10 +15,10 @@ class Worker {
   bool _connected;
   int _currentTaskPutCounter;
   TaskSpec *_currentTask;
-  RayConfig _params;
+  RayConfig _config;
 
  public:
-  Worker(std::shared_ptr<RayConfig> params);
+  Worker(std::shared_ptr<RayConfig> config);
 
   void onSubmitTask();
 

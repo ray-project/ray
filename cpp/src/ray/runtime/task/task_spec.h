@@ -9,8 +9,16 @@
 
 namespace ray {
 
+enum TaskType { 
+  NORMAL_TASK, 
+  ACTOR_CREATION_TASK, 
+  ACTOR_TASK,
+  UNRECOGNIZED
+  };
+
 class TaskSpec {
  public:
+  TaskType type;
   UniqueId driverId;
   UniqueId taskId;
   UniqueId parentTaskId;

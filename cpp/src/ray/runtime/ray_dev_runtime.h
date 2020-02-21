@@ -14,10 +14,7 @@ class RayDevRuntime : public RayRuntime {
  private:
   static std::unordered_map<UniqueId, char *> _actors;
 
-  RayDevRuntime(std::shared_ptr<RayConfig> params);
-
-  static std::unique_ptr<UniqueId> createActor(remote_function_ptr_holder &fptr,
-                                               std::vector< ::ray::blob> &&args);
+  RayDevRuntime(std::shared_ptr<RayConfig> config);
 
   char *get_actor_ptr(const UniqueId &id);
 
