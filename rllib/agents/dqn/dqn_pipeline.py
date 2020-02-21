@@ -23,7 +23,7 @@ def training_pipeline(workers, config):
 
     # Alternate between (1) and (2). We set deterministic=True so that we
     # always execute one train step per replay buffer update.
-    combined = InterleavedExecution([save_op, replay_op], deterministic=True)
+    combined = Concurrently([save_op, replay_op], deterministic=True)
 
     return StandardMetricsReporting(combined, workers, config)
 

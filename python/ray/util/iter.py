@@ -732,12 +732,12 @@ class LocalIterator(Generic[T]):
             if i >= n:
                 break
 
-    def union(self, other: "LocalIterator[T]") -> "LocalIterator[T]":
+    def union(self, other: "LocalIterator[T]", deterministic: bool = False) -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the other.
 
-        There are no ordering guarantees between the two iterators. We make a
-        best-effort attempt to return items from both as they become ready,
-        preventing starvation of any particular iterator.
+        If deterministic=True, we alternate between reading from one iterator
+        and the other. Otherwise we return items from iterators as they
+        become ready.
         """
 
         if not isinstance(other, LocalIterator):
@@ -745,13 +745,18 @@ class LocalIterator(Generic[T]):
                 "other must be of type LocalIterator, got {}".format(
                     type(other)))
 
+        if deterministic:
+            timeout = None
+        else:
+            timeout = 0
+
         it1 = LocalIterator(
-            self.base_iterator, self.context, self.local_transforms, timeout=0)
+            self.base_iterator, self.context, self.local_transforms, timeout=timeout)
         it2 = LocalIterator(
             other.base_iterator,
             self.context,
             other.local_transforms,
-            timeout=0)
+            timeout=timeout)
         active = [it1, it2]
 
         def build_union(timeout=None):
@@ -766,6 +771,8 @@ class LocalIterator(Generic[T]):
                                 break
                             else:
                                 yield item
+                            if deterministic:
+                                break
                     except StopIteration:
                         active.remove(it)
                 if not active:
