@@ -21,6 +21,7 @@ import org.ray.streaming.api.stream.DataStreamSink;
 import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobGraphBuilder;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.config.StreamingMasterConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
@@ -40,7 +41,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class PipelineFirstStrategyTest {
+public class PipelineFirstStrategyTest extends BaseUnitTest {
 
   private Logger LOG = LoggerFactory.getLogger(PipelineFirstStrategyTest.class);
 

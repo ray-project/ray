@@ -7,6 +7,7 @@ import java.util.Map;
 import org.aeonbits.owner.util.Collections;
 import org.ray.api.Ray;
 import org.ray.streaming.jobgraph.JobGraph;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.TestHelper;
 import org.ray.streaming.runtime.config.StreamingConfig;
 import org.ray.streaming.runtime.config.global.CommonConfig;
@@ -28,7 +29,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ResourceManagerTest {
+public class ResourceManagerTest extends BaseUnitTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(ResourceManagerTest.class);
 

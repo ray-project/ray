@@ -80,7 +80,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     System.clearProperty("ray.run-mode");
   }
 
-  @Test(timeOut = 3000000, enabled = false)
+  @Test(timeOut = 3000000)
   public void testReaderWriter() {
     LOGGER.info("StreamingQueueTest.testReaderWriter run-mode: {}",
         System.getProperty("ray.run-mode"));
@@ -142,7 +142,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
         msgCount * queueNum);
   }
 
-  @Test(timeOut = 60000, enabled = false)
+  @Test(timeOut = 60000)
   public void testWordCount() {
     LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}",
         System.getProperty("ray.run-mode"));
