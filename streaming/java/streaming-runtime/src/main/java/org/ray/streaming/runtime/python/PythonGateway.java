@@ -20,7 +20,8 @@ import org.slf4j.LoggerFactory;
  * All calls on DataStream in python will be mapped to DataStream call in java by this
  * PythonGateway using ray calls.
  * <p>
- * Note: this class needs to be in sync with `ray.streaming.runtime.gateway_client.GatewayClient`
+ * Note: this class needs to be in sync with `GatewayClient` in
+ * `streaming/python/runtime/gateway_client.py`
  */
 @SuppressWarnings("unchecked")
 @RayRemote
