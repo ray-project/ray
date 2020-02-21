@@ -6,8 +6,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import org.aeonbits.owner.ConfigCache;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
@@ -154,7 +152,9 @@ public class ExecutionVertex implements Serializable {
         .add("vertexId", vertexId)
         .add("vertexIndex", vertexIndex)
         .add("vertexName", vertexName)
+        .add("resources", resources)
         .add("state", state)
+        .add("slot", slot)
         .add("workerActor", workerActor)
         .add("inputEdges", inputEdges)
         .add("outputEdges", outputEdges)

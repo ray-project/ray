@@ -49,7 +49,7 @@ public class ResourceManagerTest extends BaseUnitTest {
     LOG.warn("Do tear down");
   }
 
-  @Test(enabled = false)
+  @Test
   public void testApi() {
     Map<String, String> conf = new HashMap<String, String>();
     conf.put(CommonConfig.JOB_NAME, "testApi");
@@ -65,18 +65,18 @@ public class ResourceManagerTest extends BaseUnitTest {
     Assert.assertTrue(slotAssignStrategy instanceof PipelineFirstStrategy);
 
     Map<String, Double> containerResource = new HashMap<>();
-    containerResource.put(ResourceConfig.TASK_RESOURCE_CPU, 16.0);
-    containerResource.put(ResourceConfig.TASK_RESOURCE_MEM, 128.0);
+    containerResource.put(ResourceConfig.RESOURCE_KEY_CPU, 16.0);
+    containerResource.put(ResourceConfig.RESOURCE_KEY_MEM, 128.0);
     Container container1 = new Container(null, "testAddress1", "testHostName1");
     container1.setAvailableResource(containerResource);
     Container container2 = new Container(null, "testAddress2", "testHostName2");
-    container2.setAvailableResource(containerResource);
+    container2.setAvailableResource(new HashMap<>(containerResource));
     List<Container> containers = Collections.list(container1, container2);
     resourceManager.getResources().getRegisterContainers().addAll(containers);
     Assert.assertEquals(resourceManager.getRegisteredContainers().size(), 2);
 
     //build ExecutionGraph
-    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(null));
+    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(config));
     JobGraph jobGraph = ExecutionGraphTest.buildJobGraph();
     ExecutionGraph executionGraph = ExecutionGraphTest.buildExecutionGraph(graphManager, jobGraph);
 
@@ -95,9 +95,9 @@ public class ResourceManagerTest extends BaseUnitTest {
       Map<String, Double> resource = resourceManager.allocateResource(container, vertex.getResources());
       Assert.assertNotNull(resource);
     });
-    Assert.assertEquals(container1.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_CPU), 14.0);
-    Assert.assertEquals(container2.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_CPU), 14.0);
-    Assert.assertEquals(container1.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_MEM), 118.0);
-    Assert.assertEquals(container2.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_MEM), 118.0);
+    Assert.assertEquals(container1.getAvailableResource().get(ResourceConfig.RESOURCE_KEY_CPU), 14.0);
+    Assert.assertEquals(container2.getAvailableResource().get(ResourceConfig.RESOURCE_KEY_CPU), 14.0);
+    Assert.assertEquals(container1.getAvailableResource().get(ResourceConfig.RESOURCE_KEY_MEM), 118.0);
+    Assert.assertEquals(container2.getAvailableResource().get(ResourceConfig.RESOURCE_KEY_MEM), 118.0);
   }
 }

@@ -113,8 +113,11 @@ public class Resources implements Serializable {
   }
 
   public Map<UniqueId, Map<String, Double>> getAllAvailableResource() {
-    return registerContainers.stream()
-        .collect(Collectors.toMap(Container::getNodeId, Container::getAvailableResource));
+    Map<UniqueId, Map<String, Double>> availableResource = new HashMap<>();
+    for (Container container : registerContainers) {
+      availableResource.put(container.getNodeId(), container.getAvailableResource());
+    }
+    return availableResource;
   }
 
   @Override

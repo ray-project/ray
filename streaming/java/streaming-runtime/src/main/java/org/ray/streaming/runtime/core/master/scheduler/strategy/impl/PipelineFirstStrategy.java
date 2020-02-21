@@ -17,9 +17,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Based on Ray dynamic resource function, resource details(by ray gcs get) and execution logic diagram,
- * PipelineFirstStrategy provide a actor scheduling strategies to make the cluster load balanced and
- * controllable scheduling.
+ * Based on Ray dynamic resource function, resource details(by ray gcs get) and
+ * execution logic diagram,PipelineFirstStrategy provide a actor scheduling
+ * strategies to make the cluster load balanced and controllable scheduling.
  * Assume that we have 2 containers and have a DAG graph composed of a source node with parallelism
  * of 2 and a sink node with parallelism of 2. After PipelineFirstStrategy will be like:
  * <pre>
@@ -169,10 +169,6 @@ public class PipelineFirstStrategy implements SlotAssignStrategy {
               currentContainer.getAddress(), requiredResource, availableResource);
           return false;
         }
-      } else {
-        LOG.warn("No enough resource for container {}. required: {}, available: {}.",
-            currentContainer.getAddress(), requiredResource, availableResource);
-        return false;
       }
     }
     return true;
@@ -182,9 +178,6 @@ public class PipelineFirstStrategy implements SlotAssignStrategy {
     // set slot for execution vertex
     LOG.info("Set slot {} to vertex {}.", slot, vertex);
     vertex.setSlotIfNotExist(slot);
-
-    // decrease available resource
-    decreaseResource(vertex.getResources());
 
     Slot useSlot = resources.getAllocatingMap().get(container.getContainerId())
         .stream().filter(s -> s.getId() == slot.getId()).findFirst().get();
@@ -198,22 +191,6 @@ public class PipelineFirstStrategy implements SlotAssignStrategy {
           (resources.getCurrentContainerIndex() + 1) % resources.getRegisterContainers().size());
       resources.setCurrentContainerAllocatedActorNum(0);
     }
-  }
-
-  private void decreaseResource(Map<String, Double> allocatedResource) {
-    Container currentContainer = resources.getRegisterContainers()
-        .get(resources.getCurrentContainerIndex());
-    Map<String, Double> availableResource = currentContainer.getAvailableResource();
-
-    allocatedResource.forEach((k, v) -> {
-      Preconditions.checkArgument(availableResource.get(k) >= v,
-          String.format("Available resource %s not >= decreased resource %s",
-              availableResource.get(k), v));
-      Double newValue = availableResource.get(k) - v;
-      LOG.info("Decrease container {} resource [{}], from {} to {}.",
-          currentContainer.getAddress(), k, availableResource.get(k), newValue);
-      availableResource.put(k, newValue);
-    });
   }
 
   @Override

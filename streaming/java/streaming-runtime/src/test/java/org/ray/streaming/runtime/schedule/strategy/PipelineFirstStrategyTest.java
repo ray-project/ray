@@ -22,6 +22,7 @@ import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobGraphBuilder;
 import org.ray.streaming.runtime.BaseUnitTest;
+import org.ray.streaming.runtime.config.StreamingConfig;
 import org.ray.streaming.runtime.config.StreamingMasterConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
@@ -57,22 +58,29 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     Map<String, String> conf = new HashMap<>();
     ResourceConfig resourceConfig = ConfigFactory.create(ResourceConfig.class, conf);
     Resources resources = new Resources(resourceConfig);
+
+    Map<String, Double> containerResource = new HashMap<>();
+    containerResource.put(ResourceConfig.RESOURCE_KEY_CPU, 16.0);
+    containerResource.put(ResourceConfig.RESOURCE_KEY_MEM, 128.0);
     for (int i = 0; i < 2; ++i) {
       UniqueId uniqueId = UniqueId.randomId();
       Container container = new Container(uniqueId, "1.1.1." + i,  "localhost" + i);
+      container.setAvailableResource(containerResource);
       containers.add(container);
       resources.getRegisterContainers().add(container);
     }
     strategy.setResources(resources);
 
     //build ExecutionGraph
-    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(null));
+    Map<String, String> jobConf = new HashMap<>();
+    StreamingConfig streamingConfig = new StreamingConfig(jobConf);
+    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
     jobGraph = ExecutionGraphTest.buildJobGraph();
     executionGraph = ExecutionGraphTest.buildExecutionGraph(graphManager, jobGraph);
     maxParallelism = executionGraph.getMaxParallelism();
   }
 
-  @Test(enabled = false)
+  @Test
   public int testSlotNumPerContainer() {
     int slotNumPerContainer = strategy.getSlotNumPerContainer(containers, maxParallelism);
     Assert.assertEquals(slotNumPerContainer,
@@ -80,7 +88,7 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     return slotNumPerContainer;
   }
 
-  @Test(enabled = false)
+  @Test
   public void testAllocateSlot() {
     int slotNumPerContainer = testSlotNumPerContainer();
     strategy.allocateSlot(containers, slotNumPerContainer);
@@ -89,7 +97,7 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     }
   }
 
-  @Test(enabled = false)
+  @Test
   public void testAssignSlot() {
     Map<ContainerID, List<Slot>> allocatingMap = strategy.assignSlot(executionGraph);
     for (Entry<ContainerID, List<Slot>> containerSlotEntry : allocatingMap.entrySet()) {
