@@ -1,4 +1,4 @@
-#include <arrow/util/memory.h>
+#include "ray/util/memory.h"
 #include "ray/python/buffer_writer.h"
 #include <cstdint>
 
@@ -15,7 +15,7 @@ inline int64_t padded_length_u64(uint64_t offset, uint64_t alignment) {
 
 inline void memcopy_fast(void* dst, const void* src, int64_t len, int memcopy_threads) {
   if (memcopy_threads > 1 && len > kMemcopyDefaultThreshold) {
-     arrow::internal::parallel_memcopy(
+     ray::parallel_memcopy(
        (uint8_t*)dst, (uint8_t*)src, len, kMemcopyDefaultBlocksize, memcopy_threads);
   } else {
     memcpy(dst, src, len);
