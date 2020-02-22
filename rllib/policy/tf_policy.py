@@ -11,11 +11,12 @@ from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils import try_import_tf
+from ray.tune.utils.debug import log_once
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)

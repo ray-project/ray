@@ -4,7 +4,8 @@ import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
-from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils.debug import summarize
+from ray.tune.utils.debug import log_once
 
 logger = logging.getLogger(__name__)
 
