@@ -1,6 +1,7 @@
 #ifndef RAY_RPC_GCS_RPC_CLIENT_H
 #define RAY_RPC_GCS_RPC_CLIENT_H
 
+#include <ray/gcs/gcs_server/node_info_handler_impl.h>
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/rpc/grpc_client.h"
 
@@ -21,8 +22,10 @@ class GcsRpcClient {
         new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
     actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
         new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
+
+    auto interceptor_factory = new NodeInfoInterceptorFactory();
     node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
-        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager, interceptor_factory));
     object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
     task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
