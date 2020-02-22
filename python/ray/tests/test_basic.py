@@ -37,6 +37,21 @@ def test_ignore_http_proxy(shutdown_only):
 
     assert ray.get(f.remote()) == 1
 
+# https://github.com/ray-project/ray/issues/7263
+def test_grpc_message_size(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def bar(*a):
+       return
+
+    # 50KiB, not enough to spill to plasma, but will be inlined.
+    def f():
+        return np.zeros(50000, dtype=np.uint8)
+
+    # Executes a 10MiB task spec
+    ray.get(bar.remote(*[f() for _ in range(200)]))
+
 
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
