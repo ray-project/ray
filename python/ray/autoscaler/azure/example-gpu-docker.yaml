@@ -65,15 +65,6 @@ auth:
 head_node:
     hardware_profile:
         vm_size: Standard_NC6s_v3
-    storage_profile:
-        os_disk:
-            create_option: FromImage
-            caching: ReadWrite
-        image_reference:
-            publisher: microsoft-dsvm
-            offer: linux-data-science-vm-ubuntu
-            sku: linuxdsvmubuntu
-            version: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
 # Ray will auto-configure unspecified fields based on example-full.yaml
@@ -83,20 +74,6 @@ head_node:
 worker_nodes:
     hardware_profile:
         vm_size: Standard_NC6s_v3
-    storage_profile:
-        os_disk:
-            create_option: FromImage
-            caching: ReadWrite
-        image_reference:
-            publisher: microsoft-dsvm
-            offer: linux-data-science-vm-ubuntu
-            sku: linuxdsvmubuntu
-            version: 20.02.01
-        # run workers on spot instances by default
-        priority: Spot
-        eviction_policy: Deallocate
-        billing_profile:
-            max_price: -1
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

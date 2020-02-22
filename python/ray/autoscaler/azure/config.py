@@ -10,59 +10,22 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
-from ray.autoscaler.tags import TAG_RAY_NODE_NAME
+import yaml
 
-RAY = "ray-autoscaler"
-PASSWORD_MIN_LENGTH = 16
 RETRIES = 10
 SUBNET_NAME = "ray-subnet"
 NSG_NAME = "ray-nsg"
 VNET_NAME = "ray-vnet"
-AUTH_ENDPOINTS = {
-    "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
-    "resourceManagerEndpointUrl": "https://management.azure.com/",
-    "activeDirectoryGraphResourceId": "https://graph.windows.net/",
-    "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
-    "galleryEndpointUrl": "https://gallery.azure.com/",
-    "managementEndpointUrl": "https://management.core.windows.net/"
-}
-DEFAULT_NODE_CONFIG = {
-    "hardware_profile": {
-        "vm_size": "Standard_D2s_v3"
-    },
-    "storage_profile": {
-        "os_disk": {
-            "create_option": "FromImage",
-            "caching": "ReadWrite"
-        },
-        "image_reference": {
-            "publisher": "microsoft-dsvm",
-            "offer": "linux-data-science-vm-ubuntu",
-            "sku": "linuxdsvmubuntu",
-            "version": "latest"
-        }
-    },
-    "os_profile": {
-        "admin_username": "ubuntu",
-        "computer_name": TAG_RAY_NODE_NAME,
-        "linux_configuration": {
-            "disable_password_authentication": True,
-            "ssh": {
-                "public_keys": None  # populated by _configure_key_pair
-            }
-        }
-    }
-}
 
 logger = logging.getLogger(__name__)
 
 
 def bootstrap_azure(config):
+    config = _configure_nodes(config)
     config = _configure_resource_group(config)
     config = _configure_msi_user(config)
     config = _configure_key_pair(config)
     config = _configure_network(config)
-    config = _configure_nodes(config)
     return config
 
 
@@ -72,6 +35,20 @@ def _get_client(client_class, config):
         kwargs["subscription_id"] = config["provider"]["subscription_id"]
 
     return get_client_from_cli_profile(client_class=client_class, **kwargs)
+
+
+def _configure_nodes(config):
+    """Add default node configuration if not provided"""
+    # get default from example-full.yaml
+    azure_dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(azure_dir, "example-full.yaml"), "r") as f:
+        default_config = yaml.load(f)
+
+    for node_type in ["head_node", "worker_nodes"]:
+        node_config = default_config[node_type]
+        node_config.update(config.get(node_type, {}))
+        config[node_type] = node_config
+    return config
 
 
 def _configure_resource_group(config):
@@ -109,88 +86,70 @@ def _configure_msi_user(config):
     resource_group = config["provider"]["resource_group"]
     location = config["provider"]["location"]
 
-    logger.info("Creating MSI user assigned identity")
-
     resource_group_id = resource_client.resource_groups.get(resource_group).id
-
-    identities = list(
-        msi_client.user_assigned_identities.list_by_resource_group(
-            resource_group))
-    if len(identities) > 0:
-        identity = identities[0]
-    else:
+    try:
+        identity = msi_client.user_assigned_identities.list_by_resource_group(
+            resource_group_name=resource_group).next()
+    except StopIteration:
+        logger.info("Creating MSI user assigned identity")
         identity = msi_client.user_assigned_identities.create_or_update(
-            resource_group,
-            str(uuid.uuid4()),  # Any name, just a human readable ID
-            location)
+            resource_group_name=resource_group,
+            resource_name=uuid.uuid4(),
+            location=location)
 
     identity_id = identity.id
     principal_id = identity.principal_id
     config["provider"]["msi_identity_id"] = identity_id
     config["provider"]["msi_identity_principal_id"] = principal_id
 
-    def assign_role():
-        for _ in range(RETRIES):
-            try:
-                role_id = auth_client.role_definitions.list(
-                    resource_group_id,
-                    filter="roleName eq 'Contributor'").next().id
-                role_params = {
-                    "role_definition_id": role_id,
-                    "principal_id": principal_id
-                }
+    # assign Contributor role for MSI User Identity to resource group
+    role_id = auth_client.role_definitions.list(
+        scope=resource_group_id, filter="roleName eq 'Contributor'").next().id
+    role_params = {"role_definition_id": role_id, "principal_id": principal_id}
 
-                filter_expr = "principalId eq '{}'".format(principal_id)
-                assignments = auth_client.role_assignments.list_for_scope(
-                    resource_group_id, filter=filter_expr)
+    for _ in range(RETRIES):
+        try:
+            filter_expr = "principalId eq '{}'".format(principal_id)
+            assignments = auth_client.role_assignments.list_for_scope(
+                scope=resource_group_id, filter=filter_expr)
 
-                for assignment in assignments:
-                    if assignment.role_definition_id == role_id:
-                        return
+            if any(a.role_definition_id == role_id for a in assignments):
+                break
 
-                auth_client.role_assignments.create(
-                    scope=resource_group_id,
-                    role_assignment_name=uuid.uuid4(),
-                    parameters=role_params)
-                logger.info("Creating contributor role assignment")
-                return
-            except CloudError as ce:
-                if str(ce.error).startswith("Azure Error: PrincipalNotFound"):
-                    time.sleep(3)
-                else:
-                    raise Exception(
-                        "Failed to create contributor role assignment")
-
-            logger.info("Creating contributor role assignment")
             auth_client.role_assignments.create(
                 scope=resource_group_id,
                 role_assignment_name=uuid.uuid4(),
                 parameters=role_params)
-            break
+            logger.info("Creating contributor role assignment")
+        except CloudError as ce:
+            if ce.inner_exception.error == "PrincipalNotFound":
+                time.sleep(3)
+    else:
+        raise Exception("Failed to create contributor role assignment")
 
-    assign_role()
     return config
 
 
 def _configure_key_pair(config):
-    # skip key generation if it is manually specified
-    ssh_private_key = config["auth"].get("ssh_private_key")
-    if ssh_private_key:
-        assert os.path.exists(ssh_private_key)
-        # make sure public key configuration also exists
-        for node_type in ["head_node", "worker_nodes"]:
-            os_profile = config[node_type]["os_profile"]
-            assert os_profile["linux_configuration"]["ssh"]["public_keys"]
-        return config
-
-    location = config["provider"]["location"]
-    resource_group = config["provider"]["resource_group"]
     ssh_user = config["auth"]["ssh_user"]
+    private_key_path = config["auth"].get("ssh_private_key")
+    if private_key_path:
+        # skip key generation if it is manually specified
+        assert os.path.exists(private_key_path), (
+            "Could not find private ssh key: {}".format(private_key_path))
 
-    # look for an existing key pair
-    key_name = "{}_azure_{}_{}".format(RAY, location, resource_group, ssh_user)
-    public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
-    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+        # make sure public key also exists
+        public_key_path = config["auth"]["ssh_public_key"]
+        assert os.path.exists(public_key_path), (
+            "Could not find public ssh key: {}".format(public_key_path))
+    else:
+        resource_group = config["provider"]["resource_group"]
+
+        # look for an existing key pair
+        key_name = "ray_azure_{}_{}".format(resource_group, ssh_user)
+        public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
+        private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+
     if os.path.exists(public_key_path) and os.path.exists(private_key_path):
         logger.info("SSH key pair found: %s", key_name)
         with open(public_key_path, "r") as f:
@@ -201,17 +160,15 @@ def _configure_key_pair(config):
 
     config["auth"]["ssh_private_key"] = private_key_path
 
-    public_keys = [{
-        "key_data": public_key,
-        "path": "/home/{}/.ssh/authorized_keys".format(
-            config["auth"]["ssh_user"])
-    }]
+    ssh_config = {
+        "public_keys": [{
+            "key_data": public_key,
+            "path": "/home/{}/.ssh/authorized_keys".format(ssh_user)
+        }]
+    }
     for node_type in ["head_node", "worker_nodes"]:
-        os_config = DEFAULT_NODE_CONFIG["os_profile"].copy()
-        os_config["linux_configuration"]["ssh"]["public_keys"] = public_keys
-        config_type = config.get(node_type, {})
-        config_type.update({"os_profile": os_config})
-        config[node_type] = config_type
+        linux_config = config[node_type]["os_profile"]["linux_configuration"]
+        linux_config["ssh"] = ssh_config
 
     return config
 
@@ -304,18 +261,8 @@ def _generate_ssh_keys(key_name):
     os.chmod(private_key_path, 0o600)
 
     with open(public_key_path, "w") as public_key_file:
-        # TODO: check if this is the necessary format
         public_key = "%s %s" % (key.get_name(), key.get_base64())
         public_key_file.write(public_key)
     os.chmod(public_key_path, 0o644)
 
     return public_key, private_key_path
-
-
-def _configure_nodes(config):
-    """Add default node configuration if not provided"""
-    for node_type in ["head_node", "worker_nodes"]:
-        node_config = DEFAULT_NODE_CONFIG.copy()
-        node_config.update(config.get(node_type, {}))
-        config[node_type] = node_config
-    return config

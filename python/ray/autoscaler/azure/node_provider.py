@@ -41,21 +41,23 @@ class AzureNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
+        subscription_id = provider_config["subscription_id"]
         try:
             self.compute_client = get_client_from_cli_profile(
-                ComputeManagementClient)
+                client_class=ComputeManagementClient,
+                subscription_id=subscription_id)
             self.network_client = get_client_from_cli_profile(
-                NetworkManagementClient)
-        except Exception as e:
-            logger.info("Warning cli_profile failed. Trying MSI: {}".format(e))
+                client_class=NetworkManagementClient,
+                subscription_id=subscription_id)
+        except Exception:
+            logger.info(
+                "CLI profile authentication failed. Trying MSI", exc_info=True)
 
             credentials = MSIAuthentication()
-            subscription_id = provider_config["subscription_id"]
-
             self.compute_client = ComputeManagementClient(
-                credentials, subscription_id)
+                credentials=credentials, subscription_id=subscription_id)
             self.network_client = NetworkManagementClient(
-                credentials, subscription_id)
+                credentials=credentials, subscription_id=subscription_id)
 
         self.lock = RLock()
 
