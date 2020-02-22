@@ -1046,6 +1046,25 @@ flatbuffer_cc_library(
     out_prefix = "src/ray/object_manager/format/",
 )
 
+cc_library(
+    name = "ray_python_lib",
+    srcs = glob(
+        [
+            "src/ray/python/*.cc",
+        ],
+    ),
+    hdrs = glob([
+        "src/ray/python/*.h",
+    ]),
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_common",
+        ":ray_util",
+        "//:serialization_cc_proto",
+    ],
+)
+
 pyx_library(
     name = "_raylet",
     srcs = glob([
@@ -1080,6 +1099,7 @@ pyx_library(
         "//:serialization_cc_proto",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "//:ray_python_lib"
     ],
 )
 
