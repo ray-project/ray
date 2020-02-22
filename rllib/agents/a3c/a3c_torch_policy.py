@@ -39,7 +39,8 @@ def add_advantages(policy,
                    other_agent_batches=None,
                    episode=None):
 
-    if sample_batch[SampleBatch.DONES][-1]:
+    completed = sample_batch[SampleBatch.DONES][-1]
+    if completed:
         last_r = 0.0
     else:
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1])
