@@ -59,8 +59,7 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(distribution_inputs, model,
-                                        **kwargs)
+        action_dist = action_dist_class(distribution_inputs, model, **kwargs)
 
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore)

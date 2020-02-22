@@ -389,8 +389,8 @@ def build_eager_tf_policy(name,
                     self.observation_space, self.action_space, self.config)
             # Default log-likelihood calculation.
             else:
-                dist_inputs, _ = self.model(
-                    input_dict, state_batches, seq_lens)
+                dist_inputs, _ = self.model(input_dict, state_batches,
+                                            seq_lens)
                 action_dist = self.dist_class(dist_inputs, self.model)
                 log_likelihoods = action_dist.logp(actions)
 

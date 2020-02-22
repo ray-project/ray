@@ -197,13 +197,13 @@ class DynamicTFPolicy(TFPolicy):
         log_likelihood = None
         # From a given function.
         if log_likelihood_fn:
-            log_likelihood = log_likelihood_fn(
-                self, self.model, action_input, self._input_dict,
-                obs_space, action_space, config)
+            log_likelihood = log_likelihood_fn(self, self.model, action_input,
+                                               self._input_dict, obs_space,
+                                               action_space, config)
         # Create default, iff we have a distribution class.
         elif self.dist_class is not None:
-            log_likelihood = self.dist_class(
-                model_out, self.model).logp(action_input)
+            log_likelihood = self.dist_class(model_out,
+                                             self.model).logp(action_input)
 
         super().__init__(
             obs_space,
