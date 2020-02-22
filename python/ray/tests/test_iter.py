@@ -100,6 +100,40 @@ def test_local_shuffle(ray_start_regular_shared):
         assert value / len(freq_counter) > 0.2
 
 
+def test_repartition_less(ray_start_regular_shared):
+    it = from_range(9, num_shards=3)
+    it1 = it.repartition(2)
+    assert repr(it1) == ("ParallelIterator[from_range[9, " +
+                         "shards=3].repartition[num_partitions=2]]")
+
+    assert it1.num_shards() == 2
+    shard_0_set = set(it1.get_shard(0))
+    shard_1_set = set(it1.get_shard(1))
+    assert shard_0_set == {0, 2, 3, 5, 6, 8}
+    assert shard_1_set == {1, 4, 7}
+
+
+def test_repartition_more(ray_start_regular_shared):
+    it = from_range(100, 2).repartition(3)
+    assert it.num_shards() == 3
+    assert set(it.get_shard(0)) == set(range(0, 50, 3)) | set(
+        (range(50, 100, 3)))
+    assert set(
+        it.get_shard(1)) == set(range(1, 50, 3)) | set(range(51, 100, 3))
+    assert set(
+        it.get_shard(2)) == set(range(2, 50, 3)) | set(range(52, 100, 3))
+
+
+def test_repartition_consistent(ray_start_regular_shared):
+    # repartition should be deterministic
+    it1 = from_range(9, num_shards=1).repartition(2)
+    it2 = from_range(9, num_shards=1).repartition(2)
+    assert it1.num_shards() == 2
+    assert it2.num_shards() == 2
+    assert set(it1.get_shard(0)) == set(it2.get_shard(0))
+    assert set(it1.get_shard(1)) == set(it2.get_shard(1))
+
+
 def test_batch(ray_start_regular_shared):
     it = from_range(4, 1).batch(2)
     assert repr(it) == "ParallelIterator[from_range[4, shards=1].batch(2)]"
