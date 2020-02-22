@@ -69,7 +69,7 @@ matrix:
 
     - os: linux
       env:
-        - TESTSUITE=gcs service python testcase
+        - TESTSUITE=gcs_service_python_testcase
         - JDK='Oracle JDK 8'
         - RAY_GCS_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
