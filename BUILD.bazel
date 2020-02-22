@@ -1075,6 +1075,7 @@ pyx_library(
     ),
     deps = [
         "//:core_worker_lib",
+        "//:ray_util",
         "//:raylet_lib",
         "//:serialization_cc_proto",
         "//:src/ray/ray_exported_symbols.lds",

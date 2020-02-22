@@ -13,12 +13,6 @@ if "pickle5" in sys.modules:
                       "requires a specific version of pickle5 (which is "
                       "packaged along with Ray).")
 
-if "OMP_NUM_THREADS" not in os.environ:
-    logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
-                 "degradation with many workers (issue #6998). You can "
-                 "override this by explicitly setting OMP_NUM_THREADS.")
-    os.environ["OMP_NUM_THREADS"] = "1"
-
 # Add the directory containing pickle5 to the Python path so that we find the
 # pickle5 version packaged with ray and not a pre-existing pickle5.
 pickle5_path = os.path.join(

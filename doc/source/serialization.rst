@@ -15,13 +15,13 @@ Overview
 
 Objects that are serialized for transfer among Ray processes go through three stages:
 
-**1. Serialize using pyarrow**: Below is the set of Python objects that Ray can serialize using ``pyarrow``:
+**1. Serialize directly**: Below is the set of Python objects that Ray can serialize using ``memcpy``:
 
 1. Primitive types: ints, floats, longs, bools, strings, unicode, and numpy arrays.
 
 2. Any list, dictionary, or tuple whose elements can be serialized by Ray.
 
-**2. ``__dict__`` serialization**: If a direct usage of PyArrow is not possible, Ray will recursively extract the object’s ``__dict__`` and serialize that using pyarrow. This behavior is not correct in all cases.
+**2. ``__dict__`` serialization**: If a direct usage is not possible, Ray will recursively extract the object’s ``__dict__`` and serialize that directly. This behavior is not correct in all cases.
 
 **3. Cloudpickle**:  Ray falls back to ``cloudpickle`` as a final attempt for serialization. This may be slow.
 

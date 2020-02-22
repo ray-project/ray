@@ -1,14 +1,15 @@
 # coding: utf-8
-import os
-import json
 import copy
-import tempfile
-import numpy as np
-import time
-import pytest
+import json
 import logging
+import os
+import tempfile
+import time
 import uuid
-import gc
+
+import numpy as np
+
+import pytest
 
 import ray
 import ray.cluster_utils
@@ -292,9 +293,6 @@ def test_basic_serialized_reference(one_worker_100MiB):
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
     del array_oid
-    # Needed due to Python GC issue in cloudpickle.
-    # https://github.com/cloudpipe/cloudpickle/issues/343
-    gc.collect()
 
     # Check that the remote reference pins the object.
     _fill_object_store_and_get(array_oid_bytes)
@@ -310,8 +308,6 @@ def test_basic_serialized_reference(one_worker_100MiB):
 # Call a recursive chain of tasks that pass a serialized reference to the end
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_recursive_serialized_reference(one_worker_100MiB):
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
@@ -385,9 +381,6 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
     del array_oid
-    # Needed due to Python GC issue in cloudpickle.
-    # https://github.com/cloudpipe/cloudpickle/issues/343
-    gc.collect()
 
     # Test that the remote references still pin the object.
     _fill_object_store_and_get(array_oid_bytes)
@@ -404,8 +397,6 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_worker_holding_serialized_reference(one_worker_100MiB):
     @ray.remote
     def child(dep1, dep2):
@@ -448,9 +439,6 @@ def test_basic_nested_ids(one_worker_100MiB):
     # Remove the local reference to the inner object.
     inner_oid_bytes = inner_oid.binary()
     del inner_oid
-    # Needed due to Python GC issue in cloudpickle.
-    # https://github.com/cloudpipe/cloudpickle/issues/343
-    gc.collect()
 
     # Check that the outer reference pins the inner object.
     _fill_object_store_and_get(inner_oid_bytes)
@@ -462,8 +450,6 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_recursively_nest_ids(one_worker_100MiB):
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
@@ -506,8 +492,6 @@ def test_recursively_nest_ids(one_worker_100MiB):
 
 # Test that serialized objectIDs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_return_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -536,8 +520,6 @@ def test_return_object_id(one_worker_100MiB):
 
 # Test that serialized objectIDs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -573,8 +555,6 @@ def test_pass_returned_object_id(one_worker_100MiB):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
-@pytest.mark.skip("Memory not freed due to Python GC issue in cloudpickle "
-                  "(https://github.com/cloudpipe/cloudpickle/issues/343).")
 def test_recursively_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def put():
