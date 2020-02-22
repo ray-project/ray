@@ -1,7 +1,6 @@
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    tf_function
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
@@ -60,30 +59,36 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(distribution_inputs, model,
-                                        **kwargs)
+        action_dist = action_dist_class(distribution_inputs, model, **kwargs)
 
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore)
         else:
             return self._get_tf_exploration_action_op(action_dist, explore)
 
-    @staticmethod
-    @tf_function(tf)
-    def _get_tf_exploration_action_op(action_dist, explore):
-        if explore:
-            action = action_dist.sample()
-            # TODO(sven): Change `sample` to accept `sample(logp=True|False)`
-            logp = action_dist.sampled_action_logp()
-        else:
-            action = action_dist.deterministic_sample()
+    def _get_tf_exploration_action_op(self, action_dist, explore):
+        sample = action_dist.sample()
+        deterministic_sample = action_dist.deterministic_sample()
+        action = tf.cond(
+            tf.constant(explore) if isinstance(explore, bool) else explore,
+            true_fn=lambda: sample,
+            false_fn=lambda: deterministic_sample)
+
+        def logp_false_fn():
             # TODO(sven): Move into (deterministic_)sample(logp=True|False)
-            if isinstance(action, TupleActions):
-                batch_size = tf.shape(action[0][0])[0]
+            if isinstance(sample, TupleActions):
+                batch_size = tf.shape(action[0])[0]
             else:
                 batch_size = tf.shape(action)[0]
-            logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
-        return action, logp
+            return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+
+        logp = tf.cond(
+            tf.constant(explore) if isinstance(explore, bool) else explore,
+            true_fn=lambda: action_dist.sampled_action_logp(),
+            false_fn=logp_false_fn)
+
+        return TupleActions(action) if isinstance(sample, TupleActions) \
+            else action, logp
 
     @staticmethod
     def _get_torch_exploration_action(action_dist, explore):

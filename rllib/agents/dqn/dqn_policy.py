@@ -202,24 +202,29 @@ def build_q_model(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def get_dist_class_and_q_values(policy, q_model, input_dict, obs_space,
+def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
                                 action_space, config):
     # Action Q network.
     q_vals = _compute_q_values(policy, q_model,
                                input_dict[SampleBatch.CUR_OBS], obs_space,
                                action_space)
-    return (Categorical, q_vals[0] if isinstance(q_vals, tuple) else q_vals)
+    q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
+    action_dist = Categorical(q_vals, q_model)
+    return action_dist.logp(actions)
 
 
 def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
                                  action_space, explore, config, timestep):
-    dist_class, policy.q_values = get_dist_class_and_q_values(
-        policy, q_model, input_dict, obs_space, action_space, policy.config)
+    # Action Q network.
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
     policy.q_func_vars = q_model.variables()
 
     policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
-            policy.q_values, dist_class, q_model, explore, timestep)
+            policy.q_values, Categorical, q_model, explore, timestep)
 
     # Noise vars for Q network except for layer normalization vars.
     if config["parameter_noise"]:
@@ -452,7 +457,7 @@ DQNTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_model,
     action_sampler_fn=sample_action_from_q_network,
-    dist_class_and_inputs_fn=get_dist_class_and_q_values,
+    log_likelihood_fn=get_log_likelihood,
     loss_fn=build_q_losses,
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,

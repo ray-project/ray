@@ -79,7 +79,7 @@ fi
 if [[ "$RLLIB_TESTING" == "1" ]]; then
   pip install -q tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    gym[atari] atari_py smart_open
+    gym[atari] atari_py smart_open lz4
 fi
 
 if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then

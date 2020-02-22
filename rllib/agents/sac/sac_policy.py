@@ -88,27 +88,47 @@ def postprocess_trajectory(policy,
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
-def dist_class_and_inputs_fn(policy, model, input_dict, obs_space,
-                                 action_space, config):
+def get_dist_class(config, action_space):
+    action_dist_class = SquashedGaussian if \
+        config["normalize_actions"] is True else DiagGaussian
+    return action_dist_class
 
+
+def get_log_likelihood(policy, model, actions, input_dict, obs_space,
+                       action_space, config):
     model_out, _ = model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
     distribution_inputs = model.action_model(model_out)
+    action_dist_class = get_dist_class(policy.config, action_space)
+    return action_dist_class(distribution_inputs, model).logp(actions)
 
-    return SquashedGaussian if policy.config["normalize_actions"] else \
-        DiagGaussian, distribution_inputs
+#def dist_class_and_inputs_fn(policy, model, input_dict, obs_space,
+#                                 action_space, config):
+
+#    model_out, _ = model({
+#        "obs": input_dict[SampleBatch.CUR_OBS],
+#        "is_training": policy._get_is_training_placeholder(),
+#    }, [], None)
+#    distribution_inputs = model.action_model(model_out)
+
+#    return SquashedGaussian if policy.config["normalize_actions"] else \
+#        DiagGaussian, distribution_inputs
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
                         explore, config, timestep):
-    dist_class, dist_inputs = dist_class_and_inputs_fn(
-        policy, model, input_dict, obs_space, action_space, config)
-
+    model_out, _ = model({
+        "obs": input_dict[SampleBatch.CUR_OBS],
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
+    distribution_inputs = model.action_model(model_out)
+    action_dist_class = get_dist_class(policy.config, action_space)
+    
     policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
-            dist_inputs, dist_class, model, explore, timestep)
+            distribution_inputs, action_dist_class, model, explore, timestep)
 
     return policy.output_actions, policy.sampled_action_logp
 
@@ -129,12 +149,13 @@ def actor_critic_loss(policy, model, _, train_batch):
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
-    action_dist_t = policy.dist_class(
+    action_dist_class = get_dist_class(policy.config, policy.action_space)
+    action_dist_t = action_dist_class(
         model.action_model(model_out_t), policy.model)
     policy_t = action_dist_t.sample()
     log_pis_t = tf.expand_dims(action_dist_t.sampled_action_logp(), -1)
 
-    action_dist_tp1 = policy.dist_class(
+    action_dist_tp1 = action_dist_class(
         model.action_model(model_out_tp1), policy.model)
     policy_tp1 = action_dist_tp1.sample()
     log_pis_tp1 = tf.expand_dims(action_dist_tp1.sampled_action_logp(), -1)
@@ -400,7 +421,7 @@ SACTFPolicy = build_tf_policy(
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
     action_sampler_fn=build_action_output,
-    dist_class_and_inputs_fn=dist_class_and_inputs_fn,
+    log_likelihood_fn=get_log_likelihood,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     gradients_fn=gradients,

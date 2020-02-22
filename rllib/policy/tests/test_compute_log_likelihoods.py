@@ -105,7 +105,7 @@ def test_log_likelihood(run,
                     preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]),
                     prev_reward_batch=np.array([prev_r]))
-                check(logp, expected_logp, rtol=0.2)
+                check(logp, expected_logp, rtol=0.3)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):
