@@ -161,7 +161,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
-                                                  object.GetInlinedIds(), true);
+                                                  object.GetNestedIds(), true);
 
   {
     absl::MutexLock lock(&mu_);
