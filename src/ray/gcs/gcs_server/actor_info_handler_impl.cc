@@ -152,5 +152,8 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
   RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, actor id = " << actor_id;
 }
 
+DefaultActorInfoHandler::DefaultActorInfoHandler(gcs::RedisGcsClient &gcs_client)
+    : gcs_client_(gcs_client) {}
+
 }  // namespace rpc
 }  // namespace ray

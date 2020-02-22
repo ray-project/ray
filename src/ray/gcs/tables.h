@@ -653,7 +653,7 @@ class DynamicResourceTable : public Hash<ClientID, ResourceTableData> {
     prefix_ = TablePrefix::NODE_RESOURCE;
   };
 
-  virtual ~DynamicResourceTable(){};
+  virtual ~DynamicResourceTable();
 };
 
 class ObjectTable : public Set<ObjectID, ObjectTableData> {
@@ -665,7 +665,7 @@ class ObjectTable : public Set<ObjectID, ObjectTableData> {
     prefix_ = TablePrefix::OBJECT;
   };
 
-  virtual ~ObjectTable(){};
+  virtual ~ObjectTable();
 };
 
 class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
@@ -676,7 +676,7 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
     pubsub_channel_ = TablePubsub::HEARTBEAT_PUBSUB;
     prefix_ = TablePrefix::HEARTBEAT;
   }
-  virtual ~HeartbeatTable() {}
+  virtual ~HeartbeatTable();
 };
 
 class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
@@ -687,7 +687,7 @@ class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
     pubsub_channel_ = TablePubsub::HEARTBEAT_BATCH_PUBSUB;
     prefix_ = TablePrefix::HEARTBEAT_BATCH;
   }
-  virtual ~HeartbeatBatchTable() {}
+  virtual ~HeartbeatBatchTable();
 };
 
 class JobTable : public Log<JobID, JobTableData> {
@@ -699,7 +699,7 @@ class JobTable : public Log<JobID, JobTableData> {
     prefix_ = TablePrefix::JOB;
   };
 
-  virtual ~JobTable() {}
+  virtual ~JobTable();
 };
 
 /// Actor table starts with an ALIVE entry, which represents the first time the actor
@@ -725,7 +725,7 @@ class WorkerFailureTable : public Table<WorkerID, WorkerFailureData> {
     pubsub_channel_ = TablePubsub::WORKER_FAILURE_PUBSUB;
     prefix_ = TablePrefix::WORKER_FAILURE;
   }
-  virtual ~WorkerFailureTable() {}
+  virtual ~WorkerFailureTable();
 };
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {

@@ -57,7 +57,7 @@ enum class TaskState {
 class TaskQueue {
  public:
   /// TaskQueue destructor.
-  virtual ~TaskQueue() {}
+  virtual ~TaskQueue();
 
   /// \brief Append a task to queue.
   ///
@@ -109,12 +109,12 @@ class TaskQueue {
 
 class ReadyQueue : public TaskQueue {
  public:
-  ReadyQueue(){};
+  ReadyQueue();
 
   ReadyQueue(const ReadyQueue &other) = delete;
 
   /// ReadyQueue destructor.
-  virtual ~ReadyQueue() {}
+  virtual ~ReadyQueue();
 
   /// \brief Append a task to queue.
   ///
@@ -146,26 +146,10 @@ class ReadyQueue : public TaskQueue {
 class SchedulingQueue {
  public:
   /// Create a scheduling queue.
-  SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
-    for (const auto &task_state : {
-             TaskState::PLACEABLE,
-             TaskState::WAITING,
-             TaskState::READY,
-             TaskState::RUNNING,
-             TaskState::INFEASIBLE,
-             TaskState::WAITING_FOR_ACTOR_CREATION,
-             TaskState::SWAP,
-         }) {
-      if (task_state == TaskState::READY) {
-        task_queues_[static_cast<int>(task_state)] = ready_queue_;
-      } else {
-        task_queues_[static_cast<int>(task_state)] = std::make_shared<TaskQueue>();
-      }
-    }
-  }
+  SchedulingQueue();
 
   /// SchedulingQueue destructor.
-  virtual ~SchedulingQueue() {}
+  virtual ~SchedulingQueue();
 
   /// \brief Check if the queue contains a specific task id.
   ///

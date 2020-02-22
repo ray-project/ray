@@ -27,5 +27,8 @@ void DefaultErrorInfoHandler::HandleReportJobError(
                  << ", type = " << type;
 }
 
+DefaultErrorInfoHandler::DefaultErrorInfoHandler(gcs::RedisGcsClient &gcs_client)
+    : gcs_client_(gcs_client) {}
+
 }  // namespace rpc
 }  // namespace ray

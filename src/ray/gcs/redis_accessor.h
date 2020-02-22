@@ -20,7 +20,7 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
  public:
   explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisActorInfoAccessor() {}
+  virtual ~RedisActorInfoAccessor();
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
@@ -84,7 +84,7 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
  public:
   explicit RedisJobInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisJobInfoAccessor() {}
+  virtual ~RedisJobInfoAccessor();
 
   Status AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
                   const StatusCallback &callback) override;
@@ -117,7 +117,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
  public:
   explicit RedisTaskInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisTaskInfoAccessor() {}
+  virtual ~RedisTaskInfoAccessor();
 
   Status AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
                   const StatusCallback &callback) override;
@@ -175,7 +175,7 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
  public:
   explicit RedisObjectInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisObjectInfoAccessor() {}
+  virtual ~RedisObjectInfoAccessor();
 
   Status AsyncGetLocations(const ObjectID &object_id,
                            const MultiItemCallback<ObjectTableData> &callback) override;
@@ -217,7 +217,7 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
  public:
   explicit RedisNodeInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisNodeInfoAccessor() {}
+  virtual ~RedisNodeInfoAccessor();
 
   Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
 
@@ -297,7 +297,7 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
  public:
   explicit RedisErrorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisErrorInfoAccessor() = default;
+  virtual ~RedisErrorInfoAccessor();
 
   Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
                              const StatusCallback &callback) override;
@@ -313,7 +313,7 @@ class RedisStatsInfoAccessor : public StatsInfoAccessor {
  public:
   explicit RedisStatsInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisStatsInfoAccessor() = default;
+  virtual ~RedisStatsInfoAccessor();
 
   Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
                              const StatusCallback &callback) override;
@@ -329,7 +329,7 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
   explicit RedisWorkerInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisWorkerInfoAccessor() = default;
+  virtual ~RedisWorkerInfoAccessor();
 
   Status AsyncSubscribeToWorkerFailures(
       const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,

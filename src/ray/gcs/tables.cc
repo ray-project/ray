@@ -765,6 +765,13 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);
 }
 
+DynamicResourceTable::~DynamicResourceTable() {}
+ObjectTable::~ObjectTable() {}
+HeartbeatTable::~HeartbeatTable() {}
+HeartbeatBatchTable::~HeartbeatBatchTable() {}
+JobTable::~JobTable() {}
+WorkerFailureTable::~WorkerFailureTable() {}
+
 template class Log<ObjectID, ObjectTableData>;
 template class Set<ObjectID, ObjectTableData>;
 template class Log<TaskID, TaskTableData>;

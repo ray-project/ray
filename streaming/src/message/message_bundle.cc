@@ -188,5 +188,17 @@ bool StreamingMessageBundle::operator==(StreamingMessageBundle &bundle) const {
 bool StreamingMessageBundle::operator==(StreamingMessageBundle *bundle) const {
   return this->operator==(*bundle);
 }
+
+StreamingMessageBundleMeta::~StreamingMessageBundleMeta() = default;
+std::string StreamingMessageBundleMeta::ToString() {
+  return std::to_string(last_message_id_) + "," + std::to_string(message_list_size_) +
+         "," + std::to_string(message_bundle_ts_) + "," +
+         std::to_string(static_cast<uint32_t>(bundle_type_));
+}
+StreamingMessageBundle::~StreamingMessageBundle() = default;
+const std::list<StreamingMessagePtr> &StreamingMessageBundle::GetMessageList() const {
+  return message_list_;
+}
+
 }  // namespace streaming
 }  // namespace ray

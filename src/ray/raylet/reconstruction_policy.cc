@@ -242,6 +242,13 @@ void ReconstructionPolicy::RecordMetrics() const {
       listening_tasks_.size(), {{stats::ValueTypeKey, "num_reconstructing_tasks"}});
 }
 
+ReconstructionPolicy::ReconstructionTask::ReconstructionTask(
+    boost::asio::io_service &io_service)
+    : expires_at(INT64_MAX),
+      subscribed(false),
+      reconstruction_attempt(0),
+      reconstruction_timer(new boost::asio::deadline_timer(io_service)) {}
+
 }  // namespace raylet
 
 }  // end namespace ray

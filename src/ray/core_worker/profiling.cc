@@ -17,13 +17,13 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
                    boost::asio::io_service &io_service,
                    const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service),
-      timer_(io_service_, boost::asio::chrono::seconds(1)),
+      timer_(new boost::asio::steady_timer(io_service_, boost::asio::chrono::seconds(1))),
       rpc_profile_data_(new rpc::ProfileTableData()),
       gcs_client_(gcs_client) {
   rpc_profile_data_->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
   rpc_profile_data_->set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_->set_node_ip_address(node_ip_address);
-  timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
+  timer_->async_wait(boost::bind(&Profiler::FlushEvents, this));
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
@@ -53,8 +53,17 @@ void Profiler::FlushEvents() {
   }
 
   // Reset the timer to 1 second from the previous expiration time to avoid drift.
-  timer_.expires_at(timer_.expiry() + boost::asio::chrono::seconds(1));
-  timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
+  timer_->expires_at(timer_->expiry() + boost::asio::chrono::seconds(1));
+  timer_->async_wait(boost::bind(&Profiler::FlushEvents, this));
+}
+
+ProfileEvent::~ProfileEvent() {
+  rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
+  profiler_->AddEvent(rpc_event_);
+}
+
+void ProfileEvent::SetExtraData(const std::string &extra_data) {
+  rpc_event_.set_extra_data(extra_data);
 }
 
 }  // namespace worker

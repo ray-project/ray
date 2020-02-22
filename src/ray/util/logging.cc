@@ -250,4 +250,7 @@ RayLog::~RayLog() {
   }
 }
 
+RayLogBase::~RayLogBase() {}
+std::ostream &RayLogBase::Stream() { return std::cerr; }
+
 }  // namespace ray

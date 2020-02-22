@@ -70,7 +70,7 @@ class TaskResourceInstances {
   absl::flat_hash_map<int64_t, std::vector<double>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// Get CPU instances only.
-  std::vector<double> GetCPUInstances() { return this->predefined_resources[CPU]; };
+  std::vector<double> GetCPUInstances();
   /// Returns human-readable string for these resources.
   std::string DebugString();
 };
@@ -136,7 +136,7 @@ class ClusterResourceScheduler {
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
  public:
-  ClusterResourceScheduler(void){};
+  ClusterResourceScheduler(void);
 
   /// Constructor initializing the resources associated with the local node.
   ///
@@ -270,7 +270,7 @@ class ClusterResourceScheduler {
                       const std::string &resource_name);
 
   /// Return local resources.
-  NodeResourceInstances GetLocalResources() { return local_resources_; };
+  NodeResourceInstances GetLocalResources();
 
   /// Create instances for each resource associated with the local node, given
   /// the node's resources.

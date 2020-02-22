@@ -13,18 +13,15 @@ using FunctionDescriptorType = rpc::FunctionDescriptor::FunctionDescriptorCase;
 class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescriptor> {
  public:
   /// Construct an empty FunctionDescriptor.
-  FunctionDescriptorInterface() : MessageWrapper() {}
+  FunctionDescriptorInterface();
 
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  FunctionDescriptorInterface(rpc::FunctionDescriptor message)
-      : MessageWrapper(std::move(message)) {}
+  FunctionDescriptorInterface(rpc::FunctionDescriptor message);
 
-  ray::FunctionDescriptorType Type() const {
-    return message_->function_descriptor_case();
-  }
+  ray::FunctionDescriptorType Type() const;
 
   virtual size_t Hash() const = 0;
 
@@ -42,16 +39,11 @@ class EmptyFunctionDescriptor : public FunctionDescriptorInterface {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit EmptyFunctionDescriptor() : FunctionDescriptorInterface() {
-    RAY_CHECK(message_->function_descriptor_case() ==
-              ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
-  }
+  explicit EmptyFunctionDescriptor();
 
-  virtual size_t Hash() const {
-    return std::hash<int>()(ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
-  }
+  virtual size_t Hash() const;
 
-  virtual std::string ToString() const { return "{type=EmptyFunctionDescriptor}"; }
+  virtual std::string ToString() const;
 };
 
 class JavaFunctionDescriptor : public FunctionDescriptorInterface {
@@ -60,31 +52,17 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit JavaFunctionDescriptor(rpc::FunctionDescriptor message)
-      : FunctionDescriptorInterface(std::move(message)) {
-    RAY_CHECK(message_->function_descriptor_case() ==
-              ray::FunctionDescriptorType::kJavaFunctionDescriptor);
-    typed_message_ = &(message_->java_function_descriptor());
-  }
+  explicit JavaFunctionDescriptor(rpc::FunctionDescriptor message);
 
-  virtual size_t Hash() const {
-    return std::hash<int>()(ray::FunctionDescriptorType::kJavaFunctionDescriptor) ^
-           std::hash<std::string>()(typed_message_->class_name()) ^
-           std::hash<std::string>()(typed_message_->function_name()) ^
-           std::hash<std::string>()(typed_message_->signature());
-  }
+  virtual size_t Hash() const;
 
-  virtual std::string ToString() const {
-    return "{type=JavaFunctionDescriptor, class_name=" + typed_message_->class_name() +
-           ", function_name=" + typed_message_->function_name() +
-           ", signature=" + typed_message_->signature() + "}";
-  }
+  virtual std::string ToString() const;
 
-  std::string ClassName() const { return typed_message_->class_name(); }
+  std::string ClassName() const;
 
-  std::string FunctionName() const { return typed_message_->function_name(); }
+  std::string FunctionName() const;
 
-  std::string Signature() const { return typed_message_->signature(); }
+  std::string Signature() const;
 
  private:
   const rpc::JavaFunctionDescriptor *typed_message_;
@@ -96,36 +74,19 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit PythonFunctionDescriptor(rpc::FunctionDescriptor message)
-      : FunctionDescriptorInterface(std::move(message)) {
-    RAY_CHECK(message_->function_descriptor_case() ==
-              ray::FunctionDescriptorType::kPythonFunctionDescriptor);
-    typed_message_ = &(message_->python_function_descriptor());
-  }
+  explicit PythonFunctionDescriptor(rpc::FunctionDescriptor message);
 
-  virtual size_t Hash() const {
-    return std::hash<int>()(ray::FunctionDescriptorType::kPythonFunctionDescriptor) ^
-           std::hash<std::string>()(typed_message_->module_name()) ^
-           std::hash<std::string>()(typed_message_->class_name()) ^
-           std::hash<std::string>()(typed_message_->function_name()) ^
-           std::hash<std::string>()(typed_message_->function_hash());
-  }
+  virtual size_t Hash() const;
 
-  virtual std::string ToString() const {
-    return "{type=PythonFunctionDescriptor, module_name=" +
-           typed_message_->module_name() +
-           ", class_name=" + typed_message_->class_name() +
-           ", function_name=" + typed_message_->function_name() +
-           ", function_hash=" + typed_message_->function_hash() + "}";
-  }
+  virtual std::string ToString() const;
 
-  std::string ModuleName() const { return typed_message_->module_name(); }
+  std::string ModuleName() const;
 
-  std::string ClassName() const { return typed_message_->class_name(); }
+  std::string ClassName() const;
 
-  std::string FunctionName() const { return typed_message_->function_name(); }
+  std::string FunctionName() const;
 
-  std::string FunctionHash() const { return typed_message_->function_hash(); }
+  std::string FunctionHash() const;
 
  private:
   const rpc::PythonFunctionDescriptor *typed_message_;

@@ -484,6 +484,16 @@ void TaskDependencyManager::RecordMetrics() const {
       pending_tasks_.size(), {{stats::ValueTypeKey, "num_pending_tasks"}});
 }
 
+bool TaskDependencyManager::ObjectDependencies::Empty() const {
+  return dependent_tasks.empty() && dependent_workers.empty();
+}
+
+TaskDependencyManager::PendingTask::PendingTask(int64_t initial_lease_period_ms,
+                                                boost::asio::io_service &io_service)
+    : lease_period(initial_lease_period_ms),
+      expires_at(INT64_MAX),
+      lease_timer(new boost::asio::deadline_timer(io_service)) {}
+
 }  // namespace raylet
 
 }  // namespace ray

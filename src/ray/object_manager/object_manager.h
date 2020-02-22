@@ -141,7 +141,7 @@ class ObjectManager : public ObjectManagerInterface,
   std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const ClientID &client_id);
 
   /// Get the port of the object manager rpc server.
-  int GetServerPort() const { return object_manager_server_.GetPort(); }
+  int GetServerPort() const;
 
  public:
   /// Takes user-defined ObjectDirectoryInterface implementation.
@@ -249,7 +249,10 @@ class ObjectManager : public ObjectManagerInterface,
   friend class TestObjectManager;
 
   struct PullRequest {
-    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
+    ~PullRequest();
+    PullRequest(PullRequest &&);
+    PullRequest &operator=(PullRequest &&);
+    PullRequest();
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
     bool timer_set;
     std::vector<ClientID> client_locations;
@@ -257,12 +260,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   struct WaitState {
     WaitState(boost::asio::io_service &service, int64_t timeout_ms,
-              const WaitCallback &callback)
-        : timeout_ms(timeout_ms),
-          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
-              new boost::asio::deadline_timer(
-                  service, boost::posix_time::milliseconds(timeout_ms)))),
-          callback(callback) {}
+              const WaitCallback &callback);
     /// The period of time to wait before invoking the callback.
     int64_t timeout_ms;
     /// Whether to wait for objects to become local before returning.
@@ -366,10 +364,10 @@ class ObjectManager : public ObjectManagerInterface,
   boost::asio::io_service *main_service_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
-  boost::asio::io_service rpc_service_;
+  std::unique_ptr<boost::asio::io_service> rpc_service_;
 
   /// Keep rpc service running when no task in rpc service.
-  boost::asio::io_service::work rpc_work_;
+  std::shared_ptr<void> rpc_work_;
 
   /// The thread pool used for running `rpc_service`.
   /// Data copy operations during request are done in this thread pool.

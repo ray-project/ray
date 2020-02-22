@@ -36,7 +36,7 @@ class GcsServer {
   void Stop();
 
   /// Get the port of this gcs server.
-  int GetPort() const { return rpc_server_.GetPort(); }
+  int GetPort() const;
 
  protected:
   /// Initialize the backend storage client

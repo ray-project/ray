@@ -159,7 +159,7 @@ class TaskDependencyManager {
     /// object.
     std::unordered_set<WorkerID> dependent_workers;
 
-    bool Empty() const { return dependent_tasks.empty() && dependent_workers.empty(); }
+    bool Empty() const;
   };
 
   /// A struct to represent the object dependencies of a task.
@@ -180,10 +180,7 @@ class TaskDependencyManager {
   using WorkerDependencies = std::unordered_set<ObjectID>;
 
   struct PendingTask {
-    PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service)
-        : lease_period(initial_lease_period_ms),
-          expires_at(INT64_MAX),
-          lease_timer(new boost::asio::deadline_timer(io_service)) {}
+    PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service);
 
     /// The timeout within which the lease should be renewed.
     int64_t lease_period;

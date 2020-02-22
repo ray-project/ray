@@ -45,11 +45,10 @@ class ObjectManagerGrpcService : public GrpcService {
   /// \param[in] port See `GrpcService`.
   /// \param[in] handler The service handler that actually handle the requests.
   ObjectManagerGrpcService(boost::asio::io_service &io_service,
-                           ObjectManagerServiceHandler &service_handler)
-      : GrpcService(io_service), service_handler_(service_handler){};
+                           ObjectManagerServiceHandler &service_handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,

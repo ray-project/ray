@@ -207,5 +207,38 @@ void ReaderQueue::OnData(QueueItem &item) {
   expect_seq_id_++;
 }
 
+Queue::~Queue() {}
+
+uint64_t Queue::QueueSize() { return data_size_; }
+
+uint64_t Queue::PendingDataSize() { return data_size_ - data_size_sent_; }
+
+uint64_t Queue::ProcessedDataSize() { return data_size_sent_; }
+
+size_t Queue::Count() { return buffer_queue_.size(); }
+
+void WriterQueue::SetQueueEvictionLimit(uint64_t eviction_limit) {
+  eviction_limit_ = eviction_limit;
+}
+
+uint64_t WriterQueue::EvictionLimit() { return eviction_limit_; }
+
+uint64_t WriterQueue::GetMinConsumedSeqID() { return min_consumed_id_; }
+
+void WriterQueue::SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) {
+  peer_last_msg_id_ = msg_id;
+  peer_last_seq_id_ = seq_id;
+}
+
+uint64_t WriterQueue::GetPeerLastMsgId() { return peer_last_msg_id_; }
+
+uint64_t WriterQueue::GetPeerLastSeqId() { return peer_last_seq_id_; }
+
+uint64_t ReaderQueue::GetMinConsumedSeqID() { return min_consumed_id_; }
+
+uint64_t ReaderQueue::GetLastRecvSeqId() { return last_recv_seq_id_; }
+
+void ReaderQueue::SetExpectSeqId(uint64_t expect) { expect_seq_id_ = expect; }
+
 }  // namespace streaming
 }  // namespace ray

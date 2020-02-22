@@ -854,3 +854,13 @@ void ClusterResourceScheduler::SubtractCPUResourceInstances(
   SubtractAvailableResourceInstances(cpu_instances,
                                      &local_resources_.predefined_resources[CPU]);
 }
+
+std::vector<double> TaskResourceInstances::GetCPUInstances() {
+  return this->predefined_resources[CPU];
+}
+
+NodeResourceInstances ClusterResourceScheduler::GetLocalResources() {
+  return local_resources_;
+}
+
+ClusterResourceScheduler::ClusterResourceScheduler(void) {}

@@ -83,5 +83,9 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
   address->second = std::stoi(result.substr(pos + 1));
 }
 
+RedisGcsClient &ServiceBasedGcsClient::GetRedisGcsClient() { return *redis_gcs_client_; }
+
+rpc::GcsRpcClient &ServiceBasedGcsClient::GetGcsRpcClient() { return *gcs_rpc_client_; }
+
 }  // namespace gcs
 }  // namespace ray

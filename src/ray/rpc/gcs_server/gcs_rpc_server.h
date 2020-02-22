@@ -35,7 +35,7 @@ namespace rpc {
 
 class JobInfoGcsServiceHandler {
  public:
-  virtual ~JobInfoGcsServiceHandler() = default;
+  virtual ~JobInfoGcsServiceHandler();
 
   virtual void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
                             SendReplyCallback send_reply_callback) = 0;
@@ -52,11 +52,10 @@ class JobInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit JobInfoGrpcService(boost::asio::io_service &io_service,
-                              JobInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                              JobInfoGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
@@ -75,7 +74,7 @@ class JobInfoGrpcService : public GrpcService {
 
 class ActorInfoGcsServiceHandler {
  public:
-  virtual ~ActorInfoGcsServiceHandler() = default;
+  virtual ~ActorInfoGcsServiceHandler();
 
   virtual void HandleGetActorInfo(const GetActorInfoRequest &request,
                                   GetActorInfoReply *reply,
@@ -109,11 +108,10 @@ class ActorInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit ActorInfoGrpcService(boost::asio::io_service &io_service,
-                                ActorInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                                ActorInfoGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
@@ -136,7 +134,7 @@ class ActorInfoGrpcService : public GrpcService {
 
 class NodeInfoGcsServiceHandler {
  public:
-  virtual ~NodeInfoGcsServiceHandler() = default;
+  virtual ~NodeInfoGcsServiceHandler();
 
   virtual void HandleRegisterNode(const RegisterNodeRequest &request,
                                   RegisterNodeReply *reply,
@@ -178,11 +176,10 @@ class NodeInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit NodeInfoGrpcService(boost::asio::io_service &io_service,
-                               NodeInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                               NodeInfoGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
@@ -207,7 +204,7 @@ class NodeInfoGrpcService : public GrpcService {
 
 class ObjectInfoGcsServiceHandler {
  public:
-  virtual ~ObjectInfoGcsServiceHandler() = default;
+  virtual ~ObjectInfoGcsServiceHandler();
 
   virtual void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
                                         GetObjectLocationsReply *reply,
@@ -229,11 +226,10 @@ class ObjectInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit ObjectInfoGrpcService(boost::asio::io_service &io_service,
-                                 ObjectInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                                 ObjectInfoGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
@@ -253,7 +249,7 @@ class ObjectInfoGrpcService : public GrpcService {
 
 class TaskInfoGcsServiceHandler {
  public:
-  virtual ~TaskInfoGcsServiceHandler() = default;
+  virtual ~TaskInfoGcsServiceHandler();
 
   virtual void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
                              SendReplyCallback send_reply_callback) = 0;
@@ -281,11 +277,10 @@ class TaskInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit TaskInfoGrpcService(boost::asio::io_service &io_service,
-                               TaskInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                               TaskInfoGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
@@ -307,7 +302,7 @@ class TaskInfoGrpcService : public GrpcService {
 
 class StatsGcsServiceHandler {
  public:
-  virtual ~StatsGcsServiceHandler() = default;
+  virtual ~StatsGcsServiceHandler();
 
   virtual void HandleAddProfileData(const AddProfileDataRequest &request,
                                     AddProfileDataReply *reply,
@@ -321,11 +316,10 @@ class StatsGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit StatsGrpcService(boost::asio::io_service &io_service,
-                            StatsGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                            StatsGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
@@ -343,7 +337,7 @@ class StatsGrpcService : public GrpcService {
 
 class ErrorInfoGcsServiceHandler {
  public:
-  virtual ~ErrorInfoGcsServiceHandler() = default;
+  virtual ~ErrorInfoGcsServiceHandler();
 
   virtual void HandleReportJobError(const ReportJobErrorRequest &request,
                                     ReportJobErrorReply *reply,
@@ -357,11 +351,10 @@ class ErrorInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit ErrorInfoGrpcService(boost::asio::io_service &io_service,
-                                ErrorInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                                ErrorInfoGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
@@ -379,7 +372,7 @@ class ErrorInfoGrpcService : public GrpcService {
 
 class WorkerInfoGcsServiceHandler {
  public:
-  virtual ~WorkerInfoGcsServiceHandler() = default;
+  virtual ~WorkerInfoGcsServiceHandler();
 
   virtual void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
                                          ReportWorkerFailureReply *reply,
@@ -393,11 +386,10 @@ class WorkerInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit WorkerInfoGrpcService(boost::asio::io_service &io_service,
-                                 WorkerInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
+                                 WorkerInfoGcsServiceHandler &handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,

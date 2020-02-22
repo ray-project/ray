@@ -100,6 +100,10 @@ void Sum::RegisterView() {
   RegisterAsView(view_descriptor, tag_keys_);
 }
 
+void Metric::Record(double value) { Record(value, {}); }
+
+Metric::~Metric() = default;
+
 }  // namespace stats
 
 }  // namespace ray

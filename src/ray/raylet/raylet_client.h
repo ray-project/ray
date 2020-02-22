@@ -57,7 +57,7 @@ class WorkerLeaseInterface {
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                                    bool disconnect_worker) = 0;
 
-  virtual ~WorkerLeaseInterface(){};
+  virtual ~WorkerLeaseInterface();
 };
 
 namespace raylet {
@@ -126,7 +126,7 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param grpc_client gRPC client to the raylet.
   RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
-  ray::Status Disconnect() { return conn_->Disconnect(); };
+  ray::Status Disconnect();
 
   /// Submit a task using the raylet code path.
   ///

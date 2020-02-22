@@ -63,3 +63,6 @@ void StringIdMap::Remove(int64_t id) {
 };
 
 int64_t StringIdMap::Count() { return string_to_int_.size(); }
+
+StringIdMap::StringIdMap() {}
+StringIdMap::~StringIdMap() {}

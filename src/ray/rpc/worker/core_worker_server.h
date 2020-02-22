@@ -58,11 +58,10 @@ class CoreWorkerGrpcService : public GrpcService {
   /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
   CoreWorkerGrpcService(boost::asio::io_service &main_service,
-                        CoreWorkerServiceHandler &service_handler)
-      : GrpcService(main_service), service_handler_(service_handler) {}
+                        CoreWorkerServiceHandler &service_handler);
 
  protected:
-  grpc::Service &GetGrpcService() override { return service_; }
+  grpc::Service &GetGrpcService() override;
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,

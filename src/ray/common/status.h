@@ -94,7 +94,7 @@ class RAY_EXPORT Status {
  public:
   // Create a success status.
   Status() : state_(NULL) {}
-  ~Status() { delete state_; }
+  ~Status();
 
   Status(StatusCode code, const std::string &msg);
 
@@ -195,7 +195,7 @@ class RAY_EXPORT Status {
 
   StatusCode code() const { return ok() ? StatusCode::OK : state_->code; }
 
-  std::string message() const { return ok() ? "" : state_->msg; }
+  std::string message() const;
 
  private:
   struct State {

@@ -36,7 +36,7 @@ class CoreWorkerMemoryStore {
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr);
-  ~CoreWorkerMemoryStore(){};
+  ~CoreWorkerMemoryStore();
 
   /// Put an object with specified ID into object store.
   ///
@@ -118,10 +118,7 @@ class CoreWorkerMemoryStore {
   /// Returns the number of objects in this store.
   ///
   /// \return Count of objects in the store.
-  int Size() {
-    absl::MutexLock lock(&mu_);
-    return objects_.size();
-  }
+  int Size();
 
   /// Returns stats data of memory usage.
   ///

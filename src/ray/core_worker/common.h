@@ -22,15 +22,12 @@ std::string LanguageString(Language language);
 /// Information about a remote function.
 class RayFunction {
  public:
-  RayFunction() {}
-  RayFunction(Language language, const ray::FunctionDescriptor &function_descriptor)
-      : language_(language), function_descriptor_(function_descriptor) {}
+  RayFunction();
+  RayFunction(Language language, const ray::FunctionDescriptor &function_descriptor);
 
   Language GetLanguage() const { return language_; }
 
-  const ray::FunctionDescriptor &GetFunctionDescriptor() const {
-    return function_descriptor_;
-  }
+  const ray::FunctionDescriptor &GetFunctionDescriptor() const;
 
  private:
   Language language_;
@@ -44,9 +41,7 @@ class TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  static TaskArg PassByReference(const ObjectID &object_id) {
-    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr);
-  }
+  static TaskArg PassByReference(const ObjectID &object_id);
 
   /// Create a pass-by-value task argument.
   ///
@@ -61,16 +56,10 @@ class TaskArg {
   bool IsPassedByReference() const { return id_ != nullptr; }
 
   /// Get the reference object ID.
-  const ObjectID &GetReference() const {
-    RAY_CHECK(id_ != nullptr) << "This argument isn't passed by reference.";
-    return *id_;
-  }
+  const ObjectID &GetReference() const;
 
   /// Get the value.
-  const RayObject &GetValue() const {
-    RAY_CHECK(value_ != nullptr) << "This argument isn't passed by value.";
-    return *value_;
-  }
+  const RayObject &GetValue() const;
 
  private:
   TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<RayObject> value)
@@ -84,7 +73,7 @@ class TaskArg {
 
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
-  TaskOptions() {}
+  TaskOptions();
   TaskOptions(int num_returns, bool is_direct_call,
               std::unordered_map<std::string, double> &resources)
       : num_returns(num_returns), is_direct_call(is_direct_call), resources(resources) {}
@@ -99,7 +88,7 @@ struct TaskOptions {
 
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
-  ActorCreationOptions() {}
+  ActorCreationOptions();
   ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
                        int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,

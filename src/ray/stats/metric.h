@@ -52,7 +52,7 @@ class Metric {
         unit_(unit),
         tag_keys_(tag_keys){};
 
-  virtual ~Metric() = default;
+  virtual ~Metric();
 
   Metric &operator()() { return *this; }
 
@@ -60,7 +60,7 @@ class Metric {
   std::string GetName() const { return name_; }
 
   /// Record the value for this metric.
-  void Record(double value) { Record(value, {}); }
+  void Record(double value);
 
   /// Record the value for this metric.
   ///

@@ -644,6 +644,15 @@ Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
   return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
 }
 
+RedisActorInfoAccessor::~RedisActorInfoAccessor() {}
+RedisJobInfoAccessor::~RedisJobInfoAccessor() {}
+RedisTaskInfoAccessor::~RedisTaskInfoAccessor() {}
+RedisObjectInfoAccessor::~RedisObjectInfoAccessor() {}
+RedisNodeInfoAccessor::~RedisNodeInfoAccessor() {}
+RedisErrorInfoAccessor::~RedisErrorInfoAccessor() = default;
+RedisStatsInfoAccessor::~RedisStatsInfoAccessor() = default;
+RedisWorkerInfoAccessor::~RedisWorkerInfoAccessor() = default;
+
 }  // namespace gcs
 
 }  // namespace ray

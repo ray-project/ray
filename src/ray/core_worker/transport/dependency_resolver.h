@@ -29,7 +29,7 @@ class LocalDependencyResolver {
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.
-  int NumPendingTasks() const { return num_pending_; }
+  int NumPendingTasks() const;
 
  private:
   /// The in-memory store.

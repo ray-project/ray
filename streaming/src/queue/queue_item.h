@@ -32,11 +32,7 @@ class QueueItem {
   /// \param[in] timestamp the time when this QueueItem created.
   /// \param[in] raw whether the data content is raw bytes, only used in some tests.
   QueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
-            bool raw = false)
-      : seq_id_(seq_id),
-        timestamp_(timestamp),
-        raw_(raw),
-        /*COPY*/ buffer_(std::make_shared<LocalMemoryBuffer>(data, data_size, true)) {}
+            bool raw = false);
 
   QueueItem(uint64_t seq_id, std::shared_ptr<LocalMemoryBuffer> buffer,
             uint64_t timestamp, bool raw = false)
@@ -47,45 +43,23 @@ class QueueItem {
         raw_(data_msg->IsRaw()),
         buffer_(data_msg->Buffer()) {}
 
-  QueueItem(const QueueItem &&item) {
-    buffer_ = item.buffer_;
-    seq_id_ = item.seq_id_;
-    timestamp_ = item.timestamp_;
-    raw_ = item.raw_;
-  }
+  QueueItem(const QueueItem &&item);
 
-  QueueItem(const QueueItem &item) {
-    buffer_ = item.buffer_;
-    seq_id_ = item.seq_id_;
-    timestamp_ = item.timestamp_;
-    raw_ = item.raw_;
-  }
+  QueueItem(const QueueItem &item);
 
-  QueueItem &operator=(const QueueItem &item) {
-    buffer_ = item.buffer_;
-    seq_id_ = item.seq_id_;
-    timestamp_ = item.timestamp_;
-    raw_ = item.raw_;
-    return *this;
-  }
+  QueueItem &operator=(const QueueItem &item);
 
-  virtual ~QueueItem() = default;
+  virtual ~QueueItem();
 
-  uint64_t SeqId() { return seq_id_; }
-  bool IsRaw() { return raw_; }
-  uint64_t TimeStamp() { return timestamp_; }
-  size_t DataSize() { return buffer_->Size(); }
-  std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
+  uint64_t SeqId();
+  bool IsRaw();
+  uint64_t TimeStamp();
+  size_t DataSize();
+  std::shared_ptr<LocalMemoryBuffer> Buffer();
 
   /// Get max message id in this item.
   /// \return max message id.
-  uint64_t MaxMsgId() {
-    if (raw_) {
-      return 0;
-    }
-    auto message_bundle = StreamingMessageBundleMeta::FromBytes(buffer_->Data());
-    return message_bundle->GetLastMessageId();
-  }
+  uint64_t MaxMsgId();
 
  protected:
   uint64_t seq_id_;
@@ -97,7 +71,7 @@ class QueueItem {
 
 class InvalidQueueItem : public QueueItem {
  public:
-  InvalidQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0) {}
+  InvalidQueueItem();
 
  private:
   uint8_t data_[1];

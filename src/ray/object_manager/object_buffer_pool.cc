@@ -1,5 +1,7 @@
 #include "ray/object_manager/object_buffer_pool.h"
 
+#include <boost/asio/buffer.hpp>
+
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 
@@ -205,5 +207,11 @@ std::string ObjectBufferPool::DebugString() const {
   result << "\n- create buffer state map size: " << create_buffer_state_.size();
   return result.str();
 }
+
+ObjectBufferPool::ChunkInfo::ChunkInfo(uint64_t chunk_index, uint8_t *data,
+                                       uint64_t buffer_length)
+    : chunk_index(chunk_index), data(data), buffer_length(buffer_length) {}
+ObjectBufferPool::GetBufferState::GetBufferState() {}
+ObjectBufferPool::CreateBufferState::CreateBufferState() {}
 
 }  // namespace ray

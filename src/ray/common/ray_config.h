@@ -27,10 +27,7 @@ class RayConfig {
 #undef RAY_CONFIG
 
  public:
-  static RayConfig &instance() {
-    static RayConfig config;
-    return config;
-  }
+  static RayConfig &instance();
 
 // clang-format off
 /// -----------Include ray_config_def.h to set config items.-------------------

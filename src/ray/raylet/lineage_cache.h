@@ -180,7 +180,7 @@ class Lineage {
 
   /// Return the size of the children_ map. This is used for debugging purposes
   /// only.
-  size_t GetChildrenSize() const { return children_.size(); }
+  size_t GetChildrenSize() const;
 
  private:
   /// The lineage entries.

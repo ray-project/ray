@@ -235,6 +235,14 @@ ActorCheckpointIdTable &RedisGcsClient::actor_checkpoint_id_table() {
 
 DynamicResourceTable &RedisGcsClient::resource_table() { return *resource_table_; }
 
+std::vector<std::shared_ptr<RedisContext>> RedisGcsClient::shard_contexts() {
+  return shard_contexts_;
+}
+
+std::shared_ptr<RedisContext> RedisGcsClient::primary_context() {
+  return primary_context_;
+}
+
 }  // namespace gcs
 
 }  // namespace ray

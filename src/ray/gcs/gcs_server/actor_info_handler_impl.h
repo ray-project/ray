@@ -10,8 +10,7 @@ namespace rpc {
 /// This implementation class of `ActorInfoHandler`.
 class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
  public:
-  explicit DefaultActorInfoHandler(gcs::RedisGcsClient &gcs_client)
-      : gcs_client_(gcs_client) {}
+  explicit DefaultActorInfoHandler(gcs::RedisGcsClient &gcs_client);
 
   void HandleGetActorInfo(const GetActorInfoRequest &request, GetActorInfoReply *reply,
                           SendReplyCallback send_reply_callback) override;

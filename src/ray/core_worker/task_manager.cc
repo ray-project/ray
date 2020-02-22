@@ -1,5 +1,6 @@
 #include "ray/core_worker/task_manager.h"
 
+#include "absl/synchronization/mutex.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -243,6 +244,13 @@ TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());
   return it->second.first;
+}
+
+TaskFinisherInterface::~TaskFinisherInterface() {}
+
+int TaskManager::NumPendingTasks() const {
+  absl::MutexLock lock(&mu_);
+  return pending_tasks_.size();
 }
 
 }  // namespace ray

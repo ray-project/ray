@@ -675,4 +675,32 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   }
 }
 
+ReferenceCounter::ReferenceCounter(const rpc::WorkerAddress &rpc_address,
+                                   bool distributed_ref_counting_enabled,
+                                   rpc::ClientFactoryFn client_factory)
+    : rpc_address_(rpc_address),
+      distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
+      client_factory_(client_factory) {}
+
+ReferenceCounter::~ReferenceCounter() {}
+
+ReferenceCounter::Reference::Reference() : owned_by_us(false) {}
+
+ReferenceCounter::Reference::Reference(const TaskID &owner_id,
+                                       const rpc::Address &owner_address)
+    : owned_by_us(true), owner({owner_id, owner_address}) {}
+
+size_t ReferenceCounter::Reference::RefCount() const {
+  return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
+}
+
+bool ReferenceCounter::Reference::CanDelete() const {
+  bool in_scope = RefCount() > 0;
+  bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
+  bool has_borrowers = borrowers.size() > 0;
+  bool was_stored_in_objects = stored_in_objects.size() > 0;
+  return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
+           was_stored_in_objects);
+}
+
 }  // namespace ray

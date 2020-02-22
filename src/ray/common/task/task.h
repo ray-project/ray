@@ -27,34 +27,22 @@ class Task {
  public:
   /// Construct an empty task. This should only be used to pass a task
   /// as an out parameter to a function or method.
-  Task() {}
+  Task();
 
   /// Construct a `Task` object from a protobuf message.
   ///
   /// \param message The protobuf message.
-  explicit Task(const rpc::Task &message)
-      : task_spec_(message.task_spec()),
-        task_execution_spec_(message.task_execution_spec()) {
-    ComputeDependencies();
-  }
+  explicit Task(const rpc::Task &message);
 
   /// Construct a `Task` object from a `TaskSpecification` and a
   /// `TaskExecutionSpecification`.
-  Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
-      : task_spec_(std::move(task_spec)),
-        task_execution_spec_(std::move(task_execution_spec)) {
-    ComputeDependencies();
-  }
+  Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec);
 
   /// Override dispatch behaviour.
-  void OnDispatchInstead(const DispatchTaskCallback &callback) {
-    on_dispatch_ = callback;
-  }
+  void OnDispatchInstead(const DispatchTaskCallback &callback);
 
   /// Override spillback behaviour.
-  void OnSpillbackInstead(const SpillbackTaskCallback &callback) {
-    on_spillback_ = callback;
-  }
+  void OnSpillbackInstead(const SpillbackTaskCallback &callback);
 
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.
@@ -81,10 +69,10 @@ class Task {
   void CopyTaskExecutionSpec(const Task &task);
 
   /// Returns the override dispatch task callback, or nullptr.
-  const DispatchTaskCallback &OnDispatch() const { return on_dispatch_; }
+  const DispatchTaskCallback &OnDispatch() const;
 
   /// Returns the override spillback task callback, or nullptr.
-  const SpillbackTaskCallback &OnSpillback() const { return on_spillback_; }
+  const SpillbackTaskCallback &OnSpillback() const;
 
   std::string DebugString() const;
 

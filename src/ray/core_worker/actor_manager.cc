@@ -19,4 +19,8 @@ void ActorManager::PublishTerminatedActor(const TaskSpecification &actor_creatio
   RAY_CHECK_OK(actor_accessor_.AsyncRegister(data, update_callback));
 }
 
+ActorManagerInterface::~ActorManagerInterface() {}
+ActorManager::ActorManager(gcs::ActorInfoAccessor &actor_accessor)
+    : actor_accessor_(actor_accessor) {}
+
 }  // namespace ray

@@ -66,7 +66,7 @@ class StreamingMessageBundleMeta {
 
   explicit StreamingMessageBundleMeta();
 
-  virtual ~StreamingMessageBundleMeta() = default;
+  virtual ~StreamingMessageBundleMeta();
 
   bool operator==(StreamingMessageBundleMeta &) const;
 
@@ -93,11 +93,7 @@ class StreamingMessageBundleMeta {
     return *magic_num == StreamingMessageBundleMagicNum;
   }
 
-  std::string ToString() {
-    return std::to_string(last_message_id_) + "," + std::to_string(message_list_size_) +
-           "," + std::to_string(message_bundle_ts_) + "," +
-           std::to_string(static_cast<uint32_t>(bundle_type_));
-  }
+  std::string ToString();
 };
 
 /// StreamingMessageBundle inherits from metadata class (StreamingMessageBundleMeta)
@@ -149,7 +145,7 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
 
   explicit StreamingMessageBundle(StreamingMessageBundle &bundle);
 
-  virtual ~StreamingMessageBundle() = default;
+  virtual ~StreamingMessageBundle();
 
   inline uint32_t GetRawBundleSize() const { return raw_bundle_size_; }
 
@@ -159,7 +155,7 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
 
   void GetMessageList(std::list<StreamingMessagePtr> &message_list);
 
-  const std::list<StreamingMessagePtr> &GetMessageList() const { return message_list_; }
+  const std::list<StreamingMessagePtr> &GetMessageList() const;
 
   virtual void ToBytes(uint8_t *data);
   static StreamingMessageBundlePtr FromBytes(const uint8_t *data,

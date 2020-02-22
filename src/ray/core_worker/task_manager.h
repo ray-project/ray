@@ -25,7 +25,7 @@ class TaskFinisherInterface {
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
 
-  virtual ~TaskFinisherInterface() {}
+  virtual ~TaskFinisherInterface();
 };
 
 using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
@@ -97,7 +97,7 @@ class TaskManager : public TaskFinisherInterface {
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
   /// Return the number of pending tasks.
-  int NumPendingTasks() const { return pending_tasks_.size(); }
+  int NumPendingTasks() const;
 
  private:
   /// Treat a pending task as failed. The lock should not be held when calling

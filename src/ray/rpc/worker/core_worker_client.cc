@@ -34,6 +34,11 @@ WorkerAddress::WorkerAddress(const Address &address)
       worker_id(WorkerID::FromBinary(address.worker_id())),
       raylet_id(ClientID::FromBinary(address.raylet_id())) {}
 
+bool WorkerAddress::operator==(const WorkerAddress &other) const {
+  return other.ip_address == ip_address && other.port == port &&
+         other.worker_id == worker_id && other.raylet_id == raylet_id;
+}
+
 Address WorkerAddress::ToProto() const {
   Address addr;
   addr.set_raylet_id(raylet_id.Binary());
@@ -42,6 +47,13 @@ Address WorkerAddress::ToProto() const {
   addr.set_worker_id(worker_id.Binary());
   return addr;
 }
+
+const Address &CoreWorkerClientInterface::Addr() const {
+  static const Address empty_addr_;
+  return empty_addr_;
+}
+
+const Address &CoreWorkerClient::Addr() const { return addr_; }
 
 void CoreWorkerClient::SendRequests() {
   absl::MutexLock lock(&mutex_);
@@ -79,6 +91,7 @@ void CoreWorkerClient::SendRequests() {
     RAY_LOG(DEBUG) << "client send queue size " << send_queue_.size();
   }
 }
+CoreWorkerClientInterface::~CoreWorkerClientInterface() {}
 
 CoreWorkerClient::CoreWorkerClient(const rpc::Address &address,
                                    ClientCallManager &client_call_manager)

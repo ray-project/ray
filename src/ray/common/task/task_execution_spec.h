@@ -14,20 +14,18 @@ class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec>
  public:
   /// Construct an emtpy task execution specification. This should not be used
   /// directly.
-  TaskExecutionSpecification() {}
+  TaskExecutionSpecification();
 
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskExecutionSpecification(rpc::TaskExecutionSpec message)
-      : MessageWrapper(std::move(message)) {}
+  explicit TaskExecutionSpecification(rpc::TaskExecutionSpec message);
 
   /// Construct from protobuf-serialized binary.
   ///
   /// \param serialized_binary Protobuf-serialized binary.
-  explicit TaskExecutionSpecification(const std::string &serialized_binary)
-      : MessageWrapper(serialized_binary) {}
+  explicit TaskExecutionSpecification(const std::string &serialized_binary);
 
   /// Get the number of times this task has been forwarded.
   ///

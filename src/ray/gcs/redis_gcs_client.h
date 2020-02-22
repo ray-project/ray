@@ -59,8 +59,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   Status GetExport(const std::string &job_id, int64_t export_index,
                    const GetExportCallback &done_callback);
 
-  std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
-  std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
+  std::vector<std::shared_ptr<RedisContext>> shard_contexts();
+  std::shared_ptr<RedisContext> primary_context();
 
   /// The following xxx_table methods implement the Accessor interfaces.
   /// Implements the Actors() interface.

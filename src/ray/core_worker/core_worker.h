@@ -107,27 +107,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddLocalReference(const ObjectID &object_id) {
-    reference_counter_->AddLocalReference(object_id);
-  }
+  void AddLocalReference(const ObjectID &object_id);
 
   /// Decrease the reference count for this object ID. Should be called
   /// by the language frontend when a reference is destroyed.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
-  void RemoveLocalReference(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveLocalReference(object_id, &deleted);
-    if (ref_counting_enabled_) {
-      memory_store_->Delete(deleted);
-    }
-  }
+  void RemoveLocalReference(const ObjectID &object_id);
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
-    return reference_counter_->GetAllReferenceCounts();
-  }
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
   /// Promote an object to plasma and get its owner information. This should be
   /// called when serializing an object ID, and the returned information should
@@ -414,7 +404,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const ActorID &GetActorId() const { return actor_id_; }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const { return *resource_ids_; }
+  const ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
@@ -604,20 +594,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// and a new one takes its place with the same place. In this situation, we want
   /// the new worker to reject messages meant for the old one.
   bool HandleWrongRecipient(const WorkerID &intended_worker_id,
-                            rpc::SendReplyCallback send_reply_callback) {
-    if (intended_worker_id != worker_context_.GetWorkerID()) {
-      std::ostringstream stream;
-      stream << "Mismatched WorkerID: ignoring RPC for previous worker "
-             << intended_worker_id
-             << ", current worker ID: " << worker_context_.GetWorkerID();
-      auto msg = stream.str();
-      RAY_LOG(ERROR) << msg;
-      send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
-      return true;
-    } else {
-      return false;
-    }
-  }
+                            rpc::SendReplyCallback send_reply_callback);
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
@@ -650,19 +627,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool shutdown_ = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service io_service_;
+  std::unique_ptr<boost::asio::io_service> io_service_;
 
   /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  std::shared_ptr<void> io_work_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   /// Timer used to periodically check if the raylet has died.
-  boost::asio::steady_timer death_check_timer_;
+  std::unique_ptr<boost::asio::steady_timer> death_check_timer_;
 
   /// Timer for internal book-keeping.
-  boost::asio::steady_timer internal_timer_;
+  std::unique_ptr<boost::asio::steady_timer> internal_timer_;
 
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;
@@ -752,10 +729,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service task_execution_service_;
+  std::unique_ptr<boost::asio::io_service> task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
+  std::shared_ptr<void> task_execution_service_work_;
 
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;

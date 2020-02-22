@@ -97,4 +97,8 @@ std::string Status::ToString() const {
   return result;
 }
 
+std::string Status::message() const { return ok() ? "" : state_->msg; }
+
+Status::~Status() { delete state_; }
+
 }  // namespace ray

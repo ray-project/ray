@@ -3311,6 +3311,8 @@ void NodeManager::RecordMetrics() {
                              {{stats::ValueTypeKey, "max_num_handles"}});
 }
 
+int NodeManager::GetServerPort() const { return node_manager_server_.GetPort(); }
+
 }  // namespace raylet
 
 }  // namespace ray

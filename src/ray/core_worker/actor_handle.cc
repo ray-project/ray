@@ -66,4 +66,34 @@ void ActorHandle::Reset() {
   actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
 }
 
+ActorHandle::ActorHandle(ray::rpc::ActorHandle inner)
+    : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
+
+ActorID ActorHandle::GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); }
+
+JobID ActorHandle::CreationJobID() const {
+  return JobID::FromBinary(inner_.creation_job_id());
+}
+
+Language ActorHandle::ActorLanguage() const { return inner_.actor_language(); }
+
+ray::FunctionDescriptor ActorHandle::ActorCreationTaskFunctionDescriptor() const {
+  return ray::FunctionDescriptorBuilder::FromProto(
+      inner_.actor_creation_task_function_descriptor());
+}
+
+std::string ActorHandle::ExtensionData() const { return inner_.extension_data(); }
+
+bool ActorHandle::IsDirectCallActor() const { return inner_.is_direct_call(); }
+
+void ActorHandle::MarkDead() {
+  absl::MutexLock lock(&mutex_);
+  state_ = rpc::ActorTableData::DEAD;
+}
+
+bool ActorHandle::IsDead() const {
+  absl::MutexLock lock(&mutex_);
+  return state_ == rpc::ActorTableData::DEAD;
+}
+
 }  // namespace ray

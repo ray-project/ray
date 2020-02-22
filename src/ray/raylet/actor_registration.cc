@@ -126,6 +126,16 @@ std::shared_ptr<ActorCheckpointData> ActorRegistration::GenerateCheckpointData(
   return checkpoint_data;
 }
 
+const ActorState ActorRegistration::GetState() const { return actor_table_data_.state(); }
+
+void ActorRegistration::SetState(const ActorState &state) {
+  actor_table_data_.set_state(state);
+}
+
+const std::unordered_map<ObjectID, int64_t> &ActorRegistration::GetDummyObjects() const {
+  return dummy_objects_;
+}
+
 }  // namespace raylet
 
 }  // namespace ray

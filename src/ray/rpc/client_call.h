@@ -2,9 +2,11 @@
 #define RAY_RPC_CLIENT_CALL_H
 
 #include <grpcpp/grpcpp.h>
-#include <boost/asio.hpp>
-#include "absl/synchronization/mutex.h"
 
+#include <boost/asio.hpp>
+#include <thread>
+
+#include "absl/synchronization/mutex.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 
@@ -26,7 +28,7 @@ class ClientCall {
   /// Set return status.
   virtual void SetReturnStatus() = 0;
 
-  virtual ~ClientCall() = default;
+  virtual ~ClientCall();
 };
 
 class ClientCallManager;
@@ -119,7 +121,7 @@ class ClientCallTag {
   explicit ClientCallTag(std::shared_ptr<ClientCall> call) : call_(std::move(call)) {}
 
   /// Get the wrapped `ClientCall`.
-  const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
+  const std::shared_ptr<ClientCall> &GetCall() const;
 
  private:
   std::shared_ptr<ClientCall> call_;
@@ -149,27 +151,9 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
-      : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
-    rr_index_ = rand() % num_threads_;
-    // Start the polling threads.
-    cqs_.reserve(num_threads_);
-    for (int i = 0; i < num_threads_; i++) {
-      cqs_.emplace_back();
-      polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
-                                    this, i);
-    }
-  }
+  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1);
 
-  ~ClientCallManager() {
-    shutdown_ = true;
-    for (auto &cq : cqs_) {
-      cq.Shutdown();
-    }
-    for (auto &polling_thread : polling_threads_) {
-      polling_thread.join();
-    }
-  }
+  ~ClientCallManager();
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -211,40 +195,7 @@ class ClientCallManager {
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
   /// objects.
-  void PollEventsFromCompletionQueue(int index) {
-    void *got_tag;
-    bool ok = false;
-    // Keep reading events from the `CompletionQueue` until it's shutdown.
-    // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
-    // synchronous cq_.Next blocks indefinitely in the case that the process
-    // received a SIGTERM.
-    while (true) {
-      auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
-                                   gpr_time_from_millis(250, GPR_TIMESPAN));
-      auto status = cqs_[index].AsyncNext(&got_tag, &ok, deadline);
-      if (status == grpc::CompletionQueue::SHUTDOWN) {
-        break;
-      } else if (status == grpc::CompletionQueue::TIMEOUT && shutdown_) {
-        // If we timed out and shutdown, then exit immediately. This should not
-        // be needed, but gRPC seems to not return SHUTDOWN correctly in these
-        // cases (e.g., test_wait will hang on shutdown without this check).
-        break;
-      } else if (status != grpc::CompletionQueue::TIMEOUT) {
-        auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-        tag->GetCall()->SetReturnStatus();
-        if (ok && !main_service_.stopped() && !shutdown_) {
-          // Post the callback to the main event loop.
-          main_service_.post([tag]() {
-            tag->GetCall()->OnReplyReceived();
-            // The call is finished, and we can delete this tag now.
-            delete tag;
-          });
-        } else {
-          delete tag;
-        }
-      }
-    }
-  }
+  void PollEventsFromCompletionQueue(int index);
 
   /// The main event loop, to which the callback functions will be posted.
   boost::asio::io_service &main_service_;

@@ -58,12 +58,7 @@ class RayObject {
   /// Return the object IDs that were serialized in data.
   const std::vector<ObjectID> &GetNestedIds() const { return nested_ids_; }
 
-  uint64_t GetSize() const {
-    uint64_t size = 0;
-    size += (data_ != nullptr) ? data_->Size() : 0;
-    size += (metadata_ != nullptr) ? metadata_->Size() : 0;
-    return size;
-  }
+  uint64_t GetSize() const;
 
   /// Whether this object has data.
   bool HasData() const { return data_ != nullptr; }

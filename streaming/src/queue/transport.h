@@ -16,9 +16,8 @@ class Transport {
   /// \param[in] core_worker CoreWorker C++ pointer of current actor, which we call direct
   ///            actor call interface with.
   /// \param[in] peer_actor_id actor id of peer actor.
-  Transport(CoreWorker *core_worker, const ActorID &peer_actor_id)
-      : core_worker_(core_worker), peer_actor_id_(peer_actor_id) {}
-  virtual ~Transport() = default;
+  Transport(CoreWorker *core_worker, const ActorID &peer_actor_id);
+  virtual ~Transport();
 
   /// Send buffer asynchronously, peer's `function` will be called.
   /// \param[in] buffer buffer to be sent.

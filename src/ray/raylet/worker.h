@@ -26,7 +26,7 @@ class Worker {
          std::shared_ptr<LocalClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
-  ~Worker() {}
+  ~Worker();
   void MarkDead();
   bool IsDead() const;
   void MarkBlocked();
@@ -77,7 +77,7 @@ class Worker {
   /// TODO (ion): Investigate a more intuitive alternative to track these Cpus.
   ResourceSet borrowed_cpu_resources_;
 
-  rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
+  rpc::CoreWorkerClient *rpc_client();
 
  private:
   /// The worker's ID.

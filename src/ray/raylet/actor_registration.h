@@ -55,10 +55,10 @@ class ActorRegistration {
   /// Get the actor's current state (ALIVE or DEAD).
   ///
   /// \return The actor's current state.
-  const ActorState GetState() const { return actor_table_data_.state(); }
+  const ActorState GetState() const;
 
   /// Update actor's state.
-  void SetState(const ActorState &state) { actor_table_data_.set_state(state); }
+  void SetState(const ActorState &state);
 
   /// Get the actor's node manager location.
   ///
@@ -100,9 +100,7 @@ class ActorRegistration {
   const std::unordered_map<TaskID, FrontierLeaf> &GetFrontier() const;
 
   /// Get all the dummy objects of this actor's tasks.
-  const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
-    return dummy_objects_;
-  }
+  const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const;
 
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.

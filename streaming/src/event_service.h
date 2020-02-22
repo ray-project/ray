@@ -49,7 +49,7 @@ struct Event {
 /// processing functions ordered by its priority.
 class EventQueue {
  public:
-  EventQueue(size_t size) : urgent_(false), capacity_(size), is_freezed_(true) {}
+  EventQueue(size_t size);
 
   virtual ~EventQueue();
 

@@ -23,11 +23,7 @@ class NodeManagerClient {
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
-  };
+                    ClientCallManager &client_call_manager);
 
   /// Forward a task and its uncommitted lineage.
   ///
@@ -61,11 +57,7 @@ class NodeManagerWorkerClient
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   static std::shared_ptr<NodeManagerWorkerClient> make(
-      const std::string &address, const int port,
-      ClientCallManager &client_call_manager) {
-    auto instance = new NodeManagerWorkerClient(address, port, client_call_manager);
-    return std::shared_ptr<NodeManagerWorkerClient>(instance);
-  }
+      const std::string &address, const int port, ClientCallManager &client_call_manager);
 
   /// Request a worker lease.
   RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
@@ -83,11 +75,7 @@ class NodeManagerWorkerClient
   /// \param[in] port Port of the node manager server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerWorkerClient(const std::string &address, const int port,
-                          ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
-  };
+                          ClientCallManager &client_call_manager);
 
   /// The RPC client.
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;

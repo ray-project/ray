@@ -9,8 +9,8 @@
 
 #include "ray/util/logging.h"
 
-boost::asio::ip::tcp::endpoint parse_ip_tcp_endpoint(const std::string &endpoint,
-                                                     int default_port) {
+boost::asio::ip::basic_endpoint<boost::asio::ip::tcp> parse_ip_tcp_endpoint(
+    const std::string &endpoint, int default_port) {
   const std::string scheme_sep = "://";
   size_t scheme_begin = 0, scheme_end = endpoint.find(scheme_sep, scheme_begin);
   size_t host_begin;

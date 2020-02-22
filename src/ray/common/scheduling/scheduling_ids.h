@@ -16,8 +16,8 @@ class StringIdMap {
   std::hash<std::string> hasher_;
 
  public:
-  StringIdMap(){};
-  ~StringIdMap(){};
+  StringIdMap();
+  ~StringIdMap();
 
   /// Get integer ID associated with an existing string ID.
   ///

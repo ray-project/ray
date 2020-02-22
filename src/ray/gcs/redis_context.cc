@@ -15,12 +15,36 @@ extern "C" {
 // TODO(pcm): Integrate into the C++ tree.
 #include "ray/common/ray_config.h"
 
-namespace {
+namespace ray {
+
+namespace gcs {
+
+struct RedisCallbackManager::CallbackItem
+    : public std::enable_shared_from_this<CallbackItem> {
+  CallbackItem() = default;
+
+  CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
+               boost::asio::io_service &io_service);
+
+  void Dispatch(std::shared_ptr<CallbackReply> &reply);
+
+  RedisCallback callback_;
+  bool is_subscription_;
+  int64_t start_time_;
+  boost::asio::io_service *io_service_;
+};
+
+void RedisCallbackManager::CallbackItem::Dispatch(std::shared_ptr<CallbackReply> &reply) {
+  std::shared_ptr<CallbackItem> self = shared_from_this();
+  if (callback_ != nullptr) {
+    io_service_->post([self, reply]() { self->callback_(std::move(reply)); });
+  }
+}
 
 /// A helper function to call the callback and delete it from the callback
 /// manager if necessary.
-void ProcessCallback(int64_t callback_index,
-                     std::shared_ptr<ray::gcs::CallbackReply> callback_reply) {
+static void ProcessCallback(int64_t callback_index,
+                            std::shared_ptr<ray::gcs::CallbackReply> callback_reply) {
   RAY_CHECK(callback_index >= 0) << "The callback index must be greater than 0, "
                                  << "but it actually is " << callback_index;
   auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
@@ -38,12 +62,6 @@ void ProcessCallback(int64_t callback_index,
     ray::gcs::RedisCallbackManager::instance().remove(callback_index);
   }
 }
-
-}  // namespace
-
-namespace ray {
-
-namespace gcs {
 
 CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply->type) {
   RAY_CHECK(nullptr != redis_reply);
@@ -302,6 +320,41 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
 
   return status;
 }
+
+RedisCallbackManager &RedisCallbackManager::instance() {
+  static RedisCallbackManager instance;
+  return instance;
+}
+
+redisContext *RedisContext::sync_context() {
+  RAY_CHECK(context_);
+  return context_;
+}
+
+RedisAsyncContext &RedisContext::async_context() {
+  RAY_CHECK(redis_async_context_);
+  return *redis_async_context_;
+}
+
+RedisAsyncContext &RedisContext::subscribe_context() {
+  RAY_CHECK(async_redis_subscribe_context_);
+  return *async_redis_subscribe_context_;
+}
+
+RedisCallbackManager::CallbackItem::CallbackItem(const RedisCallback &callback,
+                                                 bool is_subscription, int64_t start_time,
+                                                 boost::asio::io_service &io_service)
+    : callback_(callback),
+      is_subscription_(is_subscription),
+      start_time_(start_time),
+      io_service_(&io_service) {}
+
+RedisCallbackManager::RedisCallbackManager() : num_callbacks_(0) {}
+
+RedisCallbackManager::~RedisCallbackManager() {}
+
+RedisContext::RedisContext(boost::asio::io_service &io_service)
+    : io_service_(io_service), context_(nullptr) {}
 
 }  // namespace gcs
 

@@ -6,6 +6,10 @@ namespace ray {
 
 namespace gcs {
 
+AccessorTestRawBase::AccessorTestRawBase() : io_service_(new boost::asio::io_service()) {}
+
+AccessorTestRawBase::~AccessorTestRawBase() {}
+
 void AccessorTestRawBase::SetUp() {
   GenTestData();
 
@@ -18,6 +22,28 @@ void AccessorTestRawBase::SetUp() {
         new boost::asio::io_service::work(*io_service_));
     io_service_->run();
   }));
+}
+
+void AccessorTestRawBase::TearDown() {
+  gcs_client_->Disconnect();
+
+  io_service_->stop();
+  work_thread_->join();
+  work_thread_.reset();
+
+  gcs_client_.reset();
+
+  ClearTestData();
+}
+
+void AccessorTestRawBase::WaitPendingDone(std::chrono::milliseconds timeout) {
+  WaitPendingDone(pending_count_, timeout);
+}
+
+void AccessorTestRawBase::WaitPendingDone(std::atomic<int> &pending_count,
+                                          std::chrono::milliseconds timeout) {
+  auto condition = [&pending_count]() { return pending_count == 0; };
+  EXPECT_TRUE(WaitForCondition(condition, timeout.count()));
 }
 
 }  // namespace gcs

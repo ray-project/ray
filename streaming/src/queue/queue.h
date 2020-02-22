@@ -38,7 +38,7 @@ class Queue {
     watershed_iter_ = buffer_queue_.begin();
   }
 
-  virtual ~Queue() {}
+  virtual ~Queue();
 
   /// Push an item into the queue.
   /// \param[in] item the QueueItem object to be send to peer.
@@ -66,16 +66,16 @@ class Queue {
   bool IsPendingFull(uint64_t data_size = 0);
 
   /// Return the size in bytes of all items in queue.
-  uint64_t QueueSize() { return data_size_; }
+  uint64_t QueueSize();
 
   /// Return the size in bytes of all items in pending state.
-  uint64_t PendingDataSize() { return data_size_ - data_size_sent_; }
+  uint64_t PendingDataSize();
 
   /// Return the size in bytes of all items in processed state.
-  uint64_t ProcessedDataSize() { return data_size_sent_; }
+  uint64_t ProcessedDataSize();
 
   /// Return item count of the queue.
-  size_t Count() { return buffer_queue_.size(); }
+  size_t Count();
 
   /// Return item count in pending state.
   size_t PendingCount();
@@ -135,22 +135,17 @@ class WriterQueue : public Queue {
   /// can be evicted, determined by eviction_limit_ and min_consumed_id_.
   Status TryEvictItems();
 
-  void SetQueueEvictionLimit(uint64_t eviction_limit) {
-    eviction_limit_ = eviction_limit;
-  }
+  void SetQueueEvictionLimit(uint64_t eviction_limit);
 
-  uint64_t EvictionLimit() { return eviction_limit_; }
+  uint64_t EvictionLimit();
 
-  uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
+  uint64_t GetMinConsumedSeqID();
 
-  void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) {
-    peer_last_msg_id_ = msg_id;
-    peer_last_seq_id_ = seq_id;
-  }
+  void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id);
 
-  uint64_t GetPeerLastMsgId() { return peer_last_msg_id_; }
+  uint64_t GetPeerLastMsgId();
 
-  uint64_t GetPeerLastSeqId() { return peer_last_seq_id_; }
+  uint64_t GetPeerLastSeqId();
 
  private:
   ActorID actor_id_;
@@ -188,11 +183,11 @@ class ReaderQueue : public Queue {
 
   void OnData(QueueItem &item);
 
-  uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
+  uint64_t GetMinConsumedSeqID();
 
-  uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
+  uint64_t GetLastRecvSeqId();
 
-  void SetExpectSeqId(uint64_t expect) { expect_seq_id_ = expect; }
+  void SetExpectSeqId(uint64_t expect);
 
  private:
   void Notify(uint64_t seq_id);

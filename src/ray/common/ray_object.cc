@@ -42,4 +42,11 @@ bool RayObject::IsInPlasmaError() const {
   return metadata == std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
 }
 
+uint64_t RayObject::GetSize() const {
+  uint64_t size = 0;
+  size += (data_ != nullptr) ? data_->Size() : 0;
+  size += (metadata_ != nullptr) ? metadata_->Size() : 0;
+  return size;
+}
+
 }  // namespace ray

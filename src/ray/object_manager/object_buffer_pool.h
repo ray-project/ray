@@ -24,8 +24,7 @@ class ObjectBufferPool {
   /// This is the structure returned whenever an object chunk is
   /// accessed via Get and Create.
   struct ChunkInfo {
-    ChunkInfo(uint64_t chunk_index, uint8_t *data, uint64_t buffer_length)
-        : chunk_index(chunk_index), data(data), buffer_length(buffer_length){};
+    ChunkInfo(uint64_t chunk_index, uint8_t *data, uint64_t buffer_length);
     /// A pointer to the start position of this object chunk.
     uint64_t chunk_index;
     /// A pointer to the start position of this object chunk.
@@ -145,7 +144,7 @@ class ObjectBufferPool {
 
   /// Holds the state of a get buffer.
   struct GetBufferState {
-    GetBufferState() {}
+    GetBufferState();
     GetBufferState(std::vector<ChunkInfo> chunk_info) : chunk_info(chunk_info) {}
     /// A vector maintaining information about the chunks which comprise
     /// an object.
@@ -161,7 +160,7 @@ class ObjectBufferPool {
 
   /// Holds the state of a create buffer.
   struct CreateBufferState {
-    CreateBufferState() {}
+    CreateBufferState();
     CreateBufferState(std::vector<ChunkInfo> chunk_info)
         : chunk_info(chunk_info),
           chunk_state(chunk_info.size(), CreateChunkState::AVAILABLE),

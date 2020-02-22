@@ -30,14 +30,9 @@ class QueueMessageHandler {
   ///            ray.worker.global_worker.core_worker; For Java worker, obtained from
   ///            RayNativeRuntime object through java reflection.
   /// \param[in] actor_id actor id of current actor.
-  QueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : core_worker_(core_worker),
-        actor_id_(actor_id),
-        queue_dummy_work_(queue_service_) {
-    Start();
-  }
+  QueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id);
 
-  virtual ~QueueMessageHandler() { Stop(); }
+  virtual ~QueueMessageHandler();
 
   /// Dispatch message buffer to asio service.
   /// \param[in] buffer serialized message received from peer actor.
@@ -84,7 +79,7 @@ class QueueMessageHandler {
   /// Stop asio service
   void Stop();
   /// The callback function of internal thread.
-  void QueueThreadCallback() { queue_service_.run(); }
+  void QueueThreadCallback();
 
  protected:
   /// CoreWorker C++ pointer of current actor
@@ -102,17 +97,16 @@ class QueueMessageHandler {
   /// The internal thread which asio service run with.
   std::thread queue_thread_;
   /// The internal asio service.
-  boost::asio::io_service queue_service_;
+  std::unique_ptr<boost::asio::io_service> queue_service_;
   /// The asio work which keeps queue_service_ alive.
-  boost::asio::io_service::work queue_dummy_work_;
+  std::shared_ptr<void> queue_dummy_work_;
 };
 
 /// UpstreamQueueMessageHandler holds and manages all upstream queues of current actor.
 class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   /// Construct a UpstreamQueueMessageHandler instance.
-  UpstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueMessageHandler(core_worker, actor_id) {}
+  UpstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id);
   /// Create a upstream queue.
   /// \param[in] queue_id queue id of the queue to be created.
   /// \param[in] peer_actor_id actor id of peer actor.
@@ -157,8 +151,7 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
 /// UpstreamQueueMessageHandler holds and manages all downstream queues of current actor.
 class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
-  DownstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueMessageHandler(core_worker, actor_id) {}
+  DownstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id);
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                      const ActorID &peer_actor_id);
   bool DownstreamQueueExists(const ObjectID &queue_id);

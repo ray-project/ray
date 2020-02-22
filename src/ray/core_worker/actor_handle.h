@@ -14,8 +14,7 @@ namespace ray {
 
 class ActorHandle {
  public:
-  ActorHandle(ray::rpc::ActorHandle inner)
-      : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
+  ActorHandle(ray::rpc::ActorHandle inner);
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id, const JobID &job_id,
@@ -27,22 +26,19 @@ class ActorHandle {
   /// Constructs an ActorHandle from a serialized string.
   ActorHandle(const std::string &serialized);
 
-  ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
+  ActorID GetActorID() const;
 
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
-  JobID CreationJobID() const { return JobID::FromBinary(inner_.creation_job_id()); };
+  JobID CreationJobID() const;
 
-  Language ActorLanguage() const { return inner_.actor_language(); };
+  Language ActorLanguage() const;
 
-  ray::FunctionDescriptor ActorCreationTaskFunctionDescriptor() const {
-    return ray::FunctionDescriptorBuilder::FromProto(
-        inner_.actor_creation_task_function_descriptor());
-  };
+  ray::FunctionDescriptor ActorCreationTaskFunctionDescriptor() const;
 
-  std::string ExtensionData() const { return inner_.extension_data(); }
+  std::string ExtensionData() const;
 
-  bool IsDirectCallActor() const { return inner_.is_direct_call(); }
+  bool IsDirectCallActor() const;
 
   void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskTransportType transport_type,
                         const ObjectID new_cursor);
@@ -58,16 +54,10 @@ class ActorHandle {
   void Reset();
 
   // Mark the actor handle as dead.
-  void MarkDead() {
-    absl::MutexLock lock(&mutex_);
-    state_ = rpc::ActorTableData::DEAD;
-  }
+  void MarkDead();
 
   // Returns whether the actor is known to be dead.
-  bool IsDead() const {
-    absl::MutexLock lock(&mutex_);
-    return state_ == rpc::ActorTableData::DEAD;
-  }
+  bool IsDead() const;
 
  private:
   // Protobuf-defined persistent state of the actor handle.

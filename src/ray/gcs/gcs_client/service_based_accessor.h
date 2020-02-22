@@ -16,7 +16,7 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
  public:
   explicit ServiceBasedJobInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedJobInfoAccessor() = default;
+  virtual ~ServiceBasedJobInfoAccessor();
 
   Status AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
                   const StatusCallback &callback) override;
@@ -41,7 +41,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
  public:
   explicit ServiceBasedActorInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedActorInfoAccessor() = default;
+  virtual ~ServiceBasedActorInfoAccessor();
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
@@ -91,7 +91,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
  public:
   explicit ServiceBasedNodeInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedNodeInfoAccessor() = default;
+  virtual ~ServiceBasedNodeInfoAccessor();
 
   Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
 
@@ -174,7 +174,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
  public:
   explicit ServiceBasedTaskInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedTaskInfoAccessor() = default;
+  virtual ~ServiceBasedTaskInfoAccessor();
 
   Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
                   const StatusCallback &callback) override;
@@ -227,7 +227,7 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
  public:
   explicit ServiceBasedObjectInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedObjectInfoAccessor() = default;
+  virtual ~ServiceBasedObjectInfoAccessor();
 
   Status AsyncGetLocations(
       const ObjectID &object_id,
@@ -264,7 +264,7 @@ class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
  public:
   explicit ServiceBasedStatsInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedStatsInfoAccessor() = default;
+  virtual ~ServiceBasedStatsInfoAccessor();
 
   Status AsyncAddProfileData(const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
                              const StatusCallback &callback) override;
@@ -280,7 +280,7 @@ class ServiceBasedErrorInfoAccessor : public ErrorInfoAccessor {
  public:
   explicit ServiceBasedErrorInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedErrorInfoAccessor() = default;
+  virtual ~ServiceBasedErrorInfoAccessor();
 
   Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
                              const StatusCallback &callback) override;
@@ -296,7 +296,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
  public:
   explicit ServiceBasedWorkerInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedWorkerInfoAccessor() = default;
+  virtual ~ServiceBasedWorkerInfoAccessor();
 
   Status AsyncSubscribeToWorkerFailures(
       const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,

@@ -3,6 +3,8 @@
 namespace ray {
 namespace rpc {
 
+const std::shared_ptr<ClientCall> &ClientCallTag::GetCall() const { return call_; }
+
 void ClientCallManager::PollEventsFromCompletionQueue(int index) {
   void *got_tag;
   bool ok = false;
@@ -35,6 +37,30 @@ void ClientCallManager::PollEventsFromCompletionQueue(int index) {
         delete tag;
       }
     }
+  }
+}
+
+ClientCall::~ClientCall() = default;
+
+ClientCallManager::ClientCallManager(boost::asio::io_service &main_service,
+                                     int num_threads)
+    : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
+  rr_index_ = rand() % num_threads_;  // Start the polling threads.
+  cqs_.reserve(num_threads_);
+  for (int i = 0; i < num_threads_; i++) {
+    cqs_.emplace_back();
+    polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue, this,
+                                  i);
+  }
+}
+
+ClientCallManager::~ClientCallManager() {
+  shutdown_ = true;
+  for (auto &cq : cqs_) {
+    cq.Shutdown();
+  }
+  for (auto &polling_thread : polling_threads_) {
+    polling_thread.join();
   }
 }
 

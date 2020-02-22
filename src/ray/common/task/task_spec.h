@@ -27,15 +27,13 @@ typedef int SchedulingClass;
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
   /// Construct an empty task specification. This should not be used directly.
-  TaskSpecification() {}
+  TaskSpecification();
 
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
-    ComputeResources();
-  }
+  explicit TaskSpecification(rpc::TaskSpec message);
 
   /// Construct from a protobuf message shared_ptr.
   ///
@@ -48,10 +46,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Construct from protobuf-serialized binary.
   ///
   /// \param serialized_binary Protobuf-serialized binary.
-  explicit TaskSpecification(const std::string &serialized_binary)
-      : MessageWrapper(serialized_binary) {
-    ComputeResources();
-  }
+  explicit TaskSpecification(const std::string &serialized_binary);
 
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;

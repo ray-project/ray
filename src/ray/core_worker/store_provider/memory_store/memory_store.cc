@@ -456,4 +456,11 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   return item;
 }
 
+CoreWorkerMemoryStore::~CoreWorkerMemoryStore() {}
+
+int CoreWorkerMemoryStore::Size() {
+  absl::MutexLock lock(&mu_);
+  return objects_.size();
+}
+
 }  // namespace ray

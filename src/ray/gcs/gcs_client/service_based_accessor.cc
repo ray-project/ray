@@ -817,5 +817,14 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
   return Status::OK();
 }
 
+ServiceBasedJobInfoAccessor::~ServiceBasedJobInfoAccessor() = default;
+ServiceBasedActorInfoAccessor::~ServiceBasedActorInfoAccessor() = default;
+ServiceBasedNodeInfoAccessor::~ServiceBasedNodeInfoAccessor() = default;
+ServiceBasedTaskInfoAccessor::~ServiceBasedTaskInfoAccessor() = default;
+ServiceBasedObjectInfoAccessor::~ServiceBasedObjectInfoAccessor() = default;
+ServiceBasedStatsInfoAccessor::~ServiceBasedStatsInfoAccessor() = default;
+ServiceBasedErrorInfoAccessor::~ServiceBasedErrorInfoAccessor() = default;
+ServiceBasedWorkerInfoAccessor::~ServiceBasedWorkerInfoAccessor() = default;
+
 }  // namespace gcs
 }  // namespace ray

@@ -2,6 +2,38 @@
 
 namespace ray {
 
+void FiberEvent::Wait() {
+  std::unique_lock<boost::fibers::mutex> lock(mutex_);
+  cond_.wait(lock, [this]() { return ready_; });
+}
+
+void FiberEvent::Notify() {
+  {
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    ready_ = true;
+  }
+  cond_.notify_one();
+}
+
+FiberRateLimiter::FiberRateLimiter(int num) : num_(num) {}
+
+void FiberRateLimiter::Acquire() {
+  std::unique_lock<boost::fibers::mutex> lock(mutex_);
+  cond_.wait(lock, [this]() { return num_ > 0; });
+  num_ -= 1;
+}
+
+void FiberRateLimiter::Release() {
+  {
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    num_ += 1;
+  }
+  // NOTE(simon): This not does guarantee to wake up the first queued fiber.
+  // This could be a problem for certain workloads because there is no guarantee
+  // on task ordering.
+  cond_.notify_one();
+}
+
 FiberState::FiberState(int max_concurrency) : rate_limiter_(max_concurrency) {
   fiber_runner_thread_ = std::thread([&]() {
     while (!channel_.is_closed()) {
@@ -25,6 +57,14 @@ FiberState::FiberState(int max_concurrency) : rate_limiter_(max_concurrency) {
     // fiber_runner_thread_ will immediately start working on any ready fibers.
     shutdown_worker_event_.Wait();
   });
+}
+
+FiberState::~FiberState() {
+  channel_.close();
+  shutdown_worker_event_.Notify();
+  if (fiber_runner_thread_.joinable()) {
+    fiber_runner_thread_.join();
+  }
 }
 
 }  // namespace ray

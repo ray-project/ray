@@ -313,5 +313,7 @@ StreamingStatus MockConsumer::RefreshChannelInfo() {
   return StreamingStatus::OK;
 }
 
+ProducerChannel::~ProducerChannel() = default;
+ConsumerChannel::~ConsumerChannel() = default;
 }  // namespace streaming
 }  // namespace ray

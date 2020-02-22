@@ -106,6 +106,7 @@ Event &EventQueue::Front() {
 
 EventService::EventService(uint32_t event_size)
     : event_queue_(std::make_shared<EventQueue>(event_size)), stop_flag_(false) {}
+
 EventService::~EventService() {
   stop_flag_ = true;
   // No need to join if loop thread has never been created.
@@ -192,6 +193,9 @@ void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remo
   STREAMING_LOG(INFO) << "Total event num => " << total_event_nums
                       << ", removed related num => " << removed_related_num;
 }
+
+EventQueue::EventQueue(size_t size)
+    : urgent_(false), capacity_(size), is_freezed_(true) {}
 
 }  // namespace streaming
 }  // namespace ray

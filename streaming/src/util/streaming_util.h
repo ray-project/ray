@@ -27,9 +27,7 @@ enum class ConfigEnum : uint32_t {
 namespace std {
 template <>
 struct hash<::ray::streaming::ConfigEnum> {
-  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const {
-    return static_cast<uint32_t>(config_enum_key);
-  }
+  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const;
 };
 
 template <>
@@ -81,7 +79,7 @@ class Config {
     return boost::any_cast<std::string>(Get(key));
   }
 
-  virtual ~Config() = default;
+  virtual ~Config();
 
  protected:
   mutable std::unordered_map<ConfigEnum, boost::any> config_map_;

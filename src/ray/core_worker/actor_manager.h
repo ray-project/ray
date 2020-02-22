@@ -11,7 +11,7 @@ class ActorManagerInterface {
  public:
   virtual void PublishTerminatedActor(const TaskSpecification &actor_creation_task) = 0;
 
-  virtual ~ActorManagerInterface() {}
+  virtual ~ActorManagerInterface();
 };
 
 /// Class to manage lifetimes of actors that we create (actor children).
@@ -20,8 +20,7 @@ class ActorManagerInterface {
 /// by raylet.
 class ActorManager : public ActorManagerInterface {
  public:
-  ActorManager(gcs::ActorInfoAccessor &actor_accessor)
-      : actor_accessor_(actor_accessor) {}
+  ActorManager(gcs::ActorInfoAccessor &actor_accessor);
 
   /// Called when an actor that we own can no longer be restarted.
   void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override;

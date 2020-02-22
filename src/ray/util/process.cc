@@ -35,44 +35,46 @@ class ProcessFD {
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvp(const char *argv[], std::error_code &ec) {
-    ec = std::error_code();
-    intptr_t fd;
-    pid_t pid;
+  static ProcessFD spawnvp(const char *argv[], std::error_code &ec);
+};
+
+ProcessFD ProcessFD::spawnvp(const char *argv[], std::error_code &ec) {
+  ec = std::error_code();
+  intptr_t fd;
+  pid_t pid;
 #ifdef _WIN32
-    fd = _spawnvp(P_NOWAIT, argv[0], argv);
-    if (fd != -1) {
-      pid = static_cast<pid_t>(GetProcessId(reinterpret_cast<HANDLE>(fd)));
-      if (pid == 0) {
-        pid = -1;
-      }
-    } else {
+  fd = _spawnvp(P_NOWAIT, argv[0], argv);
+  if (fd != -1) {
+    pid = static_cast<pid_t>(GetProcessId(reinterpret_cast<HANDLE>(fd)));
+    if (pid == 0) {
       pid = -1;
     }
-    if (pid == -1) {
-      ec = std::error_code(GetLastError(), std::system_category());
-    }
-#else
-    // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
-    // file descriptors into the child process, as that can be problematic.
-    pid = fork();
-    if (pid == 0) {
-      // Child process case. Reset the SIGCHLD handler for the worker.
-      signal(SIGCHLD, SIG_DFL);
-      if (execvp(argv[0], const_cast<char *const *>(argv)) == -1) {
-        pid = -1;
-        abort();  // fork() succeeded but exec() failed, so abort the child
-      }
-    }
-    if (pid == -1) {
-      ec = std::error_code(errno, std::system_category());
-    }
-    // TODO(mehrdadn): This would be a good place to open a descriptor later
-    fd = -1;
-#endif
-    return ProcessFD(pid, fd);
+  } else {
+    pid = -1;
   }
-};
+  if (pid == -1) {
+    ec = std::error_code(GetLastError(), std::system_category());
+  }
+#else
+  // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
+  // file descriptors into the child process, as that can be problematic.
+  pid = fork();
+  if (pid == 0) {
+    // Child process case. Reset the SIGCHLD handler for the worker.
+    signal(SIGCHLD, SIG_DFL);
+    if (execvp(argv[0], const_cast<char *const *>(argv)) == -1) {
+      pid = -1;
+      abort();  // fork() succeeded but exec() failed, so abort the child
+    }
+  }
+  if (pid == -1) {
+    ec = std::error_code(errno, std::system_category());
+  }
+  // TODO(mehrdadn): This would be a good place to open a descriptor later
+  fd = -1;
+#endif
+  return ProcessFD(pid, fd);
+}
 
 ProcessFD::~ProcessFD() {
   if (fd_ != -1) {

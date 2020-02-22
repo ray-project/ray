@@ -467,6 +467,31 @@ void SchedulingQueue::RecordMetrics() const {
   }
 }
 
+TaskQueue::~TaskQueue() {}
+
+ReadyQueue::ReadyQueue() {}
+
+ReadyQueue::~ReadyQueue() {}
+
+SchedulingQueue::SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
+  for (const auto &task_state : {
+           TaskState::PLACEABLE,
+           TaskState::WAITING,
+           TaskState::READY,
+           TaskState::RUNNING,
+           TaskState::INFEASIBLE,
+           TaskState::WAITING_FOR_ACTOR_CREATION,
+           TaskState::SWAP,
+       }) {
+    if (task_state == TaskState::READY) {
+      task_queues_[static_cast<int>(task_state)] = ready_queue_;
+    } else {
+      task_queues_[static_cast<int>(task_state)] = std::make_shared<TaskQueue>();
+    }
+  }
+}
+SchedulingQueue::~SchedulingQueue() {}
+
 }  // namespace raylet
 
 }  // namespace ray

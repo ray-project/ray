@@ -111,4 +111,6 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
   }
 }
 
+int LocalDependencyResolver::NumPendingTasks() const { return num_pending_; }
+
 }  // namespace ray

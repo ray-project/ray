@@ -18,11 +18,11 @@ namespace ray {
 
 /// Connection information for remote object managers.
 struct RemoteConnectionInfo {
-  RemoteConnectionInfo(const ClientID &id) : client_id(id) {}
+  RemoteConnectionInfo(const ClientID &id);
 
   // Returns whether there is enough information to connect to the remote
   // object manager.
-  bool Connected() const { return !ip.empty(); }
+  bool Connected() const;
 
   ClientID client_id;
   std::string ip;
@@ -31,7 +31,7 @@ struct RemoteConnectionInfo {
 
 class ObjectDirectoryInterface {
  public:
-  virtual ~ObjectDirectoryInterface() {}
+  virtual ~ObjectDirectoryInterface();
 
   /// Lookup how to connect to a remote object manager.
   ///
@@ -131,7 +131,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ObjectDirectory(boost::asio::io_service &io_service,
                   std::shared_ptr<gcs::GcsClient> &gcs_client);
 
-  virtual ~ObjectDirectory() {}
+  virtual ~ObjectDirectory();
 
   void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
 

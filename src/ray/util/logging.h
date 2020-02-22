@@ -60,7 +60,7 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 // This is also a null log which does not output anything.
 class RayLogBase {
  public:
-  virtual ~RayLogBase(){};
+  virtual ~RayLogBase();
 
   // By default, this class is a null log because it return false here.
   virtual bool IsEnabled() const { return false; };
@@ -74,7 +74,7 @@ class RayLogBase {
   }
 
  protected:
-  virtual std::ostream &Stream() { return std::cerr; };
+  virtual std::ostream &Stream();
 };
 
 class RayLog : public RayLogBase {

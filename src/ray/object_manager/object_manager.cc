@@ -17,11 +17,12 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
       object_directory_(std::move(object_directory)),
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
-      rpc_work_(rpc_service_),
+      rpc_service_(new boost::asio::io_service()),
+      rpc_work_(std::make_shared<boost::asio::io_service::work>(*rpc_service_)),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.rpc_service_threads_number),
-      object_manager_service_(rpc_service_, *this),
+      object_manager_service_(*rpc_service_, *this),
       client_call_manager_(main_service, config_.rpc_service_threads_number) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
@@ -38,7 +39,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
 
 ObjectManager::~ObjectManager() { StopRpcService(); }
 
-void ObjectManager::RunRpcService() { rpc_service_.run(); }
+void ObjectManager::RunRpcService() { rpc_service_->run(); }
 
 void ObjectManager::StartRpcService() {
   rpc_threads_.resize(config_.rpc_service_threads_number);
@@ -50,7 +51,7 @@ void ObjectManager::StartRpcService() {
 }
 
 void ObjectManager::StopRpcService() {
-  rpc_service_.stop();
+  rpc_service_->stop();
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
     rpc_threads_[i].join();
   }
@@ -204,7 +205,7 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   auto rpc_client = GetRpcClient(node_id);
   if (rpc_client) {
     // Try pulling from the client.
-    rpc_service_.post([this, object_id, node_id, rpc_client]() {
+    rpc_service_->post([this, object_id, node_id, rpc_client]() {
       SendPullRequest(object_id, node_id, rpc_client);
     });
   } else {
@@ -397,8 +398,8 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
 
     UniqueID push_id = UniqueID::FromRandom();
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-      rpc_service_.post([this, push_id, object_id, client_id, data_size, metadata_size,
-                         chunk_index, rpc_client]() {
+      rpc_service_->post([this, push_id, object_id, client_id, data_size, metadata_size,
+                          chunk_index, rpc_client]() {
         auto st = SendObjectChunk(push_id, object_id, client_id, data_size, metadata_size,
                                   chunk_index, rpc_client);
         if (!st.ok()) {
@@ -488,6 +489,13 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
   // been performed on all remaining objects.
   return ray::Status::OK();
 }
+
+ObjectManager::PullRequest::~PullRequest() = default;
+
+ObjectManager::PullRequest::PullRequest(PullRequest &&) = default;
+
+ObjectManager::PullRequest &ObjectManager::PullRequest::operator=(PullRequest &&) =
+    default;
 
 ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
                                           const std::vector<ObjectID> &object_ids,
@@ -756,7 +764,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
         rpc_clients.push_back(rpc_client);
       }
     }
-    rpc_service_.post([this, object_ids, rpc_clients]() {
+    rpc_service_->post([this, object_ids, rpc_clients]() {
       SpreadFreeObjectsRequest(object_ids, rpc_clients);
     });
   }
@@ -854,5 +862,17 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectManagerStats().Record(profile_events_.size(),
                                      {{stats::ValueTypeKey, "num_profile_events"}});
 }
+
+int ray::ObjectManager::GetServerPort() const { return object_manager_server_.GetPort(); }
+
+ObjectManager::PullRequest::PullRequest()
+    : retry_timer(nullptr), timer_set(false), client_locations() {}
+ObjectManager::WaitState::WaitState(boost::asio::io_service &service, int64_t timeout_ms,
+                                    const WaitCallback &callback)
+    : timeout_ms(timeout_ms),
+      timeout_timer(
+          std::unique_ptr<boost::asio::deadline_timer>(new boost::asio::deadline_timer(
+              service, boost::posix_time::milliseconds(timeout_ms)))),
+      callback(callback) {}
 
 }  // namespace ray

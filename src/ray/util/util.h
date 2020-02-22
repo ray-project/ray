@@ -68,11 +68,7 @@ class InitShutdownRAII {
   }
 
   /// Destructor of InitShutdownRAII which will call the shutdown function.
-  ~InitShutdownRAII() {
-    if (shutdown_ != nullptr) {
-      shutdown_();
-    }
-  }
+  ~InitShutdownRAII();
 
  private:
   ShutdownFunc shutdown_;

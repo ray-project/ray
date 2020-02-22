@@ -5,33 +5,21 @@ namespace ray {
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
-  WorkerThreadContext()
-      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_index_(0) {}
+  WorkerThreadContext();
 
-  int GetNextTaskIndex() { return ++task_index_; }
+  int GetNextTaskIndex();
 
-  int GetNextPutIndex() { return ++put_index_; }
+  int GetNextPutIndex();
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
 
-  std::shared_ptr<const TaskSpecification> GetCurrentTask() const {
-    return current_task_;
-  }
+  std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
-  void SetCurrentTaskId(const TaskID &task_id) { current_task_id_ = task_id; }
+  void SetCurrentTaskId(const TaskID &task_id);
 
-  void SetCurrentTask(const TaskSpecification &task_spec) {
-    RAY_CHECK(task_index_ == 0);
-    RAY_CHECK(put_index_ == 0);
-    SetCurrentTaskId(task_spec.TaskId());
-    current_task_ = std::make_shared<const TaskSpecification>(task_spec);
-  }
+  void SetCurrentTask(const TaskSpecification &task_spec);
 
-  void ResetCurrentTask(const TaskSpecification &task_spec) {
-    SetCurrentTaskId(TaskID::Nil());
-    task_index_ = 0;
-    put_index_ = 0;
-  }
+  void ResetCurrentTask(const TaskSpecification &task_spec);
 
  private:
   /// The task ID for current task.
@@ -154,6 +142,34 @@ WorkerThreadContext &WorkerContext::GetThreadContext() {
   }
 
   return *thread_context_;
+}
+
+WorkerThreadContext::WorkerThreadContext()
+    : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_index_(0) {}
+
+int WorkerThreadContext::GetNextTaskIndex() { return ++task_index_; }
+
+int WorkerThreadContext::GetNextPutIndex() { return ++put_index_; }
+
+std::shared_ptr<const TaskSpecification> WorkerThreadContext::GetCurrentTask() const {
+  return current_task_;
+}
+
+void WorkerThreadContext::SetCurrentTaskId(const TaskID &task_id) {
+  current_task_id_ = task_id;
+}
+
+void WorkerThreadContext::SetCurrentTask(const TaskSpecification &task_spec) {
+  RAY_CHECK(task_index_ == 0);
+  RAY_CHECK(put_index_ == 0);
+  SetCurrentTaskId(task_spec.TaskId());
+  current_task_ = std::make_shared<const TaskSpecification>(task_spec);
+}
+
+void WorkerThreadContext::ResetCurrentTask(const TaskSpecification &task_spec) {
+  SetCurrentTaskId(TaskID::Nil());
+  task_index_ = 0;
+  put_index_ = 0;
 }
 
 }  // namespace ray

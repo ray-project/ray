@@ -220,4 +220,10 @@ std::string ObjectDirectory::DebugString() const {
   return result.str();
 }
 
+bool RemoteConnectionInfo::Connected() const { return !ip.empty(); }
+
+RemoteConnectionInfo::RemoteConnectionInfo(const ClientID &id) : client_id(id) {}
+ObjectDirectoryInterface::~ObjectDirectoryInterface() {}
+ObjectDirectory::~ObjectDirectory() {}
+
 }  // namespace ray

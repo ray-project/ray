@@ -18,4 +18,11 @@ std::string TaskExecutionSpecification::DebugString() const {
   return stream.str();
 }
 
+TaskExecutionSpecification::TaskExecutionSpecification() {}
+TaskExecutionSpecification::TaskExecutionSpecification(rpc::TaskExecutionSpec message)
+    : MessageWrapper(std::move(message)) {}
+TaskExecutionSpecification::TaskExecutionSpecification(
+    const std::string &serialized_binary)
+    : MessageWrapper(serialized_binary) {}
+
 }  // namespace ray

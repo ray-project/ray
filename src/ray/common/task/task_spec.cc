@@ -275,4 +275,15 @@ std::string TaskSpecification::DebugString() const {
   return stream.str();
 }
 
+TaskSpecification::TaskSpecification() {}
+
+TaskSpecification::TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  ComputeResources();
+}
+
+TaskSpecification::TaskSpecification(const std::string &serialized_binary)
+    : MessageWrapper(serialized_binary) {
+  ComputeResources();
+}
+
 }  // namespace ray

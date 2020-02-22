@@ -74,7 +74,7 @@ class ProducerChannel {
  public:
   explicit ProducerChannel(std::shared_ptr<Config> &transfer_config,
                            ProducerChannelInfo &p_channel_info);
-  virtual ~ProducerChannel() = default;
+  virtual ~ProducerChannel();
   virtual StreamingStatus CreateTransferChannel() = 0;
   virtual StreamingStatus DestroyTransferChannel() = 0;
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
@@ -92,7 +92,7 @@ class ConsumerChannel {
  public:
   explicit ConsumerChannel(std::shared_ptr<Config> &transfer_config,
                            ConsumerChannelInfo &c_channel_info);
-  virtual ~ConsumerChannel() = default;
+  virtual ~ConsumerChannel();
   virtual StreamingStatus CreateTransferChannel() = 0;
   virtual StreamingStatus DestroyTransferChannel() = 0;
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,

@@ -160,5 +160,7 @@ std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
       new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
 }
 
+int GcsServer::GetPort() const { return rpc_server_.GetPort(); }
+
 }  // namespace gcs
 }  // namespace ray

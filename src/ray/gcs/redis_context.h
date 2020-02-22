@@ -76,33 +76,9 @@ void GlobalRedisCallback(void *c, void *r, void *privdata);
 
 class RedisCallbackManager {
  public:
-  static RedisCallbackManager &instance() {
-    static RedisCallbackManager instance;
-    return instance;
-  }
+  static RedisCallbackManager &instance();
 
-  struct CallbackItem : public std::enable_shared_from_this<CallbackItem> {
-    CallbackItem() = default;
-
-    CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
-                 boost::asio::io_service &io_service)
-        : callback_(callback),
-          is_subscription_(is_subscription),
-          start_time_(start_time),
-          io_service_(&io_service) {}
-
-    void Dispatch(std::shared_ptr<CallbackReply> &reply) {
-      std::shared_ptr<CallbackItem> self = shared_from_this();
-      if (callback_ != nullptr) {
-        io_service_->post([self, reply]() { self->callback_(std::move(reply)); });
-      }
-    }
-
-    RedisCallback callback_;
-    bool is_subscription_;
-    int64_t start_time_;
-    boost::asio::io_service *io_service_;
-  };
+  struct CallbackItem;
 
   int64_t add(const RedisCallback &function, bool is_subscription,
               boost::asio::io_service &io_service);
@@ -113,9 +89,9 @@ class RedisCallbackManager {
   void remove(int64_t callback_index);
 
  private:
-  RedisCallbackManager() : num_callbacks_(0){};
+  RedisCallbackManager();
 
-  ~RedisCallbackManager() {}
+  ~RedisCallbackManager();
 
   std::mutex mutex_;
 
@@ -125,8 +101,7 @@ class RedisCallbackManager {
 
 class RedisContext {
  public:
-  RedisContext(boost::asio::io_service &io_service)
-      : io_service_(io_service), context_(nullptr) {}
+  RedisContext(boost::asio::io_service &io_service);
 
   ~RedisContext();
 
@@ -191,20 +166,11 @@ class RedisContext {
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
 
-  redisContext *sync_context() {
-    RAY_CHECK(context_);
-    return context_;
-  }
+  redisContext *sync_context();
 
-  RedisAsyncContext &async_context() {
-    RAY_CHECK(redis_async_context_);
-    return *redis_async_context_;
-  }
+  RedisAsyncContext &async_context();
 
-  RedisAsyncContext &subscribe_context() {
-    RAY_CHECK(async_redis_subscribe_context_);
-    return *async_redis_subscribe_context_;
-  }
+  RedisAsyncContext &subscribe_context();
 
  private:
   boost::asio::io_service &io_service_;

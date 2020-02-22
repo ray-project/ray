@@ -49,30 +49,16 @@ class GrpcServer {
   GrpcServer(std::string name, const uint32_t port, int num_threads = 1);
 
   /// Destruct this gRPC server.
-  ~GrpcServer() { Shutdown(); }
+  ~GrpcServer();
 
   /// Initialize and run this server.
   void Run();
 
   // Shutdown this server
-  void Shutdown() {
-    if (!is_closed_) {
-      // Shutdown the server with an immediate deadline.
-      // TODO(edoakes): do we want to do this in all cases?
-      server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
-      for (const auto &cq : cqs_) {
-        cq->Shutdown();
-      }
-      for (auto &polling_thread : polling_threads_) {
-        polling_thread.join();
-      }
-      is_closed_ = true;
-      RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
-    }
-  }
+  void Shutdown();
 
   /// Get the port of this gRPC server.
-  int GetPort() const { return port_; }
+  int GetPort() const;
 
   /// Register a grpc service. Multiple services can be registered to the same server.
   /// Note that the `service` registered must remain valid for the lifetime of the
@@ -119,11 +105,10 @@ class GrpcService {
   ///
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
-  explicit GrpcService(boost::asio::io_service &main_service)
-      : main_service_(main_service) {}
+  explicit GrpcService(boost::asio::io_service &main_service);
 
   /// Destruct this gRPC service.
-  ~GrpcService() = default;
+  ~GrpcService();
 
  protected:
   /// Return the underlying grpc::Service object for this class.

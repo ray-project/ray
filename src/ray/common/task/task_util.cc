@@ -2,6 +2,12 @@
 
 namespace ray {
 
+TaskSpecBuilder::TaskSpecBuilder() : message_(std::make_shared<rpc::TaskSpec>()) {}
+
+TaskSpecification TaskSpecBuilder::Build() { return TaskSpecification(message_); }
+
+const rpc::TaskSpec &TaskSpecBuilder::GetMessage() const { return *message_; }
+
 TaskSpecBuilder &TaskSpecBuilder::SetDriverTaskSpec(const TaskID &task_id,
                                                     const Language &language,
                                                     const JobID &job_id,
@@ -18,6 +24,27 @@ TaskSpecBuilder &TaskSpecBuilder::SetDriverTaskSpec(const TaskID &task_id,
   message_->mutable_caller_address()->CopyFrom(caller_address);
   message_->set_num_returns(0);
   message_->set_is_direct_call(false);
+  return *this;
+}
+
+TaskSpecBuilder &TaskSpecBuilder::AddByRefArg(const ObjectID &arg_id) {
+  message_->add_args()->add_object_ids(arg_id.Binary());
+  return *this;
+}
+
+TaskSpecBuilder &TaskSpecBuilder::AddByValueArg(const RayObject &value) {
+  auto arg = message_->add_args();
+  if (value.HasData()) {
+    const auto &data = value.GetData();
+    arg->set_data(data->Data(), data->Size());
+  }
+  if (value.HasMetadata()) {
+    const auto &metadata = value.GetMetadata();
+    arg->set_metadata(metadata->Data(), metadata->Size());
+  }
+  for (const auto &nested_id : value.GetNestedIds()) {
+    arg->add_nested_inlined_ids(nested_id.Binary());
+  }
   return *this;
 }
 

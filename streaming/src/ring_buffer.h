@@ -72,7 +72,7 @@ class StreamingTransientBuffer {
     }
   }
 
-  virtual ~StreamingTransientBuffer() = default;
+  virtual ~StreamingTransientBuffer();
 };
 
 template <class T>
@@ -91,7 +91,7 @@ template <class T>
 class RingBufferImplThreadSafe : public AbstractRingBuffer<T> {
  public:
   RingBufferImplThreadSafe(size_t size) : buffer_(size) {}
-  virtual ~RingBufferImplThreadSafe() = default;
+  virtual ~RingBufferImplThreadSafe();
   void Push(const T &t) {
     boost::unique_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     buffer_.push_back(t);
@@ -134,7 +134,7 @@ class RingBufferImplLockFree : public AbstractRingBuffer<T> {
  public:
   RingBufferImplLockFree(size_t size)
       : buffer_(size, nullptr), capacity_(size), read_index_(0), write_index_(0) {}
-  virtual ~RingBufferImplLockFree() = default;
+  virtual ~RingBufferImplLockFree();
 
   void Push(const T &t) {
     STREAMING_CHECK(!Full());

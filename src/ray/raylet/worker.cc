@@ -167,6 +167,10 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   }
 }
 
+rpc::CoreWorkerClient *Worker::rpc_client() { return rpc_client_.get(); }
+
+Worker::~Worker() {}
+
 }  // namespace raylet
 
 }  // end namespace ray

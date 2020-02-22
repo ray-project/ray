@@ -21,5 +21,22 @@ std::shared_ptr<LocalMemoryBuffer> ReaderClient::OnReaderMessageSync(
   return downstream_handler_->DispatchMessageSync(buffer);
 }
 
+ReaderClient::ReaderClient(CoreWorker *core_worker, RayFunction &async_func,
+                           RayFunction &sync_func)
+    : core_worker_(core_worker) {
+  DownstreamQueueMessageHandler::peer_async_function_ = async_func;
+  DownstreamQueueMessageHandler::peer_sync_function_ = sync_func;
+  downstream_handler_ = ray::streaming::DownstreamQueueMessageHandler::CreateService(
+      core_worker_, core_worker_->GetWorkerContext().GetCurrentActorID());
+}
+WriterClient::WriterClient(CoreWorker *core_worker, RayFunction &async_func,
+                           RayFunction &sync_func)
+    : core_worker_(core_worker) {
+  UpstreamQueueMessageHandler::peer_async_function_ = async_func;
+  UpstreamQueueMessageHandler::peer_sync_function_ = sync_func;
+  upstream_handler_ = ray::streaming::UpstreamQueueMessageHandler::CreateService(
+      core_worker, core_worker_->GetWorkerContext().GetCurrentActorID());
+}
+
 }  // namespace streaming
 }  // namespace ray

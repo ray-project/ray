@@ -73,4 +73,97 @@ FunctionDescriptor FunctionDescriptorBuilder::Deserialize(
   descriptor.ParseFromString(serialized_binary);
   return FunctionDescriptorBuilder::FromProto(std::move(descriptor));
 }
+
+ray::FunctionDescriptorType ray::FunctionDescriptorInterface::Type() const {
+  return message_->function_descriptor_case();
+}
+
+size_t ray::EmptyFunctionDescriptor::Hash() const {
+  return std::hash<int>()(ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
+}
+
+std::string ray::EmptyFunctionDescriptor::ToString() const {
+  return "{type=EmptyFunctionDescriptor}";
+}
+
+size_t ray::JavaFunctionDescriptor::Hash() const {
+  return std::hash<int>()(ray::FunctionDescriptorType::kJavaFunctionDescriptor) ^
+         std::hash<std::string>()(typed_message_->class_name()) ^
+         std::hash<std::string>()(typed_message_->function_name()) ^
+         std::hash<std::string>()(typed_message_->signature());
+}
+
+std::string ray::JavaFunctionDescriptor::ToString() const {
+  return "{type=JavaFunctionDescriptor, class_name=" + typed_message_->class_name() +
+         ", function_name=" + typed_message_->function_name() +
+         ", signature=" + typed_message_->signature() + "}";
+}
+
+std::string ray::JavaFunctionDescriptor::ClassName() const {
+  return typed_message_->class_name();
+}
+
+std::string ray::JavaFunctionDescriptor::FunctionName() const {
+  return typed_message_->function_name();
+}
+
+std::string ray::JavaFunctionDescriptor::Signature() const {
+  return typed_message_->signature();
+}
+
+size_t ray::PythonFunctionDescriptor::Hash() const {
+  return std::hash<int>()(ray::FunctionDescriptorType::kPythonFunctionDescriptor) ^
+         std::hash<std::string>()(typed_message_->module_name()) ^
+         std::hash<std::string>()(typed_message_->class_name()) ^
+         std::hash<std::string>()(typed_message_->function_name()) ^
+         std::hash<std::string>()(typed_message_->function_hash());
+}
+
+std::string ray::PythonFunctionDescriptor::ToString() const {
+  return "{type=PythonFunctionDescriptor, module_name=" + typed_message_->module_name() +
+         ", class_name=" + typed_message_->class_name() +
+         ", function_name=" + typed_message_->function_name() +
+         ", function_hash=" + typed_message_->function_hash() + "}";
+}
+
+std::string ray::PythonFunctionDescriptor::ModuleName() const {
+  return typed_message_->module_name();
+}
+
+std::string ray::PythonFunctionDescriptor::ClassName() const {
+  return typed_message_->class_name();
+}
+
+std::string ray::PythonFunctionDescriptor::FunctionName() const {
+  return typed_message_->function_name();
+}
+
+std::string ray::PythonFunctionDescriptor::FunctionHash() const {
+  return typed_message_->function_hash();
+}
+
+FunctionDescriptorInterface::FunctionDescriptorInterface() : MessageWrapper() {}
+
+FunctionDescriptorInterface::FunctionDescriptorInterface(rpc::FunctionDescriptor message)
+    : MessageWrapper(std::move(message)) {}
+
+EmptyFunctionDescriptor::EmptyFunctionDescriptor() : FunctionDescriptorInterface() {
+  RAY_CHECK(message_->function_descriptor_case() ==
+            ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
+}
+
+JavaFunctionDescriptor::JavaFunctionDescriptor(rpc::FunctionDescriptor message)
+    : FunctionDescriptorInterface(std::move(message)) {
+  RAY_CHECK(message_->function_descriptor_case() ==
+            ray::FunctionDescriptorType::kJavaFunctionDescriptor);
+  typed_message_ = &(message_->java_function_descriptor());
+}
+
+PythonFunctionDescriptor::PythonFunctionDescriptor(rpc::FunctionDescriptor message)
+    : FunctionDescriptorInterface(std::move(message)) {
+  RAY_CHECK(message_->function_descriptor_case() ==
+            ray::FunctionDescriptorType::kPythonFunctionDescriptor);
+  typed_message_ = &(message_->python_function_descriptor());
+}
+
 }  // namespace ray

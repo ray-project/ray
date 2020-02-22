@@ -26,15 +26,9 @@ class Buffer {
 
   virtual bool IsPlasmaBuffer() const = 0;
 
-  virtual ~Buffer(){};
+  virtual ~Buffer();
 
-  bool operator==(const Buffer &rhs) const {
-    if (this->Size() != rhs.Size()) {
-      return false;
-    }
-
-    return this->Size() == 0 || memcmp(Data(), rhs.Data(), Size()) == 0;
-  }
+  bool operator==(const Buffer &rhs) const;
 };
 
 /// Represents a byte buffer in local memory.
@@ -51,26 +45,10 @@ class LocalMemoryBuffer : public Buffer {
   /// \param size The size of the passed in buffer.
   /// \param copy_data If true, data will be copied and owned by this buffer,
   ///                  otherwise the buffer only points to the given address.
-  LocalMemoryBuffer(uint8_t *data, size_t size, bool copy_data = false)
-      : has_data_copy_(copy_data) {
-    if (copy_data) {
-      RAY_CHECK(data != nullptr);
-      buffer_.resize(size);
-      std::copy(data, data + size, buffer_.begin());
-      data_ = buffer_.data();
-      size_ = buffer_.size();
-    } else {
-      data_ = data;
-      size_ = size;
-    }
-  }
+  LocalMemoryBuffer(uint8_t *data, size_t size, bool copy_data = false);
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
-  LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
-    buffer_.resize(size, 0);
-    data_ = buffer_.data();
-    size_ = buffer_.size();
-  }
+  LocalMemoryBuffer(size_t size);
 
   uint8_t *Data() const override { return data_; }
 
@@ -102,11 +80,12 @@ class LocalMemoryBuffer : public Buffer {
 /// reference to a plasma object (via the underlying plasma::PlasmaBuffer).
 class PlasmaBuffer : public Buffer {
  public:
-  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}
+  ~PlasmaBuffer();
+  PlasmaBuffer(const std::shared_ptr<arrow::Buffer> &buffer);
 
-  uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_->data()); }
+  uint8_t *Data() const override;
 
-  size_t Size() const override { return buffer_->size(); }
+  size_t Size() const override;
 
   bool OwnsData() const override { return true; }
 

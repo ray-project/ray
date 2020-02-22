@@ -69,7 +69,7 @@ class StreamingMessage {
 
   StreamingMessage operator=(const StreamingMessage &) = delete;
 
-  virtual ~StreamingMessage() = default;
+  virtual ~StreamingMessage();
 
   inline uint8_t *RawData() const { return message_data_.get(); }
 

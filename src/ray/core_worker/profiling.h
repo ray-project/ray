@@ -31,7 +31,7 @@ class Profiler {
   boost::asio::io_service &io_service_;
 
   // Timer used to periodically flush events to the GCS.
-  boost::asio::steady_timer timer_;
+  std::unique_ptr<boost::asio::steady_timer> timer_;
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.
@@ -46,15 +46,10 @@ class ProfileEvent {
   ProfileEvent(const std::shared_ptr<Profiler> &profiler, const std::string &event_type);
 
   // Set the end time for the event and add it to the profiler.
-  ~ProfileEvent() {
-    rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
-    profiler_->AddEvent(rpc_event_);
-  }
+  ~ProfileEvent();
 
   // Set extra metadata for the event, which could change during the event.
-  void SetExtraData(const std::string &extra_data) {
-    rpc_event_.set_extra_data(extra_data);
-  }
+  void SetExtraData(const std::string &extra_data);
 
  private:
   // shared_ptr to the profiler that this event will be added to when it is destructed.

@@ -10,8 +10,7 @@ namespace rpc {
 /// This implementation class of `ErrorInfoHandler`.
 class DefaultErrorInfoHandler : public rpc::ErrorInfoHandler {
  public:
-  explicit DefaultErrorInfoHandler(gcs::RedisGcsClient &gcs_client)
-      : gcs_client_(gcs_client) {}
+  explicit DefaultErrorInfoHandler(gcs::RedisGcsClient &gcs_client);
 
   void HandleReportJobError(const ReportJobErrorRequest &request,
                             ReportJobErrorReply *reply,

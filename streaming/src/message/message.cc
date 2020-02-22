@@ -86,5 +86,7 @@ bool StreamingMessage::operator==(const StreamingMessage &message) const {
          !std::memcmp(RawData(), message.RawData(), data_size_);
 }
 
+StreamingMessage::~StreamingMessage() = default;
+
 }  // namespace streaming
 }  // namespace ray

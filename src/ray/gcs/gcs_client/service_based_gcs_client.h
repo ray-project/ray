@@ -17,9 +17,9 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   void Disconnect() override;
 
-  RedisGcsClient &GetRedisGcsClient() { return *redis_gcs_client_; }
+  RedisGcsClient &GetRedisGcsClient();
 
-  rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
+  rpc::GcsRpcClient &GetGcsRpcClient();
 
  private:
   /// Get gcs server address from redis.

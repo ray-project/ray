@@ -38,5 +38,17 @@ std::string Util::Hexqid2str(const std::string &q_id_hex) {
   }
   return result;
 }
+
+Config::~Config() = default;
+
 }  // namespace streaming
 }  // namespace ray
+
+namespace std {
+
+size_t hash<::ray::streaming::ConfigEnum>::operator()(
+    const ::ray::streaming::ConfigEnum &config_enum_key) const {
+  return static_cast<uint32_t>(config_enum_key);
+}
+
+}  // namespace std

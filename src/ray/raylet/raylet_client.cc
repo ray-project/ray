@@ -377,4 +377,7 @@ Status raylet::RayletClient::PinObjectIDs(
   return grpc_client_->PinObjectIDs(request, callback);
 }
 
+WorkerLeaseInterface::~WorkerLeaseInterface() {}
+ray::Status raylet::RayletClient::Disconnect() { return conn_->Disconnect(); }
+
 }  // namespace ray

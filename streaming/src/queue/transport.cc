@@ -90,5 +90,9 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResultWithRetry(
   return nullptr;
 }
 
+Transport::Transport(CoreWorker *core_worker, const ActorID &peer_actor_id)
+    : core_worker_(core_worker), peer_actor_id_(peer_actor_id) {}
+Transport::~Transport() = default;
+
 }  // namespace streaming
 }  // namespace ray

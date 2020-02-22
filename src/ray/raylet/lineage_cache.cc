@@ -396,6 +396,8 @@ void LineageCache::RecordMetrics() const {
                                     {{stats::ValueTypeKey, "num_lineages"}});
 }
 
+size_t Lineage::GetChildrenSize() const { return children_.size(); }
+
 }  // namespace raylet
 
 }  // namespace ray

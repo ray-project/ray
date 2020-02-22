@@ -236,5 +236,74 @@ std::shared_ptr<TestCheckStatusRspMsg> TestCheckStatusRspMsg::FromBytes(uint8_t 
 
   return test_check_msg;
 }
+
+Message::Message() {}
+
+Message::~Message() {}
+
+std::shared_ptr<LocalMemoryBuffer> Message::Buffer() { return buffer_; }
+
+DataMessage::~DataMessage() {}
+
+NotificationMessage::NotificationMessage(const ActorID &actor_id,
+                                         const ActorID &peer_actor_id,
+                                         const ObjectID &queue_id, uint64_t seq_id)
+    : Message(actor_id, peer_actor_id, queue_id), seq_id_(seq_id) {}
+
+NotificationMessage::~NotificationMessage() {}
+
+CheckMessage::CheckMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
+                           const ObjectID &queue_id)
+    : Message(actor_id, peer_actor_id, queue_id) {}
+
+CheckMessage::~CheckMessage() {}
+
+CheckRspMessage::CheckRspMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
+                                 const ObjectID &queue_id,
+                                 queue::protobuf::StreamingQueueError err_code)
+    : Message(actor_id, peer_actor_id, queue_id), err_code_(err_code) {}
+
+CheckRspMessage::~CheckRspMessage() {}
+
+TestInitMessage::~TestInitMessage() {}
+
+std::string TestInitMessage::ActorHandleSerialized() { return actor_handle_serialized_; }
+
+std::vector<ObjectID> TestInitMessage::QueueIds() { return queue_ids_; }
+
+std::vector<ObjectID> TestInitMessage::RescaleQueueIds() { return rescale_queue_ids_; }
+
+std::string TestInitMessage::TestSuiteName() { return test_suite_name_; }
+
+std::string TestInitMessage::TestName() { return test_name_; }
+
+std::string TestInitMessage::ToString() {
+  std::ostringstream os;
+  os << "actor_handle_serialized: " << actor_handle_serialized_;
+  os << " actor_id: " << ActorId();
+  os << " peer_actor_id: " << PeerActorId();
+  os << " queue_ids:[";
+  for (auto &qid : queue_ids_) {
+    os << qid << ",";
+  }
+  os << "], rescale_queue_ids:[";
+  for (auto &qid : rescale_queue_ids_) {
+    os << qid << ",";
+  }
+  os << "],";
+  os << " role:" << queue::protobuf::StreamingQueueTestRole_Name(role_);
+  os << " suite_name: " << test_suite_name_;
+  os << " test_name: " << test_name_;
+  os << " param: " << param_;
+  return os.str();
+}
+
+TestCheckStatusRspMsg::TestCheckStatusRspMsg(const std::string test_name, bool status)
+    : test_name_(test_name), status_(status) {}
+
+TestCheckStatusRspMsg::~TestCheckStatusRspMsg() {}
+
+std::string TestCheckStatusRspMsg::TestName() { return test_name_; }
+
 }  // namespace streaming
 }  // namespace ray

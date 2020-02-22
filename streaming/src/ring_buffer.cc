@@ -73,5 +73,7 @@ void StreamingRingBuffer::FreeTransientBuffer(bool is_force) {
   transient_buffer_.FreeTransientBuffer(is_force);
 }
 
+StreamingTransientBuffer::~StreamingTransientBuffer() = default;
+
 }  // namespace streaming
 }  // namespace ray
