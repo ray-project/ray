@@ -653,6 +653,23 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
 }
 
+TEST_F(GcsServerTest, TestClientInterceptor) {
+  // Create object table data
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  // Add object location
+  rpc::AddObjectLocationRequest add_object_location_request;
+  add_object_location_request.set_object_id(object_id.Binary());
+  add_object_location_request.set_node_id(node_id.Binary());
+
+  client_->AddObjectLocation(
+      add_object_location_request,
+      [](const Status &status, const rpc::AddObjectLocationReply &reply) {
+        RAY_CHECK_OK(status);
+      });
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
