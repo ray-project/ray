@@ -796,7 +796,6 @@ py_test(
         ]
 )
 
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -809,6 +808,20 @@ py_test(
     tags = ["models"],
     size = "small",
     srcs = ["models/tests/test_distributions.py"]
+)
+
+# --------------------------------------------------------------------
+# Policies
+# rllib/policy/
+#
+# Tag: policy
+# --------------------------------------------------------------------
+
+py_test(
+    name = "policy/tests/test_compute_log_likelihoods",
+    tags = ["policy"],
+    size = "small",
+    srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
 # --------------------------------------------------------------------
@@ -880,14 +893,6 @@ py_test(
     srcs = ["tests/test_dependency.py"]
 )
 
-# PR 7086
-#py_test(
-#    name = "tests/test_deterministic_support",
-#    tags = ["tests_dir", "tests_dir_D"],
-#    size = "small",
-#    srcs = ["tests/test_deterministic_support.py"]
-#)
-
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
@@ -912,7 +917,7 @@ py_test(
 
 py_test(
     name = "tests/test_explorations",
-    tags = ["tests_dir", "tests_dir_E"],
+    tags = ["tests_dir", "tests_dir_E", "explorations"],
     size = "medium",
     srcs = ["tests/test_explorations.py"]
 )
