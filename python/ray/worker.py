@@ -1487,7 +1487,7 @@ def get(object_ids, timeout=None):
         if not blocking_get_inside_async_warned:
             logger.warning("Using blocking ray.get inside async actor. "
                            "This blocks the event loop. Please "
-                           "use `await` on object id with asyncio.gather.")
+                           "use `await` on object id with asyncio.gather if you want to yield execution to the event loop instead.")
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
@@ -1554,7 +1554,7 @@ def put(value, weakref=False):
         return object_id
 
 
-# Global varaible to make sure we only send out the warning once
+# Global variable to make sure we only send out the warning once.
 blocking_wait_inside_async_warned = False
 
 
