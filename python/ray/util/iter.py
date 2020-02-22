@@ -158,6 +158,9 @@ class ParallelIterator(Generic[T]):
         self.actor_sets = actor_sets
         self.name = name
 
+        # keep explicit reference to parent iterator for repartition
+        self.parent_iterator = []
+
     def __iter__(self):
         raise TypeError(
             "You must use it.gather_sync() or it.gather_async() to "
@@ -169,6 +172,15 @@ class ParallelIterator(Generic[T]):
     def __repr__(self):
         return "ParallelIterator[{}]".format(self.name)
 
+    def __add_transform(self, local_it_fn, name):
+        """Helper function to create new Parallel Iterator"""
+        new_iter = ParallelIterator(
+            [a.with_transform(local_it_fn) for a in self.actor_sets],
+            name=self.name + name)
+
+        new_iter.parent_iterator = self.parent_iterator
+        return new_iter
+
     def for_each(self, fn: Callable[[T], U]) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator.
 
@@ -179,12 +191,8 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(4).for_each(lambda x: x * 2).gather_sync())
             ... [0, 2, 4, 8]
         """
-        return ParallelIterator(
-            [
-                a.with_transform(lambda local_it: local_it.for_each(fn))
-                for a in self.actor_sets
-            ],
-            name=self.name + ".for_each()")
+        return self.__add_transform(lambda local_it: local_it.for_each(fn),
+                                    ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
         """Remotely filter items from this iterator.
@@ -197,12 +205,8 @@ class ParallelIterator(Generic[T]):
             >>> next(it.gather_sync())
             ... [1, 2]
         """
-        return ParallelIterator(
-            [
-                a.with_transform(lambda local_it: local_it.filter(fn))
-                for a in self.actor_sets
-            ],
-            name=self.name + ".filter()")
+        return self.__add_transform(lambda local_it: local_it.filter(fn),
+                                    ".filter()")
 
     def batch(self, n: int) -> "ParallelIterator[List[T]]":
         """Remotely batch together items in this iterator.
@@ -214,12 +218,8 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(10, 1).batch(4).gather_sync())
             ... [0, 1, 2, 3]
         """
-        return ParallelIterator(
-            [
-                a.with_transform(lambda local_it: local_it.batch(n))
-                for a in self.actor_sets
-            ],
-            name=self.name + ".batch({})".format(n))
+        return self.__add_transform(lambda local_it: local_it.batch(n),
+                                    ".batch({})".format(n))
 
     def flatten(self) -> "ParallelIterator[T[0]]":
         """Flatten batches of items into individual items.
@@ -228,12 +228,8 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(10, 1).batch(4).flatten())
             ... 0
         """
-        return ParallelIterator(
-            [
-                a.with_transform(lambda local_it: local_it.flatten())
-                for a in self.actor_sets
-            ],
-            name=self.name + ".flatten()")
+        return self.__add_transform(lambda local_it: local_it.flatten(),
+                                    ".flatten()")
 
     def combine(self, fn: Callable[[T], List[U]]) -> "ParallelIterator[U]":
         """Transform and then combine items horizontally.
@@ -273,13 +269,8 @@ class ParallelIterator(Generic[T]):
             >>> next(it)
             1
         """
-        return ParallelIterator(
-            [
-                a.with_transform(
-                    lambda localit: localit.shuffle(shuffle_buffer_size, seed))
-                for a in self.actor_sets
-            ],
-            name=self.name +
+        return self.__add_transform(
+            lambda local_it: local_it.shuffle(shuffle_buffer_size, seed),
             ".local_shuffle(shuffle_buffer_size={}, seed={})".format(
                 shuffle_buffer_size,
                 str(seed) if seed is not None else "None"))
@@ -356,10 +347,10 @@ class ParallelIterator(Generic[T]):
         generators = [make_gen_i(s) for s in range(num_partitions)]
         worker_cls = ray.remote(ParallelIteratorWorker)
         actors = [worker_cls.remote(g, repeat=False) for g in generators]
-        x = ParallelIterator([_ActorSet(actors, [])], name)
+        new_iter = ParallelIterator([_ActorSet(actors, [])], name)
         # need explicit reference to self so actors in this instance do not die
-        x.parent_iterator = self
-        return x
+        new_iter.parent_iterator = [self]
+        return new_iter
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -491,8 +482,12 @@ class ParallelIterator(Generic[T]):
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
-        return ParallelIterator(actor_sets, "ParallelUnion[{}, {}]".format(
-            self, other))
+        new_iter = ParallelIterator(
+            actor_sets, "ParallelUnion[{}, {}]".format(self, other))
+        # if one of these iterators is a result of a repartition, we need to
+        # keep an explicit reference to its parent iterator
+        new_iter.parent_iterator = self.parent_iterator + other.parent_iterator
+        return new_iter
 
     def num_shards(self) -> int:
         """Return the number of worker actors backing this iterator."""

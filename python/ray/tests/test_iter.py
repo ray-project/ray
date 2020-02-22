@@ -161,15 +161,16 @@ def test_local_shuffle(ray_start_regular_shared):
 
 def test_repartition_less(ray_start_regular_shared):
     it = from_range(9, num_shards=3)
-    it1 = it.repartition(2)
+    # chaining operations after a repartition should work
+    it1 = it.repartition(2).for_each(lambda x: 2 * x)
     assert repr(it1) == ("ParallelIterator[from_range[9, " +
-                         "shards=3].repartition[num_partitions=2]]")
+                         "shards=3].repartition[num_partitions=2].for_each()]")
 
     assert it1.num_shards() == 2
     shard_0_set = set(it1.get_shard(0))
     shard_1_set = set(it1.get_shard(1))
-    assert shard_0_set == {0, 2, 3, 5, 6, 8}
-    assert shard_1_set == {1, 4, 7}
+    assert shard_0_set == {0, 4, 6, 10, 12, 16}
+    assert shard_1_set == {2, 8, 14}
 
 
 def test_repartition_more(ray_start_regular_shared):
@@ -187,10 +188,16 @@ def test_repartition_consistent(ray_start_regular_shared):
     # repartition should be deterministic
     it1 = from_range(9, num_shards=1).repartition(2)
     it2 = from_range(9, num_shards=1).repartition(2)
+    # union should work after repartition
+    it3 = it1.union(it2)
     assert it1.num_shards() == 2
     assert it2.num_shards() == 2
     assert set(it1.get_shard(0)) == set(it2.get_shard(0))
     assert set(it1.get_shard(1)) == set(it2.get_shard(1))
+
+    assert it3.num_shards() == 4
+    assert set(it3.gather_async()) == set(it1.gather_async()) | set(
+        it2.gather_async())
 
 
 def test_batch(ray_start_regular_shared):
