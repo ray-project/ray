@@ -62,24 +62,6 @@ class GrpcClient {
     stub_ = GrpcService::NewStub(channel);
   }
 
-  GrpcClient(
-      const std::string &address, const int port, ClientCallManager &call_manager,
-      grpc::experimental::ClientInterceptorFactoryInterface *interceptor_factory)
-      : client_call_manager_(call_manager) {
-    grpc::ChannelArguments argument;
-    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
-    // this configurable, or selectively set it for known local connections only.
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    std::vector<std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
-        creators;
-    creators.push_back(std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>(interceptor_factory));
-    std::shared_ptr<grpc::Channel> channel =
-        grpc::experimental::CreateCustomChannelWithInterceptors(
-            address + ":" + std::to_string(port), grpc::InsecureChannelCredentials(),
-            argument, std::move(creators));
-    stub_ = GrpcService::NewStub(channel);
-  }
-
   /// Create a new `ClientCall` and send request.
   ///
   /// \tparam Request Type of the request message.

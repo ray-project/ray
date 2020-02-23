@@ -1019,20 +1019,6 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "grpc_client_interceptor_test",
-    srcs = ["src/ray/gcs/gcs_server/test/grpc_client_interceptor_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":grpc_common_lib",
-        ":ray_common",
-        ":ray_util",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 FLATC_ARGS = [
     "--gen-object-api",
     "--gen-mutable",
