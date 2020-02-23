@@ -215,7 +215,7 @@ class ProgressReporterTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(END_TO_END_COMMAND.encode("utf-8"))
             f.flush()
-            output = subprocess.check_output(["python", f.name])
+            output = subprocess.check_output(["python3", f.name])
             output = output.decode("utf-8")
             try:
                 assert EXPECTED_END_TO_END_START in output
