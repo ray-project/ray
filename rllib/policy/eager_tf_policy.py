@@ -391,8 +391,8 @@ def build_eager_tf_policy(name,
             else:
                 dist_inputs, _ = self.model(input_dict, state_batches,
                                             seq_lens)
-            action_dist = self.dist_class(dist_inputs, self.model)
-            log_likelihoods = action_dist.logp(actions)
+                action_dist = self.dist_class(dist_inputs, self.model)
+                log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
 

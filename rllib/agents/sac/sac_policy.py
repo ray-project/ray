@@ -104,18 +104,6 @@ def get_log_likelihood(policy, model, actions, input_dict, obs_space,
     action_dist_class = get_dist_class(policy.config, action_space)
     return action_dist_class(distribution_inputs, model).logp(actions)
 
-#def dist_class_and_inputs_fn(policy, model, input_dict, obs_space,
-#                                 action_space, config):
-
-#    model_out, _ = model({
-#        "obs": input_dict[SampleBatch.CUR_OBS],
-#        "is_training": policy._get_is_training_placeholder(),
-#    }, [], None)
-#    distribution_inputs = model.action_model(model_out)
-
-#    return SquashedGaussian if policy.config["normalize_actions"] else \
-#        DiagGaussian, distribution_inputs
-
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
                         explore, config, timestep):

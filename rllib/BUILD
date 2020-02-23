@@ -1032,7 +1032,7 @@ py_test(
 
 
 py_test(
-    name = "autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    name = "examples/autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
@@ -1181,7 +1181,7 @@ py_test(
 py_test(
     name = "examples/custom_tf_policy",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_tf_policy.py"],
     args = ["--iters=2", "--num-cpus=4"]
 )

@@ -203,7 +203,7 @@ def build_q_model(policy, obs_space, action_space, config):
 
 
 def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
-                                action_space, config):
+                       action_space, config):
     # Action Q network.
     q_vals = _compute_q_values(policy, q_model,
                                input_dict[SampleBatch.CUR_OBS], obs_space,

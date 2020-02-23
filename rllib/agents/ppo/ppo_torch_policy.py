@@ -144,15 +144,15 @@ def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
+        "total_loss": policy.loss_obj.loss,
+        "policy_loss": policy.loss_obj.mean_policy_loss,
+        "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
-            framework="torch").cpu().detach().numpy(),
-        "kl": policy.loss_obj.mean_kl.cpu().detach().numpy(),
-        "entropy": policy.loss_obj.mean_entropy.cpu().detach().numpy(),
+            framework="torch"),
+        "kl": policy.loss_obj.mean_kl,
+        "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
     }
 
@@ -161,8 +161,8 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function().cpu().numpy(),
-        BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
+        SampleBatch.VF_PREDS: policy.model.value_function(),
+        BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 
