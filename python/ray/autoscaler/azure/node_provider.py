@@ -80,7 +80,7 @@ class AzureNodeProvider(NodeProvider):
 
     def _extract_metadata(self, vm):
         # get tags
-        metadata = {"name": vm.name, "tags": vm.tags}
+        metadata = {"name": vm.name, "tags": vm.tags, "status": ""}
 
         # get status
         resource_group = self.provider_config["resource_group"]
@@ -126,7 +126,7 @@ class AzureNodeProvider(NodeProvider):
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [
             k for k, v in nodes.items()
-            if not v.get("status", "deallocat").startswith("deallocat")
+            if not v["status"].startswith("deallocat")
         ]
 
     @synchronized

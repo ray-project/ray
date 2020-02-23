@@ -42,7 +42,7 @@ def _configure_nodes(config):
     # get default from example-full.yaml
     azure_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(azure_dir, "example-full.yaml"), "r") as f:
-        default_config = yaml.load(f)
+        default_config = yaml.safe_load(f)
 
     for node_type in ["head_node", "worker_nodes"]:
         node_config = default_config[node_type]

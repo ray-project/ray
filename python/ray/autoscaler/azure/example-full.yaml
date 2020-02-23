@@ -143,7 +143,7 @@ setup_commands:
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-    #- pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -152,7 +152,7 @@ setup_commands:
     - cd ray; git checkout gramhagen/azure_autoscaler
     - ray/ci/travis/install-bazel.sh
     - cd ray/python/ray/dashboard/client; npm ci; npm run build
-    - pip install azure-cli-core azure-core azure-mgmt-msi paramiko aiohttp grpcio psutil setproctitle
+    - pip install azure-cli azure-core
     - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
