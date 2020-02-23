@@ -181,7 +181,7 @@ class JupyterNotebookReporter(TuneReporterBase):
         if self._overwrite:
             clear_output(wait=True)
         progress_str = self._progress_str(
-            trials, *sys_info, fmt="html", delim="<br>")
+            trials, done, *sys_info, fmt="html", delim="<br>")
         display(HTML(progress_str))
 
 
@@ -334,8 +334,7 @@ def trial_errors_str(trials, fmt="psql", max_rows=None):
     num_failed = len(failed)
     if num_failed > 0:
         messages.append("Number of errored trials: {}".format(num_failed))
-        max_rows = max_rows or float("inf")
-        if num_failed > max_rows:
+        if num_failed > (max_rows or float("inf")):
             messages.append("Table truncated to {} rows ({} overflow)".format(
                 max_rows, num_failed - max_rows))
         error_table = []
