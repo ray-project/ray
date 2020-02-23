@@ -47,7 +47,8 @@ def make_optimizer(workers, config):
 def validate_config(config):
     # PyTorch check.
     if config["use_pytorch"]:
-        raise ValueError("DDPG does not support PyTorch yet! Use tf instead.")
+        raise ValueError(
+            "MARWIL does not support PyTorch yet! Use tf instead.")
 
 
 MARWILTrainer = build_trainer(

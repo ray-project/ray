@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.explained_variance import explained_variance
