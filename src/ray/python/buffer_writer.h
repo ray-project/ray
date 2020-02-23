@@ -9,6 +9,10 @@
 namespace ray {
 namespace python {
 
+#if defined(_WIN32)
+using ssize_t = SSIZE_T;
+#endif
+
 // This is the default alignment value for len(buffer) < 2048.
 constexpr size_t kMinorBufferAlign = 8;
 // This is the default alignment value for len(buffer) >= 2048.

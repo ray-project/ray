@@ -9,6 +9,10 @@
 namespace ray {
 namespace python {
 
+#if defined(_WIN32)
+using ssize_t = SSIZE_T;
+#endif
+
 using ray::serialization::PythonBuffer;
 using ray::serialization::PythonObject;
 
