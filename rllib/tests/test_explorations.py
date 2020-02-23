@@ -1,4 +1,5 @@
 import numpy as np
+from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray
@@ -30,14 +31,23 @@ def test_explorations(run,
                         impala.ImpalaTrainer, sac.SACTrainer]:
             continue
         print("Testing {} in framework={}".format(run, fw))
-        config["eager"] = True if fw == "eager" else False
-        config["use_pytorch"] = True if fw == "torch" else False
+        config["eager"] = (fw == "eager")
+        config["use_pytorch"] = (fw == "torch")
 
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
-        for exploration in [None]:  # , "Random"]:
+        for exploration in [None, "Random"]:
             if exploration == "Random":
+                # TODO(sven): Random doesn't work for cont. action spaces
+                #  or IMPALA yet.
+                if env == "Pendulum-v0" or run is impala.ImpalaTrainer:
+                    continue
                 config["exploration_config"] = {"type": "Random"}
+            print("exploration={}".format(exploration or "default"))
+
+            eager_mode_ctx = eager_mode()
+            if fw == "eager":
+                eager_mode_ctx.__enter__()
 
             trainer = run(config=config, env=env)
 
@@ -53,8 +63,8 @@ def test_explorations(run,
                         prev_reward=1.0 if prev_a is not None else None))
                 check(actions[-1], actions[0])
 
-            # Make sure actions drawn are different (around some mean value),
-            # given constant observations.
+            # Make sure actions drawn are different
+            # (around some mean value), given constant observations.
             actions = []
             for _ in range(100):
                 actions.append(
@@ -70,6 +80,9 @@ def test_explorations(run,
                 atol=0.3)
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
+
+            if fw == "eager":
+                eager_mode_ctx.__exit__(None, None, None)
 
 
 class TestExplorations(unittest.TestCase):
@@ -109,7 +122,7 @@ class TestExplorations(unittest.TestCase):
             "CartPole-v0",
             impala.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
-            prev_a=np.array([0]))
+            prev_a=np.array(0))
 
     def test_pg(self):
         test_explorations(
@@ -117,7 +130,7 @@ class TestExplorations(unittest.TestCase):
             "CartPole-v0",
             pg.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
-            prev_a=np.array([1]))
+            prev_a=np.array(1))
 
     def test_ppo_discr(self):
         test_explorations(
@@ -125,7 +138,7 @@ class TestExplorations(unittest.TestCase):
             "CartPole-v0",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0, 0.0]),
-            prev_a=np.array([0]))
+            prev_a=np.array(0))
 
     def test_ppo_cont(self):
         test_explorations(
@@ -133,7 +146,7 @@ class TestExplorations(unittest.TestCase):
             "Pendulum-v0",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
-            prev_a=np.array([0]),
+            prev_a=np.array([0.0]),
             expected_mean_action=0.0)
 
     def test_sac(self):

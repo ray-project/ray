@@ -63,24 +63,24 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               model_output,
-                               model,
-                               action_dist_class,
+                               distribution_inputs,
+                               action_dist_class=None,
+                               model=None,
                                explore=True,
                                timestep=None):
 
         if self.framework == "tf":
-            return self._get_tf_exploration_action_op(model_output, explore,
-                                                      timestep)
+            return self._get_tf_exploration_action_op(distribution_inputs,
+                                                      explore, timestep)
         else:
-            return self._get_torch_exploration_action(model_output, explore,
-                                                      timestep)
+            return self._get_torch_exploration_action(distribution_inputs,
+                                                      explore, timestep)
 
-    def _get_tf_exploration_action_op(self, model_output, explore, timestep):
+    def _get_tf_exploration_action_op(self, q_values, explore, timestep):
         """Tf method to produce the tf op for an epsilon exploration action.
 
         Args:
-            model_output (tf.Tensor):
+            q_values (Tensor): The Q-values coming from some q-model.
 
         Returns:
             tf.Tensor: The tf exploration-action op.
@@ -90,15 +90,14 @@ class EpsilonGreedy(Exploration):
                                   self.last_timestep))
 
         # Get the exploit action as the one with the highest logit value.
-        exploit_action = tf.argmax(model_output, axis=1)
+        exploit_action = tf.argmax(q_values, axis=1)
 
-        batch_size = tf.shape(model_output)[0]
+        batch_size = tf.shape(q_values)[0]
         # Mask out actions with q-value=-inf so that we don't
         # even consider them for exploration.
         random_valid_action_logits = tf.where(
-            tf.equal(model_output, tf.float32.min),
-            tf.ones_like(model_output) * tf.float32.min,
-            tf.ones_like(model_output))
+            tf.equal(q_values, tf.float32.min),
+            tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
         random_actions = tf.squeeze(
             tf.multinomial(random_valid_action_logits, 1), axis=1)
 
@@ -122,11 +121,11 @@ class EpsilonGreedy(Exploration):
         with tf.control_dependencies([assign_op]):
             return action, tf.zeros_like(action, dtype=tf.float32)
 
-    def _get_torch_exploration_action(self, model_output, explore, timestep):
+    def _get_torch_exploration_action(self, q_values, explore, timestep):
         """Torch method to produce an epsilon exploration action.
 
         Args:
-            model_output (torch.Tensor):
+            q_values (Tensor): The Q-values coming from some q-model.
 
         Returns:
             torch.Tensor: The exploration-action.
@@ -135,20 +134,20 @@ class EpsilonGreedy(Exploration):
         self.last_timestep = timestep if timestep is not None else \
             self.last_timestep + 1
 
-        _, exploit_action = torch.max(model_output, 1)
+        _, exploit_action = torch.max(q_values, 1)
         action_logp = torch.zeros_like(exploit_action)
 
         # Explore.
         if explore:
             # Get the current epsilon.
             epsilon = self.epsilon_schedule(self.last_timestep)
-            batch_size = model_output.size()[0]
+            batch_size = q_values.size()[0]
             # Mask out actions, whose Q-values are -inf, so that we don't
             # even consider them for exploration.
             random_valid_action_logits = torch.where(
-                model_output == float("-inf"),
-                torch.ones_like(model_output) * float("-inf"),
-                torch.ones_like(model_output))
+                q_values == float("-inf"),
+                torch.ones_like(q_values) * float("-inf"),
+                torch.ones_like(q_values))
             # A random action.
             random_actions = torch.squeeze(
                 torch.multinomial(random_valid_action_logits, 1), axis=1)
