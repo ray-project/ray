@@ -1,6 +1,7 @@
 #ifndef RAY_GCS_SERVICE_BASED_ACCESSOR_H
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
+#include <deque>
 #include "src/ray/gcs/accessor.h"
 #include "src/ray/gcs/subscription_executor.h"
 
@@ -8,6 +9,32 @@ namespace ray {
 namespace gcs {
 
 class ServiceBasedGcsClient;
+
+/// \class Sequencer
+/// Sequencer guarantees that all operations with the same ordering key are sequenced.
+template <class KEY>
+class Sequencer {
+ public:
+  void execute_ordered(KEY key, std::function<void()> operation) {
+    pending_operations_[key].push_back(operation);
+    if (1 == pending_operations_[key].size()) {
+      operation();
+    }
+  }
+
+  void post_execute(KEY key) {
+    pending_operations_[key].pop_front();
+    if (pending_operations_[key].empty()) {
+      pending_operations_.erase(key);
+    } else {
+      auto operation = pending_operations_[key].front();
+      operation();
+    }
+  }
+
+ private:
+  std::unordered_map<KEY, std::deque<std::function<void()>>> pending_operations_;
+};
 
 /// \class ServiceBasedJobInfoAccessor
 /// ServiceBasedJobInfoAccessor is an implementation of `JobInfoAccessor`
@@ -82,6 +109,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
+
+  Sequencer<ActorID> sequencer_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor
@@ -165,6 +194,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
+
+  Sequencer<ClientID> sequencer_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
@@ -255,6 +286,8 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
   ObjectSubscriptionExecutor object_sub_executor_;
+
+  Sequencer<ObjectID> sequencer_;
 };
 
 /// \class ServiceBasedStatsInfoAccessor

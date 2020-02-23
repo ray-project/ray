@@ -619,6 +619,22 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
 }
 
+TEST_F(ServiceBasedGcsGcsClientTest, TestObjectInfo) {
+  // Create object table data
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node_id = ClientID::FromRandom();
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
+      object_id, node_id, [](Status status) { RAY_CHECK_OK(status); }));
+  RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(object_id, node_id,
+                                                       [&promise](Status status) {
+                                                         RAY_CHECK_OK(status);
+                                                         promise.set_value(status.ok());
+                                                       }));
+  WaitReady(promise.get_future(), timeout_ms_);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
