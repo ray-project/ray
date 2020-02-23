@@ -74,8 +74,10 @@ class BasicVariantGenerator(SearchAlgorithm):
         for _ in range(unresolved_spec.get("num_samples", 1)):
             for resolved_vars, spec in generate_variants(unresolved_spec):
                 trial_id = "%05d" % self._counter
+                experiment_tag = str(self._counter)
+                if resolved_vars:
+                    experiment_tag += "_{}".format(format_vars(resolved_vars))
                 self._counter += 1
-                experiment_tag = format_vars(resolved_vars)
                 yield create_trial_from_spec(
                     spec,
                     output_path,
