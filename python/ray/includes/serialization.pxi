@@ -1,20 +1,12 @@
-from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 
-# This is the default alignment value for len(buffer) < 2048.
-DEF kMinorBufferAlign = 8
-# This is the default alignment value for len(buffer) >= 2048.
-# Some projects like Arrow use it for possible SIMD acceleration.
-DEF kMajorBufferAlign = 64
-DEF kMajorBufferSize = 2048
-DEF kMemcopyDefaultBlocksize = 64
-DEF kMemcopyDefaultThreshold = 1024 * 1024
+# NOTE: according to Python standard, Py_ssize_t is just ssize_t. We will use ssize_t in the C++ side.
 
 cdef extern from "ray/python/buffer_writer.h" nogil:
     cdef cppclass CPythonObjectBuilder "ray::python::PythonObjectBuilder":
         CPythonObjectBuilder()
-        void AppendBuffer(uint8_t *buf, int64_t length, int64_t itemsize, int32_t ndim,
-                          char* format, int64_t *shape, int64_t *strides)
+        void AppendBuffer(uint8_t *buf, ssize_t length, ssize_t itemsize, int32_t ndim,
+                          char* format, ssize_t *shape, ssize_t *strides)
         int64_t GetTotalBytes()
         int64_t GetInbandDataSize()
         void SetInbandDataSize(int64_t size)
@@ -25,50 +17,14 @@ cdef extern from "ray/python/buffer_writer.h" nogil:
                       int memcopy_threads)
 
 
-cdef extern from "google/protobuf/repeated_field.h" nogil:
-    cdef cppclass RepeatedField[Element]:
-        const Element* data() const
-
-cdef extern from "ray/protobuf/serialization.pb.h" nogil:
-    cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
-        void set_address(uint64_t value)
-        uint64_t address() const
-        void set_length(int64_t value)
-        int64_t length() const
-        void set_itemsize(int64_t value)
-        int64_t itemsize()
-        void set_ndim(int32_t value)
-        int32_t ndim()
-        void set_readonly(c_bool value)
-        c_bool readonly()
-        void set_format(const c_string& value)
-        const c_string &format()
-        c_string* release_format()
-        void add_shape(int64_t value)
-        int64_t shape(int index)
-        const RepeatedField[int64_t] &shape() const
-        int shape_size()
-        void add_strides(int64_t value)
-        int64_t strides(int index)
-        const RepeatedField[int64_t] &strides() const
-        int strides_size()
-
-    cdef cppclass CPythonObject "ray::serialization::PythonObject":
-        uint64_t inband_data_offset() const
-        void set_inband_data_offset(uint64_t value)
-        uint64_t inband_data_size() const
-        void set_inband_data_size(uint64_t value)
-        uint64_t raw_buffers_offset() const
-        void set_raw_buffers_offset(uint64_t value)
-        uint64_t raw_buffers_size() const
-        void set_raw_buffers_size(uint64_t value)
-        CPythonBuffer* add_buffer()
-        CPythonBuffer& buffer(int index) const
-        int buffer_size() const
-        size_t ByteSizeLong() const
-        int GetCachedSize() const
-        uint8_t *SerializeWithCachedSizesToArray(uint8_t *target)
-        c_bool ParseFromArray(void* data, int size)
+cdef extern from "ray/python/buffer_reader.h" nogil:
+    cdef cppclass CPythonObjectParser "ray::python::PythonObjectParser":
+        PythonObjectParser()
+        int Parse(const shared_ptr[CBuffer] &buffer)
+        c_string GetInbandData()
+        int64_t BuffersCount()
+        void GetBuffer(int index, void **buf, ssize_t *length, int *readonly, ssize_t *itemsize, int *ndim,
+                       c_string *format, c_vector[ssize_t] *shape, c_vector[ssize_t] *strides)
 
 
 cdef RawDataWrite(const c_string &raw_data,
@@ -89,10 +45,10 @@ cdef class SubBuffer:
         void *buf
         Py_ssize_t len
         int readonly
-        c_string _format
+        c_string format
         int ndim
-        c_vector[Py_ssize_t] _shape
-        c_vector[Py_ssize_t] _strides
+        c_vector[Py_ssize_t] shape
+        c_vector[Py_ssize_t] strides
         Py_ssize_t *suboffsets
         Py_ssize_t itemsize
         void *internal
@@ -128,14 +84,14 @@ cdef class SubBuffer:
     def __getbuffer__(self, Py_buffer* buffer, int flags):
         buffer.readonly = self.readonly
         buffer.buf = self.buf
-        buffer.format = <char *>self._format.c_str()
+        buffer.format = <char*>self.format.c_str()
         buffer.internal = self.internal
         buffer.itemsize = self.itemsize
         buffer.len = self.len
         buffer.ndim = self.ndim
         buffer.obj = self  # This is important for GC.
-        buffer.shape = self._shape.data()
-        buffer.strides = self._strides.data()
+        buffer.shape = self.shape.data()
+        buffer.strides = self.strides.data()
         buffer.suboffsets = self.suboffsets
 
     def __getsegcount__(self, Py_ssize_t *len_out):
@@ -161,52 +117,33 @@ cdef class SubBuffer:
 # See 'serialization.proto' for the memory layout in the Plasma buffer.
 def unpack_pickle5_buffers(Buffer buf):
     cdef:
-        shared_ptr[CBuffer] _buffer = buf.buffer
-        const uint8_t *data = buf.buffer.get().Data()
-        size_t size = _buffer.get().Size()
-        CPythonObject python_object
-        CPythonBuffer *buffer_meta
-        c_string inband_data
-        int64_t protobuf_offset
-        int64_t protobuf_size
+        CPythonObjectParser parser
         int32_t i
-        const uint8_t *buffers_segment
-    protobuf_offset = (<int64_t*>data)[0]
-    if protobuf_offset < 0:
-        raise ValueError("The protobuf data offset should be positive."
-                         "Got negative instead. "
-                         "Maybe the buffer has been corrupted.")
-    protobuf_size = (<int64_t*>data)[1]
-    if protobuf_size > INT32_MAX or protobuf_size < 0:
-        raise ValueError("Incorrect protobuf size. "
-                         "Maybe the buffer has been corrupted.")
-    if not python_object.ParseFromArray(
-            data + protobuf_offset, <int32_t>protobuf_size):
-        raise ValueError("Protobuf object is corrupted.")
-    inband_data.append(<char*>(data + python_object.inband_data_offset()),
-                       <size_t>python_object.inband_data_size())
-    buffers_segment = data + python_object.raw_buffers_offset()
+        int status
+
+    status = parser.Parse(buf.buffer)
+    if status != 0:
+        if status == -1:
+            raise ValueError("Incorrect protobuf data offset. "
+                             "Maybe the buffer has been corrupted.")
+        elif status == -2:
+            raise ValueError("Incorrect protobuf size. "
+                             "Maybe the buffer has been corrupted.")
+        elif status == -3:
+            raise ValueError("Protobuf object is corrupted.")
+        else:
+            raise ValueError("Parsing the serialized python object "
+                             "failed with unknown status %d" % status)
+    # Now read buffers
     pickled_buffers = []
-    # Now read buffer meta
-    for i in range(python_object.buffer_size()):
-        buffer_meta = <CPythonBuffer *>&python_object.buffer(i)
+    for i in range(parser.BuffersCount()):
         buffer = SubBuffer(buf)
-        buffer.buf = <void*>(buffers_segment + buffer_meta.address())
-        buffer.len = buffer_meta.length()
-        buffer.itemsize = buffer_meta.itemsize()
-        buffer.readonly = buffer_meta.readonly()
-        buffer.ndim = buffer_meta.ndim()
-        buffer._format = buffer_meta.format()
-        buffer._shape.assign(
-          buffer_meta.shape().data(),
-          buffer_meta.shape().data() + buffer_meta.ndim())
-        buffer._strides.assign(
-          buffer_meta.strides().data(),
-          buffer_meta.strides().data() + buffer_meta.ndim())
+        parser.GetBuffer(i, &buffer.buf, &buffer.len, &buffer.readonly, &buffer.itemsize, &buffer.ndim,
+                         &buffer.format, &buffer.shape, &buffer.strides)
         buffer.internal = NULL
         buffer.suboffsets = NULL
         pickled_buffers.append(buffer)
-    return inband_data, pickled_buffers
+    return parser.GetInbandData(), pickled_buffers
 
 
 cdef class Pickle5Writer:
@@ -215,16 +152,14 @@ cdef class Pickle5Writer:
         c_vector[Py_buffer] buffers
 
     def __cinit__(self):
-        # TODO(suquark): 32-bit OS support
-        if sizeof(Py_ssize_t) != sizeof(int64_t):
-            raise ValueError("Py_ssize_t isn't equal to int64_t")
+        pass
 
     def buffer_callback(self, pickle_buffer):
         cdef Py_buffer view
         cpython.PyObject_GetBuffer(pickle_buffer, &view,
                                    cpython.PyBUF_FULL_RO)
         self.builder.AppendBuffer(<uint8_t *>view.buf, view.len, view.itemsize, view.ndim, view.format,
-                                  <int64_t*>view.shape, <int64_t*>view.strides)
+                                  view.shape, view.strides)
         self.buffers.push_back(view)
 
     def get_total_bytes(self):
@@ -239,9 +174,6 @@ cdef class Pickle5Writer:
             int i
             int64_t total_bytes
             int status
-
-        if self.builder.GetInbandDataSize() < 0:
-            self.builder.SetInbandDataSize(inband.length())
 
         status = self.builder.WriteTo(inband, data, memcopy_threads)
         if status != 0:

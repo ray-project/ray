@@ -37,8 +37,8 @@ PythonObjectBuilder::PythonObjectBuilder() {
 }
 
 void PythonObjectBuilder::AppendBuffer(
-    uint8_t *buf, int64_t length, int64_t itemsize, int32_t ndim,
-    char* format, int64_t *shape, int64_t *strides) {
+    uint8_t *buf, ssize_t length, ssize_t itemsize, int ndim,
+    char* format, ssize_t *shape, ssize_t *strides) {
   buffer_ptrs.push_back(buf);
   PythonBuffer* buffer = python_object.add_buffer();
   buffer->set_length(length);
