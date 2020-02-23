@@ -690,6 +690,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
+
+  /// XXX
+  std::string PrintLeasedWorkers();
 };
 
 }  // namespace raylet
