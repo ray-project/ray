@@ -113,7 +113,7 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
     }, [], None)
     distribution_inputs = model.action_model(model_out)
     action_dist_class = get_dist_class(policy.config, action_space)
-    
+
     policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
             distribution_inputs, action_dist_class, model, explore, timestep)
