@@ -123,6 +123,7 @@ class TuneReporterBase(ProgressReporter):
 
         Args:
             trials (list[Trial]): Trials to report on.
+            done (bool): Whether this is the last progress report attempt.
             fmt (str): Table format. See `tablefmt` in tabulate API.
             delim (str): Delimiter between messages.
         """
