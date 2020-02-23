@@ -34,7 +34,7 @@ def convert_to_non_torch_type(stats_dict):
     ret = {}
     for k, v in stats_dict.items():
         if isinstance(v, torch.Tensor):
-            ret[k] = v.item() if len(v.size()) == 0 else v.numpy()
+            ret[k] = v.cpu().item() if len(v.size()) == 0 else v.cpu().numpy()
         else:
             ret[k] = v
     return ret
