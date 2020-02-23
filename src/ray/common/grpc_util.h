@@ -11,11 +11,6 @@
 
 namespace ray {
 
-// We already spill large arguments to plasma, however on occasion a task spec will
-// still exceed the default 4MB limit due to a large number of small args. Set the
-// limit larger to avoid crashing in these cases.
-const int kMaxGrpcMessageSize = 100 * 1024 * 1024;
-
 /// Wrap a protobuf message.
 template <class Message>
 class MessageWrapper {
