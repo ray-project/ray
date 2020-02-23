@@ -124,9 +124,9 @@ def ray_deps_setup():
     github_repository(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        commit = "9eff8676ce431232ae625ee93c4123f7c03477eb",
+        commit = "5b53112431ef916381d6969f114727cc4f83960b",
         remote = "https://github.com/nelhage/rules_boost",
-        sha256 = "f68166c117398e1c624af8dd14115dbbc3761137599e806007271abbb8cd002b",
+        sha256 = "4481db75d1d25b4f043f17a6c2d5f963782e659ad5049e027146b5248d37bf6b",
         patches = [
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
             "//thirdparty/patches:rules_boost-windows-linkopts.patch",
