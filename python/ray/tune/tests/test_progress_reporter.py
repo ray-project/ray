@@ -5,7 +5,8 @@ import unittest
 from unittest.mock import MagicMock, Mock
 
 from ray.tune.trial import Trial
-from ray.tune.progress_reporter import CLIReporter, _fair_filter_trials, trial_progress_str
+from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
+                                        trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -144,13 +145,11 @@ class ProgressReporterTest(unittest.TestCase):
         i = 0
         for state in states_under:
             for _ in range(num_trials_under):
-                trials_by_state[state].append(
-                    self.mock_trial(state, i))
+                trials_by_state[state].append(self.mock_trial(state, i))
                 i += 1
         for state in states_over:
             for _ in range(num_trials_over):
-                trials_by_state[state].append(
-                    self.mock_trial(state, i))
+                trials_by_state[state].append(self.mock_trial(state, i))
                 i += 1
 
         filtered_trials_by_state = _fair_filter_trials(
@@ -207,7 +206,8 @@ class ProgressReporterTest(unittest.TestCase):
         prog1 = trial_progress_str(trials, ["a", "b"], fmt="psql", max_rows=3)
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
-        prog2 = trial_progress_str(trials, ["a", "b"], fmt="psql", max_rows=None)
+        prog2 = trial_progress_str(
+            trials, ["a", "b"], fmt="psql", max_rows=None)
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
@@ -220,7 +220,7 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
-            except:
+            except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
                 print("*** END OUTPUT ***")

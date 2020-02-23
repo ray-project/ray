@@ -3,9 +3,8 @@ from __future__ import print_function
 import collections
 import time
 
-from ray.tune.result import (CONFIG_PREFIX, EPISODE_REWARD_MEAN, MEAN_ACCURACY,
-                             MEAN_LOSS, TRAINING_ITERATION, TIME_TOTAL_S,
-                             TIMESTEPS_TOTAL)
+from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
+                             TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
 from ray.tune.utils import flatten_dict
 
 try:
@@ -140,9 +139,7 @@ class TuneReporterBase(ProgressReporter):
                 metric_columns=self._metric_columns,
                 fmt=fmt,
                 max_rows=max_progress))
-        messages.append(
-            trial_errors_str(
-                trials, fmt=fmt, max_rows=max_error))
+        messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
         return delim.join(messages) + delim
 
 
@@ -317,7 +314,8 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
     messages.append(
         tabulate(trial_table, headers=columns, tablefmt=fmt, showindex=False))
     if overflow:
-        messages.append("... {} more trials not shown ({})".format(overflow, overflow_str))
+        messages.append("... {} more trials not shown ({})".format(
+            overflow, overflow_str))
     return delim.join(messages)
 
 
@@ -375,9 +373,7 @@ def _fair_filter_trials(trials_by_state, max_trials):
     # Sort by start time, descending.
     sorted_trials_by_state = {
         state: sorted(
-            trials_by_state[state],
-            reverse=False,
-            key=lambda t: t.trial_id)
+            trials_by_state[state], reverse=False, key=lambda t: t.trial_id)
         for state in sorted(trials_by_state)
     }
     # Truncate oldest trials.
