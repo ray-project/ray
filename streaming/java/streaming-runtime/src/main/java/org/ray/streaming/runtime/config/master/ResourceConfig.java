@@ -55,7 +55,7 @@ public interface ResourceConfig extends Config {
   double taskCpuResource();
 
   /**
-   * Memory size use by each task.
+   * Memory size used by each task.
    */
   @DefaultValue(value = "2.0")
   @Key(value = TASK_RESOURCE_MEM)
