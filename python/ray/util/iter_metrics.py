@@ -18,7 +18,7 @@ class MetricsContext:
         current_actor (ActorHandle): reference to the actor handle that
             produced the current iterator output. This is automatically set
             for gather_async().
-        union_contexts (list): list of other MetricsContexts that have been
+        parent_metrics (list): list of other MetricsContexts that have been
             attached to this due to LocalIterator.union().
     """
 
@@ -27,7 +27,7 @@ class MetricsContext:
         self.timers = collections.defaultdict(_Timer)
         self.info = {}
         self.current_actor = None
-        self.union_contexts = []
+        self.parent_metrics = []
 
     def save(self):
         """Return a serializable copy of this context."""
@@ -35,7 +35,7 @@ class MetricsContext:
             "counters": dict(self.counters),
             "info": dict(self.info),
             "timers": None,  # TODO(ekl) consider persisting timers too
-            "union_state": [u.save() for u in self.union_contexts],
+            "parent_state": [u.save() for u in self.parent_metrics],
         }
 
     def restore(self, values):
@@ -44,5 +44,5 @@ class MetricsContext:
         self.counters.update(values["counters"])
         self.timers.clear()
         self.info = values["info"]
-        for u, state in zip(self.union_contexts, values["union_state"]):
+        for u, state in zip(self.parent_metrics, values["parent_state"]):
             u.restore(state)

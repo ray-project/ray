@@ -558,7 +558,7 @@ class LocalIterator(Generic[T]):
 
     def __init__(self,
                  base_iterator: Callable[[], Iterable[T]],
-                 context: MetricsContext,
+                 metrics: MetricsContext,
                  local_transforms: List[Callable[[Iterable], Any]] = None,
                  timeout: int = None,
                  name=None):
@@ -568,7 +568,7 @@ class LocalIterator(Generic[T]):
             base_iterator (func): A function that produces the base iterator.
                 This is a function so that we can ensure LocalIterator is
                 serializable.
-            context (MetricsContext): Existing metrics context or a new
+            metrics (MetricsContext): Existing metrics context or a new
                 context. Should be the same for each chained iterator.
             local_transforms (list): A list of transformation functions to be
                 applied on top of the base iterator. When iteration begins, we
@@ -583,13 +583,13 @@ class LocalIterator(Generic[T]):
         self.base_iterator = base_iterator
         self.built_iterator = None
         self.local_transforms = local_transforms or []
-        self.context = context
+        self.metrics = metrics
         self.timeout = timeout
         self.name = name or "unknown"
 
     @staticmethod
     def get_metrics() -> MetricsContext:
-        """Return the current iterator context.
+        """Return the current metrics context.
 
         This can only be called within an iterator function."""
         if (not hasattr(LocalIterator.thread_local, "metrics")
@@ -606,14 +606,22 @@ class LocalIterator(Generic[T]):
             # This sets the iterator context during iterator execution, and
             # clears it after so that multiple iterators can be used at a time.
             def set_restore_context(it):
-                self.thread_local.metrics = self.context
+                if hasattr(self.thread_local, "metrics"):
+                    prev_metrics = self.thread_local.metrics
+                else:
+                    prev_metrics = None
+                self.thread_local.metrics = self.metrics
+#                print("Set thread local", self.metrics)
                 try:
                     for item in it:
-                        self.thread_local.metrics = None
+                        self.thread_local.metrics = prev_metrics
+#                        print("Restore thread local", prev_metrics)
                         yield item
-                        self.thread_local.metrics = self.context
+                        self.thread_local.metrics = self.metrics
+#                        print("Set thread local", self.metrics)
                 finally:
-                    self.thread_local.metrics = None
+                    self.thread_local.metrics = prev_metrics
+#                    print("Restore thread local", prev_metrics)
 
             it = set_restore_context(it)
             self.built_iterator = it
@@ -641,7 +649,7 @@ class LocalIterator(Generic[T]):
                     yield fn(item)
 
         if hasattr(fn, LocalIterator.AUTO_TIMER_ATTR):
-            timer = self.context.timers[getattr(fn,
+            timer = self.metrics.timers[getattr(fn,
                                                 LocalIterator.AUTO_TIMER_ATTR)]
             unwrapped = apply_foreach
 
@@ -658,7 +666,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_foreach],
             name=self.name + ".for_each()")
 
@@ -670,7 +678,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_filter],
             name=self.name + ".filter()")
 
@@ -690,7 +698,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_batch],
             name=self.name + ".batch({})".format(n))
 
@@ -705,7 +713,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
 
@@ -743,7 +751,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_shuffle],
             name=self.name +
             ".shuffle(shuffle_buffer_size={}, seed={})".format(
@@ -773,12 +781,13 @@ class LocalIterator(Generic[T]):
             if i >= n:
                 break
 
-    def union(self, other: "LocalIterator[T]") -> "LocalIterator[T]":
+    def union(self, other: "LocalIterator[T]",
+              deterministic: bool = False) -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the other.
 
-        There are no ordering guarantees between the two iterators. We make a
-        best-effort attempt to return items from both as they become ready,
-        preventing starvation of any particular iterator.
+        If deterministic=True, we alternate between reading from one iterator
+        and the other. Otherwise we return items from iterators as they
+        become ready.
         """
 
         if not isinstance(other, LocalIterator):
@@ -786,13 +795,21 @@ class LocalIterator(Generic[T]):
                 "other must be of type LocalIterator, got {}".format(
                     type(other)))
 
+        if deterministic:
+            timeout = None
+        else:
+            timeout = 0
+
         it1 = LocalIterator(
-            self.base_iterator, self.context, self.local_transforms, timeout=0)
+            self.base_iterator,
+            self.metrics,
+            self.local_transforms,
+            timeout=timeout)
         it2 = LocalIterator(
             other.base_iterator,
-            self.context,
+            other.metrics,
             other.local_transforms,
-            timeout=0)
+            timeout=timeout)
         active = [it1, it2]
 
         def build_union(timeout=None):
@@ -807,17 +824,21 @@ class LocalIterator(Generic[T]):
                                 break
                             else:
                                 yield item
+                            if deterministic:
+                                break
                     except StopIteration:
                         active.remove(it)
                 if not active:
                     break
 
         # TODO(ekl) is this the best way to represent union() of metrics?
-        self.context.union_contexts.append(other.context)
+        new_ctx = MetricsContext()
+        new_ctx.parent_metrics.append(self.metrics)
+        new_ctx.parent_metrics.append(other.metrics)
 
         return LocalIterator(
             build_union,
-            self.context, [],
+            new_ctx, [],
             name="LocalUnion[{}, {}]".format(self, other))
 
 
