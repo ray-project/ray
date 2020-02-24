@@ -32,6 +32,26 @@ def test_metrics(ray_start_regular_shared):
         LocalIterator.get_metrics()
 
 
+def test_metrics_union(ray_start_regular_shared):
+    it1 = from_items([1, 2, 3, 4], num_shards=1)
+    it2 = from_items([1, 2, 3, 4], num_shards=1)
+
+    def foo_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["foo"] += x
+        return metrics.counters["foo"]
+
+    def bar_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["bar"] += 100
+        return metrics.counters["bar"]
+
+    it1 = it1.gather_sync().for_each(foo_metrics)
+    it2 = it2.gather_sync().for_each(bar_metrics)
+    it3 = it1.union(it2, deterministic=True)
+    print(it3.take(10))
+
+
 def test_from_items(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4])
     assert repr(it) == "ParallelIterator[from_items[int, 4, shards=2]]"
