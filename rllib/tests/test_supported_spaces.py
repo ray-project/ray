@@ -7,6 +7,7 @@ import unittest
 import traceback
 
 import ray
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
@@ -14,6 +15,7 @@ from ray.rllib.tests.test_multi_agent_env import MultiCartpole, \
     MultiMountainCar
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
+tf = try_import_tf()
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
@@ -219,16 +221,6 @@ class ModelSupportedSpaces(unittest.TestCase):
 
     def test_sac(self):
         check_support("SAC", {}, self.stats, check_bounds=True)
-
-    # def testAll(self):
-
-    #    num_unexpected_errors = 0
-    #    for (alg, a_name, o_name), stat in sorted(self.stats.items()):
-    #        if stat not in ["ok", "unsupported", "skip"]:
-    #            num_unexpected_errors += 1
-    #        print(alg, "action_space", a_name, "obs_space", o_name, "result",
-    #              stat)
-    #    self.assertEqual(num_unexpected_errors, 0)
 
     def test_a3c_multiagent(self):
         check_support_multiagent("A3C", {

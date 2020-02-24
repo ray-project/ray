@@ -80,7 +80,7 @@ class SACModel(TFModelV2):
         shift_and_log_scale_diag = tf.keras.Sequential([
             tf.keras.layers.Dense(
                 units=hidden,
-                activation=getattr(tf.nn, actor_hidden_activation),
+                activation=getattr(tf.nn, actor_hidden_activation, None),
                 name="action_hidden_{}".format(i))
             for i, hidden in enumerate(actor_hiddens)
         ] + [

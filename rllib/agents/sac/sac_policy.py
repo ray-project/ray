@@ -86,6 +86,30 @@ def postprocess_trajectory(policy,
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
+def unsquash_actions(actions, action_space):
+    # Use sigmoid to scale to [0,1], but also double magnitude of input to
+    # emulate behaviour of tanh activation used in SAC and TD3 papers.
+    sigmoid_out = tf.nn.sigmoid(2 * actions)
+    # Rescale to actual env policy scale
+    # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
+    # get same dims)
+    action_range = (action_space.high - action_space.low)[None]
+    low_action = action_space.low[None]
+    unsquashed_actions = action_range * sigmoid_out + low_action
+
+    return unsquashed_actions
+
+
+def get_log_likelihood(policy, model, actions, input_dict, obs_space,
+                       action_space, config):
+    model_out, _ = model({
+        "obs": input_dict[SampleBatch.CUR_OBS],
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
+    log_pis = policy.model.log_pis_model((model_out, actions))
+    return log_pis
+
+
 def build_action_output(policy, model, input_dict, obs_space, action_space,
                         explore, config, timestep):
     model_out, _ = model({
@@ -93,28 +117,16 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
-    def unsquash_actions(actions):
-        # Use sigmoid to scale to [0,1], but also double magnitude of input to
-        # emulate behaviour of tanh activation used in SAC and TD3 papers.
-        sigmoid_out = tf.nn.sigmoid(2 * actions)
-        # Rescale to actual env policy scale
-        # (shape of sigmoid_out is [batch_size, dim_actions], so we reshape to
-        # get same dims)
-        action_range = (action_space.high - action_space.low)[None]
-        low_action = action_space.low[None]
-        unsquashed_actions = action_range * sigmoid_out + low_action
-
-        return unsquashed_actions
-
     squashed_stochastic_actions, log_pis = policy.model.get_policy_output(
         model_out, deterministic=False)
     stochastic_actions = squashed_stochastic_actions if config[
-        "normalize_actions"] else unsquash_actions(squashed_stochastic_actions)
+        "normalize_actions"] else unsquash_actions(squashed_stochastic_actions,
+                                                   action_space)
     squashed_deterministic_actions, _ = policy.model.get_policy_output(
         model_out, deterministic=True)
     deterministic_actions = squashed_deterministic_actions if config[
         "normalize_actions"] else unsquash_actions(
-            squashed_deterministic_actions)
+            squashed_deterministic_actions, action_space)
 
     actions = tf.cond(
         tf.constant(explore) if isinstance(explore, bool) else explore,
@@ -409,6 +421,7 @@ SACTFPolicy = build_tf_policy(
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
     action_sampler_fn=build_action_output,
+    log_likelihood_fn=get_log_likelihood,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     gradients_fn=gradients,
