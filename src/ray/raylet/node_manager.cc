@@ -3028,21 +3028,21 @@ void NodeManager::ProcessSubscribePlasma(
   if (associated_worker == nullptr) {
     associated_worker = worker_pool_.GetRegisteredDriver(client);
   }
-  if (associated_worker == nullptr) {
-    RAY_LOG(ERROR) << "No worker exists for CoreWorker with client: "
-                   << client->DebugString();
-    return;
-  }
+  RAY_CHECK(associated_worker != nullptr)
+      << "No worker exists for CoreWorker with client: " << client->DebugString();
 
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasma>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
   {
-    absl::MutexLock guard(&plasma_object_lock_);
-    if (!async_plasma_objects_.contains(id)) {
-      async_plasma_objects_.emplace(id, absl::flat_hash_set<std::shared_ptr<Worker>>());
+    absl::MutexLock guard(&plasma_object_notification_lock__);
+    if (!async_plasma_objects_notification_.contains(id)) {
+      async_plasma_objects_notification_.emplace(
+          id, absl::flat_hash_set<std::shared_ptr<Worker>>());
     }
-    if (!async_plasma_objects_[id].contains(associated_worker)) {
-      async_plasma_objects_[id].insert(associated_worker);
+
+    // Only insert a worker once
+    if (!async_plasma_objects_notification_[id].contains(associated_worker)) {
+      async_plasma_objects_notification_[id].insert(associated_worker);
     }
   }
 }
@@ -3053,8 +3053,8 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
         ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
         auto waiting_workers = absl::flat_hash_set<std::shared_ptr<Worker>>();
         {
-          absl::MutexLock guard(&plasma_object_lock_);
-          auto waiting = this->async_plasma_objects_.extract(object_id);
+          absl::MutexLock guard(&plasma_object_notification_lock__);
+          auto waiting = this->async_plasma_objects_notification_.extract(object_id);
           if (!waiting.empty()) {
             waiting_workers.swap(waiting.mapped());
           }

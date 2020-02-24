@@ -717,11 +717,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
 
   /// Concurrency for the following map
-  absl::Mutex plasma_object_lock_;
+  absl::Mutex plasma_object_notification_lock__;
 
   /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
-      async_plasma_objects_;
+      async_plasma_objects_notification_;
 
   /// Objects that are out of scope in the application and that should be freed
   /// from plasma. The cache is flushed when it reaches the config's

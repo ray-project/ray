@@ -241,6 +241,6 @@ service CoreWorkerService {
   // Wait for a borrower to finish using an object. Sent by the object's owner.
   rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
 
-  // Plasma object ready.
+  // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }
