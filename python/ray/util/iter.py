@@ -549,10 +549,10 @@ class LocalIterator(Generic[T]):
     tasks and actors. However, it should be read from at most one process at
     a time."""
 
-    # If a function passed to LocalIterator.for_each() has this attribute set,
-    # we will automatically create a perf timer with the given name. This
-    # allows for_each operators to automatically add certain metrics.
-    AUTO_TIMER_ATTR = "_auto_timer_name"
+    # If a function passed to LocalIterator.for_each() has this method,
+    # we will call it when starting to wait for data for this operator. This
+    # can be useful to measure the wait time for measurement purposes.
+    ON_WAIT_START_HOOK_NAME = "_on_wait_start"
 
     thread_local = threading.local()
 
@@ -644,21 +644,24 @@ class LocalIterator(Generic[T]):
                 else:
                     yield fn(item)
 
-        if hasattr(fn, LocalIterator.AUTO_TIMER_ATTR):
-            timer = self.metrics.timers[getattr(fn,
-                                                LocalIterator.AUTO_TIMER_ATTR)]
+        if hasattr(fn, LocalIterator.ON_WAIT_START_HOOK_NAME):
             unwrapped = apply_foreach
 
-            def wrap_timer(it):
+            def add_wait_hooks(it):
                 it = unwrapped(it)
+                new_item = True
                 while True:
-                    start = time.perf_counter()
+                    # Avoids calling on_wait_start repeatedly if we are
+                    # yielding _NextValueNotReady.
+                    if new_item:
+                        fn._on_wait_start()
+                        new_item = False
                     item = next(it)
                     if not isinstance(item, _NextValueNotReady):
-                        timer.push(time.perf_counter() - start)
+                        new_item = True
                     yield item
 
-            apply_foreach = wrap_timer
+            apply_foreach = add_wait_hooks
 
         return LocalIterator(
             self.base_iterator,

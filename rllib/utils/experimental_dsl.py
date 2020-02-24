@@ -23,6 +23,8 @@ STEPS_TRAINED_COUNTER = "num_steps_trained"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 WORKER_UPDATE_TIMER = "update"
+GRAD_WAIT_TIMER = "grad_wait"
+SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
 LEARNER_INFO = "learner"
 
@@ -120,7 +122,7 @@ def AsyncGradients(
         return grads, count
 
     # Exposes time to get each grad as a timer in the iterator context.
-    record_metrics._auto_timer_name = "grad_wait"
+    record_metrics._auto_timer_name = GRAD_WAIT_TIMER
 
     rollouts = from_actors(workers.remote_workers())
     grads = rollouts.for_each(samples_to_grads)
@@ -168,14 +170,15 @@ class ConcatBatches:
         10000
     """
 
-    # This automatically exposes the latency of sampling as a timer in the
-    # local iterator context.
-    _auto_timer_name = "sample"
-
     def __init__(self, min_batch_size: int):
         self.min_batch_size = min_batch_size
         self.buffer = []
         self.count = 0
+        self.batch_start_time = None
+
+    def _on_wait_start(self):
+        if self.batch_start_time is None:
+            self.batch_start_time = time.perf_counter()
 
     def __call__(self, batch: SampleBatch) -> List[SampleBatch]:
         if not isinstance(batch, SampleBatch):
@@ -185,6 +188,10 @@ class ConcatBatches:
         self.count += batch.count
         if self.count >= self.min_batch_size:
             out = SampleBatch.concat_samples(self.buffer)
+            timer = LocalIterator.get_metrics().timers[SAMPLE_TIMER]
+            timer.push(time.perf_counter() - self.batch_start_time)
+            timer.push_units_processed(self.count)
+            self.batch_start_time = None
             self.buffer = []
             self.count = 0
             return [out]
@@ -211,8 +218,10 @@ class TrainOneStep:
 
     def __call__(self, batch: SampleBatch) -> List[dict]:
         metrics = LocalIterator.get_metrics()
-        with metrics.timers[LEARN_ON_BATCH_TIMER]:
+        learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
+        with learn_timer:
             info = self.workers.local_worker().learn_on_batch(batch)
+            learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         metrics.info[LEARNER_INFO] = info[LEARNER_STATS_KEY]
         if self.workers.remote_workers():
@@ -266,10 +275,13 @@ class CollectMetrics:
             STEPS_SAMPLED_COUNTER: metrics.counters[STEPS_SAMPLED_COUNTER],
             STEPS_TRAINED_COUNTER: metrics.counters[STEPS_TRAINED_COUNTER],
         })
-        res["timers"] = {
-            "{}_time_ms".format(k): round(v.mean * 1000, 3)
-            for k, v in metrics.timers.items()
-        }
+        timers = {}
+        for k, timer in metrics.timers.items():
+            timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
+            if timer.has_units_processed():
+                timers["{}_throughput".format(k)] = round(
+                    timer.mean_throughput, 3)
+        res["timers"] = timers
         res.update({
             "num_healthy_workers": len(self.workers.remote_workers()),
             "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
@@ -354,8 +366,10 @@ class ApplyGradients:
         metrics = LocalIterator.get_metrics()
         metrics.counters[STEPS_TRAINED_COUNTER] += count
 
-        with metrics.timers[APPLY_GRADS_TIMER]:
+        apply_timer = metrics.timers[APPLY_GRADS_TIMER]
+        with apply_timer:
             self.workers.local_worker().apply_gradients(gradients)
+            apply_timer.push_units_processed(count)
 
         if self.update_all:
             if self.workers.remote_workers():
