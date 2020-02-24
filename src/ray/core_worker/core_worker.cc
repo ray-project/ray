@@ -1373,10 +1373,8 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
                                          rpc::SendReplyCallback
 
                                              send_reply_callback) {
-  if (!plasma_done_callback_) {
-    RAY_LOG(INFO) << "Async Init was not called before async callback";
-    return;
-  }
+  RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
+
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
