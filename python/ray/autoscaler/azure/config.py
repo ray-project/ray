@@ -241,7 +241,7 @@ def _configure_network(config):
     network_client.network_security_groups.create_or_update(
         resource_group_name=resource_group,
         network_security_group_name=NSG_NAME,
-        parameters=nsg_params)
+        parameters=nsg_params).wait()
 
     return config
 

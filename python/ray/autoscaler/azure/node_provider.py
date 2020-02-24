@@ -64,6 +64,7 @@ class AzureNodeProvider(NodeProvider):
         # cache node objects
         self.cached_nodes = {}
 
+    @synchronized
     def _get_filtered_nodes(self, tag_filters):
         def match_tags(vm):
             for k, v in tag_filters.items():
@@ -75,7 +76,7 @@ class AzureNodeProvider(NodeProvider):
             resource_group_name=self.provider_config["resource_group"])
 
         nodes = [self._extract_metadata(vm) for vm in filter(match_tags, vms)]
-        self.cached_nodes = {vm["name"]: vm for vm in nodes}
+        self.cached_nodes = {node["name"]: node for node in nodes}
         return self.cached_nodes
 
     def _extract_metadata(self, vm):
@@ -110,7 +111,6 @@ class AzureNodeProvider(NodeProvider):
 
         return metadata
 
-    @synchronized
     def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
 
@@ -129,34 +129,34 @@ class AzureNodeProvider(NodeProvider):
             if not v["status"].startswith("deallocat")
         ]
 
-    @synchronized
     def is_running(self, node_id):
         """Return whether the specified node is running."""
-        return self._get_cached_node(node_id=node_id)["status"] == "running"
+        # always get current status
+        node = self._get_node(node_id=node_id)
+        return node["status"] == "running"
 
-    @synchronized
     def is_terminated(self, node_id):
         """Return whether the specified node is terminated."""
-        return self._get_cached_node(node_id=node_id)["status"] in [
-            "deallocating", "deallocated"
-        ]
+        # always get current status
+        node = self._get_node(node_id=node_id)
+        return node["status"].startswith("deallocat")
 
-    @synchronized
     def node_tags(self, node_id):
         """Returns the tags of the given node (string dict)."""
         return self._get_cached_node(node_id=node_id)["tags"]
 
-    @synchronized
     def external_ip(self, node_id):
         """Returns the external ip of the given node."""
-        return self._get_cached_node(node_id=node_id)["external_ip"]
+        ip = (self._get_cached_node(node_id=node_id)["external_ip"]
+              or self._get_node(node_id=node_id)["external_ip"])
+        return ip
 
-    @synchronized
     def internal_ip(self, node_id):
         """Returns the internal ip (Ray ip) of the given node."""
-        return self._get_cached_node(node_id=node_id)["internal_ip"]
+        ip = (self._get_cached_node(node_id=node_id)["internal_ip"]
+              or self._get_node(node_id=node_id)["internal_ip"])
+        return ip
 
-    @synchronized
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
         # TODO: restart deallocated nodes if possible
@@ -242,13 +242,12 @@ class AzureNodeProvider(NodeProvider):
         """Sets the tag values (string dict) for the specified node."""
         node_tags = self._get_cached_node(node_id)["tags"]
         node_tags.update(tags)
-        self.cached_nodes[node_id]["tags"] = node_tags
         self.compute_client.virtual_machines.update(
             resource_group_name=self.provider_config["resource_group"],
             vm_name=node_id,
             parameters={"tags": node_tags})
+        self.cached_nodes[node_id]["tags"] = node_tags
 
-    @synchronized
     def terminate_node(self, node_id):
         """Terminates the specified node."""
         # self.compute_client.virtual_machines.deallocate(
@@ -279,19 +278,11 @@ class AzureNodeProvider(NodeProvider):
                 self.compute_client.disks.delete(
                     resource_group_name=resource_group, disk_name=disk.name)
 
-    @synchronized
     def _get_node(self, node_id):
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
-
-        vm = self.compute_client.virtual_machines.get(
-            resource_group_name=self.provider_config["resource_group"],
-            vm_name=node_id)
-        return self._extract_metadata(vm)
+        self._get_filtered_nodes({})  # Side effect: updates cache
+        return self.cached_nodes[node_id]
 
     def _get_cached_node(self, node_id):
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
-
-        self._get_filtered_nodes({})  # Side effect: updates cache
-        return self._get_node(node_id)
+        return self._get_node(node_id=node_id)

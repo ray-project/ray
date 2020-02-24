@@ -110,15 +110,14 @@ worker_nodes:
             offer: ubuntu-1804
             sku: 1804-gen2
             version: 20.02.01
-        # run workers on spot instances by default
-        priority: Spot
-        eviction_policy: Deallocate
-        billing_profile:
-            max_price: -1
-
         # You can provision additional disk space as follows
         # data_disks:
         #    - disk_size_gb: 1024
+    # run workers on spot instances by default
+    priority: Spot
+    eviction_policy: Deallocate
+    billing_profile:
+        max_price: -1
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -139,7 +138,7 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    #- echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+    # - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
