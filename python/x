@@ -1,3 +1,165 @@
+test_args_starkwargs
+test_args_named_and_star
+test_args_stars_after
+test_redefining_remote_functions
+test_submit_api
+test_many_fractional_resources
+test_direct_call_simple
+
+
+DispatchTasks
+  AssignTask
+    FinishAssignTask(3)
+
+FinishAssignTask(2)
+
+void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
+                             std::vector<std::function<void()>> *post_assign_callbacks) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  RAY_CHECK(post_assign_callbacks);
+
+  // If this is an actor task, check that the new task has the correct counter.
+  if (spec.IsActorTask()) {
+    // An actor task should only be ready to be assigned if it matches the
+    // expected task counter.
+    int64_t expected_task_counter =
+        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
+    RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
+        << "Expected actor counter: " << expected_task_counter << ", task "
+        << spec.TaskId() << " has: " << spec.ActorCounter();
+  }
+
+  RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
+                 << worker->Pid() << ", worker id: " << worker->WorkerId();
+  flatbuffers::FlatBufferBuilder fbb;
+
+  // Resource accounting: acquire resources for the assigned task.
+  auto acquired_resources =
+      local_available_resources_.Acquire(spec.GetRequiredResources());
+  cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
+
+  if (spec.IsActorCreationTask()) {
+    // Check that the actor's placement resource requirements are satisfied.
+    RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
+        cluster_resource_map_[self_node_id_].GetTotalResources()));
+    worker->SetLifetimeResourceIds(acquired_resources);
+  } else {
+    worker->SetTaskResourceIds(acquired_resources);
+  }
+
+  auto task_id = spec.TaskId();
+  if (task.OnDispatch() != nullptr) {
+    if (task.GetTaskSpecification().IsDetachedActor()) {
+      worker->MarkDetachedActor();
+    }
+
+    const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
+    const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
+    RAY_CHECK(!owner_worker_id.IsNil());
+    RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker "
+                   << worker->WorkerId() << ", owner ID " << owner_worker_id;
+
+    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
+                      worker->WorkerId(),
+                      spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
+                                                 : worker->GetTaskResourceIds());
+
+    // If the owner has died since this task was queued, cancel the task by
+    // killing the worker.
+    if (failed_workers_cache_.count(owner_worker_id) > 0 ||
+        failed_nodes_cache_.count(owner_node_id) > 0) {
+      // TODO(swang): Skip assigning this task to this worker instead of
+      // killing the worker?
+      KillWorker(worker);
+    }
+
+    post_assign_callbacks->push_back([this, worker, task_id]() {
+      RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
+                     << worker->WorkerId();
+
+      FinishAssignTask(worker, task_id, /*success=*/true);
+    });
+  } else {
+    ResourceIdSet resource_id_set =
+        worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
+    if (worker->AssignTask(task, resource_id_set).ok()) {
+      RAY_LOG(DEBUG) << "Assigned task " << task_id << " to worker "
+                     << worker->WorkerId();
+      post_assign_callbacks->push_back([this, worker, task_id]() {
+        FinishAssignTask(worker, task_id, /*success=*/true);
+      });
+    } else {
+      RAY_LOG(ERROR) << "Failed to assign task " << task_id << " to worker "
+                     << worker->WorkerId() << ", disconnecting client";
+      post_assign_callbacks->push_back([this, worker, task_id]() {
+        FinishAssignTask(worker, task_id, /*success=*/false);
+      });
+    }
+  }
+}
+
+
+void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
+                                   const TaskID &task_id, bool success) {
+  RAY_LOG(DEBUG) << "FinishAssignTask: " << task_id;
+  // Remove the ASSIGNED task from the READY queue.
+  Task assigned_task;
+  TaskState state;
+  if (!local_queues_.RemoveTask(task_id, &assigned_task, &state)) {
+    // TODO(edoakes): should we be failing silently here?
+    return;
+  }
+  RAY_CHECK(state == TaskState::READY);
+  if (success) {
+    auto spec = assigned_task.GetTaskSpecification();
+    // We successfully assigned the task to the worker.
+    worker->AssignTaskId(spec.TaskId());
+    RAY_LOG(WARNING) << "FinishAssignTask 1, " << worker->WorkerId() << ", " << spec.CallerAddress().worker_id();
+    worker->SetOwnerAddress(spec.CallerAddress());
+    worker->AssignJobId(spec.JobId());
+    // TODO(swang): For actors with multiple actor handles, to
+    // guarantee that tasks are replayed in the same order after a
+    // failure, we must update the task's execution dependency to be
+    // the actor's current execution dependency.
+
+    // Mark the task as running.
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
+    // Notify the task dependency manager that we no longer need this task's
+    // object dependencies.
+    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
+  } else {
+    RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
+    // We failed to send the task to the worker, so disconnect the worker.
+    RAY_LOG(WARNING) << "ProcessDisconnectClientMessage 3";
+    ProcessDisconnectClientMessage(worker->Connection());
+    // Queue this task for future assignment. We need to do this since
+    // DispatchTasks() removed it from the ready queue. The task will be
+    // assigned to a worker once one becomes available.
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    local_queues_.QueueTasks({assigned_task}, TaskState::READY);
+    DispatchTasks(MakeTasksByClass({assigned_task}));
+  }
+}
+
+  RAY_LOG(DEBUG) << "FinishAssignTask: " << task_id;
+  // Remove the ASSIGNED task from the READY queue.
+  Task assigned_task;
+  TaskState state;
+  if (!local_queues_.RemoveTask(task_id, &assigned_task, &state)) {
+    // TODO(edoakes): should we be failing silently here?
+    return;
+  }
+  RAY_CHECK(state == TaskState::READY);
+  if (success) {
+    auto spec = assigned_task.GetTaskSpecification();
+    // We successfully assigned the task to the worker.
+    worker->AssignTaskId(spec.TaskId());
+    RAY_LOG(WARNING) << "FinishAssignTask 1, " << worker->WorkerId() << ", " << spec.CallerAddress().worker_id();
+    worker->SetOwnerAddress(spec.CallerAddress());
+    worker->AssignJobId(spec.JobId());
+
+
 W0219 08:47:49.423257 143726016 node_manager.cc:575] ====x ResourceCreateUpdated -> UpdateResourceCapacity ====
 W0219 08:47:49.423391 143726016 node_manager.cc:575] ====x ResourceCreateUpdated -> UpdateResourceCapacity ====
 W0219 08:47:49.423502 143726016 node_manager.cc:575] ====x ResourceCreateUpdated -> UpdateResourceCapacity ====

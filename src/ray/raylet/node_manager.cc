@@ -1095,13 +1095,15 @@ void NodeManager::HandleWorkerAvailable(
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
-  RAY_LOG(WARNING) << "xxxx HandleWorkerAvailable";
+  RAY_LOG(WARNING) << "xxxx HandleWorkerAvailable " << worker->WorkerId();
   RAY_CHECK(worker);
   bool worker_idle = true;
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
     worker_idle = FinishAssignedTask(*worker);
   }
+
+  RAY_LOG(WARNING) << "xxxx HandleWorkerAvailable " << worker_idle;
 
   if (worker_idle) {
     // Return the worker to the idle pool.
@@ -1487,11 +1489,16 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers schedulable = " << schedulable;
     if (!schedulable) {
       worker_pool_.PushWorker(worker);
+      RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers return";;
       return;
     }
+    worker->SetOwnerAddress(spec.CallerAddress());
+    RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers -> SetAllocatedInstances";;
     worker->SetAllocatedInstances(allocated_instances);                                                   
+    RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers -> SetAllocatedInstances 1";;
     reply(worker, ClientID::Nil(), "", -1);
-    tasks_to_dispatch_.pop_front();
+    RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers -> SetAllocatedInstances 2";;
+    tasks_to_dispatch_.pop_front();    
   }
 }
 
@@ -1587,14 +1594,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             RAY_LOG(WARNING) << "leased_worker 2.0 = " << worker->WorkerId();
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
             RAY_LOG(WARNING) << "leased_worker 2.1";
-            // XXX
-            {
-              const auto owner_worker_id =
-              WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-              const auto owner_node_id =
-                WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
-              RAY_LOG(WARNING) << "HandleRequestWorkerLease Lease " << worker->WorkerId() << " owned by " << owner_worker_id << " / " << owner_node_id;
-            }
             leased_workers_[worker->WorkerId()] = worker;
             leased_worker_resources_[worker->WorkerId()] = request_resources;
           } else {
@@ -1640,7 +1639,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
           }
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
-
         RAY_LOG(WARNING) << "leased_worker 3.0";
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
