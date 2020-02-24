@@ -218,8 +218,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
-  if (distributed_ref_counting_enabled_ && it->second.RefCount() == 0 &&
-      it->second.on_ref_removed) {
+  if (it->second.RefCount() == 0 && it->second.on_ref_removed) {
     RAY_LOG(DEBUG) << "Calling on_ref_removed for object " << id;
     it->second.on_ref_removed(id);
     it->second.on_ref_removed = nullptr;
@@ -257,7 +256,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
           // If this object ID was nested in a borrowed object, make sure that
           // we have already returned this information through a previous
           // GetAndClearLocalBorrowers call.
-          RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value());
+          RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value())
+              << "Outer object " << id << ", inner object " << inner_id;
         }
         DeleteReferenceInternal(inner_it, deleted);
       }
@@ -266,8 +266,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Perform the deletion.
   if (should_delete_value) {
-    RAY_LOG(DEBUG) << "Deleting object " << id;
     if (it->second.on_delete) {
+      RAY_LOG(DEBUG) << "Calling on_delete for object " << id;
       it->second.on_delete(id);
       it->second.on_delete = nullptr;
     }
@@ -276,6 +276,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     }
   }
   if (should_delete_reference) {
+    RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     object_id_refs_.erase(it);
   }
 }
