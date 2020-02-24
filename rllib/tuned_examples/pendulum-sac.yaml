@@ -24,7 +24,6 @@ pendulum_sac:
         target_network_update_freq: 1
         timesteps_per_iteration: 1000
         learning_starts: 256
-        explore: True
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003

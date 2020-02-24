@@ -918,7 +918,7 @@ py_test(
 py_test(
     name = "tests/test_explorations",
     tags = ["tests_dir", "tests_dir_E", "explorations"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_explorations.py"]
 )
 
