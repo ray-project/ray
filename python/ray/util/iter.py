@@ -611,17 +611,13 @@ class LocalIterator(Generic[T]):
                 else:
                     prev_metrics = None
                 self.thread_local.metrics = self.metrics
-#                print("Set thread local", self.metrics)
                 try:
                     for item in it:
                         self.thread_local.metrics = prev_metrics
-#                        print("Restore thread local", prev_metrics)
                         yield item
                         self.thread_local.metrics = self.metrics
-#                        print("Set thread local", self.metrics)
                 finally:
                     self.thread_local.metrics = prev_metrics
-#                    print("Restore thread local", prev_metrics)
 
             it = set_restore_context(it)
             self.built_iterator = it
