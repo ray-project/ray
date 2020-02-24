@@ -5,6 +5,7 @@ import logging
 import pickle
 
 import ray
+from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -52,7 +53,7 @@ def get_global_worker():
 
 
 @DeveloperAPI
-class RolloutWorker(EvaluatorInterface):
+class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -240,6 +241,12 @@ class RolloutWorker(EvaluatorInterface):
 
         global _global_worker
         _global_worker = self
+
+        def gen_rollouts():
+            while True:
+                yield self.sample()
+
+        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         policy_config = policy_config or {}
         if (tf and policy_config.get("eager")
@@ -842,7 +849,7 @@ class RolloutWorker(EvaluatorInterface):
 
     def find_free_port(self):
         """Finds a free port on the current node."""
-        from ray.experimental.sgd import utils
+        from ray.util.sgd import utils
         return utils.find_free_port()
 
     def __del__(self):

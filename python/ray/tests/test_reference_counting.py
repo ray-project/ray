@@ -1,13 +1,15 @@
 # coding: utf-8
-import os
-import json
 import copy
-import tempfile
-import numpy as np
-import time
-import pytest
+import json
 import logging
+import os
+import tempfile
+import time
 import uuid
+
+import numpy as np
+
+import pytest
 
 import ray
 import ray.cluster_utils
@@ -18,7 +20,13 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def one_worker_100MiB(request):
-    yield ray.init(num_cpus=1, object_store_memory=100 * 1024 * 1024)
+    config = json.dumps({
+        "distributed_ref_counting_enabled": 1,
+    })
+    yield ray.init(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _internal_config=config)
     ray.shutdown()
 
 
@@ -266,7 +274,6 @@ def test_feature_flag(shutdown_only):
 # Remote function takes serialized reference and doesn't hold onto it after
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_basic_serialized_reference(one_worker_100MiB):
     @ray.remote
     def pending(ref, dep):
@@ -301,7 +308,6 @@ def test_basic_serialized_reference(one_worker_100MiB):
 # Call a recursive chain of tasks that pass a serialized reference to the end
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_recursive_serialized_reference(one_worker_100MiB):
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
@@ -325,7 +331,7 @@ def test_recursive_serialized_reference(one_worker_100MiB):
     del array_oid
 
     tail_oid = head_oid
-    for _ in range(max_depth - 1):
+    for _ in range(max_depth):
         tail_oid = ray.get(tail_oid)
 
     # Check that the remote reference pins the object.
@@ -333,7 +339,7 @@ def test_recursive_serialized_reference(one_worker_100MiB):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.worker.global_worker.put_object(None, object_id=random_oid)
-    ray.get(tail_oid)
+    assert ray.get(tail_oid) is None
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -342,7 +348,6 @@ def test_recursive_serialized_reference(one_worker_100MiB):
 # Test that a passed reference held by an actor after the method finishes
 # is kept until the reference is removed from the actor. Also tests giving
 # the actor a duplicate reference to the same object ID.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_actor_holding_serialized_reference(one_worker_100MiB):
     @ray.remote
     class GreedyActor(object):
@@ -392,7 +397,6 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_worker_holding_serialized_reference(one_worker_100MiB):
     @ray.remote
     def child(dep1, dep2):
@@ -428,7 +432,6 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
 
 
 # Test that an object containing object IDs within it pins the inner IDs.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_basic_nested_ids(one_worker_100MiB):
     inner_oid = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
@@ -447,7 +450,6 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_recursively_nest_ids(one_worker_100MiB):
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
@@ -474,7 +476,7 @@ def test_recursively_nest_ids(one_worker_100MiB):
     del array_oid, nested_oid
 
     tail_oid = head_oid
-    for _ in range(max_depth - 1):
+    for _ in range(max_depth):
         tail_oid = ray.get(tail_oid)
 
     # Check that the remote reference pins the object.
@@ -490,7 +492,6 @@ def test_recursively_nest_ids(one_worker_100MiB):
 
 # Test that serialized objectIDs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_return_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -519,7 +520,6 @@ def test_return_object_id(one_worker_100MiB):
 
 # Test that serialized objectIDs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -555,7 +555,6 @@ def test_pass_returned_object_id(one_worker_100MiB):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
-@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_recursively_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def put():
@@ -583,7 +582,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     del outer_oid
 
     tail_oid = head_oid
-    for _ in range(max_depth - 1):
+    for _ in range(max_depth):
         tail_oid = ray.get(tail_oid)
 
     # Check that the remote reference pins the object.
@@ -595,6 +594,44 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
 
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
+
+
+# Call a recursive chain of tasks. The final task in the chain returns an
+# ObjectID returned by a task that it submitted. Every other task in the chain
+# returns the same ObjectID by calling ray.get() on its submitted task and
+# returning the result. The reference should still exist while the driver has a
+# reference to the final task's ObjectID.
+def test_recursively_return_borrowed_object_id(one_worker_100MiB):
+    @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote
+    def recursive(num_tasks_left):
+        if num_tasks_left == 0:
+            return put.remote()
+
+        final_id = ray.get(recursive.remote(num_tasks_left - 1))
+        ray.get(final_id)
+        return final_id
+
+    max_depth = 5
+    head_oid = recursive.remote(max_depth)
+    final_oid = ray.get(head_oid)
+    final_oid_bytes = final_oid.binary()
+
+    # Check that the driver's reference pins the object.
+    _fill_object_store_and_get(final_oid_bytes)
+
+    # Remove the local reference and try it again.
+    final_oid = ray.get(head_oid)
+    _fill_object_store_and_get(final_oid_bytes)
+
+    # Remove all references.
+    del head_oid
+    del final_oid
+    # Reference should be gone, check that returned ID gets evicted.
+    _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
 
 if __name__ == "__main__":

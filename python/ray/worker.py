@@ -66,12 +66,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# Whether we should warn about slow put performance.
-if os.environ.get("OMP_NUM_THREADS") == "1":
-    should_warn_of_slow_puts = True
-else:
-    should_warn_of_slow_puts = False
-
 
 class ActorCheckpointInfo:
     """Information used to maintain actor checkpoints."""
@@ -275,21 +269,9 @@ class Worker:
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        global should_warn_of_slow_puts
-        if should_warn_of_slow_puts:
-            start = time.perf_counter()
-
         serialized_value = self.get_serialization_context().serialize(value)
-        result = self.core_worker.put_serialized_object(
+        return self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
-
-        if should_warn_of_slow_puts:
-            delta = time.perf_counter() - start
-            if delta > 0.1:
-                logger.warning("OMP_NUM_THREADS=1 is set, this may slow down "
-                               "ray.put() for large objects (issue #6998).")
-                should_warn_of_slow_puts = False
-        return result
 
     def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
@@ -535,6 +517,7 @@ def print_failed_task(task_status):
 
 def init(address=None,
          redis_address=None,
+         redis_port=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -592,6 +575,8 @@ def init(address=None,
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_address (str): Deprecated; same as address.
+        redis_port (int): The port that the primary Redis shard should listen
+            to. If None, then a random port will be chosen.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -714,6 +699,7 @@ def init(address=None,
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
+            redis_port=redis_port,
             node_ip_address=node_ip_address,
             object_id_seed=object_id_seed,
             local_mode=local_mode,
@@ -1358,6 +1344,7 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
+    ray.actor.ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager
