@@ -2,6 +2,7 @@ import logging
 
 
 from sac.config import DEFAULT_CONFIG
+from sac.dev_utils import using_ray_8
 from sac.sac_policy import SACTFPolicy
 from sac.rllib_proxy import build_trainer, DEFAULT_POLICY_ID
 from sac.rllib_proxy import SyncReplayOptimizer
@@ -11,20 +12,40 @@ logger = logging.getLogger(__name__)
 
 
 def make_optimizer(workers, config):
-    return SyncReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        prioritized_replay=config["prioritized_replay"],
-        prioritized_replay_alpha=config["prioritized_replay_alpha"],
-        prioritized_replay_beta=config["prioritized_replay_beta"],
-        schedule_max_timesteps=config["schedule_max_timesteps"],
-        beta_annealing_fraction=config["beta_annealing_fraction"],
-        final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
-        prioritized_replay_eps=config["prioritized_replay_eps"],
-        train_batch_size=config["train_batch_size"],
-        sample_batch_size=config["sample_batch_size"],
-        **config["optimizer"])
+    if using_ray_8():
+        return SyncReplayOptimizer(
+            workers,
+            learning_starts=config["learning_starts"],
+            buffer_size=config["buffer_size"],
+            prioritized_replay=config["prioritized_replay"],
+            prioritized_replay_alpha=config["prioritized_replay_alpha"],
+            prioritized_replay_beta=config["prioritized_replay_beta"],
+            schedule_max_timesteps=config["schedule_max_timesteps"],
+            beta_annealing_fraction=config["beta_annealing_fraction"],
+            final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
+            prioritized_replay_eps=config["prioritized_replay_eps"],
+            train_batch_size=config["train_batch_size"],
+            sample_batch_size=config["sample_batch_size"],
+            **config["optimizer"])
+    else:
+        print(f"DEBUG: sac/trainer::31 {workers}")
+        local_evaluator, remote_evaluators = workers
+        return SyncReplayOptimizer(
+            local_evaluator,
+            remote_evaluators,
+            learning_starts=config["learning_starts"],
+            buffer_size=config["buffer_size"],
+            prioritized_replay=config["prioritized_replay"],
+            prioritized_replay_alpha=config["prioritized_replay_alpha"],
+            prioritized_replay_beta=config["prioritized_replay_beta"],
+            schedule_max_timesteps=config["schedule_max_timesteps"],
+            beta_annealing_fraction=config["beta_annealing_fraction"],
+            final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
+            prioritized_replay_eps=config["prioritized_replay_eps"],
+            train_batch_size=config["train_batch_size"],
+            sample_batch_size=config["sample_batch_size"],
+            **config["optimizer"]
+        )
 
 
 def check_config_and_setup_param_noise(config):

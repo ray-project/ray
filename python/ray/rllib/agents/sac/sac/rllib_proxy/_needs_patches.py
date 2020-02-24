@@ -5,7 +5,7 @@ import tensorflow as tf
 from ray.rllib import models
 from ray.rllib.evaluation import TFPolicyGraph
 
-from sac.rllib_proxy._unchanged import (
+from sac.rllib_proxy._todo import (
     log_once,
     summarize,
     TensorFlowVariables,
@@ -23,6 +23,9 @@ __all__ = ["ModelCatalog", "TFPolicy"]
 
 
 class TFPolicy(TFPolicyGraph):
+    def variables(self):
+        return self.model.variables()
+
     def _initialize_loss(self, loss, loss_inputs):
         self._loss_inputs = loss_inputs
         self._loss_input_dict = dict(self._loss_inputs)

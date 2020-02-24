@@ -6,15 +6,32 @@ authors = ["Aditya Gudimella <aditya.gudimella@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.6.1"
-ray = {extras = ["rllib"], version = "^0.8.1"}
 pandas = "^1.0.1"
 tensorflow = "1.15.2"
 tensorflow-probability = "^0.8.0"
 pybullet = "^2.6.5"
 requests = "^2.23.0"
+nox = "^2019.11.9"
+pytest = "^5.2"
+atari-py = "0.1.15"
+click = "7.0"
+funcsigs = "1.0.2"
+future = "0.18.2"
+gym = "0.12.5"
+jsonschema = "3.2.0"
+lz4 = "3.0.2"
+opencv-python = "4.2.0.32"
+opencv-python-headless = "4.2.0.32"
+pillow = "7.0.0"
+pyglet = "1.5.0"
+pyrsistent = "0.15.7"
+pyyaml = "5.3"
+redis = "3.4.1"
+scipy = "1.4.1"
+tabulate = "0.8.6"
+
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.2"
 ray = {extras = ["rllib"], version = "^0.8.1"}
 
 [build-system]
