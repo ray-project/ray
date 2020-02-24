@@ -812,6 +812,7 @@ class LocalIterator(Generic[T]):
                 if not active:
                     break
 
+        # TODO(ekl): the metrics context should be merged for the iterators.
         return LocalIterator(
             build_union,
             self.context, [],
