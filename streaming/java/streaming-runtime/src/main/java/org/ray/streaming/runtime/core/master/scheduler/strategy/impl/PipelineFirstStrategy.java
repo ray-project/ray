@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
  * execution logic diagram, PipelineFirstStrategy provides a actor scheduling
  * strategies to make the cluster load balanced and controllable scheduling.
  * Assume that we have 2 containers and have a DAG graph composed of a source node with parallelism
- * of 2 and a sink node with parallelism of 2. After PipelineFirstStrategy will be like:
+ * of 2 and a sink node with parallelism of 2, the structure will be like:
  * <pre>
  *   container_0
  *             |- source_1

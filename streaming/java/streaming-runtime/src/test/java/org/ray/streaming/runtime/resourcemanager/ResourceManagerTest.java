@@ -35,18 +35,14 @@ public class ResourceManagerTest extends BaseUnitTest {
 
   @org.testng.annotations.BeforeClass
   public void setUp() {
-    LOG.warn("Do set up");
-
     // ray init
     Ray.init();
-
     TestHelper.setUTFlag();
   }
 
   @org.testng.annotations.AfterClass
   public void tearDown() {
     TestHelper.clearUTFlag();
-    LOG.warn("Do tear down");
   }
 
   @Test
