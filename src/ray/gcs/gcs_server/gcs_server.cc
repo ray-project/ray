@@ -7,6 +7,7 @@
 #include "stats_handler_impl.h"
 #include "task_info_handler_impl.h"
 #include "worker_info_handler_impl.h"
+#include "health_check_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -61,6 +62,11 @@ void GcsServer::Start() {
       new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
   rpc_server_.RegisterService(*worker_info_service_);
 
+  health_check_handler_ = InitHealthCheckHandler();
+  health_check_service_.reset(
+      new rpc::HealthCheckGrpcService(main_service_, *health_check_handler_));
+  rpc_server_.RegisterService(*health_check_service_);
+
   // Run rpc server.
   rpc_server_.Run();
 
@@ -111,6 +117,31 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
       new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
 }
 
+std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
+  return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
+      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
+  return std::unique_ptr<rpc::DefaultStatsHandler>(
+      new rpc::DefaultStatsHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
+  return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
+      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::HealthCheckHandler> GcsServer::InitHealthCheckHandler() {
+  return std::unique_ptr<rpc::DefaultHealthCheckHandler>(
+      new rpc::DefaultHealthCheckHandler());
+}
+
 void GcsServer::StoreGcsServerAddressInRedis() {
   boost::asio::ip::detail::endpoint primary_endpoint;
   boost::asio::ip::tcp::resolver resolver(main_service_);
@@ -139,26 +170,6 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
-}
-
-std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
-  return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
-      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
-}
-
-std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
-  return std::unique_ptr<rpc::DefaultStatsHandler>(
-      new rpc::DefaultStatsHandler(*redis_gcs_client_));
-}
-
-std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
-  return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
-      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
-}
-
-std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
 }
 
 }  // namespace gcs

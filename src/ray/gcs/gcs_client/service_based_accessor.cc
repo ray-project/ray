@@ -16,16 +16,27 @@ Status ServiceBasedJobInfoAccessor::AsyncAdd(
                  << ", driver pid = " << data_ptr->driver_pid();
   rpc::AddJobRequest request;
   request.mutable_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().AddJob(
-      request,
-      [job_id, data_ptr, callback](const Status &status, const rpc::AddJobReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished adding job, status = " << status
-                       << ", job id = " << job_id
-                       << ", driver pid = " << data_ptr->driver_pid();
-      });
+
+  Executor* executor = new Executor(client_impl_);
+  auto operation = [this, request, job_id, data_ptr, callback, executor] {
+    client_impl_->GetGcsRpcClient().AddJob(
+        request, [job_id, data_ptr, callback, executor](const Status &status,
+                                              const rpc::AddJobReply &reply) {
+          if (!status.IsIOError()) {
+            if (callback) {
+              callback(status);
+            }
+            RAY_LOG(DEBUG) << "Finished adding job, status = " << status
+                           << ", job id = " << job_id
+                           << ", driver pid = " << data_ptr->driver_pid();
+            delete executor;
+          } else {
+            executor->post_execute(status);
+          }
+        });
+  };
+  executor->execute(operation);
+
   return Status::OK();
 }
 

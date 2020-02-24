@@ -52,6 +52,29 @@ void ServiceBasedGcsClient::Disconnect() {
   RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
 }
 
+void ServiceBasedGcsClient::Reconnect() {
+  std::promise<Status> promise;
+  do {
+    // Get gcs service address
+    std::pair<std::string, int> address;
+    GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+                                 &address);
+
+    // Connect to gcs service
+    gcs_rpc_client_.reset(
+        new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_));
+    rpc::PingRequest request;
+    gcs_rpc_client_->Ping(request, [&promise](const Status &status, const rpc::PingReply &reply) {
+      promise.set_value(status);
+    });
+    Status status = promise.get_future().get();
+  } while (!promise.get_future().get().ok());
+
+
+  is_connected_ = true;
+  RAY_LOG(INFO) << "ServiceBasedGcsClient reconnect success.";
+}
+
 void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
     redisContext *context, std::pair<std::string, int> *address) {
   // Get gcs server address.
