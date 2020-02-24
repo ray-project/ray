@@ -114,19 +114,22 @@ def AsyncGradients(
         return get_global_worker().compute_gradients(samples), samples.count
 
     # Record learner metrics and pass through (grads, count).
-    def record_metrics(item):
-        (grads, info), count = item
-        metrics = LocalIterator.get_metrics()
-        metrics.counters[STEPS_SAMPLED_COUNTER] += count
-        metrics.info[LEARNER_INFO] = info[LEARNER_STATS_KEY]
-        return grads, count
+    class record_metrics:
+        def _on_fetch_start(self):
+            self.fetch_start_time = time.perf_counter()
 
-    # Exposes time to get each grad as a timer in the iterator context.
-    record_metrics._auto_timer_name = GRAD_WAIT_TIMER
+        def __call__(self, item):
+            (grads, info), count = item
+            metrics = LocalIterator.get_metrics()
+            metrics.counters[STEPS_SAMPLED_COUNTER] += count
+            metrics.info[LEARNER_INFO] = info[LEARNER_STATS_KEY]
+            metrics.timers[GRAD_WAIT_TIMER].push(time.perf_counter() -
+                                                 self.fetch_start_time)
+            return grads, count
 
     rollouts = from_actors(workers.remote_workers())
     grads = rollouts.for_each(samples_to_grads)
-    return grads.gather_async().for_each(record_metrics)
+    return grads.gather_async().for_each(record_metrics())
 
 
 def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
@@ -176,7 +179,7 @@ class ConcatBatches:
         self.count = 0
         self.batch_start_time = None
 
-    def _on_wait_start(self):
+    def _on_fetch_start(self):
         if self.batch_start_time is None:
             self.batch_start_time = time.perf_counter()
 

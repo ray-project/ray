@@ -1,6 +1,5 @@
 import collections
 import random
-import time
 import threading
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
@@ -550,9 +549,9 @@ class LocalIterator(Generic[T]):
     a time."""
 
     # If a function passed to LocalIterator.for_each() has this method,
-    # we will call it when starting to wait for data for this operator. This
-    # can be useful to measure the wait time for measurement purposes.
-    ON_WAIT_START_HOOK_NAME = "_on_wait_start"
+    # we will call it at the beginning of each data fetch call. This can be
+    # used to measure the underlying wait latency for measurement purposes.
+    ON_FETCH_START_HOOK_NAME = "_on_fetch_start"
 
     thread_local = threading.local()
 
@@ -644,17 +643,17 @@ class LocalIterator(Generic[T]):
                 else:
                     yield fn(item)
 
-        if hasattr(fn, LocalIterator.ON_WAIT_START_HOOK_NAME):
+        if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
 
             def add_wait_hooks(it):
                 it = unwrapped(it)
                 new_item = True
                 while True:
-                    # Avoids calling on_wait_start repeatedly if we are
+                    # Avoids calling on_fetch_start repeatedly if we are
                     # yielding _NextValueNotReady.
                     if new_item:
-                        fn._on_wait_start()
+                        fn._on_fetch_start()
                         new_item = False
                     item = next(it)
                     if not isinstance(item, _NextValueNotReady):
