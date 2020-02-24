@@ -436,7 +436,7 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
-        ctx = MetricsContext()
+        metrics = MetricsContext()
 
         def base_iterator(timeout=None):
             all_actors = []
@@ -461,7 +461,7 @@ class ParallelIterator(Generic[T]):
                 for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
-                        ctx.cur_actor = actor
+                        metrics.cur_actor = actor
                         yield ray.get(obj_id)
                         futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
@@ -471,7 +471,7 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, ctx, name=name)
+        return LocalIterator(base_iterator, metrics, name=name)
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -590,10 +590,10 @@ class LocalIterator(Generic[T]):
         """Return the current iterator context.
 
         This can only be called within an iterator function."""
-        if (not hasattr(LocalIterator.thread_local, "ctx")
-                or LocalIterator.thread_local.ctx is None):
+        if (not hasattr(LocalIterator.thread_local, "metrics")
+                or LocalIterator.thread_local.metrics is None):
             raise ValueError("Cannot access context outside an iterator.")
-        return LocalIterator.thread_local.ctx
+        return LocalIterator.thread_local.metrics
 
     def _build_once(self):
         if self.built_iterator is None:
@@ -604,14 +604,14 @@ class LocalIterator(Generic[T]):
             # This sets the iterator context during iterator execution, and
             # clears it after so that multiple iterators can be used at a time.
             def set_restore_context(it):
-                self.thread_local.ctx = self.context
+                self.thread_local.metrics = self.context
                 try:
                     for item in it:
-                        self.thread_local.ctx = None
+                        self.thread_local.metrics = None
                         yield item
-                        self.thread_local.ctx = self.context
+                        self.thread_local.metrics = self.context
                 finally:
-                    self.thread_local.ctx = None
+                    self.thread_local.metrics = None
 
             it = set_restore_context(it)
             self.built_iterator = it

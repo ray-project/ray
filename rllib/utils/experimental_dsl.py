@@ -51,8 +51,8 @@ def ParallelRollouts(workers: WorkerSet,
     """
 
     def report_timesteps(batch):
-        ctx = LocalIterator.get_context()
-        ctx.counters["num_steps_sampled"] += batch.count
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["num_steps_sampled"] += batch.count
         return batch
 
     if not workers.remote_workers():
@@ -105,9 +105,9 @@ def AsyncGradients(
     # Record learner metrics and pass through (grads, count).
     def record_metrics(item):
         (grads, info), count = item
-        ctx = LocalIterator.get_context()
-        ctx.counters["num_steps_sampled"] += count
-        ctx.info["learner"] = info[LEARNER_STATS_KEY]
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["num_steps_sampled"] += count
+        metrics.info["learner"] = info[LEARNER_STATS_KEY]
         return grads, count
 
     # Exposes time to get each grad as a timer in the iterator context.
@@ -201,13 +201,13 @@ class TrainOneStep:
         self.workers = workers
 
     def __call__(self, batch: SampleBatch) -> List[dict]:
-        ctx = LocalIterator.get_context()
-        with ctx.timers["learn"]:
+        metrics = LocalIterator.get_metrics()
+        with metrics.timers["learn"]:
             info = self.workers.local_worker().learn_on_batch(batch)
-        ctx.counters["num_steps_trained"] += batch.count
-        ctx.info["learner"] = info[LEARNER_STATS_KEY]
+        metrics.counters["num_steps_trained"] += batch.count
+        metrics.info["learner"] = info[LEARNER_STATS_KEY]
         if self.workers.remote_workers():
-            with ctx.timers["update"]:
+            with metrics.timers["update"]:
                 weights = ray.put(self.workers.local_worker().get_weights())
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights)
@@ -236,7 +236,7 @@ class CollectMetrics:
         self.timeout_seconds = timeout_seconds
 
     def __call__(self, _):
-        ctx = LocalIterator.get_context()
+        metrics = LocalIterator.get_metrics()
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             self.workers.remote_workers(),
@@ -250,18 +250,18 @@ class CollectMetrics:
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]
         res = summarize_episodes(episodes, orig_episodes)
-        res.update(info=ctx.info)
+        res.update(info=metrics.info)
         res["info"].update({
-            "num_steps_sampled": ctx.counters["num_steps_sampled"],
-            "num_steps_trained": ctx.counters["num_steps_trained"],
+            "num_steps_sampled": metrics.counters["num_steps_sampled"],
+            "num_steps_trained": metrics.counters["num_steps_trained"],
         })
         res["timers"] = {
             "{}_time_ms".format(k): round(v.mean * 1000, 3)
-            for k, v in ctx.timers.items()
+            for k, v in metrics.timers.items()
         }
         res.update({
             "num_healthy_workers": len(self.workers.remote_workers()),
-            "timesteps_total": ctx.counters["num_steps_sampled"],
+            "timesteps_total": metrics.counters["num_steps_sampled"],
         })
         return res
 
@@ -310,11 +310,11 @@ class ComputeGradients:
         self.workers = workers
 
     def __call__(self, samples):
-        ctx = LocalIterator.get_context()
-        with ctx.timers["compute_grad"]:
+        metrics = LocalIterator.get_metrics()
+        with metrics.timers["compute_grad"]:
 
             grad, info = self.workers.local_worker().compute_gradients(samples)
-        ctx.info["learner"] = info[LEARNER_STATS_KEY]
+        metrics.info["learner"] = info[LEARNER_STATS_KEY]
         return grad, samples.count
 
 
@@ -341,27 +341,27 @@ class ApplyGradients:
                 "Input must be a tuple of (grad_dict, count), got {}".format(
                     item))
         gradients, count = item
-        ctx = LocalIterator.get_context()
-        ctx.counters["num_steps_trained"] += count
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["num_steps_trained"] += count
 
-        with ctx.timers["apply_grad"]:
+        with metrics.timers["apply_grad"]:
             self.workers.local_worker().apply_gradients(gradients)
 
         if self.update_all:
             if self.workers.remote_workers():
-                with ctx.timers["update"]:
+                with metrics.timers["update"]:
                     weights = ray.put(
                         self.workers.local_worker().get_weights())
                     for e in self.workers.remote_workers():
                         e.set_weights.remote(weights)
         else:
-            if ctx.cur_actor is None:
+            if metrics.cur_actor is None:
                 raise ValueError("Could not find actor to update. When "
                                  "update_all=False, `cur_actor` must be set "
                                  "in the iterator context.")
-            with ctx.timers["update"]:
+            with metrics.timers["update"]:
                 weights = self.workers.local_worker().get_weights()
-                ctx.cur_actor.set_weights.remote(weights)
+                metrics.cur_actor.set_weights.remote(weights)
 
 
 class AverageGradients:
