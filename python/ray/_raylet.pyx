@@ -310,6 +310,8 @@ cdef deserialize_args(
     if c_args.empty():
         return [], {}
 
+    pairs = RayObjectsToDataMetadataPairs(c_args)
+    print("pairs:", pairs)
     args = ray.worker.global_worker.deserialize_objects(
              RayObjectsToDataMetadataPairs(c_args),
              VectorToObjectIDs(arg_reference_ids))
@@ -318,6 +320,8 @@ cdef deserialize_args(
         if isinstance(arg, RayError):
             raise arg
 
+    print("args:", args)
+    print("recovered args:", ray.signature.recover_args(args))
     return ray.signature.recover_args(args)
 
 
@@ -449,6 +453,7 @@ cdef execute_task(
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
+                    print(args)
                     outputs = function_executor(*args, **kwargs)
                     task_exception = False
                     if c_return_ids.size() == 1:
