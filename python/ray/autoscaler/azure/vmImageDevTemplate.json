@@ -1,0 +1,54 @@
+{
+    "type": "Microsoft.VirtualMachineImages/imageTemplates",
+    "apiVersion": "2019-05-01-preview",
+    "location": "WestUS2",
+    "dependsOn": [],
+    "tags": {
+        "imagebuilderTemplate": "ubuntu1804"
+            },
+    "properties": {
+
+        "buildTimeoutInMinutes" : 300,
+        
+        "vmProfile": 
+            {
+            "vmSize": "Standard_D2s_v3"
+            },
+
+        "source": {
+            "type": "PlatformImage",
+                "publisher": "microsoft-dsvm",
+                "offer": "ubuntu-1804",
+                "sku": "1804",
+                "version": "20.02.01"
+            
+        },
+        "customize": [
+            {
+                "type": "Shell",
+                "name": "Build Ray",
+                "inline": [
+                    "sudo mkdir -p /opt/ray",
+                    "sudo bash -c 'git clone https://github.com/ray-project/ray /opt/ray || true'",
+                    "sudo /opt/ray/ci/travis/install-bazel.sh",
+                    "sudo /anaconda/condabin/conda init bash",
+                    "sudo bash -c 'cd /opt/ray/python/ray/dashboard/client; npm ci; npm run build || true'",
+                    "sudo bash -c '/anaconda/envs/py37_default/bin/pip install azure-cli-core azure-core azure-mgmt-msi paramiko aiohttp grpcio psutil setproctitle'",
+                    "sudo bash -c 'cd /opt/ray/python; /anaconda/envs/py37_default/bin/pip install -e . --verbose'"
+                ]
+            }
+        ],
+        "distribute": 
+            [
+                {   "type":"ManagedImage",
+                    "imageId": "/subscriptions/6187b663-b744-4d24-8226-7e66525baf8f/resourceGroups/marcozo-ray-vm-image/providers/Microsoft.Compute/images/ray-dev-image-01",
+                    "location": "WestUS2",
+                    "runOutputName": "ray-dev-image-run",
+                    "artifactTags": {
+                        "source": "azVmImageBuilder",
+                        "baseosimg": "ubuntu1804"
+                    }
+                }
+            ]
+        }
+    }
