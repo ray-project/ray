@@ -28,6 +28,9 @@ SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
 LEARNER_INFO = "learner"
 
+# Type aliases.
+GradientType = dict
+
 
 def ParallelRollouts(workers: WorkerSet,
                      mode="bulk_sync") -> LocalIterator[SampleBatch]:
@@ -91,7 +94,7 @@ def ParallelRollouts(workers: WorkerSet,
 
 
 def AsyncGradients(
-        workers: WorkerSet) -> LocalIterator[Tuple[Tuple[Any, dict], int]]:
+        workers: WorkerSet) -> LocalIterator[Tuple[GradientType, int]]:
     """Operator to compute gradients in parallel from rollout workers.
 
     Arguments:
@@ -133,7 +136,7 @@ def AsyncGradients(
 
 
 def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
-                             config: dict):
+                             config: dict) -> LocalIterator[dict]:
     """Operator to periodically collect and report metrics.
 
     Arguments:
