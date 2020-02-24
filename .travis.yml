@@ -118,6 +118,14 @@ matrix:
         - export PATH="$GOROOT/bin:$GOPATH/bin:$PATH"
         - go get github.com/bazelbuild/buildtools/buildifier
         - ./ci/travis/bazel-format.sh
+        # Run TypeScript and HTML linting.
+        - pushd python/ray/dashboard/client
+        - source "$HOME/.nvm/nvm.sh"
+        - nvm use node
+        - node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
+        - node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
+        - node_modules/.bin/prettier --check public/index.html
+        - popd
 
     # Build Linux wheels.
     - os: linux

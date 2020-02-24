@@ -65,6 +65,13 @@ elif [[ "$LINT" == "1" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   # Install Python linting tools.
   pip install -q flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
+  # Install TypeScript and HTML linting tools.
+  pushd "$ROOT_DIR/../../python/ray/dashboard/client"
+    source "$HOME/.nvm/nvm.sh"
+    nvm install node
+    nvm use node
+    npm ci
+  popd
 elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
@@ -84,7 +91,7 @@ fi
 
 if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
   # Install the latest version of Node.js in order to build the dashboard.
-  source $HOME/.nvm/nvm.sh
+  source "$HOME/.nvm/nvm.sh"
   nvm install node
 fi
 
