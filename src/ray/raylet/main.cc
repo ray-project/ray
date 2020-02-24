@@ -124,6 +124,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
+  node_manager_config.free_objects_period_ms =
+      RayConfig::instance().free_objects_period_milliseconds();
   node_manager_config.fair_queueing_enabled =
       RayConfig::instance().fair_queueing_enabled();
   node_manager_config.object_pinning_enabled =

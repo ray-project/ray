@@ -103,6 +103,7 @@ class AlwaysSameHeuristic(Policy):
 
 class BeatLastHeuristic(Policy):
     """Play the move that would beat the last move of the opponent."""
+
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
