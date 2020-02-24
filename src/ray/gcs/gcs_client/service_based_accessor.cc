@@ -31,6 +31,9 @@ Status ServiceBasedJobInfoAccessor::AsyncAdd(
                            << ", driver pid = " << data_ptr->driver_pid();
             delete executor;
           } else {
+            RAY_LOG(WARNING) << "Failed to add job, retry again, status = " << status
+                          << ", job id = " << job_id
+                          << ", driver pid = " << data_ptr->driver_pid();
             executor->post_execute(status);
           }
         });

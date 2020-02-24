@@ -111,26 +111,6 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
       new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
 }
 
-std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
-  return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
-      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
-}
-
-std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
-  return std::unique_ptr<rpc::DefaultStatsHandler>(
-      new rpc::DefaultStatsHandler(*redis_gcs_client_));
-}
-
-std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
-  return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
-      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
-}
-
-std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
-  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
-      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
-}
-
 void GcsServer::StoreGcsServerAddressInRedis() {
   boost::asio::ip::detail::endpoint primary_endpoint;
   boost::asio::ip::tcp::resolver resolver(main_service_);
@@ -159,6 +139,26 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
+}
+
+std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
+  return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
+      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
+  return std::unique_ptr<rpc::DefaultStatsHandler>(
+      new rpc::DefaultStatsHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
+  return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
+      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
 }
 
 }  // namespace gcs

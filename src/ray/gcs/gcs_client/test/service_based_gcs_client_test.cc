@@ -650,11 +650,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   }
 
   RAY_LOG(INFO) << "Gcs service restart success, port = " << gcs_server_->GetPort();
-
   promise.get_future().get();
-
-//  ASSERT_TRUE(AddJob(job_table_data));
-//  ASSERT_TRUE(MarkJobFinished(add_job_id));
 }
 
 }  // namespace ray

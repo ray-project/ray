@@ -21,9 +21,7 @@ class Executor {
 
   void post_execute(Status status) const {
     if (status.IsIOError()) {
-      RAY_LOG(INFO) << "post_execute begin reconnect..................................";
       client_impl_->Reconnect();
-      RAY_LOG(INFO) << "post_execute end reconnect..................................";
       operation_();
     }
   }
