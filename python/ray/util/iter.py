@@ -812,7 +812,9 @@ class LocalIterator(Generic[T]):
                 if not active:
                     break
 
-        # TODO(ekl): the metrics context should be merged for the iterators.
+        # TODO(ekl) is this the best way to represent union() of metrics?
+        self.context.union_contexts.append(other.context)
+
         return LocalIterator(
             build_union,
             self.context, [],
