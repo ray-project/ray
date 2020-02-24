@@ -1,7 +1,13 @@
 package org.ray.streaming.runtime.graph;
 
 import com.google.common.collect.Lists;
+
+
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.DataStreamSource;
@@ -9,6 +15,7 @@ import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobGraphBuilder;
 import org.ray.streaming.runtime.BaseUnitTest;
+import org.ray.streaming.runtime.config.StreamingConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
@@ -26,7 +33,9 @@ public class ExecutionGraphTest extends BaseUnitTest {
 
   @Test
   public void testBuildExecutionGraph() {
-    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(null));
+    Map<String, String> jobConf = new HashMap<>();
+    StreamingConfig streamingConfig = new StreamingConfig(jobConf);
+    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
     JobGraph jobGraph = buildJobGraph();
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
     List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexLices();
