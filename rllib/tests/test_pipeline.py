@@ -24,7 +24,9 @@ class TestPipeline(unittest.TestCase):
         assert "num_steps_trained" in result["info"]
         assert "timers" in result
         assert "learn_time_ms" in result["timers"]
+        assert "learn_throughput" in result["timers"]
         assert "sample_time_ms" in result["timers"]
+        assert "sample_throughput" in result["timers"]
         assert "update_time_ms" in result["timers"]
 
     def test_pipeline_save_restore(ray_start_regular):
