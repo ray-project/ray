@@ -54,6 +54,13 @@ def test_grpc_message_size(shutdown_only):
     ray.get(bar.remote(*[f() for _ in range(200)]))
 
 
+# https://github.com/ray-project/ray/issues/7287
+def test_omp_threads_set(shutdown_only):
+    ray.init(num_cpus=1)
+    # Should have been auto set by ray init.
+    assert os.environ["OMP_NUM_THREADS"] == "1"
+
+
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.

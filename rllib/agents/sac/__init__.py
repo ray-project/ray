@@ -1,9 +1,8 @@
 from ray.rllib.agents.sac.sac import SACTrainer, DEFAULT_CONFIG
-from ray.rllib.utils import renamed_agent
-
-SACAgent = renamed_agent(SACTrainer)
+from ray.rllib.agents.sac.sac_policy import SACTFPolicy
 
 __all__ = [
+    "SACTFPolicy",
     "SACTrainer",
     "DEFAULT_CONFIG",
 ]

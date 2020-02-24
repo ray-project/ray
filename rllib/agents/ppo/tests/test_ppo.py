@@ -39,7 +39,6 @@ class TestPPO(unittest.TestCase):
 
         # Torch.
         config["use_pytorch"] = True
-        config["simple_optimizer"] = True
         trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         for i in range(num_iterations):
             trainer.train()

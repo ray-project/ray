@@ -4,7 +4,6 @@ import logging
 import os
 import yaml
 import numbers
-
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
