@@ -246,6 +246,8 @@ class CollectMetrics:
 
     def __call__(self, _):
         metrics = LocalIterator.get_metrics()
+        if metrics.parent_metrics:
+            raise ValueError("TODO: support nested metrics")
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             self.workers.remote_workers(),
