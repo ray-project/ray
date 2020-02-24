@@ -2,7 +2,7 @@
 
 # Resource group name - we are using myImageBuilderRG in this example
 imageResourceGroup=marcozo-ray-vm-image-10
-# Datacenter location - we are using West US 2 in this example
+# Datacenter location - we are using West US in this example
 location=WestUS2
 # Name for the image - we are using myBuilderImage in this example
 imageName=ray-dev-image
