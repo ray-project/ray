@@ -80,13 +80,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      reference_counter_(std::make_shared<ReferenceCounter>(
-          /*distributed_ref_counting_enabled=*/RayConfig::instance()
-              .distributed_ref_counting_enabled(),
-          [this](const rpc::Address &addr) {
-            return std::shared_ptr<rpc::CoreWorkerClient>(
-                new rpc::CoreWorkerClient(addr, *client_call_manager_));
-          })),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -103,7 +96,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::InstallFailureSignalHandler();
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
-
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
@@ -167,6 +159,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
 
+  reference_counter_ = std::make_shared<ReferenceCounter>(
+      rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
+      [this](const rpc::Address &addr) {
+        return std::shared_ptr<rpc::CoreWorkerClient>(
+            new rpc::CoreWorkerClient(addr, *client_call_manager_));
+      });
+
   if (worker_type_ == ray::WorkerType::WORKER) {
     death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
         RayConfig::instance().raylet_death_check_interval_milliseconds()));
@@ -183,12 +182,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       store_socket, local_raylet_client_, check_signals_));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
-        bool object_exists;
-        RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id, &object_exists));
-        if (!object_exists) {
-          RAY_LOG(DEBUG) << "Pinning object promoted to plasma " << obj_id;
-          RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {obj_id}));
-        }
+        RAY_LOG(DEBUG) << "Promoting object to plasma " << obj_id;
+        RAY_CHECK_OK(Put(obj, /*contained_object_ids=*/{}, obj_id, /*pin_object=*/true));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       check_signals_));
@@ -247,9 +242,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
+  plasma_notifier_.reset(new ObjectStoreNotificationManager(io_service_, store_socket,
+                                                            /*exit_on_error*/ false));
 }
 
 CoreWorker::~CoreWorker() {
+  // ObjectStoreNotificationManager depends on io_service_ so we need to shut it down
+  // first.
+  plasma_notifier_->Shutdown();
+
   io_service_.stop();
   io_thread_.join();
   if (log_dir_ != "") {
@@ -348,13 +349,8 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     RAY_LOG(DEBUG) << "Storing object promoted to plasma " << object_id;
-    bool object_exists;
-    RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id, &object_exists));
-    if (!object_exists) {
-      RAY_LOG(DEBUG) << "PromoteToPlasma: Pinning object promoted to plasma "
-                     << object_id;
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
-    }
+    RAY_CHECK_OK(
+        Put(*value, /*contained_object_ids=*/{}, object_id, /*pin_object=*/true));
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
@@ -400,20 +396,33 @@ Status CoreWorker::Put(const RayObject &object,
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                      rpc_address_);
-  RAY_RETURN_NOT_OK(Put(object, contained_object_ids, *object_id));
-  // Tell the raylet to pin the object **after** it is created.
-  RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
-  return Status::OK();
+  return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
-                       const ObjectID &object_id) {
-  RAY_CHECK(object_id.GetTransportType() ==
-            static_cast<uint8_t>(TaskTransportType::RAYLET))
-      << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
-  // TODO(edoakes,swang): add contained object IDs to the reference counter.
-  return plasma_store_provider_->Put(object, object_id, nullptr);
+                       const ObjectID &object_id, bool pin_object) {
+  bool object_exists;
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
+  if (!object_exists) {
+    if (pin_object) {
+      // Tell the raylet to pin the object **after** it is created.
+      RAY_LOG(DEBUG) << "Pinning put object " << object_id;
+      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+          rpc_address_, {object_id},
+          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+            // Only release the object once the raylet has responded to avoid the race
+            // condition that the object could be evicted before the raylet pins it.
+            if (!plasma_store_provider_->Release(object_id).ok()) {
+              RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                             << "), might cause a leak in plasma.";
+            }
+          }));
+    } else {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
+    }
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -437,12 +446,24 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
-Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
+Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
+                        const absl::optional<rpc::Address> &owner_address) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
-    RAY_LOG(DEBUG) << "Pinning created object " << object_id;
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
+    RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
+    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+        owner_address.has_value() ? *owner_address : rpc_address_, {object_id},
+        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          // Only release the object once the raylet has responded to avoid the race
+          // condition that the object could be evicted before the raylet pins it.
+          if (!plasma_store_provider_->Release(object_id).ok()) {
+            RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                           << "), might cause a leak in plasma.";
+          }
+        }));
+  } else {
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
   return Status::OK();
 }
@@ -916,12 +937,7 @@ Status CoreWorker::AllocateReturnObjects(
   RAY_CHECK(object_ids.size() == data_sizes.size());
   return_objects->resize(object_ids.size(), nullptr);
 
-  absl::optional<rpc::Address> owner_address(
-      worker_context_.GetCurrentTask()->CallerAddress());
-  bool owned_by_us = owner_address->worker_id() == rpc_address_.worker_id();
-  if (owned_by_us) {
-    owner_address.reset();
-  }
+  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;
@@ -931,8 +947,8 @@ Status CoreWorker::AllocateReturnObjects(
       // Mark this object as containing other object IDs. The ref counter will
       // keep the inner IDs in scope until the outer one is out of scope.
       if (!contained_object_ids[i].empty()) {
-        reference_counter_->WrapObjectIds(object_ids[i], contained_object_ids[i],
-                                          owner_address);
+        reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
+                                               owner_address);
       }
 
       // Allocate a buffer for the return object.
@@ -1019,6 +1035,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
 
+  absl::optional<rpc::Address> caller_address(
+      worker_context_.GetCurrentTask()->CallerAddress());
+
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
     if (!return_objects->at(i)) {
@@ -1026,7 +1045,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
     if (return_objects->at(i)->GetData() != nullptr &&
         return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
+      if (!Seal(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
@@ -1042,7 +1061,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // return them to the caller. This will notify the caller of any IDs that we
   // (or a nested task) are still borrowing. It will also any new IDs that were
   // contained in a borrowed ID that we (or a nested task) are now borrowing.
-  reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
+  if (!borrowed_ids.empty()) {
+    reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
+  }
   // Unpin the borrowed IDs.
   std::vector<ObjectID> deleted;
   for (const auto &borrowed_id : borrowed_ids) {
@@ -1340,6 +1361,14 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
       success_callback(ray_object, object_id, python_future);
     }
   });
+}
+
+void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
+  plasma_notifier_->SubscribeObjAdded(
+      [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
+        subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
+                           info.metadata_size);
+      });
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {

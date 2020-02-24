@@ -3,14 +3,14 @@ import logging
 import time
 import threading
 
-import pyarrow.plasma as plasma
-
 import ray.cloudpickle as pickle
 from ray import ray_constants, JobID
 import ray.utils
 from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
+    PlasmaObjectNotAvailable,
+    RayTaskError,
     RayActorError,
     RayWorkerError,
     UnreconstructableError,
@@ -53,9 +53,9 @@ class SerializedObject:
 
 
 class Pickle5SerializedObject(SerializedObject):
-    def __init__(self, inband, writer, contained_object_ids):
-        super(Pickle5SerializedObject, self).__init__(
-            ray_constants.PICKLE5_BUFFER_METADATA, contained_object_ids)
+    def __init__(self, metadata, inband, writer, contained_object_ids):
+        super(Pickle5SerializedObject, self).__init__(metadata,
+                                                      contained_object_ids)
         self.inband = inband
         self.writer = writer
         # cached total bytes
@@ -227,24 +227,26 @@ class SerializationContext:
 
         self._thread_local.object_ids.add(object_id)
 
+    def _deserialize_pickle5_data(self, data):
+        if not self.use_pickle:
+            raise ValueError("Receiving pickle5 serialized objects "
+                             "while the serialization context is "
+                             "using a custom raw backend.")
+        try:
+            in_band, buffers = unpack_pickle5_buffers(data)
+            if len(buffers) > 0:
+                obj = pickle.loads(in_band, buffers=buffers)
+            else:
+                obj = pickle.loads(in_band)
+        # cloudpickle does not provide error types
+        except pickle.pickle.PicklingError:
+            raise DeserializationError()
+        return obj
+
     def _deserialize_object(self, data, metadata, object_id):
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
-                if not self.use_pickle:
-                    raise ValueError("Receiving pickle5 serialized objects "
-                                     "while the serialization context is "
-                                     "using pyarrow as the backend.")
-                try:
-                    in_band, buffers = unpack_pickle5_buffers(data)
-                    if len(buffers) > 0:
-                        obj = pickle.loads(in_band, buffers=buffers)
-                    else:
-                        obj = pickle.loads(in_band)
-                # cloudpickle does not provide error types
-                except pickle.pickle.PicklingError:
-                    raise DeserializationError()
-                return obj
-
+                return self._deserialize_pickle5_data(data)
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -253,7 +255,14 @@ class SerializationContext:
             # Otherwise, return an exception object based on
             # the error type.
             error_type = int(metadata)
-            if error_type == ErrorType.Value("WORKER_DIED"):
+            # RayTaskError is serialized with pickle5 in the data field.
+            # TODO (kfstorm): exception serialization should be language
+            # independent.
+            if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
+                obj = self._deserialize_pickle5_data(data)
+                assert isinstance(obj, RayTaskError)
+                return obj
+            elif error_type == ErrorType.Value("WORKER_DIED"):
                 return RayWorkerError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
@@ -270,7 +279,7 @@ class SerializationContext:
             # to the user. We should only reach this line if this object was
             # deserialized as part of a list, and another object in the list
             # throws an exception.
-            return plasma.ObjectNotAvailable
+            return PlasmaObjectNotAvailable
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -327,15 +336,24 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
+        else:
+            # Only RayTaskError is possible to be serialized here. We don't
+            # need to deal with other exception types here.
+            if isinstance(value, RayTaskError):
+                metadata = str(ErrorType.Value(
+                    "TASK_EXECUTION_EXCEPTION")).encode("ascii")
+            else:
+                metadata = ray_constants.PICKLE5_BUFFER_METADATA
 
-        assert self.worker.use_pickle
-        assert ray.cloudpickle.FAST_CLOUDPICKLE_USED
-        writer = Pickle5Writer()
-        # TODO(swang): Check that contained_object_ids is empty.
-        inband = pickle.dumps(
-            value, protocol=5, buffer_callback=writer.buffer_callback)
-        return Pickle5SerializedObject(
-            inband, writer, self.get_and_clear_contained_object_ids())
+            assert self.worker.use_pickle
+            assert ray.cloudpickle.FAST_CLOUDPICKLE_USED
+            writer = Pickle5Writer()
+            # TODO(swang): Check that contained_object_ids is empty.
+            inband = pickle.dumps(
+                value, protocol=5, buffer_callback=writer.buffer_callback)
+            return Pickle5SerializedObject(
+                metadata, inband, writer,
+                self.get_and_clear_contained_object_ids())
 
     def register_custom_serializer(self,
                                    cls,

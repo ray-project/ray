@@ -60,7 +60,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     Assert.assertEquals(res.get(), "[Python]py_func -> [Java]bytesEcho -> hello".getBytes());
   }
 
-  @Test(groups = {"directCall"})
+  @Test
   public void testCallingPythonActor() {
     // Python worker doesn't support direct call yet.
     TestUtils.skipTestIfDirectActorCallEnabled();
