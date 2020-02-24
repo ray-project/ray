@@ -153,6 +153,8 @@ class ParallelIterator(Generic[T]):
     """
 
     def __init__(self, actor_sets: List["_ActorSet"], name: str):
+        """Create a parallel iterator (this is an internal function)."""
+
         # We track multiple sets of actors to support parallel .union().
         self.actor_sets = actor_sets
         self.name = name
@@ -566,7 +568,7 @@ class LocalIterator(Generic[T]):
             base_iterator (func): A function that produces the base iterator.
                 This is a function so that we can ensure LocalIterator is
                 serializable.
-            context (MetricsContext): Existing iterator context or a new
+            context (MetricsContext): Existing metrics context or a new
                 context. Should be the same for each chained iterator.
             local_transforms (list): A list of transformation functions to be
                 applied on top of the base iterator. When iteration begins, we

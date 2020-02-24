@@ -7,7 +7,7 @@ from ray.util.iter import from_items, from_iterators, from_range, \
     from_actors, ParallelIteratorWorker, LocalIterator
 
 
-def test_context(ray_start_regular_shared):
+def test_metrics(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4], num_shards=1)
     it2 = from_items([1, 2, 3, 4], num_shards=1)
 
