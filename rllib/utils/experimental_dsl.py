@@ -7,7 +7,8 @@ from typing import List, Any, Tuple
 import time
 
 import ray
-from ray.util.iter import from_actors, LocalIterator, IteratorContext
+from ray.util.iter import from_actors, LocalIterator
+from ray.util.iter_metrics import MetricsContext
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -60,7 +61,7 @@ def ParallelRollouts(workers: WorkerSet,
             while True:
                 yield workers.local_worker().sample()
 
-        return (LocalIterator(sampler, IteratorContext())
+        return (LocalIterator(sampler, MetricsContext())
                 .for_each(report_timesteps))
 
     # Create a parallel iterator over generated experiences.
