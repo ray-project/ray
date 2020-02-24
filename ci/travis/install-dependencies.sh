@@ -32,6 +32,14 @@ fi
 # Upgrade pip and other packages to avoid incompatibility ERRORS.
 pip install --upgrade pip # setuptools cloudpickle urllib3
 
+# If we're in a CI environment, do some configuration
+if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
+  pip config --user set global.disable-pip-version-check True
+  pip config --user set global.no-color True
+  pip config --user set global.progress_bar off
+  pip config --user set global.quiet True
+fi
+
 if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb libunwind-dev
@@ -45,7 +53,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
       (git clone -q --depth=1 https://github.com/strace/strace -b v5.5 && cd strace && ./bootstrap > /dev/null && ./configure --quiet --with-libunwind --enable-mpers=no && make -s -j"$(getconf _NPROCESSORS_ONLN || echo 1)" && sudo make install || true)
       ;;
   esac
-  pip install -q scipy tensorflow==$tf_version \
+  pip install scipy tensorflow==$tf_version \
     cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
@@ -56,7 +64,7 @@ elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q scipy tensorflow==$tf_version \
+  pip install scipy tensorflow==$tf_version \
     cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
@@ -70,7 +78,7 @@ elif [[ "$LINT" == "1" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   # Install Python linting tools.
-  pip install -q flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
+  pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
   # Install TypeScript and HTML linting tools.
   pushd "$ROOT_DIR/../../python/ray/dashboard/client"
     source "$HOME/.nvm/nvm.sh"
@@ -90,7 +98,7 @@ fi
 
 # Additional RLlib dependencies.
 if [[ "$RLLIB_TESTING" == "1" ]]; then
-  pip install -q tensorflow-probability==$tfp_version gast==0.2.2 \
+  pip install tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
     gym[atari] atari_py smart_open lz4
 fi
@@ -106,5 +114,5 @@ if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
   nvm install node
 fi
 
-pip install -q psutil setproctitle \
+pip install psutil setproctitle \
         --target="$ROOT_DIR/../../python/ray/thirdparty_files"
