@@ -107,7 +107,7 @@ public class ResourceManagerImpl implements ResourceManager {
       }
     }
 
-    LOG.info("Deallocate resource for container {} success.", container);
+    LOG.info("Deallocated resource for container {} success.", container);
   }
 
   @Override
