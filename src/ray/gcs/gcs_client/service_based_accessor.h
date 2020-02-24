@@ -10,18 +10,16 @@ namespace gcs {
 
 class Executor {
  public:
-  Executor(ServiceBasedGcsClient *client_impl) {
-    client_impl_ = client_impl;
-  }
+  Executor(ServiceBasedGcsClient *client_impl) { client_impl_ = client_impl; }
 
   void execute(std::function<void()> operation) {
     operation_ = operation;
     operation();
   }
 
-  void post_execute(Status status) const {
+  void post_execute(Status status) {
     if (status.IsIOError()) {
-      client_impl_->Reconnect();
+      reconnect_count_ = client_impl_->Reconnect(reconnect_count_);
       operation_();
     }
   }
@@ -29,8 +27,8 @@ class Executor {
  private:
   std::function<void()> operation_;
   ServiceBasedGcsClient *client_impl_;
+  uint64_t reconnect_count_;
 };
-
 
 class ServiceBasedGcsClient;
 

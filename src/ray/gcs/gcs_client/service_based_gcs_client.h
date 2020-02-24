@@ -17,7 +17,8 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   void Disconnect() override;
 
-  void Reconnect();
+  /// This function is thread safe.
+  uint64_t Reconnect(uint64_t reconnect_count);
 
   RedisGcsClient &GetRedisGcsClient() { return *redis_gcs_client_; }
 
@@ -35,8 +36,16 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   std::unique_ptr<RedisGcsClient> redis_gcs_client_;
 
   // Gcs rpc client
-  std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
+  std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_ GUARDED_BY(mutex_);
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  // Gcs server address
+  std::pair<std::string, int> address_ GUARDED_BY(mutex_);
+
+  // Mutex to protect the gcs_rpc_client_ field.
+  absl::Mutex mutex_;
+
+  uint64_t reconnect_count_;
 };
 
 }  // namespace gcs
