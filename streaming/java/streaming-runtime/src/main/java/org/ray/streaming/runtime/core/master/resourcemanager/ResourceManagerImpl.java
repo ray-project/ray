@@ -96,7 +96,7 @@ public class ResourceManagerImpl implements ResourceManager {
   @Override
   public void deallocateResource(final Container container,
       final Map<String, Double> releaseResource) {
-    LOG.info("Start deallocate resource for container {}.", container);
+    LOG.info("Deallocating resource for container {}.", container);
 
     Map<String, Double> containResource = container.getAvailableResource();
     for (Map.Entry<String, Double> entry : containResource.entrySet()) {
