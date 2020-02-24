@@ -10,7 +10,7 @@ import org.ray.streaming.runtime.core.resource.Resources;
 import org.ray.streaming.runtime.core.resource.Slot;
 
 /**
- * The SlotAssignStrategy managers a set of slots. When a container registered with ResourceManager,
+ * The SlotAssignStrategy managers a set of slots. When a container is registered to ResourceManager,
  * slots are assigned to it.
  */
 public interface SlotAssignStrategy {
