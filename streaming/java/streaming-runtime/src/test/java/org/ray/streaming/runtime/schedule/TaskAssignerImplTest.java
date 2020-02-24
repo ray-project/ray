@@ -1,12 +1,8 @@
 package org.ray.streaming.runtime.schedule;
 
 import com.google.common.collect.Lists;
-import java.util.ArrayList;
 import java.util.List;
-import org.ray.api.RayActor;
-import org.ray.api.id.ActorId;
-import org.ray.api.id.ObjectId;
-import org.ray.runtime.actor.LocalModeRayActor;
+import org.ray.api.Ray;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
@@ -19,7 +15,6 @@ import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
-import org.ray.streaming.runtime.worker.JobWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -31,12 +26,8 @@ public class TaskAssignerImplTest extends BaseUnitTest {
 
   @Test
   public void testTaskAssignImpl() {
+    Ray.init();
     JobGraph jobGraph = buildDataSyncPlan();
-
-    List<RayActor<JobWorker>> workers = new ArrayList<>();
-    for(int i = 0; i < jobGraph.getJobVertexList().size(); i++) {
-      workers.add(new LocalModeRayActor(ActorId.fromRandom(), ObjectId.fromRandom()));
-    }
 
     TaskAssigner taskAssigner = new TaskAssignerImpl();
     ExecutionGraph executionGraph = taskAssigner.assign(jobGraph);
@@ -60,6 +51,8 @@ public class TaskAssignerImplTest extends BaseUnitTest {
     Assert.assertEquals(sinkNode.getNodeType(), NodeType.SINK);
     Assert.assertEquals(sinkNode.getExecutionTasks().size(), 1);
     Assert.assertEquals(sinkNode.getOutputEdges().size(), 0);
+
+    Ray.shutdown();
   }
 
   public JobGraph buildDataSyncPlan() {
