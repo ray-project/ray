@@ -172,6 +172,10 @@ class DynamicTFPolicy(TFPolicy):
             batch_divisibility_req = get_batch_divisibility_req(self)
         else:
             batch_divisibility_req = 1
+
+        action_prob = (
+            tf.exp(action_logp) if action_logp is not None else None)
+
         TFPolicy.__init__(
             self,
             obs_space,
@@ -179,7 +183,7 @@ class DynamicTFPolicy(TFPolicy):
             sess,
             obs_input=obs,
             action_sampler=action_sampler,
-            action_logp=action_logp,
+            action_prob=action_prob,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
