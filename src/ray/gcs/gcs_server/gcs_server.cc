@@ -7,7 +7,6 @@
 #include "stats_handler_impl.h"
 #include "task_info_handler_impl.h"
 #include "worker_info_handler_impl.h"
-#include "health_check_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -61,11 +60,6 @@ void GcsServer::Start() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
   rpc_server_.RegisterService(*worker_info_service_);
-
-  health_check_handler_ = InitHealthCheckHandler();
-  health_check_service_.reset(
-      new rpc::HealthCheckGrpcService(main_service_, *health_check_handler_));
-  rpc_server_.RegisterService(*health_check_service_);
 
   // Run rpc server.
   rpc_server_.Run();
@@ -135,11 +129,6 @@ std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
 std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
   return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
       new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
-}
-
-std::unique_ptr<rpc::HealthCheckHandler> GcsServer::InitHealthCheckHandler() {
-  return std::unique_ptr<rpc::DefaultHealthCheckHandler>(
-      new rpc::DefaultHealthCheckHandler());
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {

@@ -308,15 +308,3 @@ service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
 }
-
-message PingRequest {
-}
-
-message PingReply {
-}
-
-// Service for health check.
-service HealthCheckGcsService {
-  // Ping GCS Service.
-  rpc Ping(PingRequest) returns (PingReply);
-}

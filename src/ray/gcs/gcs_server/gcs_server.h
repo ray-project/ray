@@ -71,9 +71,6 @@ class GcsServer {
   /// The worker info handler
   virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
 
-  /// The health check handler
-  virtual std::unique_ptr<rpc::HealthCheckHandler> InitHealthCheckHandler();
-
  private:
   /// Store the address of GCS server in Redis.
   ///
@@ -112,9 +109,6 @@ class GcsServer {
   /// Worker info handler and service
   std::unique_ptr<rpc::WorkerInfoHandler> worker_info_handler_;
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
-  /// Health check handler and service
-  std::unique_ptr<rpc::HealthCheckHandler> health_check_handler_;
-  std::unique_ptr<rpc::HealthCheckGrpcService> health_check_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
   /// Gcs service init flag
