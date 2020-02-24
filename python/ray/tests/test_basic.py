@@ -38,6 +38,13 @@ def test_ignore_http_proxy(shutdown_only):
     assert ray.get(f.remote()) == 1
 
 
+# https://github.com/ray-project/ray/issues/7287
+def test_omp_threads_set(shutdown_only):
+    ray.init(num_cpus=1)
+    # Should have been auto set by ray init.
+    assert os.environ["OMP_NUM_THREADS"] == "1"
+
+
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.
