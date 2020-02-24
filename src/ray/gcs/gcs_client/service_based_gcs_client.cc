@@ -53,24 +53,48 @@ void ServiceBasedGcsClient::Disconnect() {
 }
 
 void ServiceBasedGcsClient::Reconnect() {
-  std::promise<Status> promise;
-  do {
-    // Get gcs service address
-    std::pair<std::string, int> address;
-    GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
-                                 &address);
+//  std::future_status status;
+//  do {
+//    // Get gcs service address
+//    std::pair<std::string, int> address;
+//    GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+//                                 &address);
+//    RAY_LOG(INFO) << "############################Reconnect address = " << address.second;
+//
+//    // Connect to gcs service
+//    gcs_rpc_client_.reset(
+//        new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_));
+//    rpc::PingRequest request;
+//    std::promise<Status> promise;
+//    gcs_rpc_client_->Ping(request, [&promise](const Status &status, const rpc::PingReply &reply) {
+//      promise.set_value(status);
+//    });
+//    rpc::AddJobRequest add_job_request;
+//    JobID job_id = JobID::FromInt(1);
+//    rpc::JobTableData job_table_data;
+//    job_table_data.set_job_id(job_id.Binary());
+//    job_table_data.set_is_dead(false);
+//    job_table_data.set_timestamp(std::time(nullptr));
+//    job_table_data.set_node_manager_address("127.0.0.1");
+//    job_table_data.set_driver_pid(5667L);
+//    add_job_request.mutable_data()->CopyFrom(job_table_data);
+//
+//    gcs_rpc_client_->AddJob(add_job_request, [&promise](const Status &status, const rpc::AddJobReply &reply) {
+//      promise.set_value(status);
+//    });
+//    std::future<Status> future = promise.get_future();
+//    status = future.wait_for(std::chrono::milliseconds(5000));
+//  } while (!(status == std::future_status::ready));
 
-    // Connect to gcs service
-    gcs_rpc_client_.reset(
-        new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_));
-    rpc::PingRequest request;
-    gcs_rpc_client_->Ping(request, [&promise](const Status &status, const rpc::PingReply &reply) {
-      promise.set_value(status);
-    });
-    Status status = promise.get_future().get();
-  } while (!promise.get_future().get().ok());
+  // Get gcs service address
+  std::pair<std::string, int> address;
+  GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+                               &address);
+  RAY_LOG(INFO) << "############################Reconnect address = " << address.second;
 
-
+  // Connect to gcs service
+  gcs_rpc_client_.reset(
+      new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_));
   is_connected_ = true;
   RAY_LOG(INFO) << "ServiceBasedGcsClient reconnect success.";
 }

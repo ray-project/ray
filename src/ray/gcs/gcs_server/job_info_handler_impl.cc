@@ -6,7 +6,7 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
                                          rpc::AddJobReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.data().job_id());
-  RAY_LOG(DEBUG) << "Adding job, job id = " << job_id
+  RAY_LOG(INFO) << "Adding job, job id = " << job_id
                  << ", driver pid = " << request.data().driver_pid();
   auto job_table_data = std::make_shared<JobTableData>();
   job_table_data->CopyFrom(request.data());
@@ -23,7 +23,7 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished adding job, job id = " << job_id
+  RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                  << ", driver pid = " << request.data().driver_pid();
 }
 
