@@ -124,7 +124,7 @@ matrix:
         - nvm use node
         - node_modules/.bin/eslint --max-warnings 0 $(find src -name "*.ts" -or -name "*.tsx")
         - node_modules/.bin/prettier --check $(find src -name "*.ts" -or -name "*.tsx")
-        - node_modules/.bin/prettier --check $(find public -name "*.html")
+        - node_modules/.bin/prettier --check public/index.html
         - popd
 
     # Build Linux wheels.
