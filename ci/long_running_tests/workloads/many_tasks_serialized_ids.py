@@ -1,4 +1,5 @@
-# This workload tests submitting and getting many tasks over and over.
+# This workload stresses distributed reference counting by passing and
+# returning serialized ObjectIDs.
 
 import time
 
