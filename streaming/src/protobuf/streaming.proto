@@ -11,6 +11,12 @@ enum OperatorType {
   SINK = 3;
 }
 
+enum FlowControlType {
+  UNKNOWN_FLOW_CONTROL_TYPE = 0;
+  UnconsumedSeqFlowControl = 1;
+  NoFlowControl = 2;
+}
+
 // all string in this message is ASCII string
 message StreamingConfig {
   string job_name = 1;
@@ -20,4 +26,8 @@ message StreamingConfig {
   OperatorType role = 5;
   uint32 ring_buffer_capacity = 6;
   uint32 empty_message_interval = 7;
+  FlowControlType flow_control_type = 8;
+  uint32 writer_consumed_step = 9;
+  uint32 reader_consumed_step = 10;
+  uint32 event_driven_flow_control_interval = 11;
 }
