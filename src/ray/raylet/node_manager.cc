@@ -288,8 +288,7 @@ void NodeManager::Heartbeat() {
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
-  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
-  // directly.
+  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
   for (const auto &resource_pair :
        local_resources.GetAvailableResources().GetResourceMap()) {
@@ -546,8 +545,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
       if (!worker_id.IsNil()) {
-        // If the failed worker was a leased worker's owner, then kill the leased
-        // worker.
+        // If the failed worker was a leased worker's owner, then kill the leased worker.
         if (owner_worker_id == worker_id) {
           RAY_LOG(INFO) << "Owner process " << owner_worker_id
                         << " died, killing leased worker " << worker->WorkerId();
@@ -649,8 +647,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   // the received heartbeat information.
   auto it = cluster_resource_map_.find(client_id);
   if (it == cluster_resource_map_.end()) {
-    // Haven't received the client registration for this client yet, skip this
-    // heartbeat.
+    // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
                   << client_id;
     return;
@@ -1173,8 +1170,8 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.IsNil()) {
-      // If the worker was an actor, update actor state, reconstruct the actor if
-      // needed, and clean up actor's tasks if the actor is permanently dead.
+      // If the worker was an actor, update actor state, reconstruct the actor if needed,
+      // and clean up actor's tasks if the actor is permanently dead.
       HandleDisconnectedActor(actor_id, true, intentional_disconnect);
     }
 
@@ -1732,8 +1729,8 @@ void NodeManager::ProcessSetResourceRequest(
     return;
   }
 
-  // Submit to the resource table. This calls the ResourceCreateUpdated or
-  // ResourceDeleted callback, which updates cluster_resource_map_.
+  // Submit to the resource table. This calls the ResourceCreateUpdated or ResourceDeleted
+  // callback, which updates cluster_resource_map_.
   if (is_deletion) {
     RAY_CHECK_OK(
         gcs_client_->Nodes().AsyncDeleteResources(node_id, {resource_name}, nullptr));
@@ -1835,8 +1832,7 @@ void NodeManager::ScheduleTasks(
 
 bool NodeManager::CheckDependencyManagerInvariant() const {
   std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
-  // Assert that each pending task in the task dependency manager is in one of the
-  // queues.
+  // Assert that each pending task in the task dependency manager is in one of the queues.
   for (const auto &task_id : pending_task_ids) {
     if (!local_queues_.HasTask(task_id)) {
       return false;
@@ -1959,9 +1955,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     lineage_cache_.AddUncommittedLineage(task_id, uncommitted_lineage);
   } else {
     if (!lineage_cache_.CommitTask(task)) {
-      RAY_LOG(WARNING) << "Task " << task_id
-                       << " already committed to the GCS. This is most likely due to "
-                          "reconstruction.";
+      RAY_LOG(WARNING)
+          << "Task " << task_id
+          << " already committed to the GCS. This is most likely due to reconstruction.";
     }
   }
 
