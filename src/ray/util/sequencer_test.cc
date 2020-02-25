@@ -11,12 +11,12 @@ TEST(SequencerTest, ExecuteOrderedTest) {
   int key = 1;
   int size = 100;
   for (int index = 0; index < size; ++index) {
-    auto operation = [index, key, &queue, &sequencer] {
-      sleep(1);
+    auto operation = [index, &queue](SequencerDoneCallback done_callback) {
+      usleep(1000);
       queue.push_back(index);
-      sequencer.post_execute(key);
+      done_callback();
     };
-    sequencer.execute_ordered(key, operation);
+    sequencer.Post(key, operation);
   }
 
   while (queue.size() < size) {
