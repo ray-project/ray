@@ -80,9 +80,8 @@ def data_creator(config):
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
     # Repeat is needed to avoid
-    train_dataset = train_dataset.repeat().shuffle(
-        len(x_train)).batch(batch_size)
-    test_dataset = test_dataset.repeat().batch(batch_size)
+    train_dataset = train_dataset.batch(batch_size)
+    test_dataset = test_dataset.batch(batch_size)
     return train_dataset, test_dataset
 
 
@@ -168,12 +167,6 @@ if __name__ == "__main__":
         default=False,
         help="Sets data augmentation.")
     parser.add_argument(
-        "--time-only",
-        action="store_true",
-        default=False,
-        help=("Skip augmented training and" +
-              " run 1 epoch to compare remote and local training"))
-    parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
@@ -212,12 +205,6 @@ if __name__ == "__main__":
 
     config = {
         "batch_size": batch_size,
-        "fit_config": {
-            "steps_per_epoch": num_train_steps,
-        },
-        "evaluate_config": {
-            "steps": num_eval_steps,
-        },
         "input_shape": x_train.shape[1:]
     }
 
@@ -231,71 +218,23 @@ if __name__ == "__main__":
         verbose=True,
         config=config)
 
-    if args.time_only:
-        training_start = time.time()
+    for i in range(4):
+        # Trains num epochs
+        train_stats1 = trainer.train(progress_report_interval=10)
+        train_stats1.update(trainer.validate())
 
-        progress_report_interval = 100 if args.use_gpu else 10
+        print("iter {}:".format(i), train_stats1)
 
-        remote_train_stats = trainer.train(progress_report_interval)
-        remote_training_time = time.time() - training_start
+    model = trainer.get_model()
+    trainer.shutdown()
+    dataset, test_dataset = data_augmentation_creator(
+        dict(batch_size=batch_size))
 
-        remote_train_stats.update(trainer.validate(progress_report_interval))
-        trainer.shutdown()
+    model.fit(
+        dataset,
+        steps_per_epoch=num_train_steps * args.num_replicas,
+        epochs=1)
 
-        import tensorflow as tf
-        # make sure we only use CPU so it's fair to the workers
-        if not args.use_gpu:
-            tf.config.experimental.set_visible_devices([], "GPU")
-
-        # if you want to verify that only the CPU is used,
-        # enable this:
-        # tf.debugging.set_log_device_placement(True)
-
-        # patch batch_size so that the local model consumes as much data
-        # as all the workers together
-        config["batch_size"] *= args.num_replicas
-        train_data, test_data = data_creator(config)
-        model = create_model(config)
-
-        training_start = time.time()
-
-        # workers do the same # of updates
-        # but see num_replicas as much data
-        local_train_stats = model.fit(
-            train_data,
-            steps_per_epoch=config["fit_config"]["steps_per_epoch"],
-            verbose=True)
-
-        local_training_time = time.time() - training_start
-
-        local_eval_stats = model.evaluate(
-            test_data, steps=config["evaluate_config"]["steps"], verbose=True)
-
-        print(f"Remote results: {remote_train_stats}:")
-        print(f"Local results. Train: {local_train_stats.history}" +
-              f" Eval: {local_eval_stats}")
-
-        print(f"Training on {args.num_replicas} " +
-              f"workers takes: {remote_training_time:.3f} seconds/epoch")
-        print(
-            f"Training locally takes: {local_training_time:.3f} seconds/epoch")
-    else:
-        for i in range(3):
-            # Trains num epochs
-            train_stats1 = trainer.train()
-            train_stats1.update(trainer.validate())
-            print("iter {}:".format(i), train_stats1)
-
-        model = trainer.get_model()
-        trainer.shutdown()
-        dataset, test_dataset = data_augmentation_creator(
-            dict(batch_size=batch_size))
-
-        model.fit(
-            dataset,
-            steps_per_epoch=num_train_steps * args.num_replicas,
-            epochs=1)
-
-        scores = model.evaluate(test_dataset, steps=num_eval_steps)
-        print("Test loss:", scores[0])
-        print("Test accuracy:", scores[1])
+    scores = model.evaluate(test_dataset, steps=num_eval_steps)
+    print("Test loss:", scores[0])
+    print("Test accuracy:", scores[1])
