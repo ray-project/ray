@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
-import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
  * Physical execution graph.
@@ -19,19 +18,19 @@ import org.ray.streaming.runtime.worker.JobWorker;
 public class ExecutionGraph implements Serializable {
   private long buildTime;
   private List<ExecutionNode> executionNodeList;
-  private List<RayActor<JobWorker>> sourceWorkers = new ArrayList<>();
-  private List<RayActor<JobWorker>> sinkWorkers = new ArrayList<>();
+  private List<RayActor> sourceWorkers = new ArrayList<>();
+  private List<RayActor> sinkWorkers = new ArrayList<>();
 
   public ExecutionGraph(List<ExecutionNode> executionNodes) {
     this.executionNodeList = executionNodes;
     for (ExecutionNode executionNode : executionNodeList) {
       if (executionNode.getNodeType() == ExecutionNode.NodeType.SOURCE) {
-        List<RayActor<JobWorker>> actors = executionNode.getExecutionTasks().stream()
+        List<RayActor> actors = executionNode.getExecutionTasks().stream()
             .map(ExecutionTask::getWorker).collect(Collectors.toList());
         sourceWorkers.addAll(actors);
       }
       if (executionNode.getNodeType() == ExecutionNode.NodeType.SINK) {
-        List<RayActor<JobWorker>> actors = executionNode.getExecutionTasks().stream()
+        List<RayActor> actors = executionNode.getExecutionTasks().stream()
             .map(ExecutionTask::getWorker).collect(Collectors.toList());
         sinkWorkers.addAll(actors);
       }
@@ -39,11 +38,11 @@ public class ExecutionGraph implements Serializable {
     buildTime = System.currentTimeMillis();
   }
 
-  public List<RayActor<JobWorker>> getSourceWorkers() {
+  public List<RayActor> getSourceWorkers() {
     return sourceWorkers;
   }
 
-  public List<RayActor<JobWorker>> getSinkWorkers() {
+  public List<RayActor> getSinkWorkers() {
     return sinkWorkers;
   }
 
@@ -82,10 +81,10 @@ public class ExecutionGraph implements Serializable {
     throw new RuntimeException("Task " + taskId + " does not exist!");
   }
 
-  public Map<Integer, RayActor<JobWorker>> getTaskId2WorkerByNodeId(int nodeId) {
+  public Map<Integer, RayActor> getTaskId2WorkerByNodeId(int nodeId) {
     for (ExecutionNode executionNode : executionNodeList) {
       if (executionNode.getNodeId() == nodeId) {
-        Map<Integer, RayActor<JobWorker>> taskId2Worker = new HashMap<>();
+        Map<Integer, RayActor> taskId2Worker = new HashMap<>();
         for (ExecutionTask executionTask : executionNode.getExecutionTasks()) {
           taskId2Worker.put(executionTask.getTaskId(), executionTask.getWorker());
         }
