@@ -231,6 +231,7 @@ genrule(
     srcs = [
         "//java:ray_dist_deploy.jar",
         "//java:gen_maven_deps",
+        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """

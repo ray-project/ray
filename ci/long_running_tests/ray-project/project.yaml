@@ -29,6 +29,7 @@ commands:
             "node_failures",
             "pbt",
             "serve",
+            "many_tasks_serialized_ids",
           ]
     config:
       tmux: true

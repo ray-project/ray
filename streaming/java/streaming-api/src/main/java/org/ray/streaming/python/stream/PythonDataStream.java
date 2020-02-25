@@ -17,6 +17,10 @@ public class PythonDataStream extends Stream implements PythonStream {
     super(streamingContext, pythonOperator);
   }
 
+  public PythonDataStream(PythonDataStream input, PythonOperator pythonOperator) {
+    super(input, pythonOperator);
+  }
+
   protected PythonDataStream(Stream inputStream, PythonOperator pythonOperator) {
     super(inputStream, pythonOperator);
   }

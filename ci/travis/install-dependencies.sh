@@ -89,6 +89,11 @@ if [[ "$RLLIB_TESTING" == "1" ]]; then
     gym[atari] atari_py smart_open lz4
 fi
 
+# Additional streaming dependencies.
+if [[ "$RAY_CI_STREAMING_PYTHON_AFFECTED" == "1" ]]; then
+  pip install -q msgpack>=0.6.2
+fi
+
 if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
   # Install the latest version of Node.js in order to build the dashboard.
   source "$HOME/.nvm/nvm.sh"
