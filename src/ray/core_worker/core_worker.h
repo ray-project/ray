@@ -76,6 +76,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
+             std::function<void()> gc_collect = nullptr,
              bool ref_counting_enabled = false);
 
   virtual ~CoreWorker();
@@ -287,6 +288,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
+
+  /// Trigger garbage collection on each worker in the cluster.
+  ///
+  /// \return Status.
+  Status GlobalGC();
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -635,6 +641,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
   std::function<Status()> check_signals_;
+
+  /// Application-language callback to trigger garbage collection in the language
+  /// runtime. This is required to free distributed references that may otherwise
+  /// be held up in garbage objects.
+  std::function<void()> gc_collect_;
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
