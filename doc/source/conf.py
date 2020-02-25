@@ -74,6 +74,7 @@ def fake_remote(*args, **kwargs):
     return _inner_wrapper
 
 
+fake_remote.__doc__ = ray.remote.__doc__
 ray.remote = fake_remote
 
 # -- General configuration ------------------------------------------------
