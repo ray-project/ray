@@ -1,9 +1,9 @@
 package org.ray.api.test;
 
-import com.google.common.collect.ImmutableList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import com.google.common.collect.ImmutableList;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -11,7 +11,6 @@ import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
-import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -44,6 +43,10 @@ public class ActorTest extends BaseTest {
     public int accessLargeObject(LargeObject largeObject) {
       value += largeObject.data.length;
       return value;
+    }
+
+    public LargeObject createLargeObject() {
+      return new LargeObject();
     }
   }
 
@@ -129,8 +132,6 @@ public class ActorTest extends BaseTest {
 
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    // The UnreconstructableException is created by raylet.
-    // TODO (kfstorm): This should be supported by direct actor call.
     TestUtils.skipTestIfDirectActorCallEnabled();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     // Call an actor method.
@@ -147,14 +148,38 @@ public class ActorTest extends BaseTest {
       }
       TimeUnit.MILLISECONDS.sleep(100);
     }
+  }
 
-    try {
-      // Try getting the object again, this should throw an UnreconstructableException.
-      // Use `Ray.get()` to bypass the cache in `RayObjectImpl`.
-      Ray.get(value.getId());
-      Assert.fail("This line should not be reachable.");
-    } catch (UnreconstructableException e) {
-      Assert.assertEquals(value.getId(), e.objectId);
-    }
+  // This test case follows `test_internal_free` in `ray/tests/test_advanced.py`.
+  public void testUnreconstructableActorObjectInDirectCall() throws InterruptedException {
+    TestUtils.skipTestUnderSingleProcess();
+    TestUtils.skipTestIfDirectActorCallDisabled();
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+
+    // Call an actor method.
+    RayObject<Integer> value = Ray.call(Counter::getValue, counter);
+    Assert.assertEquals(value.get(), Integer.valueOf(100));
+    // Delete the object from the object store.
+    Ray.internal().free(ImmutableList.of(value.getId()), false, false);
+    TimeUnit.SECONDS.sleep(1);
+    // Free does not delete from in-memory store.
+    Assert.assertEquals(value.get(), Integer.valueOf(100));
+
+    // TODO (kfstorm): Belows lines should be uncommented once https://github.com/ray-project/ray/pull/6052 is ported to Java.
+    // // Call an actor method.
+    // RayObject<LargeObject> largeValue = Ray.call(Counter::createLargeObject, counter);
+    // Assert.assertTrue(largeValue.get() instanceof LargeObject);
+    // // Delete the object from the object store.
+    // Ray.internal().free(ImmutableList.of(largeValue.getId()), false, false);
+    // // Wait a while, because the above free operation is async.
+    // TimeUnit.SECONDS.sleep(1);
+    // try {
+    //   // Try getting the object again, this should throw an UnreconstructableException.
+    //   largeValue.get();
+    //   Assert.fail("This line should not be reachable.");
+    // } catch (UnreconstructableException e) {
+    //   // Free deletes big objects from plasma store.
+    //   Assert.assertEquals(largeValue.getId(), e.objectId);
+    // }
   }
 }
