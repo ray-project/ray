@@ -10,14 +10,23 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
-from ray.util.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable,
-                                          TrainingOperator)
+from ray.util.sgd.pytorch import (
+    PyTorchTrainer, PyTorchTrainable, TrainingOperator)
+from ray.util.sgd.pytorch.training_operator import _TestingOperator
 from ray.util.sgd.pytorch.constants import BATCH_COUNT, SCHEDULER_STEP
 from ray.util.sgd.utils import check_for_failure
 
 from ray.util.sgd.pytorch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
+
+
+@pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
 
 
 def train(model, criterion, optimizer, dataloader):
@@ -81,18 +90,6 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
 def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
-    def CustomOpWrapper(*args, **kwargs):
-        class CustomOp(TrainingOperator):
-            def train_epoch(self, iterator, info):
-                result = {}
-                for i, (model, optimizer) in enumerate(
-                        zip(self.models, self.optimizers)):
-                    result["model_{}".format(i)] = train(
-                        model, optimizer, self.criterion, iterator)
-                return result
-
-        return CustomOpWrapper(*args, **kwargs)
-
     def multi_model_creator(config):
         return nn.Linear(1, 1), nn.Linear(1, 1)
 
@@ -107,7 +104,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
         data_creator,
         multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        training_operator_cls=CustomOp,
+        training_operator_cls=_TestingOperator,
         num_replicas=num_replicas)
     trainer1.train()
 
@@ -420,3 +417,9 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
             num_replicas=2)
 
         trainer1.train(max_retries=2)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

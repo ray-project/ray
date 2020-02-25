@@ -265,3 +265,14 @@ class TrainingOperator:
 
     def load_state_dict(self, state_dict):
         pass
+
+
+
+class _TestingOperator(TrainingOperator):
+    def train_epoch(self, iterator, info):
+        result = {}
+        for i, (model, optimizer) in enumerate(
+                zip(self.models, self.optimizers)):
+            result["model_{}".format(i)] = train(
+                model, optimizer, self.criterion, iterator)
+        return result
