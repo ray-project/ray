@@ -963,17 +963,19 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
     def testDictPerturbation(self):
         pbt, runner = self.basicSetup(
+            resample_prob=1.0,
             hyperparams={
                 "float_factor": 2.0,
                 "nest": {
                     "nest_float": 3.0
                 },
-                "int_factor": 10
+                "int_factor": 10,
+                "const_factor": 3
             },
             hyperparam_mutations={
                 "float_factor": lambda: 100.0,
                 "nest": {
-                    "nest": lambda: 101.0
+                    "nest_float": lambda: 101.0
                 },
                 "int_factor": lambda: 10,
             })
@@ -988,7 +990,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(type(trials[0].config["int_factor"]), int)
         self.assertEqual(trials[0].config["const_factor"], 3)
         self.assertEqual(trials[0].config["nest"]["nest_float"], 101.0)
-        self.assertEqual(type(trials[0].config["nest_float"]), float)
+        self.assertEqual(type(trials[0].config["nest"]["nest_float"]), float)
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
