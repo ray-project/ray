@@ -157,7 +157,7 @@ def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
     """
 
     output_op = train_op \
-        .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
+        .filter(OncePerTimeInterval(max(2, config["min_iter_time_s"]))) \
         .for_each(CollectMetrics(
             workers, min_history=config["metrics_smoothing_episodes"],
             timeout_seconds=config["collect_metrics_timeout"]))

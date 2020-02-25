@@ -261,7 +261,7 @@ COMMON_CONFIG = {
     # step / reset and model inference perf.
     "remote_env_batch_wait_ms": 0,
     # Minimum time per train iteration (frequency of metrics reporting).
-    "min_iter_time_s": 2,
+    "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
     "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
