@@ -54,6 +54,8 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.0
+    # Set the commit SHA in __init__.py.
+    sed -i "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py
     PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/${PYTHON}/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
