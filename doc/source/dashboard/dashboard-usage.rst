@@ -1,10 +1,9 @@
 Usages
 ======
 
-Let's learn the basic components before diving into debugging scenarios.
+Let's learn the basic components before learning various dashboard usages.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-basic.png
-    :scale: 35%
     :align: center
 
 There are three views:
@@ -13,9 +12,11 @@ There are three views:
 - **Logical View**, which groups actors by the hierachical structure. Actor A is the parent of actor B if A creates B. In this case, actor B will be placed as a nested actor of A.
 - **Ray Config**, which shows a cluster configuration.
 
-Each view is in live and updated every second. Look at `Dashboard Internal Components <dashboard-internal.html#components>`_ to learn each components in more details.
-
 We will walkthrough some common problems you can face and demonstrate how to debug them.
+
+.. note::
+
+  Tune metrics are also accessible through a dashboard if Tune is running in a cluster. 
 
 Debug Blocked Actor 
 --------------------
@@ -52,7 +53,6 @@ Example 1
 
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-pending-infeasible-actors.png
-    :scale: 35%
     :align: center
 
 This cluster has 2 GPUs. Actor1 requires 1 GPU to be created. Actor2 creates 4 Actor1. As a result of calling `Actor2.remote()`, 2 Actor1 creation tasks became pending. 
@@ -97,7 +97,6 @@ The code snipet below demonstrates a situation where the session hangs because `
   Session hangs because actor A cannot be created. 
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-infeasible-actor-example-2.png
-    :scale: 35%
     :align: center
 
 
@@ -111,8 +110,7 @@ The dashboard shows the following informaiton of local memory usage:
 
 In the example below, all objects (strings) are stored in local object memory. Used local object memory increases as the remote function g is repeatedly called.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-inspect-local-memory-usage.png
-    :scale: 35%
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-inspect-local-memory-usage.png
     :align: center
 
 .. code-block:: python
@@ -138,8 +136,7 @@ Inspect Node Memory Usage
 --------------------------
 In this example, you can see local object memory is not used because objects are stored on the node (Plasma Storage) through `ray.put`.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-inspect-node-memory-usage.png
-    :scale: 35%
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-inspect-node-memory-usage.png
     :align: center
 
 .. code-block:: python
@@ -178,9 +175,25 @@ In this example, you can see local object memory is not used because objects are
   d = D.remote()
   _ = d.fetch.remote()
 
-Profiling
-----------
+Profiling (Experimental)
+--------------------------
 
 .. note::
-  
-  This is working only when sudo is passwordless. 
+
+  Currently, profiling button works only when you use passwordless `sudo`. 
+  Also, it is still experimental and probably not robust enough. Please report issues if you find any problems.
+
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-profiling-buttons.png
+    :align: center
+
+Clicking the profling button on the dashboard launches py-spy that times your python program. The timing information will be visualized as flamegraph in a new browser tab.
+
+Checkout the example Learning to play Pong on ray documentation: `Pong Example <https://ray.readthedocs.io/en/latest/auto_examples/plot_pong_example.html>`_
+
+Click profiling, and click Profiling result when it is ready. Note that there could be multiple threads in the process and some are ray internal threads and the timing information may not be so interesting. Click the left and right arrow on the middle top to see profiling results on different threads.
+Now you can intuitively see where could be the computation bottleneck. 
+
+More information on how to interpret the flamegraph is available at https://github.com/jlfwong/speedscope#usage.
+
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-profiling.png
+    :align: center

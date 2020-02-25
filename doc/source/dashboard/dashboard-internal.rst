@@ -1,8 +1,0 @@
-Internal
-==========
-
-Components
-----------
-
-Architecture
-------------

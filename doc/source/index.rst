@@ -285,6 +285,15 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
+   :caption: Ray Dashboard
+
+   dashboard/ray-dashboard.rst
+   dashboard/dashboard-getting-started.rst
+   dashboard/dashboard-usage.rst
+   dashboard/dashboard-concepts.rst
+
+.. toctree::
+   :maxdepth: -1
    :caption: Other Libraries
 
    multiprocessing.rst
