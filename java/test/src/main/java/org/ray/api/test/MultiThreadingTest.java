@@ -128,13 +128,6 @@ public class MultiThreadingTest extends BaseTest {
   }
 
 
-  public void testGetCurrentActorId() {
-    TestUtils.skipTestUnderSingleProcess();
-    RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
-    ActorId actorId = Ray.call(ActorIdTester::getCurrentActorId, actorIdTester).get();
-    Assert.assertEquals(actorId, actorIdTester.getId());
-  }
-
   private static void runTestCaseInMultipleThreads(Runnable testCase, int numRepeats) {
     ExecutorService service = Executors.newFixedThreadPool(NUM_THREADS);
 
@@ -179,15 +172,6 @@ public class MultiThreadingTest extends BaseTest {
       throw (Exception) result[0];
     }
     return true;
-  }
-
-  public void testGetAsyncContextAndSetAsyncContextInDriver() throws Exception {
-    Assert.assertTrue(testGetAsyncContextAndSetAsyncContext());
-  }
-
-  public void testGetAsyncContextAndSetAsyncContextInWorker() {
-    RayObject<Boolean> obj = Ray.call(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext);
-    Assert.assertTrue(obj.get());
   }
 
 }
