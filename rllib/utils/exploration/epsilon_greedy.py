@@ -78,16 +78,15 @@ class EpsilonGreedy(Exploration):
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
-        epsilon = tf.convert_to_tensor(
-            self.epsilon_schedule(timestep if timestep is not None else
-                                  self.last_timestep))
+        epsilon = self.epsilon_schedule(
+            timestep if timestep is not None else self.last_timestep)
 
         # Get the exploit action as the one with the highest logit value.
         exploit_action = tf.argmax(q_values, axis=1)
 
         batch_size = tf.shape(q_values)[0]
-        # Mask out actions with q-value=-inf so that we don't
-        # even consider them for exploration.
+        # Mask out actions with q-value=-inf so that we don't even consider
+        # them for exploration.
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
             tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
@@ -123,7 +122,7 @@ class EpsilonGreedy(Exploration):
         Returns:
             torch.Tensor: The exploration-action.
         """
-        # Set last time step or (if not given) increase by one.
+        # Set last timestep or (if not given) increase by one.
         self.last_timestep = timestep if timestep is not None else \
             self.last_timestep + 1
 

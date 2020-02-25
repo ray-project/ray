@@ -482,15 +482,14 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     #        def make_noisy_actions():
     #            # shape of deterministic_actions is [None, dim_action]
     #            if noise_type == "gaussian":
-    #                pass
-    #            #    # add IID Gaussian noise for exploration, TD3-style
-    #            #    normal_sample = noise_scale * tf.random_normal(
-    #            #        tf.shape(deterministic_actions),
-    #            #        stddev=self.config["exploration_gaussian_sigma"])
-    #            #    stochastic_actions = tf.clip_by_value(
-    #            #        deterministic_actions + normal_sample,
-    #            #        action_low * tf.ones_like(deterministic_actions),
-    #            #        action_high * tf.ones_like(deterministic_actions))
+    #                # add IID Gaussian noise for exploration, TD3-style
+    #                normal_sample = noise_scale * tf.random_normal(
+    #                    tf.shape(deterministic_actions),
+    #                    stddev=self.config["exploration_gaussian_sigma"])
+    #                stochastic_actions = tf.clip_by_value(
+    #                    deterministic_actions + normal_sample,
+    #                    action_low * tf.ones_like(deterministic_actions),
+    #                    action_high * tf.ones_like(deterministic_actions))
     #            elif noise_type == "ou":
     #                # add OU noise for exploration, DDPG-style
     #                zero_acts = action_low.size * [.0]

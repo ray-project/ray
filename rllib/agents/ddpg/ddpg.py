@@ -60,40 +60,42 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Exploration ===
     "exploration_config": {
-        "type": "GaussianNoise",
+        "type": "OrnsteinUhlenbeckNoise",
         # For how many timesteps should we return completely random actions,
         # before we start adding (scaled) noise?
         "random_timesteps": 1000,  # fka: pure_exploration_steps
-        # The stddev (sigma) for the Gaussian sampling (mean=0.0). This sample
-        # is then multiplied by scale and added to the actions.
-        "stddev": 0.1,  # fka: exploration_gaussian_sigma
+        # The OU-base scaling factor to always apply to action-added noise.
+        "ou_base_scale": 0.1,
+        # The OU theta param.
+        "ou_theta": 0.15,
+        # The OU sigma param.
+        "ou_sigma": 0.2,
         # The initial noise scaling factor.
         "initial_scale": 1.0,  # fka: 1.0
         # The final noise scaling factor.
-        "final_scale": 0.02,  # fka: exploration_final_scale
+        "final_scale": 1.0,  # fka: exploration_final_scale
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,  # fka: exploration_fraction * schedule_max_timesteps
+        # Max num timesteps for annealing schedules.
+        # "schedule_max_timesteps": 100000,
         # Whether to use a distribution of epsilons across workers for exploration.
         #"per_worker_exploration": False,
+        # Turns on annealing schedule for exploration noise. Exploration is
+        # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
+        # scaled by exploration_fraction. Original DDPG and TD3 papers do not
+        # anneal noise, so this is False by default.
+        #"exploration_should_anneal": False,
+        # Fraction of entire training period over which the exploration rate is
+        # annealed
+        #"exploration_fraction": 0.1,
+        # Final scaling multiplier for action noise (initial is 1.0)
+        #"exploration_final_scale": 0.02,
+        # valid values: "ou" (time-correlated, like original DDPG paper),
+        # "gaussian" (IID, like TD3 paper)
     },
-    # Turns on annealing schedule for exploration noise. Exploration is
-    # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
-    # scaled by exploration_fraction. Original DDPG and TD3 papers do not
-    # anneal noise, so this is False by default.
-    #"exploration_should_anneal": False,
-
-    # Max num timesteps for annealing schedules.
-    #"schedule_max_timesteps": 100000,
 
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-    # Fraction of entire training period over which the exploration rate is
-    # annealed
-    #"exploration_fraction": 0.1,
-    # Final scaling multiplier for action noise (initial is 1.0)
-    #"exploration_final_scale": 0.02,
-    # valid values: "ou" (time-correlated, like original DDPG paper),
-    # "gaussian" (IID, like TD3 paper)
 
     # TODO(sven): OrnsteinUhlenbeckActionNoise
     #"exploration_noise_type": "ou",

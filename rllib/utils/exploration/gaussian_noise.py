@@ -3,7 +3,6 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
-from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 
 tf = try_import_tf()
@@ -91,17 +90,14 @@ class GaussianNoise(Exploration):
         deterministic_actions = action_dist.deterministic_sample()
 
         # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
-        scale = tf.convert_to_tensor(
-            self.scale_schedule(timestep if timestep is not None else
-                                self.last_timestep))
-        gaussian_sample = scale * tf.random_normal(
+        gaussian_sample = self.scale_schedule(ts) * tf.random_normal(
             tf.shape(deterministic_actions),
             stddev=self.stddev)
 
         # Stochastic actions could either be: random OR action + noise.
         random_actions, _ = \
             self.random_exploration.get_tf_exploration_action_op(
-                action_dist, explore, timestep)
+                action_dist, explore)
         stochastic_actions = tf.cond(
             pred=ts <= self.random_timesteps,
             true_fn=lambda: random_actions,
@@ -129,10 +125,37 @@ class GaussianNoise(Exploration):
         with tf.control_dependencies([assign_op]):
             return action, logp
 
-    @staticmethod
-    def _get_torch_exploration_action(action_dist, explore, timestep):
-        # TODO(sven): Implement.
-        pass
+    def _get_torch_exploration_action(self, action_dist, explore, timestep):
+        # Set last timestep or (if not given) increase by one.
+        self.last_timestep = timestep if timestep is not None else \
+            self.last_timestep + 1
+
+        # Apply exploration.
+        if explore:
+            # Random exploration phase.
+            if self.last_timestep <= self.random_timesteps:
+                action, _ = \
+                    self.random_exploration.get_torch_exploration_action(
+                        action_dist, True)
+            # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
+            else:
+                det_actions = action_dist.deterministic_sample()
+                scale = self.scale_schedule(self.last_timestep)
+                gaussian_sample = scale * torch.normal(
+                    mean=0.0, stddev=self.stddev,
+                    size=det_actions.size())
+                action = torch.clamp(
+                    det_actions + gaussian_sample,
+                    self.action_space.low * torch.ones_like(det_actions),
+                    self.action_space.high * torch.ones_like(det_actions))
+        # No exploration -> Return deterministic actions.
+        else:
+            action = action_dist.deterministic_sample()
+
+        # Logp=always zero.
+        logp = torch.zeros(shape=(action.size()[0], ), dtype=torch.float32)
+
+        return action, logp
 
     @override(Exploration)
     def get_info(self):

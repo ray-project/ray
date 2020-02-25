@@ -37,16 +37,13 @@ class Random(Exploration):
                                timestep=None):
         # Instantiate the distribution object.
         action_dist = action_dist_class(distribution_inputs, model)
-
         if self.framework == "tf":
-            return self.get_tf_exploration_action_op(action_dist, explore,
-                                                     timestep)
+            return self.get_tf_exploration_action_op(action_dist, explore)
         else:
-            return self.get_torch_exploration_action(action_dist, explore,
-                                                     timestep)
+            return self.get_torch_exploration_action(action_dist, explore)
 
     @tf_function(tf)
-    def get_tf_exploration_action_op(self, action_dist, explore, timestep):
+    def get_tf_exploration_action_op(self, action_dist, explore):
         # Determine py_func types, depending on our action-space.
         if isinstance(self.action_space, (Discrete, MultiDiscrete)) or \
                 (isinstance(self.action_space, Tuple) and
@@ -71,7 +68,7 @@ class Random(Exploration):
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
         return action, logp
 
-    def get_torch_exploration_action(self, action_dist, explore, timestep):
+    def get_torch_exploration_action(self, action_dist, explore):
         if explore:
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.

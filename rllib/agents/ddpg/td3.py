@@ -21,20 +21,22 @@ TD3_DEFAULT_CONFIG = merge_dicts(
 
         "exploration_config": {
             "type": "GaussianNoise",
-            "initial_scale": 1.0,
-            "final_scale": 0.02,
+            # Pure random phase, then (fixed) scaled Noise with stddev=0.1.
+            "random_steps": 10000,
             "stddev": 0.1,
-            "timesteps": 10000
+            "initial_scale": 0.02,
+            "final_scale": 0.02,
+            "scale_timesteps": 1
         },
 
         # other changes & things we want to keep fixed: IID Gaussian
         # exploration noise, larger actor learning rate, no l2 regularisation,
         # no Huber loss, etc.
-        "exploration_should_anneal": False,
-        "exploration_noise_type": "gaussian",
-        "exploration_gaussian_sigma": 0.1,
+        #"exploration_should_anneal": False,
+        #"exploration_noise_type": "gaussian",
+        #"exploration_gaussian_sigma": 0.1,
         "learning_starts": 10000,
-        "pure_exploration_steps": 10000,
+        #"pure_exploration_steps": 10000,
         "actor_hiddens": [400, 300],
         "critic_hiddens": [400, 300],
         "n_step": 1,
@@ -48,7 +50,7 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "target_network_update_freq": 0,
         "num_workers": 0,
         "num_gpus_per_worker": 0,
-        "per_worker_exploration": False,
+        #"per_worker_exploration": False,
         "worker_side_prioritization": False,
         "buffer_size": 1000000,
         "prioritized_replay": False,
