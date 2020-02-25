@@ -169,7 +169,7 @@ This document describes the process for creating new releases.
     mark the release branch as "active" so there is a point release for the documentation.
     Add @richardliaw to add you if you don't have access.
 
-10. **Improve the release process:** Find some way to improve the release
+11. **Improve the release process:** Find some way to improve the release
     process so that whoever manages the release next will have an easier time.
 
 .. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/6303
