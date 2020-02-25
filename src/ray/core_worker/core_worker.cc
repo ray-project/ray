@@ -680,8 +680,8 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
 Status CoreWorker::GlobalGC() {
   gc_collect_();
-  RAY_LOG(ERROR) << "TODO trigger global gc";
-  return Status::OK();
+  return local_raylet_client_->GlobalGC(
+      [](const Status &status, const rpc::GlobalGCReply &reply) {});
 }
 
 std::string CoreWorker::MemoryUsageString() {

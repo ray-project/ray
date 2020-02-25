@@ -564,7 +564,12 @@ cdef CRayStatus check_signals() nogil:
 
 cdef void gc_collect() nogil:
     with gil:
-        gc.collect()
+        start = time.perf_counter()
+        num_freed = gc.collect()
+        end = time.perf_counter()
+        logger.info(
+            "gc.collect() freed {} refs in {} seconds".format(
+                num_freed, end - start))
 
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):

@@ -149,6 +149,11 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status LocalGC(const LocalGCRequest &request,
+                              const ClientCallback<LocalGCReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ray::Status WaitForRefRemoved(
       const WaitForRefRemovedRequest &request,
       const ClientCallback<WaitForRefRemovedReply> &callback) {
