@@ -247,7 +247,7 @@ def wrap_function(train_func):
         func_args = inspect.getfullargspec(train_func).args
         use_track = ("reporter" not in func_args and len(func_args) == 1)
         if use_track:
-            logger.info("tune.track signature detected.")
+            logger.debug("tune.track signature detected.")
     except Exception:
         logger.info(
             "Function inspection failed - assuming reporter signature.")
