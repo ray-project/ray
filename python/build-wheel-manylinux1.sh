@@ -55,7 +55,13 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     # support.
     /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.0
     # Set the commit SHA in __init__.py.
-    sed -i "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py
+    if [ -n "$TRAVIS_COMMIT" ]; then
+      sed -i "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py
+    else
+      echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
+      exit 1
+    fi
+
     PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/${PYTHON}/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/

@@ -80,7 +80,12 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in __init__.py.
-    sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+    if [ -n "$TRAVIS_COMMIT" ]; then
+      sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+    else
+      echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
+      exit 1
+    fi
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
