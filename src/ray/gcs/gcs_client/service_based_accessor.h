@@ -1,49 +1,14 @@
 #ifndef RAY_GCS_SERVICE_BASED_ACCESSOR_H
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
-#include <deque>
-#include "src/ray/gcs/accessor.h"
-#include "src/ray/gcs/subscription_executor.h"
+#include "ray/gcs/accessor.h"
+#include "ray/gcs/subscription_executor.h"
+#include "ray/util/sequencer.h"
 
 namespace ray {
 namespace gcs {
 
 class ServiceBasedGcsClient;
-
-/// \class Sequencer
-/// Sequencer guarantees that all operations with the same ordering key are sequenced.
-/// This class is thread safe.
-template <class KEY>
-class Sequencer {
- public:
-  void execute_ordered(KEY key, std::function<void()> operation) {
-    mutex_.lock();
-    pending_operations_.insert(value_type(key, operation));
-    pending_operations_[key].push_back(operation);
-    int queue_size = pending_operations_[key].size();
-    mutex_.unlock();
-    if (1 == queue_size) {
-      operation();
-    }
-  }
-
-  void post_execute(KEY key) {
-    mutex_.lock();
-    pending_operations_[key].pop_front();
-    if (pending_operations_[key].empty()) {
-      pending_operations_.erase(key);
-      mutex_.unlock();
-    } else {
-      auto operation = pending_operations_[key].front();
-      mutex_.unlock();
-      operation();
-    }
-  }
-
- private:
-  std::mutex mutex_;
-  std::unordered_map<KEY, std::deque<std::function<void()>>> pending_operations_;
-};
 
 /// \class ServiceBasedJobInfoAccessor
 /// ServiceBasedJobInfoAccessor is an implementation of `JobInfoAccessor`
