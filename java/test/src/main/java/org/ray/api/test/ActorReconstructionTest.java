@@ -45,6 +45,7 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
+  @Test(timeOut = 2 * 60 * 1000)
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
@@ -125,6 +126,7 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
+  @Test(timeOut = 2 * 60 * 1000)
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
