@@ -3,13 +3,14 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
+import copy
 
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils import deep_update
 
 TD3_DEFAULT_CONFIG = deep_update(
-    DDPG_CONFIG,
+    copy.deepcopy(DDPG_CONFIG),
     {
         # largest changes: twin Q functions, delayed policy updates, and target
         # smoothing
