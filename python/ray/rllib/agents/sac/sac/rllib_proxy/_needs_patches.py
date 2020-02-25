@@ -125,11 +125,7 @@ class TFPolicy(TFPolicyGraph):
 
         if self.model:
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            if not using_ray_8():
-                update_metrics = self.model.metrics()
-            else:
-                update_metrics = self.model.custom_stats()
-            self._stats_fetches.update({"model": update_metrics})
+            self._stats_fetches.update({"model": self.model.metrics()})
         else:
             self._loss = loss
 

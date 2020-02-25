@@ -237,11 +237,10 @@ class Trainer(UnpatchedTrainer):
                                     self._allow_unknown_subkeys)
         self.raw_user_config = config
         self.config = merged_config
-        if using_ray_8():
-            if self.config["normalize_actions"]:
-                inner = self.env_creator
-                self.env_creator = (
-                    lambda env_config: NormalizeActionWrapper(inner(env_config)))
+        if self.config["normalize_actions"]:
+            inner = self.env_creator
+            self.env_creator = (
+                lambda env_config: NormalizeActionWrapper(inner(env_config)))
 
         Trainer._validate_config(self.config)
         if using_ray_8():

@@ -173,6 +173,8 @@ class DynamicTFPolicy(TFPolicy):
         else:
             batch_divisibility_req = 1
 
+        self._action_logp = action_logp
+
         action_prob = (
             tf.exp(action_logp) if action_logp is not None else None)
 
