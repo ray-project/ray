@@ -101,53 +101,18 @@ class TFPolicy(TFPolicyGraph):
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
 
-        if self.model:
-            self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            if using_ray_8():
-                self._stats_fetches = {"model": self.model.custom_stats()}
-            else:
-                self._stats_fetches = {"model": self.model.metrics()}
-        else:
-            self._loss = loss
-            self._stats_fetches = {}
+        # The porting changes below.
+        self._loss = None
+        self._stats_fetches = {}
+        self._optimizer = None
+        self._grads_and_vars = []
+        self._grads = []
+        self._variables = None
+        self._update_ops = None
+        self._apply_op = None
 
-        self._optimizer = self.optimizer()
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
-            if g is not None
-        ]
-        self._grads = [g for (g, v) in self._grads_and_vars]
-        self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-            self._loss, self._sess)
-
-        # gather update ops for any batch norm layers
-        if update_ops:
-            self._update_ops = update_ops
-        else:
-            self._update_ops = tf.get_collection(
-                tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
-        if self._update_ops:
-            logger.debug("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
-        with tf.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
-
-        if len(self._state_inputs) != len(self._state_outputs):
-            raise ValueError(
-                "Number of state input and output tensors must match, got: "
-                "{} vs {}".format(self._state_inputs, self._state_outputs))
-        if len(self.get_initial_state()) != len(self._state_inputs):
-            raise ValueError(
-                "Length of initial state must match number of state inputs, "
-                "got: {} vs {}".format(self.get_initial_state(),
-                                       self._state_inputs))
-        if self._state_inputs and self._seq_lens is None:
-            raise ValueError(
-                "seq_lens tensor must be given if state inputs are defined")
-
-        logger.debug("Created {} with loss inputs: {}".format(
-            self, self._loss_input_dict))
+    def get_session(self):
+        return self._sess
 
     def variables(self):
         return self.model.variables()
