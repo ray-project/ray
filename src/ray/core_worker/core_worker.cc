@@ -1119,7 +1119,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       by_ref_ids.insert(arg_id);
       auto it = by_ref_indices.find(arg_id);
       if (it == by_ref_indices.end()) {
-        by_ref_indices.emplace(arg_id, std::vector<size_t>(i));
+        by_ref_indices.emplace(arg_id, std::vector<size_t>({i}));
       } else {
         it->second.push_back(i);
       }
