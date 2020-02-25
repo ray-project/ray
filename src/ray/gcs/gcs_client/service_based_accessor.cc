@@ -98,7 +98,7 @@ Status ServiceBasedActorInfoAccessor::AsyncRegister(
   auto operation = [this, request, actor_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().RegisterActorInfo(
-        request, [this, actor_id, callback](const Status &status,
+        request, [actor_id, callback, done_callback](const Status &status,
                                             const rpc::RegisterActorInfoReply &reply) {
           if (callback) {
             callback(status);
@@ -124,7 +124,7 @@ Status ServiceBasedActorInfoAccessor::AsyncUpdate(
   auto operation = [this, request, actor_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().UpdateActorInfo(
-        request, [this, actor_id, callback](const Status &status,
+        request, [actor_id, callback, done_callback](const Status &status,
                                             const rpc::UpdateActorInfoReply &reply) {
           if (callback) {
             callback(status);
@@ -185,7 +185,7 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
   auto operation = [this, request, actor_id, checkpoint_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().AddActorCheckpoint(
-        request, [this, actor_id, checkpoint_id, callback](
+        request, [actor_id, checkpoint_id, callback, done_callback](
                      const Status &status, const rpc::AddActorCheckpointReply &reply) {
           if (callback) {
             callback(status);
@@ -417,7 +417,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
   auto operation = [this, request, node_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().UpdateResources(
-        request, [this, node_id, callback](const Status &status,
+        request, [node_id, callback, done_callback](const Status &status,
                                            const rpc::UpdateResourcesReply &reply) {
           if (callback) {
             callback(status);
@@ -445,7 +445,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
   auto operation = [this, request, node_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().DeleteResources(
-        request, [this, node_id, callback](const Status &status,
+        request, [node_id, callback, done_callback](const Status &status,
                                            const rpc::DeleteResourcesReply &reply) {
           if (callback) {
             callback(status);
@@ -718,7 +718,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   auto operation = [this, request, object_id, node_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
-        request, [this, object_id, node_id, callback](
+        request, [object_id, node_id, callback, done_callback](
                      const Status &status, const rpc::AddObjectLocationReply &reply) {
           if (callback) {
             callback(status);
@@ -745,7 +745,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
   auto operation = [this, request, object_id, node_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().RemoveObjectLocation(
-        request, [this, object_id, node_id, callback](
+        request, [object_id, node_id, callback, done_callback](
                      const Status &status, const rpc::RemoveObjectLocationReply &reply) {
           if (callback) {
             callback(status);
