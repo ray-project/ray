@@ -22,13 +22,9 @@ import psutil
 
 libc = None
 prctl = None
-PR_SET_PDEATHSIG = 1
 
 job = None
 kernel32 = None
-JobObjectExtendedLimitInformation = 9
-JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
-JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -458,7 +454,7 @@ def start_ray_process(command,
         import signal
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
         if set_psigdeath:
-            set_psigdeath(os.getpid())
+            set_psigdeath()
 
     process = subprocess.Popen(
         command,
@@ -468,9 +464,6 @@ def start_ray_process(command,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
         preexec_fn=preexec_fn if sys.platform != "win32" else None)
-
-    if sys.platform == "win32" and set_psigdeath:
-        set_psigdeath(process._handle)
 
     return ProcessInfo(
         process=process,
@@ -597,7 +590,6 @@ def start_reaper():
     Returns:
         ProcessInfo for the process that was started.
     """
-    global set_psigdeath
     if sys.platform == "win32":
         global kernel32, job
         if kernel32 is None:
@@ -664,23 +656,20 @@ def start_reaper():
                 current_proc = kernel32.GetCurrentProcess()
                 if not kernel32.SetInformationJobObject(
                         job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)
-                ):
+                ) or not kernel32.AssignProcessToJobObject(job, child_proc):
+                    logger.warning(
+                            "AssignProcessToJobObject failed. "
+                            "Did the child process already assign itself to a job?")
                     kernel32.CloseHandle(job)
                     job = False  # Failure. Are we already in a job?
         if job:
-
-            def set_psigdeath(child_proc):
-                result = kernel32.AssignProcessToJobObject(job, child_proc)
-                assert result, (
-                        "AssignProcessToJobObject failed. "
-                        "Did the child process already assign itself to a job?")
-
             return None
 
     if sys.platform.startswith("linux"):
         # No need for a reaper on Linux.
         # The kernel supports fate-sharing natively, so just initilize it.
         global libc
+        global set_psigdeath
         if libc is None:
             try:
                 libc = ctypes.CDLL(None)
@@ -701,6 +690,7 @@ def start_reaper():
             import signal
 
             def set_psigdeath(child_proc):
+                PR_SET_PDEATHSIG = 1
                 status = prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
                 assert status == 0, "PR_SET_PDEATHSIG shouldn't fail on Linux"
 
