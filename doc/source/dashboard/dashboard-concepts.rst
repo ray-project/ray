@@ -51,6 +51,7 @@ Ray's cluster configuration. If you run Ray with cluster configuration, it will 
 Tune (Experimental)
 ~~~~~~~~~~~~~~~~~~~
 When Tune is running, you can find information of each tuning job at this tab. Tune tab is probably not visible if you don't run Tune in the Ray cluster.
+
 .. note::
 
   This note is written when Ray 0.8.2 was released. 
