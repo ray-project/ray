@@ -3,6 +3,8 @@
 #include <grpcpp/impl/service_type.h>
 #include <boost/asio/detail/socket_holder.hpp>
 
+#include "ray/common/ray_config.h"
+
 namespace ray {
 namespace rpc {
 
@@ -20,6 +22,10 @@ void GrpcServer::Run() {
   // (default behavior in grpc), we may see multiple workers listen on the same port and
   // the requests sent to this port may be handled by any of the workers.
   builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.

@@ -26,22 +26,22 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
     GIT_SUFFIX = ".git"
 
     treeish = commit or tag or branch
-    if not treeish: fail("Missing commit, tag, or branch argument")
-    if remote == None: fail("Missing remote argument")
+    if path == None and not treeish: fail("Missing commit, tag, or branch argument")
+    if path == None and remote == None: fail("Missing remote argument")
 
-    if remote.endswith(GIT_SUFFIX):
+    if path == None and remote.endswith(GIT_SUFFIX):
         remote_no_suffix = remote[:len(remote) - len(GIT_SUFFIX)]
     else:
         remote_no_suffix = remote
-    project = remote_no_suffix.split("//", 1)[1].split("/")[2]
+    project = remote_no_suffix.split("//", 1)[1].split("/")[2] if remote_no_suffix else None
 
-    if name == None:
+    if project != None and name == None:
         name = project.replace("-", "_")
-    if strip_prefix == True:
+    if project != None and strip_prefix == True:
         strip_prefix = "%s-%s" % (project, treeish)
     if url == None:
         url = "%s/archive/%s%s" % (remote_no_suffix, treeish, archive_suffix)
-    if build_file == True:
+    if name != None and build_file == True:
         build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
 
     if path != None:
