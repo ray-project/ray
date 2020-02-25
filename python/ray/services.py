@@ -24,6 +24,12 @@ libc = None
 prctl = None
 PR_SET_PDEATHSIG = 1
 
+job = None
+kernel32 = None
+JobObjectExtendedLimitInformation = 9
+JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
@@ -452,7 +458,7 @@ def start_ray_process(command,
         import signal
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
         if set_psigdeath:
-            set_psigdeath()
+            set_psigdeath(os.getpid())
 
     process = subprocess.Popen(
         command,
@@ -461,7 +467,10 @@ def start_ray_process(command,
         stdout=stdout_file,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=preexec_fn)
+        preexec_fn=preexec_fn if sys.platform != "win32" else None)
+
+    if sys.platform == "win32" and set_psigdeath:
+        set_psigdeath(process._handle)
 
     return ProcessInfo(
         process=process,
@@ -588,6 +597,86 @@ def start_reaper():
     Returns:
         ProcessInfo for the process that was started.
     """
+    global set_psigdeath
+    if sys.platform == "win32":
+        global kernel32, job
+        if kernel32 is None:
+            try:
+                from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+                kernel32 = ctypes.WinDLL("kernel32")
+                kernel32.GetCurrentProcess.restype = HANDLE
+                kernel32.GetCurrentProcess.argtypes = ()
+                kernel32.CloseHandle.restype = BOOL
+                kernel32.CloseHandle.argtypes = (HANDLE,)
+                kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
+                kernel32.CreateJobObjectW.restype = HANDLE
+                sijo_argtypes = (HANDLE, ctypes.c_int, LPVOID, DWORD)
+                kernel32.SetInformationJobObject.argtypes = sijo_argtypes
+                kernel32.SetInformationJobObject.restype = BOOL
+                kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
+                kernel32.AssignProcessToJobObject.restype = BOOL
+            except TypeError:
+                kernel32 = False
+        if kernel32 and job is None:
+            job = kernel32.CreateJobObjectW(None, None)
+            if job is not None:
+                from ctypes.wintypes import DWORD, LARGE_INTEGER, ULARGE_INTEGER
+
+                class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+                    _fields_ = [
+                        ("PerProcessUserTimeLimit", LARGE_INTEGER),
+                        ("PerJobUserTimeLimit", LARGE_INTEGER),
+                        ("LimitFlags", DWORD),
+                        ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t),
+                        ("ActiveProcessLimit", DWORD),
+                        ("Affinity", ctypes.c_size_t),
+                        ("PriorityClass", DWORD),
+                        ("SchedulingClass", DWORD),
+                    ]
+
+                class IO_COUNTERS(ctypes.Structure):
+                    _fields_ = [
+                        ("ReadOperationCount", ULARGE_INTEGER),
+                        ("WriteOperationCount", ULARGE_INTEGER),
+                        ("OtherOperationCount", ULARGE_INTEGER),
+                        ("ReadTransferCount", ULARGE_INTEGER),
+                        ("WriteTransferCount", ULARGE_INTEGER),
+                        ("OtherTransferCount", ULARGE_INTEGER),
+                    ]
+
+                class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+                    _fields_ = [
+                        ("BasicLimitInformation",
+                         JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                        ("IoInfo", IO_COUNTERS),
+                        ("ProcessMemoryLimit", ctypes.c_size_t),
+                        ("JobMemoryLimit", ctypes.c_size_t),
+                        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                        ("PeakJobMemoryUsed", ctypes.c_size_t),
+                    ]
+
+                buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+                buf.BasicLimitInformation.LimitFlags = (
+                    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                    | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
+                infoclass = JobObjectExtendedLimitInformation
+                current_proc = kernel32.GetCurrentProcess()
+                if not kernel32.SetInformationJobObject(
+                        job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)
+                ):
+                    kernel32.CloseHandle(job)
+                    job = False  # Failure. Are we already in a job?
+        if job:
+
+            def set_psigdeath(child_proc):
+                result = kernel32.AssignProcessToJobObject(job, child_proc)
+                assert result, (
+                        "AssignProcessToJobObject failed. "
+                        "Did the child process already assign itself to a job?")
+
+            return None
+
     if sys.platform.startswith("linux"):
         # No need for a reaper on Linux.
         # The kernel supports fate-sharing natively, so just initilize it.
@@ -610,9 +699,8 @@ def start_reaper():
                 prctl = False
         if prctl:
             import signal
-            global set_psigdeath
 
-            def set_psigdeath():
+            def set_psigdeath(child_proc):
                 status = prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
                 assert status == 0, "PR_SET_PDEATHSIG shouldn't fail on Linux"
 
