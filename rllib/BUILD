@@ -58,6 +58,22 @@ py_test(
 # Tag: agents_dir
 # --------------------------------------------------------------------
 
+# A2CTrainer
+py_test(
+    name = "test_a2c",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/a3c/tests/test_a2c.py"]
+)
+
+# DDPGTrainer
+py_test(
+    name = "test_ddpg",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/ddpg/tests/test_ddpg.py"]
+)
+
 # DQNTrainer
 py_test(
     name = "test_dqn",
@@ -66,12 +82,12 @@ py_test(
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 
-# A2CTrainer
+# IMPALA
 py_test(
-    name = "test_a2c",
+    name = "test_vtrace",
     tags = ["agents_dir"],
     size = "small",
-    srcs = ["agents/a3c/tests/test_a2c.py"]
+    srcs = ["agents/impala/tests/test_vtrace.py"]
 )
 
 # PGTrainer
@@ -91,13 +107,6 @@ py_test(
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
-# IMPALA
-py_test(
-    name = "test_vtrace",
-    tags = ["agents_dir"],
-    size = "small",
-    srcs = ["agents/impala/tests/test_vtrace.py"]
-)
 
 # --------------------------------------------------------------------
 # contrib Agents

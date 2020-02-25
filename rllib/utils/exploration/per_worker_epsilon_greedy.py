@@ -46,7 +46,5 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
             initial_epsilon=initial_epsilon,
             final_epsilon=final_epsilon,
             epsilon_timesteps=epsilon_timesteps,
-            num_workers=num_workers,
-            worker_index=worker_index,
             framework=framework,
             epsilon_schedule=epsilon_schedule)

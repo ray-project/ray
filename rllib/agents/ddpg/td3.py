@@ -19,6 +19,14 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "target_noise": 0.2,
         "target_noise_clip": 0.5,
 
+        "exploration_config": {
+            "type": "GaussianNoise",
+            "initial_scale": 1.0,
+            "final_scale": 0.02,
+            "stddev": 0.1,
+            "timesteps": 10000
+        },
+
         # other changes & things we want to keep fixed: IID Gaussian
         # exploration noise, larger actor learning rate, no l2 regularisation,
         # no Huber loss, etc.

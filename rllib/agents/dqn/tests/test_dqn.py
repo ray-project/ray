@@ -15,14 +15,14 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # tf.
-        config["eager"] = True
+        config["eager"] = False
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
 
-        config["eager"] = False
+        config["eager"] = True
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):

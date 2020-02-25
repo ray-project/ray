@@ -23,10 +23,9 @@ class EpsilonGreedy(Exploration):
                  initial_epsilon=1.0,
                  final_epsilon=0.05,
                  epsilon_timesteps=int(1e5),
-                 num_workers=None,
-                 worker_index=None,
                  epsilon_schedule=None,
-                 framework="tf"):
+                 framework="tf",
+                 **kwargs):
         """
 
         Args:
@@ -35,9 +34,6 @@ class EpsilonGreedy(Exploration):
             final_epsilon (float): The final epsilon value to use.
             epsilon_timesteps (int): The time step after which epsilon should
                 always be `final_epsilon`.
-            num_workers (Optional[int]): The overall number of workers used.
-            worker_index (Optional[int]): The index of the Worker using this
-                Exploration.
             epsilon_schedule (Optional[Schedule]): An optional Schedule object
                 to use (instead of constructing one from the given parameters).
             framework (Optional[str]): One of None, "tf", "torch".
@@ -46,10 +42,7 @@ class EpsilonGreedy(Exploration):
         # in the future).
         assert framework is not None
         super().__init__(
-            action_space=action_space,
-            num_workers=num_workers,
-            worker_index=worker_index,
-            framework=framework)
+            action_space=action_space, framework=framework, **kwargs)
 
         self.epsilon_schedule = epsilon_schedule or PiecewiseSchedule(
             endpoints=[(0, initial_epsilon),

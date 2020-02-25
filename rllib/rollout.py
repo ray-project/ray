@@ -197,7 +197,7 @@ def create_parser(parser_creator=None):
         default="{}",
         type=json.loads,
         help="Algorithm-specific configuration (e.g. env, hyperparams). "
-        "Surpresses loading of configuration from checkpoint.")
+        "Suppresses loading of configuration from checkpoint.")
     parser.add_argument(
         "--episodes",
         default=0,
