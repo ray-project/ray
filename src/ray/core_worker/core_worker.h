@@ -290,9 +290,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 bool delete_creating_tasks);
 
   /// Trigger garbage collection on each worker in the cluster.
-  ///
-  /// \return Status.
-  Status GlobalGC();
+  void GlobalGC();
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -495,6 +493,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                 rpc::GetCoreWorkerStatsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Trigger local GC on this worker.
+  void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
+                     rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when

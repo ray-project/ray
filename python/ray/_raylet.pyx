@@ -772,7 +772,7 @@ cdef class CoreWorker:
 
     def global_gc(self):
         with nogil:
-            check_status(self.core_worker.get().GlobalGC())
+            self.core_worker.get().GlobalGC()
 
     def set_object_store_client_options(self, client_name,
                                         int64_t limit_bytes):

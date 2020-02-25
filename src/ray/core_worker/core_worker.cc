@@ -678,10 +678,16 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   return Status::OK();
 }
 
-Status CoreWorker::GlobalGC() {
-  gc_collect_();
-  return local_raylet_client_->GlobalGC(
-      [](const Status &status, const rpc::GlobalGCReply &reply) {});
+void CoreWorker::GlobalGC() {
+  auto status = local_raylet_client_->GlobalGC(
+      [](const Status &status, const rpc::GlobalGCReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
+        }
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
+  }
 }
 
 std::string CoreWorker::MemoryUsageString() {
@@ -1356,6 +1362,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
+                               rpc::LocalGCReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
+  gc_collect_();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
