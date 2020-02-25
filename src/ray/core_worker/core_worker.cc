@@ -378,11 +378,6 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
 }
 
-void CoreWorker::AddContainedObjectIDs(
-    const ObjectID &object_id, const std::vector<ObjectID> &contained_object_ids) {
-  // TODO(edoakes,swang): integrate with the reference counting logic.
-}
-
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   // Currently only the Plasma store supports client options.
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);
