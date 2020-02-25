@@ -53,7 +53,7 @@ class ReferenceCounter {
   ///
   /// \param[in] object_ids The object IDs to add references for.
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &argument_ids_to_add,
+      const std::vector<ObjectID> &argument_ids_to_add, size_t increment_lineage_by,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
@@ -71,7 +71,7 @@ class ReferenceCounter {
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
   void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                    size_t num_plasma_returns,
+                                    size_t decrement_lineage_by,
                                     const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
@@ -350,7 +350,7 @@ class ReferenceCounter {
   /// inlined dependencies are inlined or when the task finishes for plasma
   /// dependencies.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                     size_t increment_lineage_by,
+                                     size_t num_plasma_returns,
                                      std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

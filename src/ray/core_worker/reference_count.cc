@@ -128,7 +128,7 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids_to_add,
+    const std::vector<ObjectID> &argument_ids_to_add, size_t num_plasma_returns,
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids_to_add) {
@@ -139,9 +139,9 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
       it = object_id_refs_.emplace(argument_id, Reference()).first;
     }
     it->second.submitted_task_ref_count++;
+    it->second.lineage_ref_count += num_plasma_returns;
   }
-  RemoveSubmittedTaskReferences(argument_ids_to_remove, /*increment_lineage_by=*/0,
-                                deleted);
+  RemoveSubmittedTaskReferences(argument_ids_to_remove, num_plasma_returns, deleted);
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
@@ -159,10 +159,12 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   }
   for (const ObjectID &argument_id : argument_ids) {
     MergeRemoteBorrowers(argument_id, worker_addr, refs);
+
+    auto it = object_id_refs_.find(argument_id);
+    RAY_CHECK(it != object_id_refs_.end());
   }
 
-  RemoveSubmittedTaskReferences(argument_ids, /*increment_lineage_by=*/num_plasma_returns,
-                                deleted);
+  RemoveSubmittedTaskReferences(argument_ids, num_plasma_returns, deleted);
 }
 
 void ReferenceCounter::ReleaseLineageReferences(
@@ -187,7 +189,7 @@ void ReferenceCounter::ReleaseLineageReferencesInternal(
 }
 
 void ReferenceCounter::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, size_t increment_lineage_by,
+    const std::vector<ObjectID> &argument_ids, size_t decrement_lineage_by,
     std::vector<ObjectID> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
@@ -198,9 +200,8 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     }
     RAY_CHECK(it->second.submitted_task_ref_count > 0);
     it->second.submitted_task_ref_count--;
-    for (size_t i = 0; i < increment_lineage_by; i++) {
-      it->second.lineage_ref_count++;
-    }
+    RAY_CHECK(it->second.lineage_ref_count >= decrement_lineage_by);
+    it->second.lineage_ref_count -= decrement_lineage_by;
     if (it->second.RefCount() == 0) {
       DeleteReferenceInternal(it, deleted);
     }

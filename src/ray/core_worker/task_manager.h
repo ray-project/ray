@@ -23,7 +23,7 @@ class TaskFinisherInterface {
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
-      const std::vector<ObjectID> &contained_ids) = 0;
+      const std::vector<ObjectID> &contained_ids, size_t num_plasma_returns) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
@@ -99,7 +99,8 @@ class TaskManager : public TaskFinisherInterface {
   /// task spec, because a serialized copy of the ID was contained in one of
   /// the inlined dependencies.
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
-                                 const std::vector<ObjectID> &contained_ids) override;
+                                 const std::vector<ObjectID> &contained_ids,
+                                 size_t num_plasma_returns) override;
 
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
@@ -110,11 +111,31 @@ class TaskManager : public TaskFinisherInterface {
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg)
-        : spec(spec_arg), num_retries_left(num_retries_left_arg) {}
+        : spec(spec_arg),
+          num_retries_left(num_retries_left_arg),
+          num_plasma_returns_in_scope(spec.NumReturns()) {}
+    // The task spec. This is pinned as long as the following are true:
+    // - num_retries_left > 0. If this is not true, then this means that the
+    //   task may be retried in the future.
+    // - num_executions > 0. If this is not true, then this means that the task
+    //   is still pending its first execution.
+    // - num_plasma_returns_in_scope > 0. If this is not true, then this means
+    //   that the task does not have any return values that may be passed as
+    //   dependencies to other tasks.
     const TaskSpecification spec;
+    // Number of times this task may be resubmitted. If this reaches 0, then
+    // the task entry may be erased.
     int num_retries_left;
+    // Number of times this task has completed execution so far. This is used
+    // to pin the task entry if the task is still pending but all of its return
+    // IDs are out of scope.
+    int num_executions = 0;
     // Number of plasma objects returned by this task that are still in scope.
-    absl::optional<size_t> num_plasma_returns;
+    // This is set initially to the task's number of return objects. Once the
+    // task finishes its first execution, if the task may be retried in the
+    // future, then this is updated according to the number of values the task
+    // returned in plasma.
+    size_t num_plasma_returns_in_scope;
   };
 
   void RemoveLineageReference(const ObjectID &object_id,
@@ -161,8 +182,6 @@ class TaskManager : public TaskFinisherInterface {
   /// Protects below fields.
   mutable absl::Mutex mu_;
 
-  /// Map from task ID to a pair of:
-  ///   {task spec, number of allowed retries left}
   /// This map contains one entry per pending task that we submitted.
   /// TODO(swang): The TaskSpec protobuf must be copied into the
   /// PushTaskRequest protobuf when sent to a worker so that we can retry it if

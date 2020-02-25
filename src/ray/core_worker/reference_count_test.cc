@@ -108,7 +108,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   ObjectID SubmitTaskWithArg(const ObjectID &arg_id) {
-    rc_.UpdateSubmittedTaskReferences({arg_id});
+    rc_.UpdateSubmittedTaskReferences({arg_id}, 0);
     ObjectID return_id = ObjectID::FromRandom();
     rc_.AddOwnedObject(return_id, {}, task_id_, address_);
     // Add a sentinel reference to keep all nested object IDs in scope.
@@ -186,8 +186,8 @@ TEST_F(ReferenceCountTest, TestBasic) {
   out.clear();
 
   // Submitted task references.
-  rc->UpdateSubmittedTaskReferences({id1});
-  rc->UpdateSubmittedTaskReferences({id1, id2});
+  rc->UpdateSubmittedTaskReferences({id1}, 0);
+  rc->UpdateSubmittedTaskReferences({id1, id2}, 0);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   rc->UpdateFinishedTaskReferences({id1}, 0, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
@@ -202,7 +202,7 @@ TEST_F(ReferenceCountTest, TestBasic) {
 
   // Local & submitted task references.
   rc->AddLocalReference(id1);
-  rc->UpdateSubmittedTaskReferences({id1, id2});
+  rc->UpdateSubmittedTaskReferences({id1, id2}, 0);
   rc->AddLocalReference(id2);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   rc->RemoveLocalReference(id1, &out);
@@ -1680,24 +1680,63 @@ TEST_F(ReferenceCountTest, TestBasicLineage) {
   ASSERT_TRUE(rc->HasReference(id));
 
   // Submit 2 dependent tasks.
-  rc->UpdateSubmittedTaskReferences({id});
-  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({id}, 1);
+  rc->UpdateSubmittedTaskReferences({id}, 1);
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_TRUE(rc->HasReference(id));
 
   // Both tasks finish, 1 is retryable.
-  rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
   rc->UpdateFinishedTaskReferences({id}, 1, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
+  // The dependency is no longer in scope, but we still keep a reference to it
+  // because it is in the lineage of the retryable task.
   ASSERT_EQ(out.size(), 1);
   ASSERT_TRUE(rc->HasReference(id));
 
   // Simulate retrying the task.
-  rc->UpdateSubmittedTaskReferences({id});
-  rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
-  ASSERT_TRUE(lineage_deleted.empty());
-  rc->ReleaseLineageReferences({id});
+  rc->UpdateSubmittedTaskReferences({id}, 0);
+  rc->UpdateFinishedTaskReferences({id}, 1, empty_borrower, empty_refs, &out);
   ASSERT_FALSE(rc->HasReference(id));
   ASSERT_EQ(lineage_deleted.size(), 1);
+}
+
+TEST_F(ReferenceCountTest, TestRecursiveLineage) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  ObjectID id = ObjectID::FromRandom();
+  ObjectID downstream_id = ObjectID::FromRandom();
+
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+        // Simulate releasing objects in downstream_id's lineage.
+        if (object_id == downstream_id) {
+          ids_to_release->push_back(id);
+        }
+      });
+
+  // Submit a dependent task on id.
+  rc->AddLocalReference(id);
+  ASSERT_TRUE(rc->HasReference(id));
+  rc->UpdateSubmittedTaskReferences({id}, 1);
+  rc->AddLocalReference(downstream_id);
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // The task finishes but is retryable.
+  rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
+  ASSERT_EQ(out.size(), 1);
+  ASSERT_TRUE(rc->HasReference(id));
+
+  // The task return ID goes out of scope.
+  ASSERT_TRUE(lineage_deleted.empty());
+  rc->RemoveLocalReference(downstream_id, &out);
+  // The removal of the return ID should have recursively deleted id also.
+  ASSERT_EQ(out.size(), 2);
+  ASSERT_EQ(lineage_deleted.size(), 2);
+  ASSERT_FALSE(rc->HasReference(id));
+  ASSERT_FALSE(rc->HasReference(downstream_id));
 }
 
 }  // namespace ray
