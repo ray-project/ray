@@ -299,7 +299,7 @@ class TFRunner:
                 for k, v in zip(self.model.metrics_names, self._history)
             }
         else:
-            res = {"loss": self._history}
+            res = {"validation_loss": self._history}
 
         return res
 
