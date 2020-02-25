@@ -40,5 +40,10 @@ public class Config {
   // operator type
   public static final String OPERATOR_TYPE = "operator_type";
 
+  // flow control
+  public static final String FLOW_CONTROL_TYPE = "streaming.flow_control_type";
+  public static final String WRITER_CONSUMED_STEP = "streaming.writer.consumed_step";
+  public static final String READER_CONSUMED_STEP = "streaming.reader.consumed_step";
+
 
 }

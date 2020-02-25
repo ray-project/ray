@@ -10,7 +10,7 @@ DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 
-cdef extern from "arrow/util/memory.h" namespace "arrow::internal" nogil:
+cdef extern from "ray/util/memory.h" namespace "ray" nogil:
     void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
                           uintptr_t block_size, int num_threads)
 

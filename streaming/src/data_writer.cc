@@ -15,50 +15,6 @@
 namespace ray {
 namespace streaming {
 
-void DataWriter::WriterLoopForward() {
-  STREAMING_CHECK(RuntimeStatus::Running == runtime_context_->GetRuntimeStatus());
-  while (true) {
-    int64_t min_passby_message_ts = std::numeric_limits<int64_t>::max();
-    uint32_t empty_messge_send_count = 0;
-
-    for (auto &output_queue : output_queue_ids_) {
-      if (RuntimeStatus::Running != runtime_context_->GetRuntimeStatus()) {
-        return;
-      }
-      ProducerChannelInfo &channel_info = channel_info_map_[output_queue];
-      bool is_push_empty_message = false;
-      StreamingStatus write_status =
-          WriteChannelProcess(channel_info, &is_push_empty_message);
-      int64_t current_ts = current_time_ms();
-      if (StreamingStatus::OK == write_status) {
-        channel_info.message_pass_by_ts = current_ts;
-        if (is_push_empty_message) {
-          min_passby_message_ts =
-              std::min(channel_info.message_pass_by_ts, min_passby_message_ts);
-          empty_messge_send_count++;
-        }
-      } else if (StreamingStatus::FullChannel == write_status) {
-      } else {
-        if (StreamingStatus::EmptyRingBuffer != write_status) {
-          STREAMING_LOG(DEBUG) << "write buffer status => "
-                               << static_cast<uint32_t>(write_status)
-                               << ", is push empty message => " << is_push_empty_message;
-        }
-      }
-    }
-
-    if (empty_messge_send_count == output_queue_ids_.size()) {
-      // Sleep if empty message was sent in all channel.
-      uint64_t sleep_time_ = current_time_ms() - min_passby_message_ts;
-      // Sleep_time can be bigger than time interval because of network jitter.
-      if (sleep_time_ <= runtime_context_->GetConfig().GetEmptyMessageTimeInterval()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(
-            runtime_context_->GetConfig().GetEmptyMessageTimeInterval() - sleep_time_));
-      }
-    }
-  }
-}
-
 StreamingStatus DataWriter::WriteChannelProcess(ProducerChannelInfo &channel_info,
                                                 bool *is_empty_message) {
   // No message in buffer, empty message will be sent to downstream queue.
@@ -100,6 +56,8 @@ void DataWriter::Run() {
   // Enable empty message timer after writer running.
   empty_message_thread_ =
       std::make_shared<std::thread>(&DataWriter::EmptyMessageTimerCallback, this);
+  flow_control_thread_ =
+      std::make_shared<std::thread>(&DataWriter::FlowControlTimer, this);
 }
 
 /// Since every memory ring buffer's size is limited, when the writing buffer is
@@ -192,12 +150,24 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
       return status;
     }
   }
+
+  switch (runtime_context_->GetConfig().GetFlowControlType()) {
+  case proto::FlowControlType::UnconsumedSeqFlowControl:
+    flow_controller_ = std::make_shared<UnconsumedSeqFlowControl>(
+        channel_map_, runtime_context_->GetConfig().GetWriterConsumedStep());
+    break;
+  default:
+    flow_controller_ = std::make_shared<NoFlowControl>();
+    break;
+  }
   // Register empty event and user event to event server.
   event_service_ = std::make_shared<EventService>();
   event_service_->Register(
       EventType::EmptyEvent,
       std::bind(&DataWriter::SendEmptyToChannel, this, std::placeholders::_1));
   event_service_->Register(EventType::UserEvent, std::bind(&DataWriter::WriteAllToChannel,
+                                                           this, std::placeholders::_1));
+  event_service_->Register(EventType::FlowEvent, std::bind(&DataWriter::WriteAllToChannel,
                                                            this, std::placeholders::_1));
 
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Running);
@@ -218,6 +188,10 @@ DataWriter::~DataWriter() {
     if (empty_message_thread_->joinable()) {
       STREAMING_LOG(INFO) << "Empty message thread waiting for join";
       empty_message_thread_->join();
+    }
+    if (flow_control_thread_->joinable()) {
+      STREAMING_LOG(INFO) << "FlowControl timer thread waiting for join";
+      flow_control_thread_->join();
     }
     int user_event_count = 0;
     int empty_event_count = 0;
@@ -358,6 +332,16 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
     if (RuntimeStatus::Running != runtime_context_->GetRuntimeStatus()) {
       return false;
     }
+    // Stop to write remained messages to channel if channel has been blocked by
+    // flow control.
+    if (channel_info.flow_control) {
+      break;
+    }
+    // Check this channel is blocked by flow control or not.
+    if (flow_controller_->ShouldFlowControl(channel_info)) {
+      channel_info.flow_control = true;
+      break;
+    }
     uint64_t ring_buffer_remain = channel_info.writer_ring_buffer->Size();
     StreamingStatus write_status = WriteBufferToChannel(channel_info, ring_buffer_remain);
     int64_t current_ts = current_time_ms();
@@ -365,11 +349,11 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
       channel_info.message_pass_by_ts = current_ts;
     } else if (StreamingStatus::FullChannel == write_status ||
                StreamingStatus::OutOfMemory == write_status) {
+      channel_info.flow_control = true;
       ++channel_info.queue_full_cnt;
       STREAMING_LOG(DEBUG) << "FullChannel after writing to channel, queue_full_cnt:"
                            << channel_info.queue_full_cnt;
-      // TODO(lingxuan.zlx): we should notify consumed status to channel when
-      // flow control is supported.
+      RefreshChannelAndNotifyConsumed(channel_info);
     } else if (StreamingStatus::EmptyRingBuffer != write_status) {
       STREAMING_LOG(INFO) << channel_info.channel_id
                           << ":something wrong when WriteToQueue "
@@ -445,6 +429,55 @@ void DataWriter::EmptyMessageTimerCallback() {
         runtime_context_->GetConfig().GetEmptyMessageTimeInterval() - current_ts +
         min_passby_message_ts));
   }
+}
+
+void DataWriter::RefreshChannelAndNotifyConsumed(ProducerChannelInfo &channel_info) {
+  // Refresh current downstream consumed seq id.
+  channel_map_[channel_info.channel_id]->RefreshChannelInfo();
+  // Notify the consumed information to local channel.
+  NotifyConsumedItem(channel_info, channel_info.queue_info.consumed_seq_id);
+}
+
+void DataWriter::NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset) {
+  if (offset > channel_info.current_seq_id) {
+    STREAMING_LOG(WARNING) << "Can not notify consumed this offset " << offset
+                           << " that's out of range, max seq id "
+                           << channel_info.current_seq_id;
+  } else {
+    channel_map_[channel_info.channel_id]->NotifyChannelConsumed(offset);
+  }
+}
+
+void DataWriter::FlowControlTimer() {
+  std::chrono::milliseconds MockTimer(
+      runtime_context_->GetConfig().GetEventDrivenFlowControlInterval());
+  while (true) {
+    if (runtime_context_->GetRuntimeStatus() != RuntimeStatus::Running) {
+      return;
+    }
+    for (const auto &output_queue : output_queue_ids_) {
+      if (runtime_context_->GetRuntimeStatus() != RuntimeStatus::Running) {
+        return;
+      }
+      ProducerChannelInfo &channel_info = channel_info_map_[output_queue];
+      if (!channel_info.flow_control) {
+        continue;
+      }
+      if (!flow_controller_->ShouldFlowControl(channel_info)) {
+        channel_info.flow_control = false;
+        Event event{&channel_info, EventType::FlowEvent,
+                    channel_info.writer_ring_buffer->IsFull()};
+        event_service_->Push(event);
+        ++channel_info.flow_control_cnt;
+      }
+    }
+    std::this_thread::sleep_for(MockTimer);
+  }
+}
+
+void DataWriter::GetOffsetInfo(
+    std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map) {
+  offset_map = &channel_info_map_;
 }
 
 }  // namespace streaming

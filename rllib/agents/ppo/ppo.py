@@ -96,10 +96,12 @@ def choose_policy_optimizer(workers, config):
 
 
 def update_kl(trainer, fetches):
+    # Single-agent.
     if "kl" in fetches:
-        # single-agent
         trainer.workers.local_worker().for_policy(
             lambda pi: pi.update_kl(fetches["kl"]))
+
+    # Multi-agent.
     else:
 
         def update(pi, pi_id):
@@ -108,7 +110,6 @@ def update_kl(trainer, fetches):
             else:
                 logger.debug("No data for {}, not updating kl".format(pi_id))
 
-        # multi-agent
         trainer.workers.local_worker().foreach_trainable_policy(update)
 
 
