@@ -80,6 +80,9 @@ class Trainer(UnpatchedTrainer):
             if tf and not tf.executing_eagerly():
                 logger.info("Tip: set 'eager': true or the --eager flag to enable "
                             "TensorFlow eager execution")
+        else:
+            self.local_evaluator = None
+            self.remote_evaluators = []
 
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
@@ -316,9 +319,9 @@ class Trainer(UnpatchedTrainer):
                 "policy_graphs",
                 self.config["multiagent"].get("policies")
             )
-            local_evaluator = self.make_local_evaluator(env_creator, policy, config)
-            remote_evaluators = self.make_remote_evaluators(env_creator, policy, num_workers)
-            return local_evaluator, remote_evaluators
+            self.local_evaluator = self.make_local_evaluator(env_creator, policy, config)
+            self.remote_evaluators = self.make_remote_evaluators(env_creator, policy, num_workers)
+            return self.local_evaluator, self.remote_evaluators
 
     @ray_8_only
     @DeveloperAPI
@@ -517,10 +520,16 @@ class Trainer(UnpatchedTrainer):
 
         This is the same data as returned by a call to train().
         """
-        return self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"],
-            min_history=self.config["metrics_smoothing_episodes"],
-            selected_workers=selected_workers)
+        if using_ray_8():
+            return self.optimizer.collect_metrics(
+                self.config["collect_metrics_timeout"],
+                min_history=self.config["metrics_smoothing_episodes"],
+                selected_workers=selected_workers)
+        else:
+            return self.optimizer.collect_metrics(
+                self.config["collect_metrics_timeout"],
+                min_history=self.config["metrics_smoothing_episodes"],
+                selected_evaluators=selected_workers)
 
     @classmethod
     def resource_help(cls, config):

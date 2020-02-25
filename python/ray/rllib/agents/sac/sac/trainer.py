@@ -141,12 +141,20 @@ def setup_exploration(trainer):
 def update_worker_explorations(trainer):
     global_timestep = trainer.optimizer.num_steps_sampled
     exp_vals = [trainer.exploration0.value(global_timestep)]
-    trainer.workers.local_worker().foreach_trainable_policy(
-        lambda p, _: p.set_epsilon(exp_vals[0]))
-    for i, e in enumerate(trainer.workers.remote_workers()):
-        exp_val = trainer.explorations[i].value(global_timestep)
-        e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
-        exp_vals.append(exp_val)
+    if using_ray_8():
+        trainer.workers.local_worker().foreach_trainable_policy(
+            lambda p, _: p.set_epsilon(exp_vals[0]))
+        for i, e in enumerate(trainer.workers.remote_workers()):
+            exp_val = trainer.explorations[i].value(global_timestep)
+            e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+            exp_vals.append(exp_val)
+    else:
+        trainer.local_evaluator.foreach_trainable_policy(
+            lambda p, _: p.set_epsilon(exp_vals[0]))
+        for i, e in enumerate(trainer.remote_evaluators):
+            exp_val = trainer.explorations[i].value(global_timestep)
+            e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+            exp_vals.append(exp_val)
     trainer.train_start_timestep = global_timestep
     trainer.cur_exp_vals = exp_vals
 
@@ -166,8 +174,12 @@ def update_target_if_needed(trainer, fetches):
     global_timestep = trainer.optimizer.num_steps_sampled
     if global_timestep - trainer.state["last_target_update_ts"] > \
         trainer.config["target_network_update_freq"]:
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.update_target())
+        if using_ray_8():
+            trainer.workers.local_worker().foreach_trainable_policy(
+                lambda p, _: p.update_target())
+        else:
+            trainer.local_evaluator.foreach_trainable_policy(
+                lambda p, _: p.update_target())
         trainer.state["last_target_update_ts"] = global_timestep
         trainer.state["num_target_updates"] += 1
 
