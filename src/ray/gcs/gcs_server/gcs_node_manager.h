@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_NODE_MANAGER_H
 #define RAY_GCS_NODE_MANAGER_H
 
@@ -6,7 +20,6 @@
 #include <ray/rpc/client_call.h>
 
 namespace ray {
-
 namespace gcs {
 class RedisGcsClient;
 /// GcsNodeManager is responsible for managing and monitoring nodes.
@@ -18,6 +31,46 @@ class GcsNodeManager {
   /// \param gcs_client The client of gcs to access/pub/sub data.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           std::shared_ptr<gcs::RedisGcsClient> gcs_client);
+
+  /// Add an alive node.
+  ///
+  /// \param node The info of the node to be added.
+  void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node);
+
+  /// Remove from alive nodes.
+  ///
+  /// \param node_id The ID of the node to be removed.
+  void RemoveNode(const ClientID &node_id);
+
+  /// Get alive node by ID.
+  ///
+  /// \param node_id The id of the node.
+  /// \return the node if it is alive else return nullptr.
+  std::shared_ptr<rpc::GcsNodeInfo> GetNode(const ClientID &node_id) const;
+
+  /// Get all alive nodes.
+  ///
+  /// \return all alive nodes.
+  const std::unordered_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
+      &GetAllAliveNodes() const;
+
+  /// Add listener to monitor the remove action of nodes.
+  ///
+  /// \param listener The handler which process the remove of nodes.
+  void AddNodeRemovedListener(
+      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> &&listener) {
+    RAY_CHECK(listener);
+    node_removed_listeners_.emplace_back(std::move(listener));
+  }
+
+  /// Add listener to monitor the add action of nodes.
+  ///
+  /// \param listener The handler which process the add of nodes.
+  void AddNodeAddedListener(
+      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> &&listener) {
+    RAY_CHECK(listener);
+    node_added_listeners_.emplace_back(std::move(listener));
+  }
 
   /// Handle a heartbeat from a Raylet.
   ///
@@ -47,7 +100,8 @@ class GcsNodeManager {
   void ScheduleTick();
 
  private:
-  rpc::ClientCallManager client_call_manager_;
+  /// Alive nodes.
+  std::unordered_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// A client to the GCS, through which heartbeats are received.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The number of heartbeats that can be missed before a node is removed.
@@ -61,6 +115,12 @@ class GcsNodeManager {
   std::unordered_set<ClientID> dead_nodes_;
   /// A buffer containing heartbeats received from node managers in the last tick.
   std::unordered_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+  /// Listeners which monitors the addition of nodes.
+  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
+      node_added_listeners_;
+  /// Listeners which monitors the removal of nodes.
+  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
+      node_removed_listeners_;
 };
 
 }  // namespace gcs

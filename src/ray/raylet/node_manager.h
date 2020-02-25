@@ -731,6 +731,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
   /// Queue tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
+  /// The cache of the leased workers for actor creation task and it's indexer.
+  std::unordered_map<ActorID, std::shared_ptr<Worker>> actor_to_leased_worker_;
+  std::unordered_map<WorkerID, ActorID> leased_worker_to_actor_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this

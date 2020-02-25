@@ -1,16 +1,27 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "gcs_node_manager.h"
 #include <ray/common/ray_config.h>
 #include <ray/gcs/pb_util.h>
-#include <ray/rpc/node_manager/node_manager_client.h>
 #include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 namespace gcs {
-
 GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
                                std::shared_ptr<gcs::RedisGcsClient> gcs_client)
-    : client_call_manager_(io_service),
-      gcs_client_(std::move(gcs_client)),
+    : gcs_client_(std::move(gcs_client)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {
   Start();
@@ -39,6 +50,8 @@ void GcsNodeManager::Start() {
         // its heartbeat event.
         heartbeats_.emplace(ClientID::FromBinary(node_info.node_id()),
                             num_heartbeats_timeout_);
+        // Add node to local cache.
+        AddNode(std::make_shared<rpc::GcsNodeInfo>(std::move(node_info)));
       }
     }
     Tick();
@@ -72,13 +85,14 @@ void GcsNodeManager::DetectDeadNodes() {
             }
           }
           if (!marked) {
+            RemoveNode(node_id);
             RAY_CHECK_OK(gcs_client_->Nodes().AsyncUnregister(node_id, nullptr));
             // Broadcast a warning to all of the drivers indicating that the node
             // has been marked as dead.
             // TODO(rkn): Define this constant somewhere else.
             std::string type = "node_removed";
             std::ostringstream error_message;
-            error_message << "The node with node ID " << node_id
+            error_message << "The node with node id " << node_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
             auto error_data_ptr =
@@ -121,6 +135,43 @@ void GcsNodeManager::ScheduleTick() {
     RAY_CHECK(!error) << "Checking heartbeat failed with error: " << error.message();
     Tick();
   });
+}
+
+std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
+    const ray::ClientID &node_id) const {
+  auto iter = alive_nodes_.find(node_id);
+  if (iter == alive_nodes_.end()) {
+    return nullptr;
+  }
+
+  return iter->second;
+}
+
+const std::unordered_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
+    &GcsNodeManager::GetAllAliveNodes() const {
+  return alive_nodes_;
+}
+
+void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
+  auto node_id = ClientID::FromBinary(node->node_id());
+  auto iter = alive_nodes_.find(node_id);
+  if (iter == alive_nodes_.end()) {
+    alive_nodes_.emplace(node_id, node);
+    for (auto &listener : node_added_listeners_) {
+      listener(node);
+    }
+  }
+}
+
+void GcsNodeManager::RemoveNode(const ray::ClientID &node_id) {
+  auto iter = alive_nodes_.find(node_id);
+  if (iter != alive_nodes_.end()) {
+    auto node = std::move(iter->second);
+    alive_nodes_.erase(iter);
+    for (auto &listener : node_removed_listeners_) {
+      listener(node);
+    }
+  }
 }
 
 }  // namespace gcs

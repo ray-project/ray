@@ -79,7 +79,7 @@ ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : subscribe_id_(ClientID::FromRandom()),
       client_impl_(client_impl),
-      actor_sub_executor_(client_impl->GetRedisGcsClient().log_based_actor_table()) {}
+      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
 
 Status ServiceBasedActorInfoAccessor::GetAll(
     std::vector<ActorTableData> *actor_table_data_list) {
@@ -102,6 +102,22 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", actor id = " << actor_id;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  RAY_CHECK(task_spec.IsActorCreationTask() && callback);
+  rpc::CreateActorRequest request;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  client_impl_->GetGcsRpcClient().CreateActor(
+      request, [callback](const Status &, const rpc::CreateActorReply &reply) {
+        auto status =
+            reply.status().code() == (int)StatusCode::OK
+                ? Status()
+                : Status(StatusCode(reply.status().code()), reply.status().message());
+        callback(status);
       });
   return Status::OK();
 }

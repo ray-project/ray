@@ -804,21 +804,25 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   if (it == actor_registry_.end()) {
     it = actor_registry_.emplace(actor_id, actor_registration).first;
   } else {
-    // Only process the state transition if it is to a later state than ours.
-    if (actor_registration.GetState() > it->second.GetState() &&
-        actor_registration.GetRemainingReconstructions() ==
-            it->second.GetRemainingReconstructions()) {
-      // The new state is later than ours if it is about the same lifetime, but
-      // a greater state.
-      it->second = actor_registration;
-    } else if (actor_registration.GetRemainingReconstructions() <
-               it->second.GetRemainingReconstructions()) {
-      // The new state is also later than ours it is about a later lifetime of
-      // the actor.
+    if (RayConfig::instance().gcs_service_enabled()) {
       it->second = actor_registration;
     } else {
-      // Our state is already at or past the update, so skip the update.
-      return;
+      // Only process the state transition if it is to a later state than ours.
+      if (actor_registration.GetState() > it->second.GetState() &&
+          actor_registration.GetRemainingReconstructions() ==
+              it->second.GetRemainingReconstructions()) {
+        // The new state is later than ours if it is about the same lifetime, but
+        // a greater state.
+        it->second = actor_registration;
+      } else if (actor_registration.GetRemainingReconstructions() <
+                 it->second.GetRemainingReconstructions()) {
+        // The new state is also later than ours it is about a later lifetime of
+        // the actor.
+        it->second = actor_registration;
+      } else {
+        // Our state is already at or past the update, so skip the update.
+        return;
+      }
     }
   }
   RAY_LOG(DEBUG) << "Actor notification received: actor_id = " << actor_id
@@ -867,13 +871,14 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
     }
-  } else {
-    RAY_CHECK(actor_registration.GetState() == ActorTableData::RECONSTRUCTING);
+  } else if (actor_registration.GetState() == ActorTableData::RECONSTRUCTING) {
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
-    // The actor is dead and needs reconstruction. Attempting to reconstruct its
-    // creation task.
-    reconstruction_policy_.ListenAndMaybeReconstruct(
-        actor_registration.GetActorCreationDependency());
+    if (!RayConfig::instance().gcs_service_enabled()) {
+      // The actor is dead and needs reconstruction. Attempting to reconstruct its
+      // creation task.
+      reconstruction_policy_.ListenAndMaybeReconstruct(
+          actor_registration.GetActorCreationDependency());
+    }
 
     // When an actor fails but can be reconstructed, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
@@ -883,6 +888,9 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     for (auto const &task : removed_tasks) {
       SubmitTask(task, Lineage());
     }
+  } else {
+    RAY_CHECK(actor_registration.GetState() == ActorTableData::PENDING);
+    // Do nothing.
   }
 }
 
@@ -1118,6 +1126,11 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
 void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                           bool intentional_disconnect) {
+  if (RayConfig::instance().gcs_service_enabled()) {
+    // If gcs actor management is enabled, the gcs will take over the status change of all
+    // actors.
+    return;
+  }
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
   auto &actor_registration = actor_entry->second;
@@ -1223,6 +1236,9 @@ void NodeManager::ProcessDisconnectClientMessage(
   // particular, we are no longer waiting for their dependencies.
   if (worker) {
     if (is_worker && worker->IsDead()) {
+      // If the worker was killed by us because the driver exited,
+      // treat it as intentionally disconnected.
+      intentional_disconnect = true;
       // Don't need to unblock the client if it's a worker and is already dead.
       // Because in this case, its task is already cleaned up.
       RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
@@ -1241,22 +1257,26 @@ void NodeManager::ProcessDisconnectClientMessage(
     // Erase any lease metadata.
     leased_workers_.erase(worker->WorkerId());
 
+    if (RayConfig::instance().gcs_service_enabled()) {
+      auto iter = leased_worker_to_actor_.find(worker->WorkerId());
+      if (iter != leased_worker_to_actor_.end()) {
+        // Erase the leased actor worker and its indexer as the leased worker is dead.
+        // For more details please see the protocol of actor management based on gcs.
+        // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
+        actor_to_leased_worker_.erase(iter->second);
+        leased_worker_to_actor_.erase(iter);
+      }
+    }
+
     // Publish the worker failure.
     auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
         self_node_id_, worker->WorkerId(), initial_config_.node_manager_address,
-        worker->Port());
+        worker->Port(), time(nullptr), intentional_disconnect);
     RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
                                                                  nullptr));
   }
 
   if (is_worker) {
-    // The client is a worker.
-    if (worker->IsDead()) {
-      // If the worker was killed by us because the driver exited,
-      // treat it as intentionally disconnected.
-      intentional_disconnect = true;
-    }
-
     const ActorID &actor_id = worker->GetActorId();
     if (!actor_id.IsNil()) {
       // If the worker was an actor, update actor state, reconstruct the actor if needed,
@@ -1568,6 +1588,8 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     }
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
+      // The actor belongs to this worker now.
+      worker->AssignActorId(spec.ActorCreationId());
       worker->SetLifetimeAllocatedInstances(allocated_instances);
     } else {
       worker->SetAllocatedInstances(allocated_instances);
@@ -1646,7 +1668,69 @@ void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   } else {
     tasks_to_dispatch_.push_back(work);
   }
-};
+}
+
+static void FillResourcesToReply(
+    rpc::RequestWorkerLeaseReply *reply,
+    std::shared_ptr<TaskResourceInstances> allocated_resources,
+    std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler) {
+// TODO (Ion): Fix handling floating point errors, maybe by moving to integers.
+#define ZERO_CAPACITY 1.0e-5
+  auto predefined_resources = allocated_resources->predefined_resources;
+  ::ray::rpc::ResourceMapEntry *resource;
+  for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
+    bool first = true;  // Set resource name only if at least one of its
+    // instances has available capacity.
+    for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
+         inst_idx++) {
+      if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
+        if (first) {
+          resource = reply->add_resource_mapping();
+          resource->set_name(new_resource_scheduler->GetResourceNameFromIndex(res_idx));
+          first = false;
+        }
+        auto rid = resource->add_resource_ids();
+        rid->set_index(inst_idx);
+        rid->set_quantity(predefined_resources[res_idx][inst_idx]);
+      }
+    }
+  }
+  auto custom_resources = allocated_resources->custom_resources;
+  for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
+    bool first = true;  // Set resource name only if at least one of its
+    // instances has available capacity.
+    for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
+      if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
+        if (first) {
+          resource = reply->add_resource_mapping();
+          resource->set_name(new_resource_scheduler->GetResourceNameFromIndex(it->first));
+          first = false;
+        }
+        auto rid = resource->add_resource_ids();
+        rid->set_index(inst_idx);
+        rid->set_quantity(it->second[inst_idx]);
+      }
+    }
+  }
+}
+
+static void FillResourcesToReply(rpc::RequestWorkerLeaseReply *reply,
+                                 const ResourceIdSet &resource_ids) {
+  for (const auto &mapping : resource_ids.AvailableResources()) {
+    auto resource = reply->add_resource_mapping();
+    resource->set_name(mapping.first);
+    for (const auto &id : mapping.second.WholeIds()) {
+      auto rid = resource->add_resource_ids();
+      rid->set_index(id);
+      rid->set_quantity(1.0);
+    }
+    for (const auto &id : mapping.second.FractionalIds()) {
+      auto rid = resource->add_resource_ids();
+      rid->set_index(id.first);
+      rid->set_quantity(id.second.ToDouble());
+    }
+  }
+}
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
@@ -1659,6 +1743,32 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
+    if (RayConfig::instance().gcs_service_enabled()) {
+      // When restart, the gcs server will lease a worker from raylet and send actor
+      // creation task to the leased worker, if the raylet is still alive and the actor
+      // is is already tied with a leased worker in `actor_to_leased_worker_`, the raylet
+      // should reply back the leased worker to gcs server immediately and do nothing.
+      // For more details please see the protocol of actor management based on gcs.
+      // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
+      auto iter = actor_to_leased_worker_.find(actor_id);
+      if (iter != actor_to_leased_worker_.end()) {
+        // The actor is already leased a worker, reply directly.
+        auto worker = iter->second;
+        reply->mutable_worker_address()->set_ip_address(
+            initial_config_.node_manager_address);
+        reply->mutable_worker_address()->set_port(worker->Port());
+        reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+        reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+        if (new_scheduler_enabled_) {
+          FillResourcesToReply(reply, worker->GetLifetimeAllocatedInstances(),
+                               new_resource_scheduler_);
+        } else {
+          FillResourcesToReply(reply, worker->GetLifetimeResourceIds());
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+        return;
+      }
+    }
 
     // Save the actor creation task spec to GCS, which is needed to
     // reconstruct the actor when raylet detect it dies.
@@ -1681,52 +1791,23 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
             reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
-            leased_workers_[worker->WorkerId()] = worker;
-// TODO (Ion): Fix handling floating point errors, maybe by moving to integers.
-#define ZERO_CAPACITY 1.0e-5
             std::shared_ptr<TaskResourceInstances> allocated_resources;
             if (task_spec.IsActorCreationTask()) {
               allocated_resources = worker->GetLifetimeAllocatedInstances();
             } else {
               allocated_resources = worker->GetAllocatedInstances();
             }
-            auto predefined_resources = allocated_resources->predefined_resources;
-            ::ray::rpc::ResourceMapEntry *resource;
-            for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
-              bool first = true;  // Set resource name only if at least one of its
-                                  // instances has available capacity.
-              for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
-                   inst_idx++) {
-                if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
-                  if (first) {
-                    resource = reply->add_resource_mapping();
-                    resource->set_name(
-                        new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
-                    first = false;
-                  }
-                  auto rid = resource->add_resource_ids();
-                  rid->set_index(inst_idx);
-                  rid->set_quantity(predefined_resources[res_idx][inst_idx]);
-                }
-              }
-            }
-            auto custom_resources = allocated_resources->custom_resources;
-            for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
-              bool first = true;  // Set resource name only if at least one of its
-                                  // instances has available capacity.
-              for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-                if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
-                  if (first) {
-                    resource = reply->add_resource_mapping();
-                    resource->set_name(
-                        new_resource_scheduler_->GetResourceNameFromIndex(it->first));
-                    first = false;
-                  }
-                  auto rid = resource->add_resource_ids();
-                  rid->set_index(inst_idx);
-                  rid->set_quantity(it->second[inst_idx]);
-                }
-              }
+            FillResourcesToReply(reply, allocated_resources, new_resource_scheduler_);
+            leased_workers_[worker->WorkerId()] = worker;
+            if (RayConfig::instance().gcs_service_enabled() &&
+                task_spec.IsActorCreationTask()) {
+              // Successfully leased worker from current node, just tied the worker with
+              // the actor. For more details please see the protocol of actor management
+              // based on gcs.
+              // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
+              auto actor_id = task_spec.ActorCreationId();
+              actor_to_leased_worker_[actor_id] = worker;
+              leased_worker_to_actor_[worker->WorkerId()] = actor_id;
             }
           } else {
             reply->mutable_retry_at_raylet_address()->set_ip_address(address);
@@ -1748,33 +1829,28 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   TaskID task_id = task.GetTaskSpecification().TaskId();
   rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
   task.OnDispatchInstead(
-      [this, owner_address, reply, send_reply_callback](
+      [this, actor_id, is_actor_creation_task, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
         reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-        for (const auto &mapping : resource_ids.AvailableResources()) {
-          auto resource = reply->add_resource_mapping();
-          resource->set_name(mapping.first);
-          for (const auto &id : mapping.second.WholeIds()) {
-            auto rid = resource->add_resource_ids();
-            rid->set_index(id);
-            rid->set_quantity(1.0);
-          }
-          for (const auto &id : mapping.second.FractionalIds()) {
-            auto rid = resource->add_resource_ids();
-            rid->set_index(id.first);
-            rid->set_quantity(id.second.ToDouble());
-          }
-        }
+        FillResourcesToReply(reply, resource_ids);
         send_reply_callback(Status::OK(), nullptr, nullptr);
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
 
         auto worker = std::static_pointer_cast<Worker>(granted);
         leased_workers_[worker_id] = worker;
+        if (RayConfig::instance().gcs_service_enabled() && is_actor_creation_task) {
+          // Successfully leased worker from current node, just tied the worker with
+          // the actor. For more details please see the protocol of actor management based
+          // on gcs.
+          // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
+          actor_to_leased_worker_[actor_id] = worker;
+          leased_worker_to_actor_[worker->WorkerId()] = actor_id;
+        }
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
@@ -2627,6 +2703,15 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
 
     if (task_spec.IsDetachedActor()) {
       worker.MarkDetachedActor();
+    }
+
+    if (RayConfig::instance().gcs_service_enabled()) {
+      // Gcs server is responsible for notifying other nodes of the changes of actor
+      // status, and thus raylet doesn't need to handle this anymore.
+      // And if `new_scheduler_enabled_` is true, this function `FinishAssignedActorTask`
+      // will not be called because raylet is not aware of the actual task when receiving
+      // a worker lease request.
+      return;
     }
 
     // Lookup the parent actor id.

@@ -15,6 +15,7 @@ import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.generated.Gcs;
 import org.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import org.ray.runtime.generated.Gcs.GcsNodeInfo;
@@ -27,9 +28,7 @@ import org.slf4j.LoggerFactory;
  * An implementation of GcsClient.
  */
 public class GcsClient {
-
   private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
-
   private RedisClient primary;
 
   private List<RedisClient> shards;
@@ -124,6 +123,29 @@ public class GcsClient {
     byte[] key = ArrayUtils.addAll(
         TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
     return primary.exists(key);
+  }
+
+  public boolean wasCurrentActorReconstructed(ActorId actorId) {
+    byte[] key = ArrayUtils.addAll(TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
+    if (!RayConfig.getInstance().gcsServiceEnabled) {
+      return primary.exists(key);
+    }
+
+    // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
+    byte[] value = primary.get(key);
+    if (value == null) {
+      return false;
+    }
+    Gcs.ActorTableData actorTableData = null;
+    try {
+      actorTableData = Gcs.ActorTableData.parseFrom(value);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+
+    long maxReconstructions = actorTableData.getMaxReconstructions();
+    long remainingReconstructions = actorTableData.getRemainingReconstructions();
+    return maxReconstructions - remainingReconstructions != 0;
   }
 
   /**

@@ -99,13 +99,15 @@ message TaskTableData {
 message ActorTableData {
   // State of an actor.
   enum ActorState {
+    // Actor is pending.
+    PENDING = 0;
     // Actor is alive.
-    ALIVE = 0;
+    ALIVE = 1;
     // Actor is dead, now being reconstructed.
     // After reconstruction finishes, the state will become alive again.
-    RECONSTRUCTING = 1;
+    RECONSTRUCTING = 2;
     // Actor is already dead and won't be reconstructed.
-    DEAD = 2;
+    DEAD = 3;
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
@@ -131,6 +133,8 @@ message ActorTableData {
   bool is_detached = 11;
   // Timestamp that the actor is created or reconstructed.
   double timestamp = 12;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 13;
 }
 
 message ErrorTableData {
@@ -295,6 +299,8 @@ message WorkerFailureData {
   Address worker_address = 1;
   // The UNIX timestamp at which the worker failed.
   int64 timestamp = 3;
+  // Is intentional disconnect
+  bool intentional_disconnect = 4;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating
