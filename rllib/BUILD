@@ -107,6 +107,13 @@ py_test(
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
+# TD3Trainer
+py_test(
+    name = "test_td3",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/ddpg/tests/test_td3.py"]
+)
 
 # --------------------------------------------------------------------
 # contrib Agents

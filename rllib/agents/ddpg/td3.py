@@ -6,9 +6,9 @@ TD3 paper.
 
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
-from ray.rllib.utils import merge_dicts
+from ray.rllib.utils import deep_update
 
-TD3_DEFAULT_CONFIG = merge_dicts(
+TD3_DEFAULT_CONFIG = deep_update(
     DDPG_CONFIG,
     {
         # largest changes: twin Q functions, delayed policy updates, and target
@@ -22,7 +22,7 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "exploration_config": {
             "type": "GaussianNoise",
             # Pure random phase, then (fixed) scaled Noise with stddev=0.1.
-            "random_steps": 10000,
+            "random_timesteps": 10000,
             "stddev": 0.1,
             "initial_scale": 0.02,
             "final_scale": 0.02,
@@ -57,6 +57,7 @@ TD3_DEFAULT_CONFIG = merge_dicts(
         "clip_rewards": False,
         "use_state_preprocessor": False,
     },
+    override_all_if_type_changes=["exploration_config"]
 )
 
 TD3Trainer = DDPGTrainer.with_updates(
