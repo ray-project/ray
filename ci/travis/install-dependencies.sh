@@ -47,12 +47,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  case "$(lsb_release -r -s || true)" in
-    16\.04|1[0-5]\.[0-9]*|[0-9]\.[0-9]*)
-      echo "This version of Ubuntu may not have strace configured with libunwind; attempting to build a newer version..." 1>&2
-      (git clone -q --depth=1 https://github.com/strace/strace -b v5.5 && cd strace && ./bootstrap > /dev/null && ./configure --quiet --with-libunwind --enable-mpers=no && make -s -j"$(getconf _NPROCESSORS_ONLN || echo 1)" && sudo make install || true)
-      ;;
-  esac
+  "${ROOT_DIR}/install-strace.sh" || true
   pip install scipy tensorflow==$tf_version \
     cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
