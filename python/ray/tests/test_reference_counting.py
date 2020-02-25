@@ -596,6 +596,44 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
 
 
+# Call a recursive chain of tasks. The final task in the chain returns an
+# ObjectID returned by a task that it submitted. Every other task in the chain
+# returns the same ObjectID by calling ray.get() on its submitted task and
+# returning the result. The reference should still exist while the driver has a
+# reference to the final task's ObjectID.
+def test_recursively_return_borrowed_object_id(one_worker_100MiB):
+    @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote
+    def recursive(num_tasks_left):
+        if num_tasks_left == 0:
+            return put.remote()
+
+        final_id = ray.get(recursive.remote(num_tasks_left - 1))
+        ray.get(final_id)
+        return final_id
+
+    max_depth = 5
+    head_oid = recursive.remote(max_depth)
+    final_oid = ray.get(head_oid)
+    final_oid_bytes = final_oid.binary()
+
+    # Check that the driver's reference pins the object.
+    _fill_object_store_and_get(final_oid_bytes)
+
+    # Remove the local reference and try it again.
+    final_oid = ray.get(head_oid)
+    _fill_object_store_and_get(final_oid_bytes)
+
+    # Remove all references.
+    del head_oid
+    del final_oid
+    # Reference should be gone, check that returned ID gets evicted.
+    _fill_object_store_and_get(final_oid_bytes, succeed=False)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

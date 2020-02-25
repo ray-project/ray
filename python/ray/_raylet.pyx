@@ -112,7 +112,7 @@ include "includes/libcoreworker.pxi"
 
 logger = logging.getLogger(__name__)
 
-MEMCOPY_THREADS = 12
+MEMCOPY_THREADS = 6
 
 
 def set_internal_config(dict options):

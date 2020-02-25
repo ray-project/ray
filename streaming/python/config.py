@@ -21,3 +21,8 @@ class Config:
 
     # operator type
     OPERATOR_TYPE = "operator_type"
+
+    # flow control
+    FLOW_CONTROL_TYPE = "streaming.flow_control_type"
+    WRITER_CONSUMED_STEP = "streaming.writer.consumed_step"
+    READER_CONSUMED_STEP = "streaming.reader.consumed_step"

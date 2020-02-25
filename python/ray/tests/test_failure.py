@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 
 import numpy as np
 import pytest
@@ -80,6 +81,56 @@ def test_failed_task(ray_start_regular):
     else:
         # ray.get should throw an exception.
         assert False
+
+
+def test_get_throws_quickly_when_found_exception(ray_start_regular):
+    def random_path():
+        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
+
+    def touch(path):
+        with open(path, "w"):
+            pass
+
+    def wait_for_file(path):
+        while True:
+            if os.path.exists(path):
+                break
+            time.sleep(0.1)
+
+    # We use an actor instead of functions here. If we use functions, it's
+    # very likely that two normal tasks are submitted before the first worker
+    # is registered to Raylet. Since `maximum_startup_concurrency` is 1,
+    # the worker pool will wait for the registration of the first worker
+    # and skip starting new workers. The result is, the two tasks will be
+    # executed sequentially, which breaks an assumption of this test case -
+    # the two tasks run in parallel.
+    @ray.remote
+    class Actor(object):
+        def bad_func1(self):
+            raise Exception("Test function intentionally failed.")
+
+        def bad_func2(self):
+            os._exit(0)
+
+        def slow_func(self, path):
+            wait_for_file(path)
+
+    def expect_exception(objects, exception):
+        with pytest.raises(ray.exceptions.RayError) as err:
+            ray.get(objects)
+        assert err.type is exception
+
+    f = random_path()
+    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    expect_exception([actor.bad_func1.remote(),
+                      actor.slow_func.remote(f)], ray.exceptions.RayTaskError)
+    touch(f)
+
+    f = random_path()
+    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    expect_exception([actor.bad_func2.remote(),
+                      actor.slow_func.remote(f)], ray.exceptions.RayActorError)
+    touch(f)
 
 
 def test_fail_importing_remote_function(ray_start_2_cpus):
