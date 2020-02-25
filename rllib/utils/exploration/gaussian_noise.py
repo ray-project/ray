@@ -20,6 +20,7 @@ class GaussianNoise(Exploration):
 
     def __init__(self,
                  action_space,
+                 *,
                  random_timesteps=1000,
                  stddev=0.1,
                  initial_scale=1.0,
@@ -49,10 +50,11 @@ class GaussianNoise(Exploration):
             framework (Optional[str]): One of None, "tf", "torch".
         """
         assert framework is not None
-        super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
+        super().__init__(action_space, framework=framework, **kwargs)
+
         self.random_timesteps = random_timesteps
-        self.random_exploration = Random(action_space, framework=framework)
+        self.random_exploration = Random(
+            action_space, framework=self.framework)
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
@@ -64,7 +66,7 @@ class GaussianNoise(Exploration):
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
-            0, framework=framework, tf_name="timestep")
+            0, framework=self.framework, tf_name="timestep")
 
     @override(Exploration)
     def get_exploration_action(self,

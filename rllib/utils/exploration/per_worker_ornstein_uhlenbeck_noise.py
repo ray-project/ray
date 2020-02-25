@@ -1,11 +1,12 @@
-from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
+from ray.rllib.utils.exploration.ornstein_uhlenbeck_noise import \
+    OrnsteinUhlenbeckNoise
 from ray.rllib.utils.schedules import ConstantSchedule
 
 
-class PerWorkerGaussianNoise(GaussianNoise):
-    """A per-worker Gaussian noise class for distributed algorithms.
+class PerWorkerOrnsteinUhlenbeckNoise(OrnsteinUhlenbeckNoise):
+    """A per-worker Ornstein Uhlenbeck noise class for distributed algorithms.
 
-    Sets the `scale` schedules of individual workers to a constant:
+    Sets the Gaussian `scale` schedules of individual workers to a constant:
     0.4 ^ (1 + [worker-index] / float([num-workers] - 1) * 7)
     See Ape-X paper.
     """

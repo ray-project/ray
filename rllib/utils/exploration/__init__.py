@@ -7,6 +7,8 @@ from ray.rllib.utils.exploration.per_worker_epsilon_greedy import \
     PerWorkerEpsilonGreedy
 from ray.rllib.utils.exploration.per_worker_gaussian_noise import \
     PerWorkerGaussianNoise
+from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
+    PerWorkerOrnsteinUhlenbeckNoise
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.exploration.soft_q import SoftQ
 from ray.rllib.utils.exploration.stochastic_sampling import \
@@ -19,6 +21,7 @@ __all__ = [
     "OrnsteinUhlenbeckNoise",
     "PerWorkerEpsilonGreedy",
     "PerWorkerGaussianNoise",
+    "PerWorkerOrnsteinUhlenbeckNoise",
     "Random",
     "SoftQ",
     "StochasticSampling",

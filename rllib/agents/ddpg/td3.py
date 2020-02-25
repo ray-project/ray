@@ -3,14 +3,11 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
-import copy
-
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
-from ray.rllib.utils import deep_update
 
-TD3_DEFAULT_CONFIG = deep_update(
-    copy.deepcopy(DDPG_CONFIG),
+TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
+    DDPG_CONFIG,
     {
         # largest changes: twin Q functions, delayed policy updates, and target
         # smoothing
@@ -59,8 +56,7 @@ TD3_DEFAULT_CONFIG = deep_update(
         "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
-    },
-    override_all_if_type_changes=["exploration_config"]
+    }
 )
 
 TD3Trainer = DDPGTrainer.with_updates(

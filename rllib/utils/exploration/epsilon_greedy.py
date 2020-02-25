@@ -38,8 +38,6 @@ class EpsilonGreedy(Exploration):
                 to use (instead of constructing one from the given parameters).
             framework (Optional[str]): One of None, "tf", "torch".
         """
-        # For now, require Discrete action space (may loosen this restriction
-        # in the future).
         assert framework is not None
         super().__init__(
             action_space=action_space, framework=framework, **kwargs)

@@ -18,9 +18,16 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
 
     def __init__(self,
                  action_space,
+                 *,
                  ou_theta=0.15,
                  ou_sigma=0.2,
                  ou_base_scale=0.1,
+                 random_timesteps=1000,
+                 initial_scale=1.0,
+                 final_scale=0.02,
+                 scale_timesteps=10000,
+                 scale_schedule=None,
+                 framework="tf",
                  **kwargs):
         """Initializes an Ornstein-Uhlenbeck Exploration object.
 
@@ -33,9 +40,30 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             ou_base_scale (float): A fixed scaling factor, by which all OU-
                 noise is multiplied. NOTE: This is on top of the parent
                 GaussianNoise's scaling.
+            random_timesteps (int): The number of timesteps for which to act
+                completely randomly. Only after this number of timesteps, the
+                `self.scale` annealing process will start (see below).
+            initial_scale (float): The initial scaling weight to multiply
+                the noise with.
+            final_scale (float): The final scaling weight to multiply
+                the noise with.
+            scale_timesteps (int): The timesteps over which to linearly anneal
+                the scaling factor (after(!) having used random actions for
+                `random_timesteps` steps.
+            scale_schedule (Optional[Schedule]): An optional Schedule object
+                to use (instead of constructing one from the given parameters).
+            framework (Optional[str]): One of None, "tf", "torch".
         """
-        # Force `self.stddev` to 1.0.
-        super().__init__(action_space=action_space, stddev=1.0, **kwargs)
+        super().__init__(
+            action_space,
+            random_timesteps=random_timesteps,
+            initial_scale=initial_scale,
+            final_scale=final_scale,
+            scale_timesteps=scale_timesteps,
+            scale_schedule=scale_schedule,
+            stddev=1.0,  # Force `self.stddev` to 1.0.
+            framework=framework,
+            **kwargs)
         self.ou_theta = ou_theta
         self.ou_sigma = ou_sigma
         self.ou_base_scale = ou_base_scale

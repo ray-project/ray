@@ -18,7 +18,7 @@ class Random(Exploration):
     If explore=False, returns the greedy/max-likelihood action.
     """
 
-    def __init__(self, action_space, framework="tf", **kwargs):
+    def __init__(self, action_space, *, framework="tf", **kwargs):
         """Initialize a Random Exploration object.
 
         Args:
@@ -27,6 +27,14 @@ class Random(Exploration):
         """
         super().__init__(
             action_space=action_space, framework=framework, **kwargs)
+
+        # Determine py_func types, depending on our action-space.
+        if isinstance(self.action_space, (Discrete, MultiDiscrete)) or \
+                (isinstance(self.action_space, Tuple) and
+                 isinstance(self.action_space[0], (Discrete, MultiDiscrete))):
+            self.dtype_sample, self.dtype = (tf.int64, tf.int32)
+        else:
+            self.dtype_sample, self.dtype = (tf.float64, tf.float32)
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -44,21 +52,14 @@ class Random(Exploration):
 
     @tf_function(tf)
     def get_tf_exploration_action_op(self, action_dist, explore):
-        # Determine py_func types, depending on our action-space.
-        if isinstance(self.action_space, (Discrete, MultiDiscrete)) or \
-                (isinstance(self.action_space, Tuple) and
-                 isinstance(self.action_space[0], (Discrete, MultiDiscrete))):
-            dtype_sample, dtype = (tf.int64, tf.int32)
-        else:
-            dtype_sample, dtype = (tf.float64, tf.float32)
-
         if explore:
-            action = tf.py_function(self.action_space.sample, [], dtype_sample)
+            action = tf.py_function(
+                self.action_space.sample, [], self.dtype_sample)
             # Will be unnecessary, once we support batch/time-aware Spaces.
-            action = tf.expand_dims(tf.cast(action, dtype=dtype), 0)
+            action = tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
         else:
             action = tf.cast(
-                action_dist.deterministic_sample(), dtype=dtype)
+                action_dist.deterministic_sample(), dtype=self.dtype)
 
         # TODO(sven): Move into (deterministic_)sample(logp=True|False)
         if isinstance(action, TupleActions):
@@ -69,11 +70,14 @@ class Random(Exploration):
         return action, logp
 
     def get_torch_exploration_action(self, action_dist, explore):
+        tensor_fn = torch.LongTensor if \
+            type(self.action_space) in [Discrete, MultiDiscrete] else \
+            torch.FloatTensor
         if explore:
             # Unsqueeze will be unnecessary, once we support batch/time-aware
             # Spaces.
-            action = torch.LongTensor(self.action_space.sample()).unsqueeze(0)
+            action = tensor_fn(self.action_space.sample()).unsqueeze(0)
         else:
-            action = torch.LongTensor(action_dist.deterministic_sample())
+            action = tensor_fn(action_dist.deterministic_sample())
         logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
         return action, logp
