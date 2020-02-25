@@ -146,9 +146,7 @@ def test_export(algo_name, failures):
 if __name__ == "__main__":
     failures = []
     for use_object_store in [False, True]:
-        for name in [
-                "DDPG"
-        ]:
+        for name in ["DDPG"]:
             test_ckpt_restore(use_object_store, name, failures)
 
     assert not failures, failures

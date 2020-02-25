@@ -553,8 +553,8 @@ class Trainer(Trainable):
         # Merge the supplied config with the class default, but store the
         # user-provided one.
         self.raw_user_config = config
-        self.config = Trainer.merge_trainer_configs(
-            self._default_config, config)
+        self.config = Trainer.merge_trainer_configs(self._default_config,
+                                                    config)
 
         if self.config["normalize_actions"]:
             inner = self.env_creator
@@ -879,9 +879,9 @@ class Trainer(Trainable):
     @classmethod
     def merge_trainer_configs(cls, config1, config2):
         config1 = copy.deepcopy(config1)
-        return deep_update(config1, config2,
-            cls._allow_unknown_configs, cls._allow_unknown_subkeys,
-            cls._override_all_subkeys_if_type_changes)
+        return deep_update(config1, config2, cls._allow_unknown_configs,
+                           cls._allow_unknown_subkeys,
+                           cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
     def _validate_config(config):

@@ -16,7 +16,6 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "smooth_target_policy": True,
         "target_noise": 0.2,
         "target_noise_clip": 0.5,
-
         "exploration_config": {
             # TD3 uses simple Gaussian noise on top of deterministic NN-output
             # actions (after a possible pure random phase of n timesteps).
@@ -56,8 +55,7 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
-    }
-)
+    })
 
 TD3Trainer = DDPGTrainer.with_updates(
     name="TD3", default_config=TD3_DEFAULT_CONFIG)

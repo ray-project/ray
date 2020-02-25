@@ -37,7 +37,8 @@ class PerWorkerOrnsteinUhlenbeckNoise(OrnsteinUhlenbeckNoise):
             else:
                 scale_schedule = ConstantSchedule(0.0)
 
-        super().__init__(action_space,
-                         scale_schedule=scale_schedule,
-                         framework=framework,
-                         **kwargs)
+        super().__init__(
+            action_space,
+            scale_schedule=scale_schedule,
+            framework=framework,
+            **kwargs)

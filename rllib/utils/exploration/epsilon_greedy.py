@@ -76,8 +76,8 @@ class EpsilonGreedy(Exploration):
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
-        epsilon = self.epsilon_schedule(
-            timestep if timestep is not None else self.last_timestep)
+        epsilon = self.epsilon_schedule(timestep if timestep is not None else
+                                        self.last_timestep)
 
         # Get the exploit action as the one with the highest logit value.
         exploit_action = tf.argmax(q_values, axis=1)

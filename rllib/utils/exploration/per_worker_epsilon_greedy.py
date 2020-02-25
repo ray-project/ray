@@ -36,7 +36,8 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
             else:
                 epsilon_schedule = ConstantSchedule(0.0)
 
-        super().__init__(action_space,
-                         epsilon_schedule=epsilon_schedule,
-                         framework=framework,
-                         **kwargs)
+        super().__init__(
+            action_space,
+            epsilon_schedule=epsilon_schedule,
+            framework=framework,
+            **kwargs)

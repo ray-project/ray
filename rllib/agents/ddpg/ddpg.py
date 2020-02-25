@@ -6,7 +6,6 @@ from ray.rllib.utils.deprecation import deprecation_warning, \
 from ray.rllib.utils.exploration.per_worker_gaussian_noise import \
     PerWorkerGaussianNoise
 
-
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
@@ -149,66 +148,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-#def make_exploration_schedule(config, worker_index):
-#    # Modification of DQN's schedule to take into account
-#    # `exploration_ou_noise_scale`
-#    if config["per_worker_exploration"]:
-#        assert config["num_workers"] > 1, "This requires multiple workers"
-#        if worker_index >= 0:
-#            # FIXME: what do magic constants mean? (0.4, 7)
-#            max_index = float(config["num_workers"] - 1)
-#            exponent = 1 + worker_index / max_index * 7
-#            return ConstantSchedule(0.4**exponent)
-#        else:
-#            # local ev should have zero exploration so that eval rollouts
-#            # run properly
-#            return ConstantSchedule(0.0)
-#    elif config["exploration_should_anneal"]:
-#        return PiecewiseSchedule(
-#            endpoints=[(0, 1.0), (int(config["exploration_fraction"] *
-#                                      config["schedule_max_timesteps"]),
-#                                  config["exploration_final_scale"])],
-#            outside_value=config["exploration_final_scale"])
-#    else:
-#        # *always* add exploration noise
-#        return ConstantSchedule(1.0)
-
-
-#def setup_ddpg_exploration(trainer):
-#    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
-#    trainer.explorations = [
-#        make_exploration_schedule(trainer.config, i)
-#        for i in range(trainer.config["num_workers"])
-#    ]
-
-
-#def update_worker_explorations(trainer):
-#    global_timestep = trainer.optimizer.num_steps_sampled
-#    exp_vals = [trainer.exploration0.value(global_timestep)]
-#    trainer.workers.local_worker().foreach_trainable_policy(
-#        lambda p, _: p.set_epsilon(exp_vals[0]))
-#    for i, e in enumerate(trainer.workers.remote_workers()):
-#        exp_val = trainer.explorations[i].value(global_timestep)
-#        e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
-#        exp_vals.append(exp_val)
-#    trainer.train_start_timestep = global_timestep
-#    trainer.exploration_infos = exp_vals
-
-
-#def add_pure_exploration_phase(trainer):
-#    global_timestep = trainer.optimizer.num_steps_sampled
-#    pure_expl_steps = trainer.config["pure_exploration_steps"]
-#    if pure_expl_steps:
-#        # tell workers whether they should do pure exploration
-#        only_explore = global_timestep < pure_expl_steps
-#        trainer.workers.local_worker().foreach_trainable_policy(
-#            lambda p, _: p.set_pure_exploration_phase(only_explore))
-#        for e in trainer.workers.remote_workers():
-#            e.foreach_trainable_policy.remote(
-#                lambda p, _: p.set_pure_exploration_phase(only_explore))
-#    update_worker_explorations(trainer)
-
-
 def validate_config(config):
     # PyTorch check.
     if config["use_pytorch"]:
@@ -219,9 +158,8 @@ def validate_config(config):
     schedule_max_timesteps = None
     if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
             DEPRECATED_VALUE:
-        deprecation_warning(
-            "schedule_max_timesteps",
-            "exploration_config.scale_timesteps")
+        deprecation_warning("schedule_max_timesteps",
+                            "exploration_config.scale_timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
     if config.get("exploration_final_scale", DEPRECATED_VALUE) != \
             DEPRECATED_VALUE:
@@ -240,9 +178,8 @@ def validate_config(config):
                 "exploration_fraction") * schedule_max_timesteps
     if config.get("per_worker_exploration", DEPRECATED_VALUE) != \
             DEPRECATED_VALUE:
-        deprecation_warning(
-            "per_worker_exploration",
-            "exploration_config.type=PerWorkerGaussianNoise")
+        deprecation_warning("per_worker_exploration",
+                            "exploration_config.type=PerWorkerGaussianNoise")
         if isinstance(config["exploration_config"], dict):
             config["exploration_config"]["type"] = PerWorkerGaussianNoise
 
@@ -252,6 +189,4 @@ DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
     validate_config=validate_config,
-    #before_init=setup_ddpg_exploration,
-    #before_train_step=add_pure_exploration_phase
 )

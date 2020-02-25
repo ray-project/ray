@@ -49,7 +49,8 @@ class DDPGPostprocessing:
             #  probably fine as parameter_noise will soon be its own
             #  Exploration class.
             clean_actions, cur_noise_scale = self.sess.run(
-                [self.output_actions, self.exploration.get_info()],
+                [self.output_actions,
+                 self.exploration.get_info()],
                 feed_dict={
                     self.cur_observations: states,
                     self._is_exploring: False,
@@ -86,11 +87,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
                 "using a Tuple action space, or the multi-agent API.")
 
         self.config = config
-        #self.cur_noise_scale = 1.0
-        #self.cur_pure_exploration_phase = False
-        #self.dim_actions = action_space.shape[0]
-        #self.low_action = action_space.low
-        #self.high_action = action_space.high
 
         # Create global step for counting the number of update operations.
         self.global_step = tf.train.get_or_create_global_step()
@@ -103,11 +99,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         self._critic_optimizer = tf.train.AdamOptimizer(
             learning_rate=self.config["critic_lr"])
 
-        # Action inputs
-        #self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        #self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
-        #self.pure_exploration_phase = tf.placeholder(
-        #    tf.bool, (), name="pure_exploration_phase")
+        # Observation inputs.
         self.cur_observations = tf.placeholder(
             tf.float32,
             shape=(None, ) + observation_space.shape,
@@ -130,16 +122,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                policy_out, Deterministic, self.policy_model,
-                explore, timestep)
-
-        #if self.config["smooth_target_policy"]:
-        #    self.reset_noise_op = tf.no_op()
-        #else:
-        #    with tf.variable_scope(ACTION_SCOPE, reuse=True):
-        #        exploration_sample = tf.get_variable(name="ornstein_uhlenbeck")
-        #        self.reset_noise_op = tf.assign(exploration_sample,
-        #                                        self.dim_actions * [.0])
+                policy_out, Deterministic, self.policy_model, explore,
+                timestep)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -375,16 +359,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             + self._critic_grads_and_vars
         return grads_and_vars
 
-    #@override(TFPolicy)
-    #def extra_compute_action_feed_dict(self):
-    #    return {
-    #        # FIXME: what about turning off exploration? Isn't that a good
-    #        # idea?
-    #        self.stochastic: True,
-    #        self.noise_scale: self.cur_noise_scale,
-    #        self.pure_exploration_phase: self.cur_pure_exploration_phase,
-    #    }
-
     @override(TFPolicy)
     def extra_compute_grad_fetches(self):
         return {
@@ -399,19 +373,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     @override(TFPolicy)
     def set_weights(self, weights):
         self.variables.set_weights(weights)
-
-    #@override(Policy)
-    #def get_state(self):
-    #    return [
-    #        TFPolicy.get_state(self), self.cur_noise_scale,
-    #        #self.cur_pure_exploration_phase
-    #    ]
-
-    #@override(Policy)
-    #def set_state(self, state):
-    #    TFPolicy.set_state(self, state[0])
-    #    self.set_epsilon(state[1])
-    #    #self.set_pure_exploration_phase(state[2])
 
     def _build_q_network(self, obs, obs_space, action_space, actions):
         if self.config["use_state_preprocessor"]:
@@ -468,81 +429,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         actions = action_range * sigmoid_out + low_action
 
         return actions, model
-
-    #def _add_exploration_noise(self, deterministic_actions,
-    #                           should_be_stochastic, noise_scale,
-    #                           enable_pure_exploration, action_space):
-    #    noise_type = self.config["exploration_noise_type"]
-    #    action_low = action_space.low
-    #    action_high = action_space.high
-    #    action_range = action_space.high - action_low
-
-    #    def compute_stochastic_actions():
-    #        def make_noisy_actions():
-    #            # shape of deterministic_actions is [None, dim_action]
-    #            if noise_type == "gaussian":
-    #                # add IID Gaussian noise for exploration, TD3-style
-    #                normal_sample = noise_scale * tf.random_normal(
-    #                    tf.shape(deterministic_actions),
-    #                    stddev=self.config["exploration_gaussian_sigma"])
-    #                stochastic_actions = tf.clip_by_value(
-    #                    deterministic_actions + normal_sample,
-    #                    action_low * tf.ones_like(deterministic_actions),
-    #                    action_high * tf.ones_like(deterministic_actions))
-    #            elif noise_type == "ou":
-    #                # add OU noise for exploration, DDPG-style
-    #                zero_acts = action_low.size * [.0]
-    #                exploration_sample = tf.get_variable(
-    #                    name="ornstein_uhlenbeck",
-    #                    dtype=tf.float32,
-    #                    initializer=zero_acts,
-    #                    trainable=False)
-    #                normal_sample = tf.random_normal(
-    #                    shape=[action_low.size], mean=0.0, stddev=1.0)
-    #                ou_new = self.config["exploration_ou_theta"] \
-    #                    * -exploration_sample \
-    #                    + self.config["exploration_ou_sigma"] * normal_sample
-    #                exploration_value = tf.assign_add(exploration_sample,
-    #                                                  ou_new)
-    #                base_scale = self.config["exploration_ou_noise_scale"]
-    #                noise = noise_scale * base_scale \
-    #                    * exploration_value * action_range
-    #                stochastic_actions = tf.clip_by_value(
-    #                    deterministic_actions + noise,
-    #                    action_low * tf.ones_like(deterministic_actions),
-    #                    action_high * tf.ones_like(deterministic_actions))
-    #            else:
-    #                raise ValueError(
-    #                    "Unknown noise type '%s' (try 'ou' or 'gaussian')" %
-    #                    noise_type)
-    #            return stochastic_actions
-
-    #        def make_uniform_random_actions():
-    #            # pure random exploration option
-    #            uniform_random_actions = tf.random_uniform(
-    #                tf.shape(deterministic_actions))
-    #            # rescale uniform random actions according to action range
-    #            tf_range = tf.constant(action_range[None], dtype="float32")
-    #            tf_low = tf.constant(action_low[None], dtype="float32")
-    #            uniform_random_actions = uniform_random_actions * tf_range \
-    #                + tf_low
-    #            return uniform_random_actions
-
-    #        stochastic_actions = tf.cond(
-    #            # need to condition on noise_scale > 0 because zeroing
-    #            # noise_scale is how a worker signals no noise should be used
-    #            # (this is ugly and should be fixed by adding an "eval_mode"
-    #            # config flag or something)
-    #            tf.logical_and(enable_pure_exploration, noise_scale > 0),
-    #            true_fn=make_uniform_random_actions,
-    #            false_fn=make_noisy_actions)
-    #        return stochastic_actions
-
-    #    enable_stochastic = tf.logical_and(should_be_stochastic,
-    #                                       not self.config["parameter_noise"])
-    #    actions = tf.cond(enable_stochastic, compute_stochastic_actions,
-    #                      lambda: deterministic_actions)
-    #    return actions
 
     def _build_actor_critic_loss(self,
                                  q_t,
@@ -642,9 +528,6 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             })
         return td_err
 
-    #def reset_noise(self, sess):
-    #    sess.run(self.reset_noise_op)
-
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
             self.sess.run(self.add_noise_op)
@@ -654,13 +537,3 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         tau = tau or self.tau_value
         return self.sess.run(
             self.update_target_expr, feed_dict={self.tau: tau})
-
-    #def set_epsilon(self, epsilon):
-    #    # set_epsilon is called by optimizer to anneal exploration as
-    #    # necessary, and to turn it off during evaluation. The "epsilon" part
-    #    # is a carry-over from DQN, which uses epsilon-greedy exploration
-    #    # rather than adding action noise to the output of a policy network.
-    #    self.cur_noise_scale = epsilon
-
-    #def set_pure_exploration_phase(self, pure_exploration_phase):
-    #    self.cur_pure_exploration_phase = pure_exploration_phase

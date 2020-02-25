@@ -58,9 +58,8 @@ class GaussianNoise(Exploration):
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
-            endpoints=[
-                (random_timesteps, initial_scale),
-                (random_timesteps + scale_timesteps, final_scale)],
+            endpoints=[(random_timesteps, initial_scale),
+                       (random_timesteps + scale_timesteps, final_scale)],
             outside_value=final_scale,
             framework=self.framework)
 
@@ -79,11 +78,11 @@ class GaussianNoise(Exploration):
         action_dist = action_dist_class(distribution_inputs, model)
 
         if self.framework == "torch":
-            return self._get_torch_exploration_action(
-                action_dist, explore, timestep)
+            return self._get_torch_exploration_action(action_dist, explore,
+                                                      timestep)
         else:
-            return self._get_tf_exploration_action_op(
-                action_dist, explore, timestep)
+            return self._get_tf_exploration_action_op(action_dist, explore,
+                                                      timestep)
 
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
         ts = timestep if timestep is not None else self.last_timestep
@@ -93,8 +92,7 @@ class GaussianNoise(Exploration):
 
         # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
         gaussian_sample = self.scale_schedule(ts) * tf.random_normal(
-            tf.shape(deterministic_actions),
-            stddev=self.stddev)
+            tf.shape(deterministic_actions), stddev=self.stddev)
 
         # Stochastic actions could either be: random OR action + noise.
         random_actions, _ = \
@@ -115,8 +113,7 @@ class GaussianNoise(Exploration):
             pred=tf.constant(explore, dtype=tf.bool)
             if isinstance(explore, bool) else explore,
             true_fn=lambda: stochastic_actions,
-            false_fn=lambda: deterministic_actions
-        )
+            false_fn=lambda: deterministic_actions)
         # Logp=always zero.
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
 
@@ -144,8 +141,7 @@ class GaussianNoise(Exploration):
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=0.0, stddev=self.stddev,
-                    size=det_actions.size())
+                    mean=0.0, stddev=self.stddev, size=det_actions.size())
                 action = torch.clamp(
                     det_actions + gaussian_sample,
                     self.action_space.low * torch.ones_like(det_actions),

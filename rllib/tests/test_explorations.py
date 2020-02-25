@@ -113,8 +113,12 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(1))
 
     def test_ddpg(self):
-        test_explorations(ddpg.DDPGTrainer, "Pendulum-v0", ddpg.DEFAULT_CONFIG,
-                          np.array([0.0, 0.1, 0.0]), expected_mean_action=0.0)
+        test_explorations(
+            ddpg.DDPGTrainer,
+            "Pendulum-v0",
+            ddpg.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0)
 
     def test_simple_dqn(self):
         test_explorations(dqn.SimpleQTrainer, "CartPole-v0",
@@ -166,9 +170,12 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_td3(self):
-        test_explorations(td3.TD3Trainer, "Pendulum-v0",
-                          td3.TD3_DEFAULT_CONFIG, np.array([0.0, 0.1, 0.0]),
-                          expected_mean_action=0.0)
+        test_explorations(
+            td3.TD3Trainer,
+            "Pendulum-v0",
+            td3.TD3_DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0)
 
 
 if __name__ == "__main__":

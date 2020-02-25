@@ -111,8 +111,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             pred=tf.constant(explore, dtype=tf.bool)
             if isinstance(explore, bool) else explore,
             true_fn=lambda: exploration_actions,
-            false_fn=lambda: deterministic_actions
-        )
+            false_fn=lambda: deterministic_actions)
         # Logp=always zero.
         batch_size = tf.shape(deterministic_actions)[0]
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
@@ -142,8 +141,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=0.0, stddev=1.0,
-                    size=det_actions.size())
+                    mean=0.0, stddev=1.0, size=det_actions.size())
 
                 ou_new = self.ou_theta * -self.ou_state + \
                     self.ou_sigma * gaussian_sample
