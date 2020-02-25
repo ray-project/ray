@@ -1,4 +1,4 @@
-from gym.spaces import Box
+from gym.spaces import Box, Discrete
 import numpy as np
 import logging
 
@@ -12,7 +12,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import SquashedGaussian, DiagGaussian
+from ray.rllib.models.tf.tf_action_dist import DiagGaussian, GumbelSoftmax, \
+    SquashedGaussian
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.annotations import override
@@ -30,10 +31,11 @@ def build_sac_model(policy, obs_space, action_space, config):
             "Setting use_state_preprocessor=True since a custom model "
             "was specified.")
         config["use_state_preprocessor"] = True
-    if not isinstance(action_space, Box):
+    if not isinstance(action_space, (Box, Discrete)):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for SAC.".format(action_space))
-    if len(action_space.shape) > 1:
+    if action_space.dtype in [np.float32, np.float64] and \
+            len(action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space has multiple dimensions "
             "{}. ".format(action_space.shape) +
@@ -89,8 +91,13 @@ def postprocess_trajectory(policy,
 
 
 def get_dist_class(config, action_space):
-    action_dist_class = SquashedGaussian if \
-        config["normalize_actions"] is True else DiagGaussian
+    # Continuous actions.
+    if action_space.dtype in [np.float32, np.float64]:
+        action_dist_class = SquashedGaussian if \
+            config["normalize_actions"] is True else DiagGaussian
+    # Discrete actions.
+    else:
+        action_dist_class = GumbelSoftmax
     return action_dist_class
 
 

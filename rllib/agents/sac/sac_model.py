@@ -1,33 +1,11 @@
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils import try_import_tf, try_import_tfp
+from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
-tfp = try_import_tfp()
 
 SCALE_DIAG_MIN_MAX = (-20, 2)
-
-
-def SquashBijector():
-    # lazy def since it depends on tfp
-    class SquashBijector(tfp.bijectors.Bijector):
-        def __init__(self, validate_args=False, name="tanh"):
-            super(SquashBijector, self).__init__(
-                forward_min_event_ndims=0,
-                validate_args=validate_args,
-                name=name)
-
-        def _forward(self, x):
-            return tf.nn.tanh(x)
-
-        def _inverse(self, y):
-            return tf.atanh(y)
-
-        def _forward_log_det_jacobian(self, x):
-            return 2. * (np.log(2.) - x - tf.nn.softplus(-2. * x))
-
-    return SquashBijector()
 
 
 class SACModel(TFModelV2):
@@ -66,10 +44,6 @@ class SACModel(TFModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of SACModel.
         """
-
-        if tfp is None:
-            raise ImportError("tensorflow-probability package not found")
-
         super(SACModel, self).__init__(obs_space, action_space, num_outputs,
                                        model_config, name)
         self.action_dim = np.product(action_space.shape)
