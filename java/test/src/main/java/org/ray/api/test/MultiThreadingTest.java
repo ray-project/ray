@@ -127,12 +127,6 @@ public class MultiThreadingTest extends BaseTest {
     testMultiThreading();
   }
 
-  public void testInWorker() {
-    // Single-process mode doesn't have real workers.
-    TestUtils.skipTestUnderSingleProcess();
-    RayObject<String> obj = Ray.call(MultiThreadingTest::testMultiThreading);
-    Assert.assertEquals("ok", obj.get());
-  }
 
   public void testGetCurrentActorId() {
     TestUtils.skipTestUnderSingleProcess();
