@@ -5,6 +5,8 @@ import logging
 import pickle
 
 import ray
+from ray.util.debug import log_once, disable_log_once_globally, \
+    enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
@@ -31,8 +33,6 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils import try_import_tf, try_import_torch
-from ray.tune.utils.debug import log_once, disable_log_once_globally, \
-    enable_periodic_logging
 
 tf = try_import_tf()
 torch, _ = try_import_torch()

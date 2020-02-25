@@ -6,6 +6,7 @@ import logging
 import functools
 import numpy as np
 
+from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
@@ -14,7 +15,6 @@ from ray.rllib.policy.policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.tune.utils.debug import log_once
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)

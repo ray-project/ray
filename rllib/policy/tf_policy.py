@@ -5,6 +5,7 @@ import os
 import numpy as np
 import ray
 import ray.experimental.tf_utils
+from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, \
     ACTION_PROB, ACTION_LOGP
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
@@ -16,7 +17,6 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.tune.utils.debug import log_once
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)

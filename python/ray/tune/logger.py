@@ -7,12 +7,13 @@ import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
+from ray.util.debug import log_once
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
                              EXPR_RESULT_FILE)
 from ray.tune.syncer import get_node_syncer
-from ray.tune.utils import flatten_dict, log_once
+from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
 

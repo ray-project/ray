@@ -5,6 +5,7 @@ import six.moves.queue as queue
 import threading
 import time
 
+from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
@@ -18,7 +19,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.tune.utils.debug import log_once
 
 logger = logging.getLogger(__name__)
 
