@@ -917,6 +917,15 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
     indirect=True)
 def test_fill_object_store_exception(ray_start_cluster_head):
     @ray.remote
+    def expensive_task():
+        return np.zeros((10**8) // 10, dtype=np.uint8)
+
+    with pytest.raises(ray.exceptions.RayTaskError) as e:
+        ray.get([expensive_task.remote() for _ in range(20)])
+        with pytest.raises(ray.exceptions.ObjectStoreFullError):
+            raise e.as_instanceof_cause()
+
+    @ray.remote
     class LargeMemoryActor:
         def some_expensive_task(self):
             return np.zeros(10**8 + 2, dtype=np.uint8)
