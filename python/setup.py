@@ -86,6 +86,8 @@ extras["rllib"] = extras["tune"] + [
     "scipy",
 ]
 
+extras["streaming"] = ["msgpack >= 0.6.2"]
+
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 
