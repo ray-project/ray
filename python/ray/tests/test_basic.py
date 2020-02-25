@@ -1740,9 +1740,16 @@ def test_duplicate_args(ray_start_regular):
         assert kwarg1 != kwarg2
         assert kwarg1 == kwarg3
 
-    arg1 = ray.put(1)
-    arg2 = ray.put(2)
+    # Test by-value arguments.
+    arg1 = [1]
+    arg2 = [2]
     ray.get(f.remote(arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg3=arg1))
+
+    # Test by-reference arguments.
+    arg1 = ray.put([1])
+    arg2 = ray.put([2])
+    ray.get(f.remote(arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg3=arg1))
+
 
 if __name__ == "__main__":
     import pytest
