@@ -60,10 +60,12 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Exploration ===
     "exploration_config": {
+        # DDPG uses OrnsteinUhlenbeck (stateful) noise to be added to NN-output
+        # actions (after a possible pure random phase of n timesteps).
         "type": "OrnsteinUhlenbeckNoise",
         # For how many timesteps should we return completely random actions,
         # before we start adding (scaled) noise?
-        "random_timesteps": 1000,  # fka: pure_exploration_steps
+        "random_timesteps": 1000,
         # The OU-base scaling factor to always apply to action-added noise.
         "ou_base_scale": 0.1,
         # The OU theta param.
@@ -71,62 +73,21 @@ DEFAULT_CONFIG = with_common_config({
         # The OU sigma param.
         "ou_sigma": 0.2,
         # The initial noise scaling factor.
-        "initial_scale": 1.0,  # fka: 1.0
+        "initial_scale": 1.0,
         # The final noise scaling factor.
-        "final_scale": 1.0,  # fka: exploration_final_scale
+        "final_scale": 1.0,
         # Timesteps over which to anneal scale (from initial to final values).
-        "scale_timesteps": 10000,  # fka: exploration_fraction * schedule_max_timesteps
-        # Max num timesteps for annealing schedules.
-        # "schedule_max_timesteps": 100000,
-        # Whether to use a distribution of epsilons across workers for exploration.
-        #"per_worker_exploration": False,
-        # Turns on annealing schedule for exploration noise. Exploration is
-        # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
-        # scaled by exploration_fraction. Original DDPG and TD3 papers do not
-        # anneal noise, so this is False by default.
-        #"exploration_should_anneal": False,
-        # Fraction of entire training period over which the exploration rate is
-        # annealed
-        #"exploration_fraction": 0.1,
-        # Final scaling multiplier for action noise (initial is 1.0)
-        #"exploration_final_scale": 0.02,
-        # valid values: "ou" (time-correlated, like original DDPG paper),
-        # "gaussian" (IID, like TD3 paper)
+        "scale_timesteps": 10000,
     },
-
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-
-    # TODO(sven): OrnsteinUhlenbeckActionNoise
-    #"exploration_noise_type": "ou",
-    # OU-noise scale; this can be used to scale down magnitude of OU noise
-    # before adding to actions (requires "exploration_noise_type" to be "ou")
-    #"exploration_ou_noise_scale": 0.1,
-    # theta for OU
-    #"exploration_ou_theta": 0.15,
-    # sigma for OU
-    #"exploration_ou_sigma": 0.2,
-    # gaussian stddev of act noise for exploration (requires
-    # "exploration_noise_type" to be "gaussian")
-    #"exploration_gaussian_sigma": 0.1,
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
-    # Until this many timesteps have elapsed, the agent's policy will be
-    # ignored & it will instead take uniform random actions. Can be used in
-    # conjunction with learning_starts (which controls when the first
-    # optimization step happens) to decrease dependence of exploration &
-    # optimization on initial policy parameters. Note that this will be
-    # disabled when the action noise scale is set to 0 (e.g during evaluation).
-    #"pure_exploration_steps": 1000,
-
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
-        #"exploration_fraction": 0,  # <- deprecated
-        #"exploration_final_eps": 0,  # <- deprecated
     },
-
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.

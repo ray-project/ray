@@ -53,14 +53,13 @@ class DDPGPostprocessing:
                 feed_dict={
                     self.cur_observations: states,
                     self._is_exploring: False,
-                    #self.noise_scale: .0,
-                    #self.pure_exploration_phase: False,
                 })
             distance_in_action_space = np.sqrt(
                 np.mean(np.square(clean_actions - noisy_actions)))
             self.pi_distance = distance_in_action_space
             if distance_in_action_space < \
-                    self.config["exploration_ou_sigma"] * cur_noise_scale:
+                    self.config["exploration_config"].get("ou_sigma", 0.2) * \
+                    cur_noise_scale:
                 # multiplying the sampled OU noise by noise scale is
                 # equivalent to multiplying the sigma of OU by noise scale
                 self.parameter_noise_sigma_val *= 1.01
@@ -592,7 +591,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         return critic_loss, actor_loss, td_error
 
     def _build_parameter_noise(self, pnet_params):
-        self.parameter_noise_sigma_val = self.config["exploration_ou_sigma"]
+        self.parameter_noise_sigma_val = \
+            self.config["exploration_config"].get("ou_sigma", 0.2)
         self.parameter_noise_sigma = tf.get_variable(
             initializer=tf.constant_initializer(
                 self.parameter_noise_sigma_val),
