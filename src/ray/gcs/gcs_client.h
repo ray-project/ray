@@ -60,9 +60,6 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
-  /// Reconnect to GCS Service. Non-thread safe.
-  void Reconnect(){};
-
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
 
