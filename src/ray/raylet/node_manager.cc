@@ -3316,7 +3316,8 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
                                  rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
   should_global_gc_ = true;
-  should_local_gc_ = true;
+  // We won't see our own request, so trigger local GC immediately too.
+  DoLocalGC();
 }
 
 void NodeManager::RecordMetrics() {
