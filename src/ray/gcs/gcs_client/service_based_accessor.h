@@ -12,12 +12,12 @@ class Executor {
  public:
   Executor(ServiceBasedGcsClient *client_impl) { client_impl_ = client_impl; }
 
-  void execute(std::function<void()> operation) {
+  void Execute(std::function<void()> operation) {
     operation_ = operation;
     operation();
   }
 
-  void post_execute(Status status) {
+  void PostExecute(Status status) {
     if (status.IsIOError()) {
       reconnect_count_ = client_impl_->Reconnect(reconnect_count_);
       operation_();

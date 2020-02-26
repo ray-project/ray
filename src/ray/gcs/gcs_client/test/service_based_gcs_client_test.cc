@@ -633,6 +633,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   JobID add_job_id = JobID::FromInt(1);
   auto job_table_data = GenJobTableData(add_job_id);
 
+  TearDownTestCase();
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
       job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));

@@ -34,11 +34,11 @@ Status ServiceBasedJobInfoAccessor::AsyncAdd(
             RAY_LOG(WARNING) << "Failed to add job, try again, status = " << status
                              << ", job id = " << job_id
                              << ", driver pid = " << data_ptr->driver_pid();
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -64,11 +64,11 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
           } else {
             RAY_LOG(WARNING) << "Failed to mark job state, try again, status = " << status
                              << ", job id = " << job_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -118,11 +118,11 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
           } else {
             RAY_LOG(WARNING) << "Failed to get actor info, try again, status = " << status
                              << ", actor id = " << actor_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -266,11 +266,11 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
           } else {
             RAY_LOG(WARNING) << "Failed to get actor checkpoint, try again, status = "
                              << status << ", checkpoint id = " << checkpoint_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -300,11 +300,11 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
           } else {
             RAY_LOG(WARNING) << "Failed to get actor checkpoint id, try again, status = "
                              << status << ", actor id = " << actor_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -342,11 +342,11 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
           } else {
             RAY_LOG(WARNING) << "Failed to register node info, try again, status = "
                              << status << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -374,11 +374,11 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
           } else {
             RAY_LOG(WARNING) << "Failed to unregister node info, try again, status = "
                              << status << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -411,11 +411,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_
           } else {
             RAY_LOG(WARNING) << "Failed to register node info, try again, status = "
                              << status << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -441,11 +441,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
           } else {
             RAY_LOG(WARNING) << "Failed to unregister node info, try again, status = "
                              << status << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -475,11 +475,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
                 RAY_LOG(WARNING)
                     << "Failed to get information of all nodes, try again, status = "
                     << status;
-                executor->post_execute(status);
+                executor->PostExecute(status);
               }
             });
       };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -542,11 +542,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
           } else {
             RAY_LOG(WARNING) << "Failed to get node resources, try again, status = "
                              << status << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -641,11 +641,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
           } else {
             RAY_LOG(WARNING) << "Failed to report heartbeat, try again, status = "
                              << status << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -683,11 +683,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
           } else {
             RAY_LOG(WARNING) << "Failed to report batch heartbeat, try again, status = "
                              << status << ", batch size = " << data_ptr->batch_size();
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -737,11 +737,11 @@ Status ServiceBasedTaskInfoAccessor::AsyncAdd(
           } else {
             RAY_LOG(WARNING) << "Failed to add task, try again, status = " << status
                              << ", task id = " << task_id << ", job id = " << job_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -770,11 +770,11 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
           } else {
             RAY_LOG(WARNING) << "Failed to get task, try again, status = " << status
                              << ", task id = " << task_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -802,11 +802,11 @@ Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task
           } else {
             RAY_LOG(WARNING) << "Failed to delete task, try again, status = " << status
                              << ", task id list size = " << task_ids.size();
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -854,11 +854,11 @@ Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
           } else {
             RAY_LOG(WARNING) << "Failed to add task lease, try again, status = " << status
                              << ", task id = " << task_id << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -913,11 +913,11 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
                              << status << ", reconstructions num = "
                              << data_ptr->num_reconstructions()
                              << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -952,11 +952,11 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
           } else {
             RAY_LOG(WARNING) << "Failed to get object locations, try again, status = "
                              << status << ", object id = " << object_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -1067,11 +1067,11 @@ Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
                              << status
                              << ", component type = " << data_ptr->component_type()
                              << ", node id = " << node_id;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -1104,11 +1104,11 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
           } else {
             RAY_LOG(WARNING) << "Failed to report job error, try again, status = "
                              << status << ", job id = " << job_id << ", type = " << type;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
@@ -1153,11 +1153,11 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
           } else {
             RAY_LOG(WARNING) << "Failed to report worker failure, try again, "
                              << worker_address.DebugString() << ", status = " << status;
-            executor->post_execute(status);
+            executor->PostExecute(status);
           }
         });
   };
-  executor->execute(operation);
+  executor->Execute(operation);
 
   return Status::OK();
 }
