@@ -95,11 +95,24 @@ def test_global_gc(shutdown_only):
         def has_garbage(self):
             return self.garbage() is not None
 
-    actors = [GarbageHolder.remote() for _ in range(2)]
-    assert all(ray.get([a.has_garbage.remote() for a in actors]))
-    global_gc()
-    time.sleep(1)
-    assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+    try:
+        gc.disable()
+
+        # Local driver.
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # GC should be triggered for all workers, including the local driver.
+        global_gc()
+        time.sleep(1)
+        assert local_ref() is None
+        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+    finally:
+        gc.enable()
 
 
 def test_local_refcounts(ray_start_regular):
