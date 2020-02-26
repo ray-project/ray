@@ -1368,8 +1368,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
-  gc_collect_();
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  if (gc_collect_ != nullptr) {
+    gc_collect_();
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,
+                        nullptr);
+  }
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

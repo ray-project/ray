@@ -344,8 +344,11 @@ void NodeManager::Heartbeat() {
 }
 
 void NodeManager::DoLocalGC() {
-  RAY_LOG(ERROR) << "Sending local GC request to all workers.";
   auto all_workers = worker_pool_.GetAllWorkers();
+  for (const auto &driver : worker_pool_.GetAllDrivers()) {
+    all_workers.push_back(driver);
+  }
+  RAY_LOG(ERROR) << "Sending local GC request to " << all_workers.size() << " workers.";
   for (const auto &worker : all_workers) {
     rpc::LocalGCRequest request;
     auto status = worker->rpc_client()->LocalGC(

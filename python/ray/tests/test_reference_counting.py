@@ -3,9 +3,11 @@ import copy
 import json
 import logging
 import os
+import gc
 import tempfile
 import time
 import uuid
+import weakref
 
 import numpy as np
 
@@ -14,6 +16,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.test_utils
+from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +73,33 @@ def check_refcounts(expected, timeout=10):
                 raise e
             else:
                 time.sleep(0.1)
+
+
+def test_global_gc(shutdown_only):
+    cluster = ray.cluster_utils.Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=1, num_gpus=0)
+    ray.init(address=cluster.address)
+
+    class Loop:
+        pass
+
+    @ray.remote(num_cpus=1)
+    class GarbageHolder:
+        def __init__(self):
+            gc.disable()
+            x = Loop()
+            x.cyclic_ref = x
+            self.garbage = weakref.ref(x)
+
+        def has_garbage(self):
+            return self.garbage() is not None
+
+    actors = [GarbageHolder.remote() for _ in range(2)]
+    assert all(ray.get([a.has_garbage.remote() for a in actors]))
+    global_gc()
+    time.sleep(1)
+    assert not any(ray.get([a.has_garbage.remote() for a in actors]))
 
 
 def test_local_refcounts(ray_start_regular):
