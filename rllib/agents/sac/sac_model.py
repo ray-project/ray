@@ -73,7 +73,7 @@ class SACModel(TFModelV2):
             ] + [
                 tf.keras.layers.Dense(
                     units=units,
-                    activation=getattr(tf.nn, critic_hidden_activation),
+                    activation=getattr(tf.nn, critic_hidden_activation, None),
                     name="{}_hidden_{}".format(name, i))
                 for i, units in enumerate(critic_hiddens)
             ] + [

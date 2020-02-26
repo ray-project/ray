@@ -62,13 +62,13 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": int(1e6),
     # If True prioritized replay buffer will be used.
-    # TODO(hartikainen): Make sure this works or remove the option.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
     "prioritized_replay_eps": 1e-6,
     "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
+
     "compress_observations": False,
 
     # === Optimization ===
