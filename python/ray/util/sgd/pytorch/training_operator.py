@@ -123,7 +123,11 @@ class TrainingOperator:
         self.setup(config)
 
     def setup(self, config):
-        """Override this method to implement custom operator setup."""
+        """Override this method to implement custom operator setup.
+
+        Args:
+            config (dict): Same as ``self.config``.
+        """
         pass
 
     def train_epoch(self, iterator, info):
@@ -135,7 +139,7 @@ class TrainingOperator:
         By default, this method will iterate over the given iterator and
         call ``self.train_batch`` over each batch.
 
-        If "scheduler_step_freq" is set, this class will also step the
+        If ``scheduler_step_freq`` is set, this class will also step the
         scheduler accordingly.
 
         Args:
@@ -168,7 +172,8 @@ class TrainingOperator:
                         metrics["loss"], n=metrics.get("num_samples", 1))
                 self.global_step += 1
 
-        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+        if self.scheduler and info.get(
+                SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
             self.scheduler.step()
 
         stats = {
