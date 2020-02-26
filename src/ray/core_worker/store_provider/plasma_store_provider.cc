@@ -91,6 +91,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     } else {
       RAY_ARROW_RETURN_NOT_OK(plasma_status);
       *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
+      status = Status::OK();
     }
   }
   return status;
