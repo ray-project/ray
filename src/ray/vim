@@ -1,0 +1,136 @@
+Log file created at: 2020/02/26 11:30:12
+Running on machine: Edwards-MacBook-Pro.local
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0226 11:30:12.915974 282385856 core_worker.cc:98] Initializing worker 0d6179816a207037ebae4fb403e7668fa2a39ea8
+Log file created at: 2020/02/26 11:30:12
+Running on machine: Edwards-MacBook-Pro.local
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0226 11:30:12.508131 204430784 core_worker.cc:98] Initializing worker 3454211683c0579091bc2cb4e617335100f86ead
+Log file created at: 2020/02/26 11:30:12
+Running on machine: Edwards-MacBook-Pro.local
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0226 11:30:12.279141 224636352 core_worker.cc:98] Initializing worker 5763d7ffd06be6125613ae2f9a173896810c9acf
+I0226 11:30:12.280668 224636352 redis_gcs_client.cc:156] RedisGcsClient Connected.
+I0226 11:30:12.281002 224636352 grpc_server.cc:50] worker server started, listening on port 60851.
+I0226 11:30:12.356067 224636352 reference_count.cc:102] Add local reference 62755f7b204aed08e113f4e04913000800000000
+I0226 11:30:12.356078 224636352 reference_count.cc:103] REF 62755f7b204aed08e113f4e04913000800000000 borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.356432 224636352 reference_count.cc:102] Add local reference 62755f7b204aed08e113f4e04913000800000000
+I0226 11:30:12.356441 224636352 reference_count.cc:103] REF 62755f7b204aed08e113f4e04913000800000000 borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.356451 224636352 reference_count.cc:122] Remove local reference 62755f7b204aed08e113f4e04913000800000000
+I0226 11:30:12.356453 224636352 reference_count.cc:123] REF 62755f7b204aed08e113f4e04913000800000000 borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.356487 224636352 reference_count.cc:220] Attempting to delete object 62755f7b204aed08e113f4e04913000800000000
+I0226 11:30:12.356489 224636352 reference_count.cc:226] REF 62755f7b204aed08e113f4e04913000800000000 borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.356495 224636352 reference_count.cc:279] Deleting Reference to object 62755f7b204aed08e113f4e04913000800000000
+W0226 11:30:12.356851 224636352 reference_count.cc:111] Tried to decrease ref count for nonexistent object ID: 62755f7b204aed08e113f4e04913000800000000
+I0226 11:30:12.357193 224636352 direct_actor_transport.cc:204] Received task Type=NORMAL_TASK, Language=PYTHON, function_descriptor={type=PythonFunctionDescriptor, module_name=test_dynres, class_name=, function_name=set_res, function_hash=e5e89232520928658e2e9d6a81fc5f6a94d5dfaa}, task_id=45b95b1c8bd3a9c4ffffffff0100, job_id=0100, num_args=6, num_returns=1
+I0226 11:30:12.357776 224636352 core_worker.cc:967] Executing task 45b95b1c8bd3a9c4ffffffff0100
+I0226 11:30:12.359519 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.359524 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359530 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.359532 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359535 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.359537 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 3 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359540 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.359542 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 4 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359545 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.359549 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 5 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359551 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.359553 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 6 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359611 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.359613 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 5 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359658 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.359660 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 4 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359664 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.359665 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 3 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359668 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.359670 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359673 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.359675 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359678 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.359680 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359683 224636352 reference_count.cc:220] Attempting to delete object NIL_ID
+I0226 11:30:12.359685 224636352 reference_count.cc:226] REF NIL_ID borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.359688 224636352 reference_count.cc:279] Deleting Reference to object NIL_ID
+I0226 11:30:12.359834 224636352 core_worker.cc:932] Creating return object 45b95b1c8bd3a9c4ffffffff010000c801000000
+I0226 11:30:12.359879 224636352 core_worker.cc:1078] Finished executing task 45b95b1c8bd3a9c4ffffffff0100
+I0226 11:30:12.404837 224636352 direct_actor_transport.cc:204] Received task Type=ACTOR_CREATION_TASK, Language=PYTHON, function_descriptor={type=PythonFunctionDescriptor, module_name=test_dynres, class_name=Signal, function_name=__init__, function_hash=140359473570408}, task_id=ffffffffffffffffef0a6c220100, job_id=0100, num_args=2, num_returns=1, actor_creation_task_spec={actor_id=ef0a6c220100, max_reconstructions=0, is_direct_call=1, max_concurrency=1000, is_asyncio_actor=1, is_detached=0}
+I0226 11:30:12.404860 224636352 core_worker.cc:967] Executing task ffffffffffffffffef0a6c220100
+I0226 11:30:12.404891 224636352 core_worker.cc:1013] Creating actor: ef0a6c220100
+I0226 11:30:12.405683 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.405690 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.405695 224636352 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.405697 224636352 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.405723 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.405726 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.405731 224636352 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.405733 224636352 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.405736 224636352 reference_count.cc:220] Attempting to delete object NIL_ID
+I0226 11:30:12.405738 224636352 reference_count.cc:226] REF NIL_ID borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.405741 224636352 reference_count.cc:279] Deleting Reference to object NIL_ID
+I0226 11:30:12.407037 224636352 core_workerLog file created at: 2020/02/26 11:30:12
+Running on machine: Edwards-MacBook-Pro.local
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0226 11:30:12.154711 343223744 core_worker.cc:98] Initializing worker b0816d1a84b2fe494e5b1883ffb581f9eef9eb78
+I0226 11:30:12.156213 343223744 redis_gcs_client.cc:156] RedisGcsClient Connected.
+I0226 11:30:12.156643 343223744 grpc_server.cc:50] worker server started, listening on port 60832.
+I0226 11:30:12.231941 343223744 reference_count.cc:102] Add local reference 3d894adb84de500e51fc6325352c000800000000
+I0226 11:30:12.231959 343223744 reference_count.cc:103] REF 3d894adb84de500e51fc6325352c000800000000 borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.232395 343223744 reference_count.cc:102] Add local reference 3d894adb84de500e51fc6325352c000800000000
+I0226 11:30:12.232405 343223744 reference_count.cc:103] REF 3d894adb84de500e51fc6325352c000800000000 borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.232419 343223744 reference_count.cc:122] Remove local reference 3d894adb84de500e51fc6325352c000800000000
+I0226 11:30:12.232424 343223744 reference_count.cc:123] REF 3d894adb84de500e51fc6325352c000800000000 borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.232488 343223744 reference_count.cc:220] Attempting to delete object 3d894adb84de500e51fc6325352c000800000000
+I0226 11:30:12.232497 343223744 reference_count.cc:226] REF 3d894adb84de500e51fc6325352c000800000000 borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.232507 343223744 reference_count.cc:279] Deleting Reference to object 3d894adb84de500e51fc6325352c000800000000
+W0226 11:30:12.232908 343223744 reference_count.cc:111] Tried to decrease ref count for nonexistent object ID: 3d894adb84de500e51fc6325352c000800000000
+I0226 11:30:12.369148 343223744 direct_actor_transport.cc:204] Received task Type=NORMAL_TASK, Language=PYTHON, function_descriptor={type=PythonFunctionDescriptor, module_name=test_dynres, class_name=, function_name=wait_func, function_hash=8c77018cb8e198823925c6f68680c72ce64aebbf}, task_id=44ee453cd1e8e283ffffffff0100, job_id=0100, num_args=4, num_returns=1
+I0226 11:30:12.369540 343223744 core_worker.cc:967] Executing task 44ee453cd1e8e283ffffffff0100
+I0226 11:30:12.369755 343223744 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.369760 343223744 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.369765 343223744 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.369767 343223744 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.369771 343223744 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.369773 343223744 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 3 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.369776 343223744 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.369779 343223744 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 4 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.371410 343223744 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.371418 343223744 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 3 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.371423 343223744 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.371426 343223744 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.371429 343223744 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.371431 343223744 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_bLog file created at: 2020/02/26 11:30:12
+Running on machine: Edwards-MacBook-Pro.local
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0226 11:30:12.414170 82550208 core_worker.cc:98] Initializing worker c8ca5e57a2ae66a54d301061b5f6732e585d6c08
+Log file created at: 2020/02/26 11:30:11
+Running on machine: Edwards-MacBook-Pro.local
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0226 11:30:11.970088 444669376 core_worker.cc:98] Initializing worker f09836597644e02713c6b221399ff83423237e6e
+I0226 11:30:11.971493 444669376 redis_gcs_client.cc:156] RedisGcsClient Connected.
+I0226 11:30:11.971807 444669376 grpc_server.cc:50] worker server started, listening on port 60797.
+I0226 11:30:12.059283 444669376 reference_count.cc:102] Add local reference b9b9c0c33f3062a7a9ab8a998957000800000000
+I0226 11:30:12.059300 444669376 reference_count.cc:103] REF b9b9c0c33f3062a7a9ab8a998957000800000000 borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.059628 444669376 reference_count.cc:102] Add local reference b9b9c0c33f3062a7a9ab8a998957000800000000
+I0226 11:30:12.059636 444669376 reference_count.cc:103] REF b9b9c0c33f3062a7a9ab8a998957000800000000 borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.059648 444669376 reference_count.cc:122] Remove local reference b9b9c0c33f3062a7a9ab8a998957000800000000
+I0226 11:30:12.059653 444669376 reference_count.cc:123] REF b9b9c0c33f3062a7a9ab8a998957000800000000 borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.059692 444669376 reference_count.cc:220] Attempting to delete object b9b9c0c33f3062a7a9ab8a998957000800000000
+I0226 11:30:12.059698 444669376 reference_count.cc:226] REF b9b9c0c33f3062a7a9ab8a998957000800000000 borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.059707 444669376 reference_count.cc:279] Deleting Reference to object b9b9c0c33f3062a7a9ab8a998957000800000000
+W0226 11:30:12.059990 444669376 reference_count.cc:111] Tried to decrease ref count for nonexistent object ID: b9b9c0c33f3062a7a9ab8a998957000800000000
+I0226 11:30:12.506852 444669376 direct_actor_transport.cc:204] Received task Type=ACTOR_CREATION_TASK, Language=PYTHON, function_descriptor={type=PythonFunctionDescriptor, module_name=test_dynres, class_name=Signal, function_name=__init__, function_hash=140359473570408}, task_id=fffffffffffffffff66d17ba0100, job_id=0100, num_args=2, num_returns=1, actor_creation_task_spec={actor_id=f66d17ba0100, max_reconstructions=0, is_direct_call=1, max_concurrency=1000, is_asyncio_actor=1, is_detached=0}
+I0226 11:30:12.507225 444669376 core_worker.cc:967] Executing task fffffffffffffffff66d17ba0100
+I0226 11:30:12.507246 444669376 core_worker.cc:1013] Creating actor: f66d17ba0100
+I0226 11:30:12.508074 444669376 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.508082 444669376 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.508087 444669376 reference_count.cc:102] Add local reference NIL_ID
+I0226 11:30:12.508090 444669376 reference_count.cc:103] REF NIL_ID borrowers: 0 local_ref_count: 2 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.508141 444669376 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.508144 444669376 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 1 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.508148 444669376 reference_count.cc:122] Remove local reference NIL_ID
+I0226 11:30:12.508150 444669376 reference_count.cc:123] REF NIL_ID borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.508153 444669376 reference_count.cc:220] Attempting to delete object NIL_ID
+I0226 11:30:12.508157 444669376 reference_count.cc:226] REF NIL_ID borrowers: 0 local_ref_count: 0 submitted_count: 0 contained_in_owned: 0 contained_in_borrowed: NIL_ID contains: 0
+I0226 11:30:12.508159 444669376 reference_count.cc:279] Deleting Reference to object NIL_ID
+I0226 11:30:12.509526 444669376 core_worker.cc:1078] Finished executing task fffffffffffffffff66d17ba0100
+I0226 11:30:12.509541 444669376 direct_actor_transport.cc:284] Actor creation tas
