@@ -678,7 +678,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   return Status::OK();
 }
 
-void CoreWorker::GlobalGC() {
+void CoreWorker::TriggerGlobalGC() {
   auto status = local_raylet_client_->GlobalGC(
       [](const Status &status, const rpc::GlobalGCReply &reply) {
         if (!status.ok()) {

@@ -290,7 +290,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 bool delete_creating_tasks);
 
   /// Trigger garbage collection on each worker in the cluster.
-  void GlobalGC();
+  void TriggerGlobalGC();
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///

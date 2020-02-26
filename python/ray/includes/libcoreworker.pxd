@@ -177,7 +177,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         int64_t timeout_ms, c_vector[c_bool] *results)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only, c_bool delete_creating_tasks)
-        CRayStatus GlobalGC()
+        CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()
