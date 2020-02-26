@@ -331,8 +331,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def get_exploration_info(self):
-        if isinstance(self.exploration, Exploration):
-            return self._sess.run(self.exploration_info)
+        return self._sess.run(self.exploration_info)
 
     @override(Policy)
     def get_weights(self):
