@@ -661,12 +661,9 @@ class Node:
                 2. The process had been started in valgrind and had a non-zero
                    exit code.
         """
-        process_infos = self.all_processes.get(process_type, ())
+        process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
-            if process_type != ray_constants.PROCESS_TYPE_REAPER:
-                assert len(process_infos) == 1
-            else:
-                assert len(process_infos) <= 1
+            assert len(process_infos) == 1
         for process_info in process_infos:
             process = process_info.process
             # Handle the case where the process has already exited.
@@ -721,7 +718,7 @@ class Node:
             if wait:
                 process.wait()
 
-        self.all_processes.pop(process_type, None)
+        del self.all_processes[process_type]
 
     def kill_redis(self, check_alive=True):
         """Kill the Redis servers.

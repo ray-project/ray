@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import os
 import six
+import subprocess
 import sys
 import threading
 import time
@@ -494,6 +495,141 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
 
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
+
+
+def set_psigdeath(child_proc, _globals=[None]):
+    """Ensures the child process dies with the parent (fate-sharing).
+
+    On Linux, this must be called by the child in preexec_fn.
+    On Windows, this must be called by the parent, after spawning.
+    
+    Args:
+        child_proc:
+            On Linux, the child PID (os.getpid()).
+            On Windows, the subprocess.Popen or subprocess.Handle object.
+
+    Returns:
+        False if the functionality is unavailable.
+        Otherwise, returns True if the call succeeds, or if child_proc is None.
+        Raises an error if the functionality is available but the call fails.
+    """
+
+    _set_psigdeath = _globals[0]
+    if _set_psigdeath is None and sys.platform == "win32":
+        import ctypes
+        kernel32 = None
+        try:
+            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+            kernel32 = ctypes.WinDLL("kernel32")
+            kernel32.GetCurrentProcess.restype = HANDLE
+            kernel32.GetCurrentProcess.argtypes = ()
+            kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
+            kernel32.CreateJobObjectW.restype = HANDLE
+            sijo_argtypes = (HANDLE, ctypes.c_int, LPVOID, DWORD)
+            kernel32.SetInformationJobObject.argtypes = sijo_argtypes
+            kernel32.SetInformationJobObject.restype = BOOL
+            kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
+            kernel32.AssignProcessToJobObject.restype = BOOL
+        except TypeError:
+            pass
+        job = kernel32.CreateJobObjectW(None, None) if kernel32 else None
+        job = subprocess.Handle(job) if job else job
+        if job:
+            from ctypes.wintypes import DWORD, LARGE_INTEGER, ULARGE_INTEGER
+
+            class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("PerProcessUserTimeLimit", LARGE_INTEGER),
+                    ("PerJobUserTimeLimit", LARGE_INTEGER),
+                    ("LimitFlags", DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", DWORD),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", DWORD),
+                    ("SchedulingClass", DWORD),
+                ]
+
+            class IO_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("ReadOperationCount", ULARGE_INTEGER),
+                    ("WriteOperationCount", ULARGE_INTEGER),
+                    ("OtherOperationCount", ULARGE_INTEGER),
+                    ("ReadTransferCount", ULARGE_INTEGER),
+                    ("WriteTransferCount", ULARGE_INTEGER),
+                    ("OtherTransferCount", ULARGE_INTEGER),
+                ]
+
+            class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("BasicLimitInformation",
+                     JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                    ("IoInfo", IO_COUNTERS),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t),
+                ]
+
+            # Defined in <WinNT.h>; also available here:
+            # https://docs.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject
+            JobObjectExtendedLimitInformation = 9
+            JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+            buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            buf.BasicLimitInformation.LimitFlags = (
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
+            infoclass = JobObjectExtendedLimitInformation
+            current_proc = kernel32.GetCurrentProcess()
+            if not kernel32.SetInformationJobObject(
+                    job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)
+            ):
+                job = None
+        if job:
+
+            def _set_psigdeath(child_proc):
+                if isinstance(child_proc, subprocess.Popen):
+                    child_proc = child_proc._handle
+                assert isinstance(child_proc, subprocess.Handle)
+                result = kernel32.AssignProcessToJobObject(job, int(child_proc))
+                if not result:
+                    raise OSError(ctypes.get_last_error(),
+                                  "AssignProcessToJobObject() failed")
+        
+        else:
+            _set_psigdeath = False
+
+    elif _set_psigdeath is None and sys.platform.startswith("linux"):
+        import ctypes
+        # No need for a reaper on Linux.
+        # The kernel supports fate-sharing natively, so just initilize it.
+        prctl = None
+        try:
+            prctl = ctypes.CDLL(None).prctl
+            prctl.restype = ctypes.c_int
+            prctl.argtypes = [
+                ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong,
+                ctypes.c_ulong
+            ]
+        except (AttributeError, TypeError):
+            pass
+        if prctl:
+            import signal
+
+            def _set_psigdeath(child_proc):
+                assert child_proc == os.getpid()
+                PR_SET_PDEATHSIG = 1
+                status = prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
+                if status != 0:
+                    raise OSError(ctypes.get_errno(),
+                                  "prctl(PR_SET_PDEATHSIG) failed")
+                
+        else:
+            _set_psigdeath = False
+    _globals[0] = _set_psigdeath
+
+    return _set_psigdeath and (child_proc is None or _set_psigdeath(child_proc))
 
 
 def try_make_directory_shared(directory_path):

@@ -1,5 +1,4 @@
 import collections
-import ctypes
 import errno
 import json
 import logging
@@ -19,12 +18,6 @@ import colorama
 import ray
 import ray.ray_constants as ray_constants
 import psutil
-
-libc = None
-prctl = None
-
-job = None
-kernel32 = None
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -78,9 +71,6 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "process", "stdout_file", "stderr_file", "use_valgrind", "use_gdb",
     "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
 ])
-
-# This will be set lazily if needed
-set_psigdeath = None
 
 
 def address(ip_address, port):
@@ -446,15 +436,11 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
+
     def preexec_fn():
-        # Block sigint for spawned processes so they aren't killed by
-        # the SIGINT propagated from the shell on Ctrl-C so we can handle
-        # KeyboardInterrupts in interactive sessions.
-        # This is only supported in Python 3.3 and above.
         import signal
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
-        if set_psigdeath:
-            set_psigdeath()
+        ray.utils.set_psigdeath(os.getpid())
 
     process = subprocess.Popen(
         command,
@@ -464,6 +450,9 @@ def start_ray_process(command,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
         preexec_fn=preexec_fn if sys.platform != "win32" else None)
+
+    if sys.platform == "win32":
+        ray.util.set_psigdeath(process)
 
     return ProcessInfo(
         process=process,
@@ -590,119 +579,17 @@ def start_reaper():
     Returns:
         ProcessInfo for the process that was started.
     """
-    if sys.platform == "win32":
-        global kernel32, job
-        if kernel32 is None:
-            try:
-                from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
-                kernel32 = ctypes.WinDLL("kernel32")
-                kernel32.GetCurrentProcess.restype = HANDLE
-                kernel32.GetCurrentProcess.argtypes = ()
-                kernel32.CloseHandle.restype = BOOL
-                kernel32.CloseHandle.argtypes = (HANDLE,)
-                kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
-                kernel32.CreateJobObjectW.restype = HANDLE
-                sijo_argtypes = (HANDLE, ctypes.c_int, LPVOID, DWORD)
-                kernel32.SetInformationJobObject.argtypes = sijo_argtypes
-                kernel32.SetInformationJobObject.restype = BOOL
-                kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
-                kernel32.AssignProcessToJobObject.restype = BOOL
-            except TypeError:
-                kernel32 = False
-        if kernel32 and job is None:
-            job = kernel32.CreateJobObjectW(None, None)
-            if job is not None:
-                from ctypes.wintypes import DWORD, LARGE_INTEGER, ULARGE_INTEGER
-
-                class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
-                    _fields_ = [
-                        ("PerProcessUserTimeLimit", LARGE_INTEGER),
-                        ("PerJobUserTimeLimit", LARGE_INTEGER),
-                        ("LimitFlags", DWORD),
-                        ("MinimumWorkingSetSize", ctypes.c_size_t),
-                        ("MaximumWorkingSetSize", ctypes.c_size_t),
-                        ("ActiveProcessLimit", DWORD),
-                        ("Affinity", ctypes.c_size_t),
-                        ("PriorityClass", DWORD),
-                        ("SchedulingClass", DWORD),
-                    ]
-
-                class IO_COUNTERS(ctypes.Structure):
-                    _fields_ = [
-                        ("ReadOperationCount", ULARGE_INTEGER),
-                        ("WriteOperationCount", ULARGE_INTEGER),
-                        ("OtherOperationCount", ULARGE_INTEGER),
-                        ("ReadTransferCount", ULARGE_INTEGER),
-                        ("WriteTransferCount", ULARGE_INTEGER),
-                        ("OtherTransferCount", ULARGE_INTEGER),
-                    ]
-
-                class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
-                    _fields_ = [
-                        ("BasicLimitInformation",
-                         JOBOBJECT_BASIC_LIMIT_INFORMATION),
-                        ("IoInfo", IO_COUNTERS),
-                        ("ProcessMemoryLimit", ctypes.c_size_t),
-                        ("JobMemoryLimit", ctypes.c_size_t),
-                        ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                        ("PeakJobMemoryUsed", ctypes.c_size_t),
-                    ]
-
-                buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-                buf.BasicLimitInformation.LimitFlags = (
-                    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-                    | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
-                infoclass = JobObjectExtendedLimitInformation
-                current_proc = kernel32.GetCurrentProcess()
-                if not kernel32.SetInformationJobObject(
-                        job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)
-                ) or not kernel32.AssignProcessToJobObject(job, child_proc):
-                    logger.warning(
-                            "AssignProcessToJobObject failed. "
-                            "Did the child process already assign itself to a job?")
-                    kernel32.CloseHandle(job)
-                    job = False  # Failure. Are we already in a job?
-        if job:
-            return None
-
-    if sys.platform.startswith("linux"):
-        # No need for a reaper on Linux.
-        # The kernel supports fate-sharing natively, so just initilize it.
-        global libc
-        global set_psigdeath
-        if libc is None:
-            try:
-                libc = ctypes.CDLL(None)
-            except TypeError:
-                libc = False
-        global prctl
-        if prctl is None and libc is not None:
-            try:
-                prctl = libc.prctl
-                prctl.restype = ctypes.c_int
-                prctl.argtypes = [
-                    ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
-                    ctypes.c_ulong, ctypes.c_ulong
-                ]
-            except AttributeError:
-                prctl = False
-        if prctl:
-            import signal
-
-            def set_psigdeath(child_proc):
-                PR_SET_PDEATHSIG = 1
-                status = prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
-                assert status == 0, "PR_SET_PDEATHSIG shouldn't fail on Linux"
-
-            return None
-
+    if ray.util.set_psigdeath(None):
+        # No need for a reaper; already fate-sharing in kernel-mode
+        return None
     # Make ourselves a process group leader so that the reaper can clean
     # up other ray processes without killing the process group of the
     # process that started us.
     try:
         os.setpgrp()
-    except OSError as e:
-        if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
+    except (AttributeError, OSError) as e:
+        errcode = e.errno if isinstance(e, OSError) else None
+        if errcode == errno.EPERM and os.getpgrp() == os.getpid():
             # Nothing to do; we're already a session leader.
             pass
         else:
