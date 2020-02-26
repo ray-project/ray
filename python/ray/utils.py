@@ -19,6 +19,15 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
+# Linux can bind child processes' lifetimes to that of their parents via prctl.
+# prctl support is detected dynamically once, and assumed thereafter.
+linux_prctl = None
+
+# Windows can bind processes' lifetimes to that of kernel-level "job objects".
+# We keep a global job object to tie its lifetime to that of our own process.
+win32_job = None
+win32_AssignProcessToJobObject = None
+
 
 def _random_string():
     id_hash = hashlib.sha1()
@@ -497,27 +506,10 @@ def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
 
 
-def set_psigdeath(child_proc, _globals=[None]):
-    """Ensures the child process dies with the parent (fate-sharing).
-
-    On Linux, this must be called by the child in preexec_fn.
-    On Windows, this must be called by the parent, after spawning.
-    
-    Args:
-        child_proc:
-            On Linux, the child PID (os.getpid()).
-            On Windows, the subprocess.Popen or subprocess.Handle object.
-
-    Returns:
-        False if the functionality is unavailable.
-        Otherwise, returns True if the call succeeds, or if child_proc is None.
-        Raises an error if the functionality is available but the call fails.
-    """
-
-    _set_psigdeath = _globals[0]
-    if _set_psigdeath is None and sys.platform == "win32":
+def detect_fate_sharing_support_win32():
+    global win32_job, win32_AssignProcessToJobObject
+    if win32_job is None and sys.platform == "win32":
         import ctypes
-        kernel32 = None
         try:
             from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
             kernel32 = ctypes.WinDLL("kernel32")
@@ -530,8 +522,8 @@ def set_psigdeath(child_proc, _globals=[None]):
             kernel32.SetInformationJobObject.restype = BOOL
             kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
             kernel32.AssignProcessToJobObject.restype = BOOL
-        except TypeError:
-            pass
+        except (AttributeError, TypeError, ImportError):
+            kernel32 = None
         job = kernel32.CreateJobObjectW(None, None) if kernel32 else None
         job = subprocess.Handle(job) if job else job
         if job:
@@ -583,53 +575,61 @@ def set_psigdeath(child_proc, _globals=[None]):
             infoclass = JobObjectExtendedLimitInformation
             current_proc = kernel32.GetCurrentProcess()
             if not kernel32.SetInformationJobObject(
-                    job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)
-            ):
+                    job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)):
                 job = None
-        if job:
+        win32_AssignProcessToJobObject = (kernel32.AssignProcessToJobObject
+                                          if kernel32 is not None else False)
+        win32_job = job if job else False
+    return bool(win32_job)
 
-            def _set_psigdeath(child_proc):
-                if isinstance(child_proc, subprocess.Popen):
-                    child_proc = child_proc._handle
-                assert isinstance(child_proc, subprocess.Handle)
-                result = kernel32.AssignProcessToJobObject(job, int(child_proc))
-                if not result:
-                    raise OSError(ctypes.get_last_error(),
-                                  "AssignProcessToJobObject() failed")
-        
-        else:
-            _set_psigdeath = False
 
-    elif _set_psigdeath is None and sys.platform.startswith("linux"):
-        import ctypes
-        # No need for a reaper on Linux.
-        # The kernel supports fate-sharing natively, so just initilize it.
-        prctl = None
+def detect_fate_sharing_support_linux():
+    global linux_prctl
+    if linux_prctl is None and sys.platform.startswith("linux"):
         try:
-            prctl = ctypes.CDLL(None).prctl
-            prctl.restype = ctypes.c_int
-            prctl.argtypes = [
-                ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong,
-                ctypes.c_ulong
-            ]
+            from ctypes import c_int, c_ulong, CDLL
+            prctl = CDLL(None).prctl
+            prctl.restype = c_int
+            prctl.argtypes = [c_int, c_ulong, c_ulong, c_ulong, c_ulong]
         except (AttributeError, TypeError):
-            pass
-        if prctl:
-            import signal
+            prctl = None
+        linux_prctl = prctl if prctl else False
+    return bool(linux_prctl)
 
-            def _set_psigdeath(child_proc):
-                assert child_proc == os.getpid()
-                PR_SET_PDEATHSIG = 1
-                status = prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
-                if status != 0:
-                    raise OSError(ctypes.get_errno(),
-                                  "prctl(PR_SET_PDEATHSIG) failed")
-                
-        else:
-            _set_psigdeath = False
-    _globals[0] = _set_psigdeath
 
-    return _set_psigdeath and (child_proc is None or _set_psigdeath(child_proc))
+def set_kill_on_parent_death_linux():
+    """Ensures this process dies if its parent dies (fate-sharing).
+
+    Linux-only. Must be called in preexec_fn (i.e. by the child).
+    """
+    if detect_fate_sharing_support_linux():
+        PR_SET_PDEATHSIG = 1
+        if linux_prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+            import ctypes
+            raise OSError(ctypes.get_errno(), "prctl(PR_SET_PDEATHSIG) failed")
+    else:
+        assert False, "PR_SET_PDEATHSIG used despite being unavailable"
+
+
+def set_kill_child_on_death_win32(child_proc):
+    """Ensures the child process dies if this process dies (fate-sharing).
+
+    Windows-only. Must be called by the parent, after spawning the child.
+    
+    Args:
+        child_proc: The subprocess.Popen or subprocess.Handle object.
+    """
+
+    if isinstance(child_proc, subprocess.Popen):
+        child_proc = child_proc._handle
+    assert isinstance(child_proc, subprocess.Handle)
+
+    if detect_fate_sharing_support_win32():
+        if not win32_AssignProcessToJobObject(win32_job, int(child_proc)):
+            raise OSError(ctypes.get_last_error(),
+                          "AssignProcessToJobObject() failed")
+    else:
+        assert False, "AssignProcessToJobObject used despite being unavailable"
 
 
 def try_make_directory_shared(directory_path):

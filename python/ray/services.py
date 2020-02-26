@@ -436,11 +436,16 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
+    linux_fate_sharing = (sys.platform.startswith("linux")
+                          and ray.utils.detect_fate_sharing_support_linux())
+    win32_fate_sharing = (sys.platform.startswith("win32")
+                          and ray.utils.detect_fate_sharing_support_win32())
 
     def preexec_fn():
         import signal
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
-        ray.utils.set_psigdeath(os.getpid())
+        if linux_fate_sharing:
+            ray.utils.set_kill_on_parent_death_linux()
 
     process = subprocess.Popen(
         command,
@@ -451,8 +456,8 @@ def start_ray_process(command,
         stdin=subprocess.PIPE if pipe_stdin else None,
         preexec_fn=preexec_fn if sys.platform != "win32" else None)
 
-    if sys.platform == "win32":
-        ray.util.set_psigdeath(process)
+    if win32_fate_sharing:
+        ray.utils.set_kill_child_on_death_win32(process)
 
     return ProcessInfo(
         process=process,
@@ -579,8 +584,8 @@ def start_reaper():
     Returns:
         ProcessInfo for the process that was started.
     """
-    if ray.util.set_psigdeath(None):
-        # No need for a reaper; already fate-sharing in kernel-mode
+    if ray.utils.detect_fate_sharing_support():
+        # No need for a reaper; OS-level fate-sharing supported
         return None
     # Make ourselves a process group leader so that the reaper can clean
     # up other ray processes without killing the process group of the
