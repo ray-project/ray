@@ -30,7 +30,8 @@ class SACModel(TFModelV2):
                  actor_hiddens=(256, 256),
                  critic_hidden_activation="relu",
                  critic_hiddens=(256, 256),
-                 twin_q=False):
+                 twin_q=False,
+                 initial_alpha=1.0):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -95,7 +96,8 @@ class SACModel(TFModelV2):
         else:
             self.twin_q_net = None
 
-        self.log_alpha = tf.Variable(0.0, dtype=tf.float32, name="log_alpha")
+        self.log_alpha = tf.Variable(
+            np.log(initial_alpha), dtype=tf.float32, name="log_alpha")
         self.alpha = tf.exp(self.log_alpha)
 
         self.register_variables([self.log_alpha])

@@ -217,15 +217,15 @@ def build_eager_tf_policy(name,
                                      "`action_sampler_fn` is given")
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-                    action_space, self.config["model"])
+                    self.action_space, self.config["model"])
 
             if make_model:
-                self.model = make_model(self, observation_space, action_space,
-                                        config)
+                self.model = make_model(
+                    self, observation_space, self.action_space, config)
             else:
                 self.model = ModelCatalog.get_model_v2(
                     observation_space,
-                    action_space,
+                    self.action_space,
                     logit_dim,
                     config["model"],
                     framework="tf",
@@ -240,13 +240,14 @@ def build_eager_tf_policy(name,
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
                 SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    [_flatten_action(action_space.sample())]),
+                    [_flatten_action(self.action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
             self.model(input_dict, self._state_in, tf.convert_to_tensor([1]))
 
             if before_loss_init:
-                before_loss_init(self, observation_space, action_space, config)
+                before_loss_init(
+                    self, observation_space, self.action_space, config)
 
             self._initialize_loss_with_dummy_batch()
             self._loss_initialized = True
@@ -257,7 +258,7 @@ def build_eager_tf_policy(name,
                 self._optimizer = tf.train.AdamOptimizer(config["lr"])
 
             if after_init:
-                after_init(self, observation_space, action_space, config)
+                after_init(self, observation_space, self.action_space, config)
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -538,7 +539,7 @@ def build_eager_tf_policy(name,
                     [self.observation_space.sample()]),
                 SampleBatch.NEXT_OBS: np.array(
                     [self.observation_space.sample()]),
-                SampleBatch.DONES: p.array([False], dtype=np.bool),
+                SampleBatch.DONES: np.array([False], dtype=np.bool),
                 #SampleBatch.ACTIONS: np.zeros(
                 #        (1, ) + action_shape[1:],
                 #        dtype=action_dtype.as_numpy_dtype()),
@@ -588,7 +589,7 @@ def build_eager_tf_policy(name,
             self.model.from_batch(dummy_batch)
 
             postprocessed_batch = tf.nest.map_structure(
-                lambda c: tf.convert_to_tensor(c), postprocessed_batch)
+                lambda c: tf.convert_to_tensor(c), postprocessed_batch.data)
 
             loss_fn(self, self.model, self.dist_class, postprocessed_batch)
             if stats_fn:

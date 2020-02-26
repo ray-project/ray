@@ -1,0 +1,21 @@
+pendulum-sac:
+    env: CartPole-v0
+    run: SAC
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 10000
+    config:
+        evaluation_interval: 1  # logged under evaluation/* metric keys
+        #soft_horizon: True
+        #argmax_actions: True  # Not necessary, algo will set this itself.
+        #metrics_smoothing_episodes: 5
+        gumbel_softmax_temperature: 1.0
+        Q_model:
+            hidden_activation: tanh
+            hidden_layer_sizes: [256, 256]
+        policy_model:
+            hidden_activation: tanh
+            hidden_layer_sizes: [256, 256]
+        buffer_size: 5000
+        gamma: 0.99
+        initial_alpha: 0.5

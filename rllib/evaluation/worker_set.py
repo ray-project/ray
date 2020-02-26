@@ -241,6 +241,7 @@ class WorkerSet:
             observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
             clip_actions=config["clip_actions"],
+            #argmax_actions=config["argmax_actions"],
             env_config=config["env_config"],
             model_config=config["model"],
             policy_config=config,

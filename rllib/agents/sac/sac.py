@@ -31,13 +31,19 @@ DEFAULT_CONFIG = with_common_config({
     # === Learning ===
     # Update the target by \tau * policy + (1-\tau) * target_policy
     "tau": 5e-3,
-    # Target entropy lower bound. This is the inverse of reward scale,
-    # and will be optimized automatically.
+    # Initial value to use for the entropy weight alpha.
+    "initial_alpha": 0.5,
+    # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
+    # Discrete(2), -3.0 for Box(shape=(3,))).
+    # This is the inverse of reward scale, and will be optimized automatically.
     "target_entropy": "auto",
     # Disable setting done=True at end of episode.
     "no_done_at_end": True,
     # N-step target updates
     "n_step": 1,
+    # The GumbelSoftmax temperature parameter to use, iff action space is
+    # discrete and SAC uses GumbelSoftmax to sample.
+    "gumbel_softmax_temperature": 1.0,
     # === Evaluation ===
     # The evaluation stats will be reported under the "evaluation" metric key.
     "evaluation_interval": 1,
@@ -104,5 +110,9 @@ DEFAULT_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
+
 SACTrainer = GenericOffPolicyTrainer.with_updates(
-    name="SAC", default_config=DEFAULT_CONFIG, default_policy=SACTFPolicy)
+    name="SAC",
+    default_config=DEFAULT_CONFIG,
+    default_policy=SACTFPolicy,
+)

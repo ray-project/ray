@@ -24,6 +24,9 @@ tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
+# Flattened (approx one-hot) actions for discrete action spaces.
+#ACTIONS_FLAT = "actions_flat"
+
 
 def build_sac_model(policy, obs_space, action_space, config):
     if config["model"]["custom_model"]:
@@ -63,7 +66,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
         critic_hidden_activation=config["Q_model"]["hidden_activation"],
         critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
-        twin_q=config["twin_q"])
+        twin_q=config["twin_q"],
+        initial_alpha=config["initial_alpha"])
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -78,7 +82,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
         critic_hidden_activation=config["Q_model"]["hidden_activation"],
         critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
-        twin_q=config["twin_q"])
+        twin_q=config["twin_q"],
+        initial_alpha=config["initial_alpha"])
 
     return policy.model
 
@@ -87,7 +92,14 @@ def postprocess_trajectory(policy,
                            sample_batch,
                            other_agent_batches=None,
                            episode=None):
-    return postprocess_nstep_and_prio(policy, sample_batch)
+    sample_batch = postprocess_nstep_and_prio(policy, sample_batch)
+    # We have to argmax actions for the env. Keep flattened (pseudo one-hot)
+    # actions as ACTIONS_FLAT for the loss.
+    #sample_batch[ACTIONS_FLAT] = sample_batch[SampleBatch.ACTIONS]
+    #if policy.action_space_env is not None:
+    #    sample_batch[SampleBatch.ACTIONS] = \
+    #        np.argmax(sample_batch[SampleBatch.ACTIONS], -1)
+    return sample_batch
 
 
 def get_dist_class(config, action_space):
@@ -398,8 +410,19 @@ class TargetNetworkMixin:
         return self.model.variables() + self.target_model.variables()
 
 
-def setup_early_mixins(policy, obs_space, action_space, config):
+def before_init(policy, obs_space, action_space, config):
     ActorCriticOptimizerMixin.__init__(policy, config)
+
+    # Setup action spaces (for the env and flattened/one-hot) in case of
+    # discrete actions.
+    policy.action_space_env = None
+    if isinstance(action_space, Discrete):
+        policy.action_space = Box(
+            0.0, 1.0, shape=(action_space.n,), dtype=np.float32)
+        policy.action_space_env = action_space
+        # Set the argmax action option to True to translate all actions before
+        # going out to the Env.
+        config["argmax_actions"] = True
 
 
 def setup_mid_mixins(policy, obs_space, action_space, config):
@@ -425,7 +448,7 @@ SACTFPolicy = build_tf_policy(
     mixins=[
         TargetNetworkMixin, ActorCriticOptimizerMixin, ComputeTDErrorMixin
     ],
-    before_init=setup_early_mixins,
+    before_init=before_init,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False)

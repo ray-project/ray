@@ -11,18 +11,28 @@ class TestSAC(unittest.TestCase):
         """Test whether an SACTrainer can be built with both frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        num_iterations = 2
 
-        # tf.
+        # eager (discrete and cont. actions).
         config["eager"] = True
         trainer = sac.SACTrainer(config=config, env="CartPole-v0")
-        num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
 
+        trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
+        for i in range(num_iterations):
+            results = trainer.train()
+            print(results)
+
+        # tf (discrete and cont. actions).
         config["eager"] = False
         trainer = sac.SACTrainer(config=config, env="CartPole-v0")
-        num_iterations = 2
+        for i in range(num_iterations):
+            results = trainer.train()
+            print(results)
+
+        trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
