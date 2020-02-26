@@ -480,16 +480,20 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                          &result_map, &got_exception));
   }
 
+  // Erase any objects that were promoted to plasma from the results. These get
+  // requests will be retried at the plasma store.
+  for (auto it = result_map.begin(); it != result_map.end(); it++) {
+    if (it->second->IsInPlasmaError()) {
+      RAY_LOG(DEBUG) << it->first << " in plasma, doing fetch-and-get";
+      plasma_object_ids.insert(it->first);
+      result_map.erase(it);
+    }
+  }
+
   if (!got_exception) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
     // the transport type again and return them for the original direct call ids.
-    for (const auto &pair : result_map) {
-      if (pair.second->IsInPlasmaError()) {
-        RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
-        plasma_object_ids.insert(pair.first);
-      }
-    }
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
