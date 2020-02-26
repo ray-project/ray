@@ -10,9 +10,10 @@ namespace ray {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals)
+    std::function<Status()> check_signals, std::function<void()> on_store_full)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
+  on_store_full_ = on_store_full;
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
@@ -79,6 +80,9 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
         RAY_LOG(ERROR) << message.str() << " Plasma store status:\n"
                        << MemoryUsageString() << "\nWaiting " << delay
                        << "ms for space to free up...";
+        if (on_store_full_) {
+          on_store_full_();
+        }
         usleep(1000 * delay);
         delay *= 2;
         retries += 1;
@@ -205,9 +209,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return Status::OK();
   }
 
-  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct and
-  // Get from the local object store in batches. This loop will run indefinitely until the
-  // objects are all fetched if timeout is -1.
+  // If not all objects were successfully fetched, repeatedly call FetchOrReconstruct
+  // and Get from the local object store in batches. This loop will run indefinitely
+  // until the objects are all fetched if timeout is -1.
   int unsuccessful_attempts = 0;
   bool should_break = false;
   bool timed_out = false;
@@ -346,7 +350,8 @@ void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
     RAY_LOG(WARNING)
         << "Attempted " << num_attempts << " times to reconstruct objects, but "
         << "some objects are still unavailable. If this message continues to print,"
-        << " it may indicate that object's creating task is hanging, or something wrong"
+        << " it may indicate that object's creating task is hanging, or something "
+           "wrong"
         << " happened in raylet backend. " << remaining.size()
         << " object(s) pending: " << oss.str() << ".";
   }
