@@ -30,7 +30,7 @@ export PATH=$PATH:/root/bin
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-bash $HOME/.nvm/nvm.sh
+source $HOME/.nvm/nvm.sh
 nvm install node
 nvm use node
 
