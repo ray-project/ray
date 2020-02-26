@@ -38,6 +38,29 @@ def test_ignore_http_proxy(shutdown_only):
     assert ray.get(f.remote()) == 1
 
 
+# https://github.com/ray-project/ray/issues/7263
+def test_grpc_message_size(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def bar(*a):
+        return
+
+    # 50KiB, not enough to spill to plasma, but will be inlined.
+    def f():
+        return np.zeros(50000, dtype=np.uint8)
+
+    # Executes a 10MiB task spec
+    ray.get(bar.remote(*[f() for _ in range(200)]))
+
+
+# https://github.com/ray-project/ray/issues/7287
+def test_omp_threads_set(shutdown_only):
+    ray.init(num_cpus=1)
+    # Should have been auto set by ray init.
+    assert os.environ["OMP_NUM_THREADS"] == "1"
+
+
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.
@@ -460,13 +483,15 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
     # from being garbage-collected without explicity invoking gc.collect.
+
+    # test a dynamic function
     def f():
         return 4669201609102990671853203821578
 
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads
+    from ray.cloudpickle import CloudPickler, loads, dumps
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
     new_f = loads(bio.getvalue())
@@ -476,6 +501,27 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     del f
 
     assert wr() is None
+
+    # test a dynamic class
+    class ShortlivedObject:
+        def __del__(self):
+            print("Went out of scope!")
+
+    obj = ShortlivedObject()
+    new_obj = weakref.ref(obj)
+
+    dumps(obj)
+    del obj
+    assert new_obj() is None
+
+
+def test_deserialized_from_buffer_immutable(ray_start_regular):
+    x = np.full((2, 2), 1.)
+    o = ray.put(x)
+    y = ray.get(o)
+    with pytest.raises(
+            ValueError, match="assignment destination is read-only"):
+        y[0, 0] = 9.
 
 
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
@@ -1699,6 +1745,35 @@ def test_wait(ray_start_regular):
         ray.wait(1)
     with pytest.raises(TypeError):
         ray.wait([1])
+
+
+def test_duplicate_args(ray_start_regular):
+    @ray.remote
+    def f(arg1,
+          arg2,
+          arg1_duplicate,
+          kwarg1=None,
+          kwarg2=None,
+          kwarg1_duplicate=None):
+        assert arg1 == kwarg1
+        assert arg1 != arg2
+        assert arg1 == arg1_duplicate
+        assert kwarg1 != kwarg2
+        assert kwarg1 == kwarg1_duplicate
+
+    # Test by-value arguments.
+    arg1 = [1]
+    arg2 = [2]
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
+
+    # Test by-reference arguments.
+    arg1 = ray.put([1])
+    arg2 = ray.put([2])
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
 if __name__ == "__main__":

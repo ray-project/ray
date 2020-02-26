@@ -291,7 +291,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             self.config,
             self.sess,
             obs_input=self.cur_observations,
-            action_sampler=self.output_actions,
+            sampled_action=self.output_actions,
             loss=self.actor_loss + self.critic_loss,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops)

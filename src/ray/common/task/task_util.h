@@ -80,18 +80,6 @@ class TaskSpecBuilder {
 
   /// Add a by-value argument to the task.
   ///
-  /// \param data String object that contains the data.
-  /// \param metadata String object that contains the metadata.
-  /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const std::string &data, const std::string &metadata) {
-    auto arg = message_->add_args();
-    arg->set_data(data);
-    arg->set_metadata(metadata);
-    return *this;
-  }
-
-  /// Add a by-value argument to the task.
-  ///
   /// \param value the RayObject instance that contains the data and the metadata.
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &AddByValueArg(const RayObject &value) {
@@ -103,6 +91,9 @@ class TaskSpecBuilder {
     if (value.HasMetadata()) {
       const auto &metadata = value.GetMetadata();
       arg->set_metadata(metadata->Data(), metadata->Size());
+    }
+    for (const auto &nested_id : value.GetNestedIds()) {
+      arg->add_nested_inlined_ids(nested_id.Binary());
     }
     return *this;
   }

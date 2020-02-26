@@ -2,8 +2,9 @@
 #define UNISTD_H
 
 #include <getopt.h>
+#include <io.h>       // open/read/write/close
+#include <process.h>  // getpid
 
-#include <io.h>  // open/read/write/close
 #ifndef EXTERN_C
 #ifdef __cplusplus
 #define EXTERN_C extern "C"

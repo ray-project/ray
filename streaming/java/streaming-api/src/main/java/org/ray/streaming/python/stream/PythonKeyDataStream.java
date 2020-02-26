@@ -1,7 +1,5 @@
 package org.ray.streaming.python.stream;
 
-import org.ray.streaming.api.stream.Stream;
-import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonFunction.FunctionInterface;
 import org.ray.streaming.python.PythonOperator;
@@ -10,10 +8,10 @@ import org.ray.streaming.python.PythonPartition;
 /**
  * Represents a python DataStream returned by a key-by operation.
  */
-public class PythonKeyDataStream extends Stream implements PythonStream  {
+public class PythonKeyDataStream extends PythonDataStream implements PythonStream  {
 
-  public PythonKeyDataStream(PythonDataStream input, StreamOperator streamOperator) {
-    super(input, streamOperator);
+  public PythonKeyDataStream(PythonDataStream input, PythonOperator pythonOperator) {
+    super(input, pythonOperator);
     this.partition = PythonPartition.KeyPartition;
   }
 

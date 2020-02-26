@@ -202,33 +202,38 @@ def build_q_model(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                 action_space, config):
+def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
+                       action_space, config):
     # Action Q network.
-    q_values, q_logits, q_dist = _compute_q_values(
-        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
-        action_space)
-    policy.q_values = q_values
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+    q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
+    action_dist = Categorical(q_vals, q_model)
+    return action_dist.logp(actions)
+
+
+def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
+                                 action_space, explore, config, timestep):
+    # Action Q network.
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
     policy.q_func_vars = q_model.variables()
 
-    # Noise vars for Q network except for layer normalization vars
+    policy.output_actions, policy.sampled_action_logp = \
+        policy.exploration.get_exploration_action(
+            policy.q_values, Categorical, q_model, explore, timestep)
+
+    # Noise vars for Q network except for layer normalization vars.
     if config["parameter_noise"]:
         _build_parameter_noise(
             policy,
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
 
-    # TODO(sven): Move soft_q logic to different Exploration child-component.
-    action_log_prob = None
-    if config["soft_q"]:
-        action_dist = Categorical(q_values / config["softmax_temp"])
-        policy.output_actions = action_dist.sample()
-        action_log_prob = action_dist.sampled_action_logp()
-        policy.action_prob = tf.exp(action_log_prob)
-    else:
-        policy.output_actions = tf.argmax(q_values, axis=1)
-        policy.action_prob = None
-    return policy.output_actions, action_log_prob
+    return policy.output_actions, policy.sampled_action_logp
 
 
 def _build_parameter_noise(policy, pnet_params):
@@ -452,6 +457,7 @@ DQNTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_model,
     action_sampler_fn=sample_action_from_q_network,
+    log_likelihood_fn=get_log_likelihood,
     loss_fn=build_q_losses,
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,

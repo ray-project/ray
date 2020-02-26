@@ -19,7 +19,6 @@ DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
-
     # The GAE(lambda) parameter.
     "lambda": 1.0,
     # Initial coefficient for KL divergence.
@@ -97,10 +96,12 @@ def choose_policy_optimizer(workers, config):
 
 
 def update_kl(trainer, fetches):
+    # Single-agent.
     if "kl" in fetches:
-        # single-agent
         trainer.workers.local_worker().for_policy(
             lambda pi: pi.update_kl(fetches["kl"]))
+
+    # Multi-agent.
     else:
 
         def update(pi, pi_id):
@@ -109,7 +110,6 @@ def update_kl(trainer, fetches):
             else:
                 logger.debug("No data for {}, not updating kl".format(pi_id))
 
-        # multi-agent
         trainer.workers.local_worker().foreach_trainable_policy(update)
 
 

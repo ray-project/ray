@@ -32,7 +32,8 @@ class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest()
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter())),
+        reference_counter_(
+            std::shared_ptr<ReferenceCounter>(new ReferenceCounter(rpc::Address()))),
         actor_manager_(std::shared_ptr<ActorManagerInterface>(new MockActorManager())),
         manager_(store_, reference_counter_, actor_manager_,
                  [this](const TaskSpecification &spec) {
@@ -65,7 +66,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   return_object->set_object_id(return_id.Binary());
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
-  manager_.CompletePendingTask(spec.TaskId(), reply, nullptr);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
