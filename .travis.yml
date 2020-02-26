@@ -327,8 +327,8 @@ script:
 
   # ray operator tests
   - cd ./deploy/ray-operator/
-  - go build
-  - go test ./...
+  - ../../ci/suppress_output go build
+  - ../../ci/suppress_output go test ./...
   - cd ../..
 
   # random python tests TODO(ekl): these should be moved to bazel
