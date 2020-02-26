@@ -1006,15 +1006,6 @@ cdef class CoreWorker:
                 c_owner_id,
                 c_owner_address)
 
-    def add_contained_object_ids(
-            self, ObjectID object_id, contained_object_ids):
-        cdef:
-            CObjectID c_object_id = object_id.native()
-            c_vector[CObjectID] c_contained_ids
-        c_contained_ids = ObjectIDsToVector(contained_object_ids)
-        self.core_worker.get().AddContainedObjectIDs(
-            c_object_id, c_contained_ids)
-
     # TODO: handle noreturn better
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
