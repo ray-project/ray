@@ -19,7 +19,7 @@ TEST(SequencerTest, ExecuteOrderedTest) {
     sequencer.Post(key, operation);
   }
 
-  while (queue.size() < size) {
+  while (queue.size() < (size_t)size) {
     usleep(1000);
   }
 
