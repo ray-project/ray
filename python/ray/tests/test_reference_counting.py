@@ -81,15 +81,15 @@ def test_global_gc(shutdown_only):
         cluster.add_node(num_cpus=1, num_gpus=0)
     ray.init(address=cluster.address)
 
-    class Loop:
-        pass
+    class ObjectWithCyclicRef:
+        def __init__(self):
+            self.loop = self
 
     @ray.remote(num_cpus=1)
     class GarbageHolder:
         def __init__(self):
             gc.disable()
-            x = Loop()
-            x.cyclic_ref = x
+            x = ObjectWithCyclicRef()
             self.garbage = weakref.ref(x)
 
         def has_garbage(self):

@@ -348,7 +348,7 @@ void NodeManager::DoLocalGC() {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     all_workers.push_back(driver);
   }
-  RAY_LOG(ERROR) << "Sending local GC request to " << all_workers.size() << " workers.";
+  RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size() << " workers.";
   for (const auto &worker : all_workers) {
     rpc::LocalGCRequest request;
     auto status = worker->rpc_client()->LocalGC(
@@ -3314,7 +3314,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "Broadcasting global GC request to all raylets.";
+  RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
   should_global_gc_ = true;
   should_local_gc_ = true;
 }
