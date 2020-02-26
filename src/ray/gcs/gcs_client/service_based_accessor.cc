@@ -98,8 +98,8 @@ Status ServiceBasedActorInfoAccessor::AsyncRegister(
   auto operation = [this, request, actor_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().RegisterActorInfo(
-        request, [actor_id, callback, done_callback](const Status &status,
-                                            const rpc::RegisterActorInfoReply &reply) {
+        request, [actor_id, callback, done_callback](
+                     const Status &status, const rpc::RegisterActorInfoReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -124,8 +124,8 @@ Status ServiceBasedActorInfoAccessor::AsyncUpdate(
   auto operation = [this, request, actor_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().UpdateActorInfo(
-        request, [actor_id, callback, done_callback](const Status &status,
-                                            const rpc::UpdateActorInfoReply &reply) {
+        request, [actor_id, callback, done_callback](
+                     const Status &status, const rpc::UpdateActorInfoReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -417,8 +417,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
   auto operation = [this, request, node_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().UpdateResources(
-        request, [node_id, callback, done_callback](const Status &status,
-                                           const rpc::UpdateResourcesReply &reply) {
+        request, [node_id, callback, done_callback](
+                     const Status &status, const rpc::UpdateResourcesReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -445,8 +445,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
   auto operation = [this, request, node_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().DeleteResources(
-        request, [node_id, callback, done_callback](const Status &status,
-                                           const rpc::DeleteResourcesReply &reply) {
+        request, [node_id, callback, done_callback](
+                     const Status &status, const rpc::DeleteResourcesReply &reply) {
           if (callback) {
             callback(status);
           }
