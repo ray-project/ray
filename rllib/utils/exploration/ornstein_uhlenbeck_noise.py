@@ -10,8 +10,10 @@ torch, _ = try_import_torch()
 class OrnsteinUhlenbeckNoise(GaussianNoise):
     """An exploration that adds Ornstein-Uhlenbeck noise to continuous actions.
 
-    If explore=True, returns TODO(sven): Describe OU process.
-    Also, some completely random period is possible at the
+    If explore=True, returns sampled actions plus a noise term X,
+    which changes according to this formula:
+    Xt+1 = -theta*Xt + sigma*N[0,stddev], where theta, sigma and stddev are
+    constants. Also, some completely random period is possible at the
     beginning.
     If explore=False, returns the deterministic action.
     """
@@ -147,7 +149,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                     self.ou_sigma * gaussian_sample
                 self.ou_state += ou_new
                 noise = scale * self.ou_base_scale * self.ou_state * \
-                        (self.action_space.high - self.action_space.low)
+                    (self.action_space.high - self.action_space.low)
                 action = torch.clamp(
                     det_actions + noise,
                     self.action_space.low * torch.ones_like(det_actions),

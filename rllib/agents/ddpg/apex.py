@@ -2,7 +2,6 @@ from ray.rllib.agents.dqn.apex import APEX_TRAINER_PROPERTIES
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
 
-
 APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
     {
