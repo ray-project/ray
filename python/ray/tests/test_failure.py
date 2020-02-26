@@ -892,30 +892,33 @@ def test_connect_with_disconnected_node(shutdown_only):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 5,
-        "object_store_memory": 10**8
+        "object_store_memory": 10**8,
+        "_internal_config": json.dumps({
+            "object_store_full_max_retries": 0
+        })
     }],
     indirect=True)
-@pytest.mark.parametrize("num_actors", [1, 2, 5])
-def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
+def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor:
         def some_expensive_task(self):
             return np.zeros(10**8 // 2, dtype=np.uint8)
 
-    actors = [LargeMemoryActor.remote() for _ in range(num_actors)]
+    actors = [LargeMemoryActor.remote() for _ in range(5)]
     for _ in range(10):
         pending = [a.some_expensive_task.remote() for a in actors]
         while pending:
             [done], pending = ray.wait(pending, num_returns=1)
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 2,
-        "object_store_memory": 10**8
-    }],
-    indirect=True)
-def test_fill_object_store_exception(ray_start_cluster_head):
+def test_fill_object_store_exception(shutdown_only):
+    ray.init(
+        num_cpus=2,
+        object_store_memory=10**8,
+        _internal_config=json.dumps({
+            "object_store_full_max_retries": 0
+        }))
+
     @ray.remote
     def expensive_task():
         return np.zeros((10**8) // 10, dtype=np.uint8)
