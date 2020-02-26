@@ -264,7 +264,11 @@ class PyTorchTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, max_retries=0, checkpoint="auto", num_steps=None, info=None):
+    def train(self,
+              max_retries=0,
+              checkpoint="auto",
+              num_steps=None,
+              info=None):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
@@ -299,7 +303,8 @@ class PyTorchTrainer:
             self._resize_workers(checkpoint=checkpoint)
 
         with self.optimizer_timer:
-            success, worker_stats = self._train_epoch(num_steps=num_steps, info)
+            success, worker_stats = self._train_epoch(
+                num_steps=num_steps, info=info)
             # Fault handling
             for i in range(max_retries):
                 if success:
@@ -309,7 +314,8 @@ class PyTorchTrainer:
                 self._resize_workers(checkpoint=checkpoint)
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
-                success, worker_stats = self._train_epoch(num_steps=num_steps, info)
+                success, worker_stats = self._train_epoch(
+                    num_steps=num_steps, info=info)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -325,7 +331,10 @@ class PyTorchTrainer:
         return train_stats
 
     def _train_epoch(self, num_steps=None, info=None):
-        worker_stats = [w.train_epoch.remote(num_steps=num_steps, info=info) for w in self.workers]
+        worker_stats = [
+            w.train_epoch.remote(num_steps=num_steps, info=info)
+            for w in self.workers
+        ]
         success = utils.check_for_failure(worker_stats)
         return success, worker_stats
 

@@ -162,8 +162,7 @@ class TrainingOperator:
                         metrics["loss"], n=metrics.get("num_samples", 1))
                 self.global_step += 1
 
-        if self.scheduler and info.get(
-                SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
             self.scheduler.step()
 
         stats = {
