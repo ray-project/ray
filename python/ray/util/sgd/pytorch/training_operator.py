@@ -1,3 +1,4 @@
+import collections
 import torch
 
 from ray.util.sgd.utils import TimerStat, AverageMeter
@@ -96,14 +97,20 @@ class TrainingOperator:
         }
         self._validated_customization = False
         self._models = models  # List of models
-        assert isinstance(models, list), "Components need to be in a list."
+        assert isinstance(models, collections.Iterable
+                          ), "Components need to be iterable. Got: {}".format(
+                              type(models))
         self._optimizers = optimizers  # List of optimizers
-        assert isinstance(optimizers, list), "Components need to be in a list."
+        assert isinstance(optimizers, collections.Iterable
+                          ), "Components need to be iterable. Got: {}".format(
+                              type(optimizers))
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
-            assert isinstance(schedulers,
-                              list), "Components need to be in a list."
+            assert isinstance(
+                schedulers, collections.Iterable
+            ), "Components need to be iterable. Got: {}".format(
+                type(schedulers))
         self._config = config
         self._use_fp16 = use_fp16
         self.global_step = 0
@@ -265,14 +272,3 @@ class TrainingOperator:
 
     def load_state_dict(self, state_dict):
         pass
-
-
-
-class _TestingOperator(TrainingOperator):
-    def train_epoch(self, iterator, info):
-        result = {}
-        for i, (model, optimizer) in enumerate(
-                zip(self.models, self.optimizers)):
-            result["model_{}".format(i)] = train(
-                model, optimizer, self.criterion, iterator)
-        return result

@@ -13,7 +13,7 @@ from ray.util.sgd.pytorch.resnet import ResNet18
 from ray.util.sgd.pytorch.constants import TEST_MODE
 
 
-def initialization_hook(runner):
+def initialization_hook():
     print("NCCL DEBUG SET")
     # Need this for avoiding a connection restart issue
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
@@ -66,7 +66,7 @@ def train_example(num_replicas=1,
         scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
         num_replicas=num_replicas,
-        config=config,
+        config={"lr": 0.01},
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo",
@@ -88,7 +88,7 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
         "model_creator": ResNet18,
         "data_creator": cifar_creator,
         "optimizer_creator": optimizer_creator,
-        "loss_creator": lambda config: nn.CrossEntropyLoss(),
+        "loss_creator": nn.CrossEntropyLoss,
         "num_replicas": num_replicas,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
