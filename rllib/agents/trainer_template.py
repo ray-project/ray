@@ -1,9 +1,13 @@
+import logging
+import os
 import time
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -106,7 +110,9 @@ def build_trainer(name,
             self.train_pipeline = None
             self.optimizer = None
 
-            if training_pipeline:
+            if training_pipeline and (self.config["use_pipeline_impl"] or
+                                      "RLLIB_USE_PIPELINE_IMPL" in os.environ):
+                logger.warning("Using experimental pipeline based impl.")
                 self.train_pipeline = training_pipeline(self.workers, config)
             elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
