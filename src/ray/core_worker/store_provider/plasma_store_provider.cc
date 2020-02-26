@@ -55,9 +55,9 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              std::shared_ptr<Buffer> *data) {
-  uint32_t retries = 0;
+  int32_t retries = 0;
+  int32_t max_retries = RayConfig::instance().object_store_full_max_retries();
   uint32_t delay = RayConfig::instance().object_store_full_initial_delay_ms();
-  uint32_t max_retries = RayConfig::instance().object_store_full_max_retries();
   Status status;
   bool should_retry = true;
   while (should_retry) {
