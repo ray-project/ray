@@ -21,7 +21,7 @@ from ray.util.sgd.pytorch import TrainingOperator
 
 
 def data_creator(config):
-    return datasets.MNIST(
+    dataset = datasets.MNIST(
         root="~/mnist/",
         download=True,
         transform=transforms.Compose([
@@ -29,6 +29,9 @@ def data_creator(config):
             transforms.ToTensor(),
             transforms.Normalize((0.5, ), (0.5, )),
         ]))
+    if config.get("test_mode"):
+        dataset = torch.utils.data.Subset(dataset, list(range(64)))
+    return dataset
 
 
 class Generator(nn.Module):
@@ -124,7 +127,8 @@ class GANOperator(TrainingOperator):
                                    if torch.cuda.is_available() else "cpu")
 
         self.classifier = LeNet()
-        self.classifier.load_state_dict(torch.load(config["model_path"]))
+        self.classifier.load_state_dict(
+            torch.load(config["classification_model_path"]))
         self.classifier.eval()
 
     def inception_score(self, imgs, batch_size=32, splits=1):
@@ -160,11 +164,8 @@ class GANOperator(TrainingOperator):
         return np.mean(split_scores), np.std(split_scores)
 
     @override(TrainingOperator)
-    def train_batch(self, batch, batch_idx):
-        """Trains on one batch of data from the data creator.
-
-        User needs to manually handle
-        """
+    def train_batch(self, batch, batch_info):
+        """Trains on one batch of data from the data creator."""
         real_label = 1
         fake_label = 0
         discriminator, generator = self.models
@@ -210,7 +211,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         "test_mode": test_mode,
         "classification_model_path": os.path.join(
             os.path.dirname(ray.__file__),
-            "experimental/sgd/pytorch/examples/mnist_cnn.pt")
+            "util/sgd/pytorch/examples/mnist_cnn.pt")
     }
     trainer = PyTorchTrainer(
         model_creator,
@@ -223,8 +224,8 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
-    for i in range(10):
-        stats = trainer.train(num_steps=test_mode or None)
+    for i in range(5):
+        stats = trainer.train()
         print(stats)
 
     return trainer
