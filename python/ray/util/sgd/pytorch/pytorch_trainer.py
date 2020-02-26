@@ -56,7 +56,8 @@ class PyTorchTrainer:
             loss_creator=nn.MSELoss,
             use_gpu=True
         )
-        trainer.train()
+        for i in range(4):
+            trainer.train()
 
 
     Args:
@@ -91,8 +92,8 @@ class PyTorchTrainer:
         training_operator_cls (type): Custom training operator class
             that subclasses the TrainingOperator class. This class
             will be copied onto all remote workers and used to specify
-            custom training and validation operations. See
-            training_operator.py.
+            custom training and validation operations. Defaults to
+            TrainingOperator.
         config (dict): Custom configuration value to be passed to
             all creator and operator constructors.
         dataloader_config (dict): Configuration values to be passed into
@@ -263,7 +264,7 @@ class PyTorchTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, max_retries=0, checkpoint="auto", info=None):
+    def train(self, max_retries=0, checkpoint="auto", num_steps=None, info=None):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
@@ -275,6 +276,9 @@ class PyTorchTrainer:
                 total available resources, and re-launch up to the
                 available resources. Behavior is not well-defined
                 in case of shared cluster usage.
+            num_steps (int): Number of batches to compute update steps on.
+                This corresponds also to the number of times
+                ``TrainingOperator.train_batch`` is called.
             checkpoint (str): Path to checkpoint to restore from if retrying.
                 If max_retries is set and checkpoint == "auto", PyTorchTrainer
                 will save a checkpoint before starting to train.
@@ -295,7 +299,7 @@ class PyTorchTrainer:
             self._resize_workers(checkpoint=checkpoint)
 
         with self.optimizer_timer:
-            success, worker_stats = self._train_epoch(info)
+            success, worker_stats = self._train_epoch(num_steps=num_steps, info)
             # Fault handling
             for i in range(max_retries):
                 if success:
@@ -305,7 +309,7 @@ class PyTorchTrainer:
                 self._resize_workers(checkpoint=checkpoint)
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
-                success, worker_stats = self._train_epoch(info)
+                success, worker_stats = self._train_epoch(num_steps=num_steps, info)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -320,8 +324,8 @@ class PyTorchTrainer:
                 train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
 
-    def _train_epoch(self, info=None):
-        worker_stats = [w.train_epoch.remote(info=info) for w in self.workers]
+    def _train_epoch(self, num_steps=None, info=None):
+        worker_stats = [w.train_epoch.remote(num_steps=num_steps, info=info) for w in self.workers]
         success = utils.check_for_failure(worker_stats)
         return success, worker_stats
 

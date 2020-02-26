@@ -175,7 +175,7 @@ class PyTorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def train_epoch(self, info=None):
+    def train_epoch(self, num_steps=None, info=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.steps + 1))
         info = info or {}
@@ -185,9 +185,8 @@ class PyTorchRunner:
         })
         with self._timers["training"]:
             iterator = self.train_loader
-            if "num_steps" in info:
-                iterator = itertools.islice(
-                    iter(self.train_loader), info["num_steps"])
+            if num_steps:
+                iterator = itertools.islice(iter(self.train_loader), num_steps)
             train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.steps += 1

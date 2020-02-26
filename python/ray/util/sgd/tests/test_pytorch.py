@@ -56,10 +56,10 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
         optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=1)
-    metrics = trainer.train(info=dict(num_steps=1))
+    metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
-    val_metrics = trainer.validate(info=dict(num_steps=1))
+    val_metrics = trainer.validate(num_steps=1)
     assert val_metrics[BATCH_COUNT] == 1
 
 
