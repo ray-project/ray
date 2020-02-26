@@ -24,7 +24,6 @@ from sac.rllib_proxy._moved import Resources
 from sac.rllib_proxy._unchanged import MAX_WORKER_FAILURE_RETRIES, DEFAULT_RESULTS_DIR
 from sac.dev_utils import using_ray_8, ray_8_only
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -647,4 +646,134 @@ class Trainer(UnpatchedTrainer):
                     r.restore.remote(remote_state)
             if "optimizer" in state:
                 self.optimizer.restore(state["optimizer"])
+
+    @DeveloperAPI
+    def make_local_evaluator(self,
+                             env_creator,
+                             policy_graph,
+                             extra_config=None):
+        """Convenience method to return configured local evaluator."""
+        from sac.rllib_proxy._patched._policy_evaluator import PolicyEvaluator
+
+        return self._make_evaluator(
+            PolicyEvaluator,
+            env_creator,
+            policy_graph,
+            0,
+            merge_dicts(
+                # important: allow local tf to use more CPUs for optimization
+                merge_dicts(
+                    self.config, {
+                        "tf_session_args": self.
+                            config["local_evaluator_tf_session_args"]
+                    }),
+                extra_config or {}))
+
+    @DeveloperAPI
+    def make_remote_evaluators(self, env_creator, policy_graph, count):
+        """Convenience method to return a number of remote evaluators."""
+        from sac.rllib_proxy._patched._policy_evaluator import PolicyEvaluator
+
+        remote_args = {
+            "num_cpus": self.config["num_cpus_per_worker"],
+            "num_gpus": self.config["num_gpus_per_worker"],
+            "resources": self.config["custom_resources_per_worker"],
+        }
+
+        cls = PolicyEvaluator.as_remote(**remote_args).remote
+
+        return [
+            self._make_evaluator(cls, env_creator, policy_graph, i + 1,
+                                 self.config) for i in range(count)
+        ]
+
+    def _make_evaluator(self, cls, env_creator, policy_graph, worker_index,
+                        config):
+        from types import FunctionType
+        from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
+            ShuffledInput
+        from sac.rllib_proxy._patched._policy_evaluator import _validate_multiagent_config
+        def session_creator():
+            logger.debug("Creating TF session {}".format(
+                config["tf_session_args"]))
+            return tf.Session(
+                config=tf.ConfigProto(**config["tf_session_args"]))
+
+        if isinstance(config["input"], FunctionType):
+            input_creator = config["input"]
+        elif config["input"] == "sampler":
+            input_creator = (lambda ioctx: ioctx.default_sampler_input())
+        elif isinstance(config["input"], dict):
+            input_creator = (lambda ioctx: ShuffledInput(
+                MixedInput(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
+        else:
+            input_creator = (lambda ioctx: ShuffledInput(
+                JsonReader(config["input"], ioctx), config[
+                    "shuffle_buffer_size"]))
+
+        if isinstance(config["output"], FunctionType):
+            output_creator = config["output"]
+        elif config["output"] is None:
+            output_creator = (lambda ioctx: NoopOutput())
+        elif config["output"] == "logdir":
+            output_creator = (lambda ioctx: JsonWriter(
+                ioctx.log_dir,
+                ioctx,
+                max_file_size=config["output_max_file_size"],
+                compress_columns=config["output_compress_columns"]))
+        else:
+            output_creator = (lambda ioctx: JsonWriter(
+                config["output"],
+                ioctx,
+                max_file_size=config["output_max_file_size"],
+                compress_columns=config["output_compress_columns"]))
+
+        if config["input"] == "sampler":
+            input_evaluation = []
+        else:
+            input_evaluation = config["input_evaluation"]
+
+        # Fill in the default policy graph if 'None' is specified in multiagent
+        if self.config["multiagent"]["policy_graphs"]:
+            tmp = self.config["multiagent"]["policy_graphs"]
+            _validate_multiagent_config(tmp, allow_none_graph=True)
+            for k, v in tmp.items():
+                if v[0] is None:
+                    tmp[k] = (policy_graph, v[1], v[2], v[3])
+            policy_graph = tmp
+
+        return cls(
+            env_creator,
+            policy_graph,
+            policy_mapping_fn=self.config["multiagent"]["policy_mapping_fn"],
+            policies_to_train=self.config["multiagent"]["policies_to_train"],
+            tf_session_creator=(session_creator
+                                if config["tf_session_args"] else None),
+            batch_steps=config["sample_batch_size"],
+            batch_mode=config["batch_mode"],
+            episode_horizon=config["horizon"],
+            preprocessor_pref=config["preprocessor_pref"],
+            sample_async=config["sample_async"],
+            compress_observations=config["compress_observations"],
+            num_envs=config["num_envs_per_worker"],
+            observation_filter=config["observation_filter"],
+            clip_rewards=config["clip_rewards"],
+            clip_actions=config["clip_actions"],
+            env_config=config["env_config"],
+            model_config=config["model"],
+            policy_config=config,
+            worker_index=worker_index,
+            monitor_path=self.logdir if config["monitor"] else None,
+            log_dir=self.logdir,
+            log_level=config["log_level"],
+            callbacks=config["callbacks"],
+            input_creator=input_creator,
+            input_evaluation=input_evaluation,
+            output_creator=output_creator,
+            remote_worker_envs=config["remote_worker_envs"],
+            remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
+            soft_horizon=config["soft_horizon"],
+            no_done_at_end=config["no_done_at_end"],
+            _fake_sampler=config.get("_fake_sampler", False))
 
