@@ -162,6 +162,8 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
                                                   object.GetNestedIds(), true);
 
+  // XXX: move this to caller.
+  bool should_put_in_plasma = false;
   {
     absl::MutexLock lock(&mu_);
 
@@ -180,11 +182,9 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     auto promoted_it = promoted_to_plasma_.find(object_id);
     if (promoted_it != promoted_to_plasma_.end()) {
       RAY_CHECK(store_in_plasma_ != nullptr);
-      if (!object.IsInPlasmaError()) {
-        // Only need to promote to plasma if it wasn't already put into plasma
-        // by the task that created the object.
-        store_in_plasma_(object, object_id);
-      }
+      // Only need to promote to plasma if it wasn't already put into plasma
+      // by the task that created the object.
+      should_put_in_plasma = !object.IsInPlasmaError();
       promoted_to_plasma_.erase(promoted_it);
     }
 
@@ -211,7 +211,13 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     }
   }
 
+  // Must be called without holding the lock.
+  if (should_put_in_plasma) {
+    store_in_plasma_(object, object_id);
+  }
+
   // It's important for performance to run the callbacks outside the lock.
+  RAY_LOG(ERROR) << "calling callbacks!";
   for (const auto &cb : async_callbacks) {
     cb(object_entry);
   }
