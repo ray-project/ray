@@ -677,6 +677,44 @@ def test_recursively_return_borrowed_object_id(one_worker_100MiB):
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
+def test_captured_object_id(one_worker_100MiB):
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    def f(dep):
+        # XXX: should wait for signal first.
+        ray.get(captured_id)
+
+    random_oid = ray.ObjectID.from_random()
+    oid = f.remote(random_oid)
+
+    print(ray.worker.global_worker.core_worker.get_all_reference_counts())
+    # Delete local references.
+    del f
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local references.
+    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    _fill_object_store_and_get(oid)
+
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    class Actor:
+        def get(self, dep):
+            ray.get(captured_id)
+
+    random_oid = ray.ObjectID.from_random()
+    actor = Actor.remote()
+    oid = actor.get.remote(random_oid)
+
+    # Delete local references.
+    del Actor
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local references.
+    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    _fill_object_store_and_get(oid)
 
 if __name__ == "__main__":
     import sys
