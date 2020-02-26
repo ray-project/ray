@@ -38,6 +38,22 @@ def test_ignore_http_proxy(shutdown_only):
     assert ray.get(f.remote()) == 1
 
 
+# https://github.com/ray-project/ray/issues/7263
+def test_grpc_message_size(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def bar(*a):
+        return
+
+    # 50KiB, not enough to spill to plasma, but will be inlined.
+    def f():
+        return np.zeros(50000, dtype=np.uint8)
+
+    # Executes a 10MiB task spec
+    ray.get(bar.remote(*[f() for _ in range(200)]))
+
+
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(shutdown_only):
     ray.init(num_cpus=1)
@@ -1729,6 +1745,35 @@ def test_wait(ray_start_regular):
         ray.wait(1)
     with pytest.raises(TypeError):
         ray.wait([1])
+
+
+def test_duplicate_args(ray_start_regular):
+    @ray.remote
+    def f(arg1,
+          arg2,
+          arg1_duplicate,
+          kwarg1=None,
+          kwarg2=None,
+          kwarg1_duplicate=None):
+        assert arg1 == kwarg1
+        assert arg1 != arg2
+        assert arg1 == arg1_duplicate
+        assert kwarg1 != kwarg2
+        assert kwarg1 == kwarg1_duplicate
+
+    # Test by-value arguments.
+    arg1 = [1]
+    arg2 = [2]
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
+
+    # Test by-reference arguments.
+    arg1 = ray.put([1])
+    arg2 = ray.put([2])
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
 if __name__ == "__main__":

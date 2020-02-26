@@ -4,10 +4,19 @@ package ray.streaming.proto;
 
 option java_package = "org.ray.streaming.runtime.generated";
 
-enum OperatorType {
+enum Language {
+  JAVA = 0;
+  PYTHON = 1;
+}
+
+enum NodeType {
   UNKNOWN = 0;
-  TRANSFORM = 1;
-  SOURCE = 2;
+  // Sources are where your program reads its input from
+  SOURCE = 1;
+  // Transform one or more DataStreams into a new DataStream.
+  TRANSFORM = 2;
+  // Sinks consume DataStreams and forward them to files, sockets, external
+  // systems, or print them.
   SINK = 3;
 }
 
@@ -23,7 +32,7 @@ message StreamingConfig {
   string task_job_id = 2;
   string worker_name = 3;
   string op_name = 4;
-  OperatorType role = 5;
+  NodeType role = 5;
   uint32 ring_buffer_capacity = 6;
   uint32 empty_message_interval = 7;
   FlowControlType flow_control_type = 8;

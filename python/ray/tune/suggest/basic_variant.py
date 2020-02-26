@@ -73,6 +73,7 @@ class BasicVariantGenerator(SearchAlgorithm):
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
         for _ in range(unresolved_spec.get("num_samples", 1)):
             for resolved_vars, spec in generate_variants(unresolved_spec):
+                trial_id = "%05d" % self._counter
                 experiment_tag = str(self._counter)
                 if resolved_vars:
                     experiment_tag += "_{}".format(format_vars(resolved_vars))
@@ -82,6 +83,7 @@ class BasicVariantGenerator(SearchAlgorithm):
                     output_path,
                     self._parser,
                     evaluated_params=flatten_resolved_vars(resolved_vars),
+                    trial_id=trial_id,
                     experiment_tag=experiment_tag)
 
     def is_finished(self):

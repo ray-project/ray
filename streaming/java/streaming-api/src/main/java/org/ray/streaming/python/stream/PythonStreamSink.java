@@ -8,7 +8,7 @@ import org.ray.streaming.python.PythonOperator;
  */
 public class PythonStreamSink extends StreamSink implements PythonStream {
   public PythonStreamSink(PythonDataStream input, PythonOperator sinkOperator) {
-    super(input, null);
+    super(input, sinkOperator);
     this.streamingContext.addSink(this);
   }
 

@@ -2,6 +2,7 @@ package org.ray.streaming.jobgraph;
 
 import com.google.common.base.MoreObjects;
 import java.io.Serializable;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.operator.StreamOperator;
 
 /**
@@ -12,6 +13,7 @@ public class JobVertex implements Serializable {
   private int vertexId;
   private int parallelism;
   private VertexType vertexType;
+  private Language language;
   private StreamOperator streamOperator;
 
   public JobVertex(int vertexId, int parallelism, VertexType vertexType,
@@ -20,6 +22,7 @@ public class JobVertex implements Serializable {
     this.parallelism = parallelism;
     this.vertexType = vertexType;
     this.streamOperator = streamOperator;
+    this.language = streamOperator.getLanguage();
   }
 
   public int getVertexId() {
@@ -38,12 +41,17 @@ public class JobVertex implements Serializable {
     return vertexType;
   }
 
+  public Language getLanguage() {
+    return language;
+  }
+
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
         .add("vertexId", vertexId)
         .add("parallelism", parallelism)
         .add("vertexType", vertexType)
+        .add("language", language)
         .add("streamOperator", streamOperator)
         .toString();
   }
