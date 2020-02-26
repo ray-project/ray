@@ -310,7 +310,9 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    runner = TrialRunner(
+        BasicVariantGenerator(),
+        trial_executor=RayTrialExecutor(queue_trials=True))
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 5
