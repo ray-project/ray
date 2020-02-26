@@ -162,7 +162,8 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
                                                   object.GetNestedIds(), true);
 
-  // XXX: move this to caller.
+  // TODO(edoakes): we should instead return a flag to the caller to put the object in
+  // plasma.
   bool should_put_in_plasma = false;
   {
     absl::MutexLock lock(&mu_);
