@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.streaming.jobgraph.JobEdge;
 import org.ray.streaming.jobgraph.JobGraph;
@@ -20,12 +20,11 @@ public class TaskAssignerImpl implements TaskAssigner {
   /**
    * Assign an optimized logical plan to execution graph.
    *
-   * @param jobGraph    The logical plan.
-   * @param workers The worker actors.
+   * @param jobGraph The logical plan.
    * @return The physical execution graph.
    */
   @Override
-  public ExecutionGraph assign(JobGraph jobGraph, List<RayActor<JobWorker>> workers) {
+  public ExecutionGraph assign(JobGraph jobGraph) {
     List<JobVertex> jobVertices = jobGraph.getJobVertexList();
     List<JobEdge> jobEdges = jobGraph.getJobEdgeList();
 
@@ -37,7 +36,7 @@ public class TaskAssignerImpl implements TaskAssigner {
       executionNode.setNodeType(jobVertex.getVertexType());
       List<ExecutionTask> vertexTasks = new ArrayList<>();
       for (int taskIndex = 0; taskIndex < jobVertex.getParallelism(); taskIndex++) {
-        vertexTasks.add(new ExecutionTask(taskId, taskIndex, workers.get(taskId)));
+        vertexTasks.add(new ExecutionTask(taskId, taskIndex, createWorker(jobVertex)));
         taskId++;
       }
       executionNode.setExecutionTasks(vertexTasks);
@@ -51,12 +50,25 @@ public class TaskAssignerImpl implements TaskAssigner {
 
       ExecutionEdge executionEdge = new ExecutionEdge(srcNodeId, targetNodeId,
           jobEdge.getPartition());
-      idToExecutionNode.get(srcNodeId).addExecutionEdge(executionEdge);
+      idToExecutionNode.get(srcNodeId).addOutputEdge(executionEdge);
       idToExecutionNode.get(targetNodeId).addInputEdge(executionEdge);
     }
 
-    List<ExecutionNode> executionNodes = idToExecutionNode.values().stream()
-        .collect(Collectors.toList());
+    List<ExecutionNode> executionNodes = new ArrayList<>(idToExecutionNode.values());
     return new ExecutionGraph(executionNodes);
+  }
+
+  private RayActor createWorker(JobVertex jobVertex) {
+    switch (jobVertex.getLanguage()) {
+      case PYTHON:
+        return Ray.createPyActor(
+            "ray.streaming.runtime.worker", "JobWorker");
+      case JAVA:
+        return Ray.createActor(JobWorker::new);
+      default:
+        throw new UnsupportedOperationException(
+            "Unsupported language " + jobVertex.getLanguage());
+
+    }
   }
 }
