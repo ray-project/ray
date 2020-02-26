@@ -2,6 +2,7 @@
 #define RAY_UTIL_SEQUENCER_H_
 
 #include <deque>
+#include <functional>
 #include <unordered_map>
 #include "absl/synchronization/mutex.h"
 
