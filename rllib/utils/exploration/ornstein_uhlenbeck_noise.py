@@ -11,8 +11,8 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
     """An exploration that adds Ornstein-Uhlenbeck noise to continuous actions.
 
     If explore=True, returns TODO(sven): Describe OU process.
-        Also, some completely random period is possible at the
-        beginning.
+    Also, some completely random period is possible at the
+    beginning.
     If explore=False, returns the deterministic action.
     """
 

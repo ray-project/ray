@@ -765,8 +765,6 @@ class Trainer(Trainable):
 
         # Figure out the current (sample) time step and pass it into Policy.
         self.global_vars["timestep"] += 1
-        #self.optimizer.num_steps_sampled \
-        #    if self._has_policy_optimizer() else None
 
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,

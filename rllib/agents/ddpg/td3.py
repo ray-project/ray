@@ -20,8 +20,8 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
             # TD3 uses simple Gaussian noise on top of deterministic NN-output
             # actions (after a possible pure random phase of n timesteps).
             "type": "GaussianNoise",
-            # For how many timesteps should we return completely random actions,
-            # before we start adding (scaled) noise?
+            # For how many timesteps should we return completely random
+            # actions, before we start adding (scaled) noise?
             "random_timesteps": 10000,
             # Gaussian stddev of action noise for exploration.
             "stddev": 0.1,
