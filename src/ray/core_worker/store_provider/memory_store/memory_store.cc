@@ -217,7 +217,6 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   }
 
   // It's important for performance to run the callbacks outside the lock.
-  RAY_LOG(ERROR) << "calling callbacks!";
   for (const auto &cb : async_callbacks) {
     cb(object_entry);
   }
@@ -255,7 +254,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       if (iter != objects_.end()) {
         (*results)[i] = iter->second;
         if (remove_after_get) {
-          RAY_LOG(ERROR) << "REMOVE_AFTER_GET";
           // Note that we cannot remove the object_id from `objects_` now,
           // because `object_ids` might have duplicate ids.
           ids_to_remove.insert(object_id);
