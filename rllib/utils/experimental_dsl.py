@@ -3,7 +3,7 @@
 TODO(ekl): describe the concepts."""
 
 import logging
-from typing import List, Any, Tuple
+from typing import List, Any, Tuple, Union
 import time
 
 import ray
@@ -12,7 +12,7 @@ from ray.util.iter_metrics import MetricsContext
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 
 logger = logging.getLogger(__name__)
@@ -186,10 +186,11 @@ class ConcatBatches:
         if self.batch_start_time is None:
             self.batch_start_time = time.perf_counter()
 
-    def __call__(self, batch: SampleBatch) -> List[SampleBatch]:
-        if not isinstance(batch, SampleBatch):
-            raise ValueError("Expected type SampleBatch, got {}: {}".format(
-                type(batch), batch))
+    def __call__(self, batch: Union[SampleBatch, MultiAgentBatch]) -> List[SampleBatch]:
+        if type(batch) not in [SampleBatch, MultiAgentBatch]:
+            raise ValueError(
+                "Expected either SampleBatch or MultiAgentBatch, "
+                "got {}: {}".format(type(batch), batch))
         self.buffer.append(batch)
         self.count += batch.count
         if self.count >= self.min_batch_size:
