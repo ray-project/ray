@@ -265,9 +265,9 @@ class PyTorchTrainer:
             ])
 
     def train(self,
+              num_steps=None,
               max_retries=0,
               checkpoint="auto",
-              num_steps=None,
               info=None):
         """Runs a training epoch.
 
@@ -275,14 +275,14 @@ class PyTorchTrainer:
         `max_retries` to enable fault handling in case of instance preemption.
 
         Args:
+            num_steps (int): Number of batches to compute update steps on.
+                This corresponds also to the number of times
+                ``TrainingOperator.train_batch`` is called.
             max_retries (int): Must be non-negative. If set to N, will
                 kill all current workers, query the Ray global state for
                 total available resources, and re-launch up to the
                 available resources. Behavior is not well-defined
                 in case of shared cluster usage.
-            num_steps (int): Number of batches to compute update steps on.
-                This corresponds also to the number of times
-                ``TrainingOperator.train_batch`` is called.
             checkpoint (str): Path to checkpoint to restore from if retrying.
                 If max_retries is set and checkpoint == "auto", PyTorchTrainer
                 will save a checkpoint before starting to train.
@@ -344,15 +344,20 @@ class PyTorchTrainer:
     def apply_all_operators(self, fn):
         return ray.get([w.apply_operator.remote(fn) for w in self.workers])
 
-    def validate(self, info=None):
+    def validate(self, num_steps=None, info=None):
         """Evaluates the model on the validation data set.
 
         Args:
+            num_steps (int): Number of batches to compute update steps on.
+                This corresponds also to the number of times
+                ``TrainingOperator.validate_batch`` is called.
             info (dict): Optional dictionary passed to the training
                 operator for `validate` and `validate_batch`.
         """
-        worker_stats = ray.get(
-            [w.validate.remote(info=info) for w in self.workers])
+        worker_stats = ray.get([
+            w.validate.remote(num_steps=num_steps, info=info)
+            for w in self.workers
+        ])
 
         validation_stats = {}
         for stat_key in worker_stats[0]:

@@ -138,6 +138,12 @@ class TrainingOperator:
         If "scheduler_step_freq" is set, this class will also step the
         scheduler accordingly.
 
+        Args:
+            iterator (iter): Iterator over the training data for the entire
+                epoch. This iterator is expected to be entirely consumed.
+            info (dict): Dictionary for information to be used for custom
+                training operations.
+
         Returns:
             A dict of metrics from training.
         """
@@ -193,8 +199,7 @@ class TrainingOperator:
 
         Args:
             batch: One item of the validation iterator.
-            batch_info (dict): Contains information per batch from
-                ``train_epoch()``.
+            batch_info (dict): Information dict passed in from ``train_epoch``.
 
         Returns:
             A dict of metrics. Defaults to "loss" and "num_samples",

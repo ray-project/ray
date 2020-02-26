@@ -103,7 +103,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
 
-    def train_epoch(self, info=None):
+    def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
@@ -111,7 +111,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
         logger.debug("Starting step")
         if hasattr(self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(self.steps)
-        return super(DistributedPyTorchRunner, self).train_epoch(info=info)
+        return super(DistributedPyTorchRunner, self).train_epoch(**kwargs)
 
     def _get_model_state_dicts(self):
         """Fetch state from ``model.module`` instead of ``model``.

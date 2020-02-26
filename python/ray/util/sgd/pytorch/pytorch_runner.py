@@ -195,16 +195,16 @@ class PyTorchRunner:
         train_stats.update(self.stats())
         return train_stats
 
-    def validate(self, info=None):
+    def validate(self, num_steps=None, info=None):
         """Evaluates the model on the validation data set."""
         if self.validation_loader is None:
             raise ValueError("No validation dataloader provided.")
         info = info or {}
         with self._timers["validation"]:
             iterator = self.validation_loader
-            if "num_steps" in info:
+            if num_steps:
                 iterator = itertools.islice(
-                    iter(self.validation_loader), info["num_steps"])
+                    iter(self.validation_loader), num_steps)
             validation_stats = self.training_operator.validate(iterator, info)
 
         validation_stats.update(self.stats())
