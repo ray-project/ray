@@ -57,26 +57,44 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              std::shared_ptr<Buffer> *data) {
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
-  {
-    std::lock_guard<std::mutex> guard(store_client_mutex_);
-    arrow::Status status =
-        store_client_.Create(plasma_id, data_size, metadata ? metadata->Data() : nullptr,
-                             metadata ? metadata->Size() : 0, &arrow_buffer);
+  uint32_t delay = RayConfig::instance().object_store_full_initial_delay_ms();
+  uint32_t retries = 0;
+  while (true) {
+    arrow::Status status;
+    {
+      std::lock_guard<std::mutex> guard(store_client_mutex_);
+      status = store_client_.Create(plasma_id, data_size,
+                                    metadata ? metadata->Data() : nullptr,
+                                    metadata ? metadata->Size() : 0, &arrow_buffer);
+    }
     if (plasma::IsPlasmaObjectExists(status)) {
       RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
                        << object_id << ".";
       return Status::OK();
+    } else if (plasma::IsPlasmaStoreFull(status)) {
+      if (retries >= RayConfig::instance().object_store_full_max_retries()) {
+        std::ostringstream message;
+        message << "Failed to put object " << object_id << " in object store because it "
+                << "is full. Object size is " << data_size << " bytes.";
+        return Status::ObjectStoreFull(message.str());
+      } else {
+        RAY_LOG(ERROR) << "Failed to put object " << object_id
+                       << " in object store because it "
+                       << "is full. Object size is " << data_size << " bytes. "
+                       << "Plasma store status:\n"
+                       << MemoryUsageString() << "\nWaiting " << delay
+                       << "ms for space to free up...";
+        usleep(1000 * delay);
+        delay *= 2;
+        retries += 1;
+      }
+    } else {
+      RAY_ARROW_RETURN_NOT_OK(status);
+      *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
+      return Status::OK();
     }
-    if (plasma::IsPlasmaStoreFull(status)) {
-      std::ostringstream message;
-      message << "Failed to put object " << object_id << " in object store because it "
-              << "is full. Object size is " << data_size << " bytes.";
-      return Status::ObjectStoreFull(message.str());
-    }
-    RAY_ARROW_RETURN_NOT_OK(status);
   }
-  *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
-  return Status::OK();
+  return Status::Invalid("This code should never be reached.");
 }
 
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
