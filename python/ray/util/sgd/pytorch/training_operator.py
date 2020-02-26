@@ -152,13 +152,17 @@ class TrainingOperator:
                 }
                 batch_info.update(info)
                 metrics = self.train_batch(batch, batch_info=batch_info)
+
+                if self.scheduler and batch_info.get(
+                        SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
+                    self.scheduler.step()
+
                 if "loss" in metrics:
                     self._losses.update(
                         metrics["loss"], n=metrics.get("num_samples", 1))
                 self.global_step += 1
 
-        if self.scheduler and self.config.get(
-                SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
             self.scheduler.step()
 
         stats = {
@@ -197,10 +201,6 @@ class TrainingOperator:
         # Call step of optimizer to update model params.
         with self.timers["apply"]:
             self.optimizer.step()
-
-        if self.scheduler and batch_info.get(
-                SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
-            self.scheduler.step()
         return {"loss": loss.item(), "num_samples": features.size(0)}
 
     def validate(self, val_iterator, info):

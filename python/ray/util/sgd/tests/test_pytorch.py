@@ -215,7 +215,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
 def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
     class CustomOp(TrainingOperator):
         def train_epoch(self, iterator, info):
-            assert self.config[SCHEDULER_STEP] == scheduler_freq
+            assert info[SCHEDULER_STEP] == scheduler_freq
             return {"done": 1}
 
     def scheduler_creator(optimizer, config):
@@ -228,10 +228,11 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
         optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         training_operator_cls=CustomOp,
-        scheduler_creator=scheduler_creator)
+        scheduler_creator=scheduler_creator,
+        scheduler_step_freq=scheduler_freq)
 
     for i in range(3):
-        trainer.train()["train_loss"]
+        trainer.train()
     trainer.shutdown()
 
 
@@ -252,7 +253,8 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
     assert all(
-        trainer.apply_all_workers(lambda r: r.schedulers[0].last_epoch == 2))
+        trainer.apply_all_operators(
+            lambda op: op.schedulers[0].last_epoch == 2))
     trainer.shutdown()
 
 
@@ -283,13 +285,13 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
-        train_loss1 = df.loc[0, "train_loss"]
-        train_loss2 = df.loc[1, "train_loss"]
-        validation_loss1 = df.loc[0, "validation_loss"]
-        validation_loss2 = df.loc[1, "validation_loss"]
+        mean_train_loss1 = df.loc[0, "mean_train_loss"]
+        mean_train_loss2 = df.loc[1, "mean_train_loss"]
+        mean_validation_loss1 = df.loc[0, "mean_validation_loss"]
+        mean_validation_loss2 = df.loc[1, "mean_validation_loss"]
 
-        assert train_loss2 <= train_loss1
-        assert validation_loss2 <= validation_loss1
+        assert mean_train_loss2 <= mean_train_loss1
+        assert mean_validation_loss2 <= mean_validation_loss1
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
