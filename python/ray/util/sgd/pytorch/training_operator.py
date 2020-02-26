@@ -97,20 +97,17 @@ class TrainingOperator:
         }
         self._validated_customization = False
         self._models = models  # List of models
-        assert isinstance(models, collections.Iterable
-                          ), "Components need to be iterable. Got: {}".format(
-                              type(models))
+        assert isinstance(models, collections.Iterable), (
+            "Components need to be iterable. Got: {}".format(type(models)))
         self._optimizers = optimizers  # List of optimizers
-        assert isinstance(optimizers, collections.Iterable
-                          ), "Components need to be iterable. Got: {}".format(
-                              type(optimizers))
+        assert isinstance(optimizers, collections.Iterable), (
+            "Components need to be iterable. Got: {}".format(type(optimizers)))
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
-            assert isinstance(
-                schedulers, collections.Iterable
-            ), "Components need to be iterable. Got: {}".format(
-                type(schedulers))
+            assert isinstance(schedulers, collections.Iterable), (
+                "Components need to be iterable. Got: {}".format(
+                    type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
         self.global_step = 0
@@ -132,11 +129,14 @@ class TrainingOperator:
     def train_epoch(self, iterator, info):
         """Runs one standard training pass over the train_iterator.
 
-        This function automatically measures timing for various operations such
-        as host to device transfer, and gradient calculation.
+        You do not need to call ``train_batch`` in this method if you plan
+        to implement a custom optimization/training routine here.
 
-        It also automatically detects and places the data on the GPU
-        if available.
+        By default, this method will iterate over the given iterator and
+        call ``self.train_batch`` over each batch.
+
+        If "scheduler_step_freq" is set, this class will also step the
+        scheduler accordingly.
 
         Returns:
             A dict of metrics from training.
@@ -144,7 +144,7 @@ class TrainingOperator:
         self._losses = AverageMeter()
 
         self.model.train()
-        with self.timers["train_step"]:
+        with self.timers["epoch_time"]:
             for batch_idx, batch in enumerate(iterator):
                 batch_info = {
                     "batch_idx": batch_idx,
@@ -162,14 +162,15 @@ class TrainingOperator:
                         metrics["loss"], n=metrics.get("num_samples", 1))
                 self.global_step += 1
 
-        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+        if self.scheduler and info.get(
+                SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
             self.scheduler.step()
 
         stats = {
             BATCH_COUNT: batch_idx + 1,
             "mean_train_loss": self._losses.avg,
             "last_train_loss": self._losses.val,
-            "epoch_time": self.timers["train_step"].last
+            "epoch_time": self.timers["epoch_time"].last
         }
         stats.update({
             timer_tag: timer.mean
@@ -178,6 +179,29 @@ class TrainingOperator:
         return stats
 
     def train_batch(self, batch, batch_info):
+        """Computes loss and updates the model over one batch.
+
+        This method is responsible for computing the loss and gradient and
+        updating the model. However, you do not need to override this method
+        if you plan to override ``train_epoch``.
+
+        By default, this method implementation assumes that batches
+        are in (features, labels) format. It will also only operate on
+        the first model, optimizer if multiple are provided.
+
+        You can provide custom loss metrics and training operations if you
+        override this method.
+
+        Args:
+            batch: One item of the validation iterator.
+            batch_info (dict): Contains information per batch from
+                ``train_epoch()``.
+
+        Returns:
+            A dict of metrics. Defaults to "loss" and "num_samples",
+                corresponding to the total number of datapoints in the batch.
+
+        """
         features, target = batch
         # Create non_blocking tensors for distributed training
         if torch.cuda.is_available():
@@ -206,22 +230,18 @@ class TrainingOperator:
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
 
-        This function automatically measures timing for various operations such
-        as host to device transfer and processing time for the batch.
+        This will call ``model.eval()`` and ``torch.no_grad`` when iterating
+        over the validation dataset.
 
-        It also automatically detects and places the data on GPU device
-        if available.
+        If overriding this method, you can access model, criterion via
+        ``self.model`` and ``self.criterion``. You also do not need to call
+        ``validate_batch`` if overriding this method.
 
         Args:
-            config: (dict): A user configuration provided into the Trainer
-                constructor.
-            model: The model as created by the model_creator.
-            train_iterator: An iterator created from the DataLoader which
-                wraps the provided Dataset.
-            criterion: The loss object created by the loss_creator.
-            scheduler (optional): The torch.optim.lr_scheduler object
-                as created by the scheduler_creator. By default,
-                this is not used in this function.
+            val_iterator (iter): Iterable constructed over the
+                validation dataset.
+            info: (dict): Dictionary for information to be used for custom
+                validation operations.
 
         Returns:
             A dict of metrics from the evaluation.
@@ -240,8 +260,8 @@ class TrainingOperator:
                     losses.update(
                         metrics["loss"], n=metrics.get("num_samples", 1))
 
-                if "correct" in metrics:
-                    total_correct += metrics["correct"]
+                if "num_correct" in metrics:
+                    total_correct += metrics["num_correct"]
 
         stats = {
             "batch_count": batch_idx + 1,
@@ -251,6 +271,19 @@ class TrainingOperator:
         return stats
 
     def validate_batch(self, batch, batch_info):
+        """Calcuates the loss and accuracy over a given batch.
+
+        You can override this method to provide arbitrary metrics.
+
+        Args:
+            batch: One item of the validation iterator.
+            batch_info (dict): Contains information per batch from
+                ``validate()``.
+
+        Returns:
+            A dict of metrics. By default, returns "loss", "num_correct", and
+                "num_samples".
+        """
         features, target = batch
         if torch.cuda.is_available():
             features = features.cuda(non_blocking=True)
@@ -263,12 +296,14 @@ class TrainingOperator:
 
         return {
             "loss": loss.item(),
-            "correct": (predicted == target).sum().item(),
+            "num_correct": (predicted == target).sum().item(),
             "num_samples": target.size(0)
         }
 
     def state_dict(self):
+        """Returns a serializable representation of the operator state."""
         pass
 
     def load_state_dict(self, state_dict):
+        """Loads a serializable representation of the operator state."""
         pass
