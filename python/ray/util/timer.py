@@ -56,7 +56,6 @@ class _Timer:
 
     @property
     def mean_throughput(self):
-        assert len(self._samples) == len(self._units_processed)
         time_total = sum(self._samples)
         if not time_total:
             return 0.0
