@@ -287,10 +287,18 @@ class StreamingWorker {
         JobID::FromInt(1), gcs_options, "", "127.0.0.1", node_manager_port,
         std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7));
 
-    RayFunction reader_async_call_func{ray::Language::PYTHON, {"reader_async_call_func"}};
-    RayFunction reader_sync_call_func{ray::Language::PYTHON, {"reader_sync_call_func"}};
-    RayFunction writer_async_call_func{ray::Language::PYTHON, {"writer_async_call_func"}};
-    RayFunction writer_sync_call_func{ray::Language::PYTHON, {"writer_sync_call_func"}};
+    RayFunction reader_async_call_func{ray::Language::PYTHON,
+                                       ray::FunctionDescriptorBuilder::BuildPython(
+                                           "reader_async_call_func", "", "", "")};
+    RayFunction reader_sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::BuildPython("reader_sync_call_func", "", "", "")};
+    RayFunction writer_async_call_func{ray::Language::PYTHON,
+                                       ray::FunctionDescriptorBuilder::BuildPython(
+                                           "writer_async_call_func", "", "", "")};
+    RayFunction writer_sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::BuildPython("writer_sync_call_func", "", "", "")};
 
     reader_client_ = std::make_shared<ReaderClient>(worker_.get(), reader_async_call_func,
                                                     reader_sync_call_func);
@@ -314,21 +322,25 @@ class StreamingWorker {
     // Only one arg param used in streaming.
     STREAMING_CHECK(args.size() >= 1) << "args.size() = " << args.size();
 
-    std::vector<std::string> function_descriptor = ray_function.GetFunctionDescriptor();
-    STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask " << function_descriptor[0];
+    ray::FunctionDescriptor function_descriptor = ray_function.GetFunctionDescriptor();
+    RAY_CHECK(function_descriptor->Type() ==
+              ray::FunctionDescriptorType::kPythonFunctionDescriptor);
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
+    STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask "
+                        << typed_descriptor->ModuleName();
 
-    std::string func_name = function_descriptor[0];
+    std::string func_name = typed_descriptor->ModuleName();
     if (func_name == "init") {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[0]->GetData()->Data(),
                                               args[0]->GetData()->Size(), true);
       HandleInitTask(local_buffer);
     } else if (func_name == "execute_test") {
-      STREAMING_LOG(INFO) << "Test name: " << function_descriptor[1];
-      test_suite_->ExecuteTest(function_descriptor[1]);
+      STREAMING_LOG(INFO) << "Test name: " << typed_descriptor->ClassName();
+      test_suite_->ExecuteTest(typed_descriptor->ClassName());
     } else if (func_name == "check_current_test_status") {
-      results->push_back(
-          std::make_shared<RayObject>(test_suite_->CheckCurTestStatus(), nullptr));
+      results->push_back(std::make_shared<RayObject>(test_suite_->CheckCurTestStatus(),
+                                                     nullptr, std::vector<ObjectID>()));
     } else if (func_name == "reader_sync_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -338,7 +350,8 @@ class StreamingWorker {
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
       auto result_buffer = reader_client_->OnReaderMessageSync(local_buffer);
-      results->push_back(std::make_shared<RayObject>(result_buffer, nullptr));
+      results->push_back(
+          std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
     } else if (func_name == "reader_async_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -357,7 +370,8 @@ class StreamingWorker {
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
       auto result_buffer = writer_client_->OnWriterMessageSync(local_buffer);
-      results->push_back(std::make_shared<RayObject>(result_buffer, nullptr));
+      results->push_back(
+          std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
     } else if (func_name == "writer_async_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";

@@ -41,9 +41,9 @@ def from_config(cls, config=None, **kwargs):
             filename.
 
     Keyword Args:
-        kwargs (any): Optional possibility to pass the c'tor arguments in
+        kwargs (any): Optional possibility to pass the constructor arguments in
             here and use `config` as the type-only info. Then we can call
-            this like: from_config([type]?, [**kwargs for c'tor])
+            this like: from_config([type]?, [**kwargs for constructor])
             If `config` is already a dict, then `kwargs` will be merged
             with `config` (overwriting keys in `config`) after "type" has
             been popped out of `config`.
@@ -76,7 +76,7 @@ def from_config(cls, config=None, **kwargs):
         ctor_kwargs = config
         # Give kwargs priority over things defined in config dict.
         # This way, one can pass a generic `spec` and then override single
-        # c'tor parameters via the kwargs in the call to `from_config`.
+        # constructor parameters via the kwargs in the call to `from_config`.
         ctor_kwargs.update(kwargs)
     else:
         type_ = config
@@ -96,11 +96,12 @@ def from_config(cls, config=None, **kwargs):
                 cls.__default_constructor__ is not None and \
                 ctor_args == [] and \
                 (
-                    not hasattr(cls.__bases__[0], "__default_constructor__")
-                    or
-                    cls.__bases__[0].__default_constructor__ is None or
-                    cls.__bases__[0].__default_constructor__ is not
-                    cls.__default_constructor__
+                        not hasattr(cls.__bases__[0],
+                                    "__default_constructor__")
+                        or
+                        cls.__bases__[0].__default_constructor__ is None or
+                        cls.__bases__[0].__default_constructor__ is not
+                        cls.__default_constructor__
                 ):
             constructor = cls.__default_constructor__
             # Default constructor's keywords into ctor_kwargs.
@@ -108,7 +109,7 @@ def from_config(cls, config=None, **kwargs):
                 kwargs = merge_dicts(ctor_kwargs, constructor.keywords)
                 constructor = partial(constructor.func, **kwargs)
                 ctor_kwargs = {}  # erase to avoid duplicate kwarg error
-        # No default constructor -> Try cls itself as c'tor.
+        # No default constructor -> Try cls itself as constructor.
         else:
             constructor = cls
     # Try the __type_registry__ of this class.
@@ -127,10 +128,10 @@ def from_config(cls, config=None, **kwargs):
             constructor = type_
         # A string: Filename or a python module+class or a json/yaml str.
         elif isinstance(type_, str):
-            if re.search("\.(yaml|yml|json)$", type_):
+            if re.search("\\.(yaml|yml|json)$", type_):
                 return from_file(cls, type_, *ctor_args, **ctor_kwargs)
             # Try un-json/un-yaml'ing the string into a dict.
-            obj = yaml.load(type_)
+            obj = yaml.safe_load(type_)
             if isinstance(obj, dict):
                 return from_config(cls, obj)
             try:
@@ -140,6 +141,7 @@ def from_config(cls, config=None, **kwargs):
             else:
                 return obj
 
+            # Test for absolute module.class specifier.
             if type_.find(".") != -1:
                 module_name, function_name = type_.rsplit(".", 1)
                 try:
@@ -147,11 +149,27 @@ def from_config(cls, config=None, **kwargs):
                     constructor = getattr(module, function_name)
                 except (ModuleNotFoundError, ImportError):
                     pass
+            # If constructor still not found, try attaching cls' module,
+            # then look for type_ in there.
+            if constructor is None:
+                try:
+                    module = importlib.import_module(cls.__module__)
+                    constructor = getattr(module, type_)
+                except (ModuleNotFoundError, ImportError, AttributeError):
+                    # Try the package as well.
+                    try:
+                        package_name = importlib.import_module(
+                            cls.__module__).__package__
+                        module = __import__(package_name, fromlist=[type_])
+                        constructor = getattr(module, type_)
+                    except (ModuleNotFoundError, ImportError, AttributeError):
+                        pass
             if constructor is None:
                 raise ValueError(
                     "String specifier ({}) in `from_config` must be a "
-                    "filename, a module+class, or a key into "
-                    "{}.__type_registry__!".format(type_, cls.__name__))
+                    "filename, a module+class, a class within '{}', or a key "
+                    "into {}.__type_registry__!".format(
+                        type_, cls.__module__, cls.__name__))
 
     if not constructor:
         raise TypeError(
@@ -190,7 +208,7 @@ def from_file(cls, filename, *args, **kwargs):
 
     with open(path, "rt") as fp:
         if path.endswith(".yaml") or path.endswith(".yml"):
-            config = yaml.load(fp)
+            config = yaml.safe_load(fp)
         else:
             config = json.load(fp)
 
@@ -201,17 +219,13 @@ def from_file(cls, filename, *args, **kwargs):
 
 def lookup_type(cls, type_):
     if cls is not None and hasattr(cls, "__type_registry__") and \
-            isinstance(cls.__type_registry__, dict) and \
-            (
-                type_ in cls.__type_registry__ or (
-                    isinstance(type_, str) and
-                    re.sub("[\\W_]", "", type_.lower())
-                    in cls.__type_registry__
-                )
-            ):
+            isinstance(cls.__type_registry__, dict) and (
+            type_ in cls.__type_registry__ or (
+            isinstance(type_, str) and
+            re.sub("[\\W_]", "", type_.lower()) in cls.__type_registry__)):
         available_class_for_type = cls.__type_registry__.get(type_)
         if available_class_for_type is None:
             available_class_for_type = \
-                cls.__type_registry__[re.sub("[\W_]", "", type_.lower())]
+                cls.__type_registry__[re.sub("[\\W_]", "", type_.lower())]
         return available_class_for_type
     return None

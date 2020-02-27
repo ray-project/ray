@@ -344,15 +344,6 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
-Status raylet::RayletClient::ReportActiveObjectIDs(
-    const std::unordered_set<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-
-  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
-}
-
 Status raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
@@ -375,14 +366,15 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
       });
 }
 
-Status raylet::RayletClient::PinObjectIDs(const rpc::Address &caller_address,
-                                          const std::vector<ObjectID> &object_ids) {
+Status raylet::RayletClient::PinObjectIDs(
+    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  return grpc_client_->PinObjectIDs(request, nullptr);
+  return grpc_client_->PinObjectIDs(request, callback);
 }
 
 }  // namespace ray

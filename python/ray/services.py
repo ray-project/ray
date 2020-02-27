@@ -1,4 +1,5 @@
 import collections
+import errno
 import json
 import logging
 import multiprocessing
@@ -13,10 +14,10 @@ import time
 import redis
 
 import colorama
-import pyarrow
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+import psutil
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -54,6 +55,8 @@ RAYLET_MONITOR_EXECUTABLE = os.path.join(
     "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
+GCS_SERVER_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "core/src/ray/gcs/gcs_server")
 
 DEFAULT_JAVA_WORKER_OPTIONS = "-classpath {}".format(
     os.path.join(
@@ -91,11 +94,6 @@ def include_java_from_redis(redis_client):
 
 
 def find_redis_address_or_die():
-    try:
-        import psutil
-    except ImportError:
-        raise ImportError(
-            "Please install `psutil` to automatically detect the Ray cluster.")
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -285,10 +283,10 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # connection.
         s.connect((ip_address, int(port)))
         node_ip_address = s.getsockname()[0]
-    except Exception as e:
+    except OSError as e:
         node_ip_address = "127.0.0.1"
         # [Errno 101] Network is unreachable
-        if e.errno == 101:
+        if e.errno == errno.ENETUNREACH:
             try:
                 # try get node ip address from host name
                 host_name = socket.getfqdn(socket.gethostname())
@@ -509,22 +507,21 @@ def wait_for_redis_to_start(redis_ip_address,
 
 
 def _compute_version_info():
-    """Compute the versions of Python, pyarrow, and Ray.
+    """Compute the versions of Python, and Ray.
 
     Returns:
         A tuple containing the version information.
     """
     ray_version = ray.__version__
     python_version = ".".join(map(str, sys.version_info[:3]))
-    pyarrow_version = pyarrow.__version__
-    return ray_version, python_version, pyarrow_version
+    return ray_version, python_version
 
 
 def _put_version_info_in_redis(redis_client):
     """Store version information in Redis.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, pyarrow, or Ray.
+    different versions of Python, or Ray.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -536,7 +533,7 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, pyarrow, or Ray. If the version
+    different versions of Python, or Ray. If the version
     information is not present in Redis, then no check is done.
 
     Args:
@@ -559,12 +556,10 @@ def check_version_info(redis_client):
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
                          "    Python: " + true_version_info[1] + "\n"
-                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
                          "This process on node " + node_ip_address +
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
-                         "    Python: " + version_info[1] + "\n"
-                         "    Pyarrow: " + str(version_info[2]))
+                         "    Python: " + version_info[1] + "\n")
         if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
@@ -588,11 +583,15 @@ def start_reaper():
     try:
         os.setpgrp()
     except OSError as e:
-        logger.warning("setpgrp failed, processes may not be "
-                       "cleaned up properly: {}.".format(e))
-        # Don't start the reaper in this case as it could result in killing
-        # other user processes.
-        return None
+        if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
+            # Nothing to do; we're already a session leader.
+            pass
+        else:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+            # Don't start the reaper in this case as it could result in killing
+            # other user processes.
+            return None
 
     reaper_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
@@ -998,13 +997,6 @@ def start_reporter(redis_address,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    try:
-        import psutil  # noqa: F401
-    except ImportError:
-        logger.warning("Failed to start the reporter. The reporter requires "
-                       "'pip install psutil'.")
-        return None
-
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REPORTER,
@@ -1066,8 +1058,6 @@ def start_dashboard(require_webui,
     webui_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
-        import psutil  # noqa: F401
-        import setproctitle  # noqa: F401
         import grpc  # noqa: F401
     except ImportError:
         webui_dependencies_present = False
@@ -1094,6 +1084,44 @@ def start_dashboard(require_webui,
         return dashboard_url, process_info
     else:
         return None, None
+
+
+def start_gcs_server(redis_address,
+                     stdout_file=None,
+                     stderr_file=None,
+                     redis_password=None,
+                     config=None):
+    """Start a gcs server.
+    Args:
+        redis_address (str): The address that the Redis server is listening on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+        config (dict|None): Optional configuration that will
+            override defaults in RayConfig.
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    gcs_ip_address, gcs_port = redis_address.split(":")
+    redis_password = redis_password or ""
+    config = config or {}
+    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    command = [
+        GCS_SERVER_EXECUTABLE,
+        "--redis_address={}".format(gcs_ip_address),
+        "--redis_port={}".format(gcs_port),
+        "--config_list={}".format(config_str),
+    ]
+    if redis_password:
+        command += ["--redis_password={}".format(redis_password)]
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file)
+    return process_info
 
 
 def start_raylet(redis_address,
@@ -1301,7 +1329,7 @@ def build_java_worker_command(
 
     command += "-Dray.home={} ".format(RAY_HOME)
     command += "-Dray.log-dir={} ".format(os.path.join(session_dir, "logs"))
-
+    command += "-Dray.session-dir={}".format(session_dir)
     command += ("-Dray.raylet.config.num_workers_per_process_java=" +
                 "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
 

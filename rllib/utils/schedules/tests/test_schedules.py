@@ -11,7 +11,7 @@ tf = try_import_tf()
 
 class TestSchedules(unittest.TestCase):
     """
-    Tests all time-step/time-percentage dependent Schedule classes.
+    Tests all time-step dependent Schedule classes.
     """
 
     def test_constant_schedule(self):
@@ -111,3 +111,8 @@ class TestSchedules(unittest.TestCase):
             for t, e in zip(ts, expected):
                 out = piecewise(t)
                 check(out, e, decimals=4)
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)

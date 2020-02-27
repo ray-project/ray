@@ -144,15 +144,15 @@ def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
+        "total_loss": policy.loss_obj.loss,
+        "policy_loss": policy.loss_obj.mean_policy_loss,
+        "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
-            framework="torch").cpu().detach().numpy(),
-        "kl": policy.loss_obj.mean_kl.cpu().detach().numpy(),
-        "entropy": policy.loss_obj.mean_entropy.cpu().detach().numpy(),
+            framework="torch"),
+        "kl": policy.loss_obj.mean_kl,
+        "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
     }
 
@@ -162,8 +162,7 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
     """Adds value function and logits outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
-        BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
-        ACTION_LOGP: action_dist.logp(input_dict[SampleBatch.ACTIONS])
+        BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 
@@ -187,11 +186,14 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: torch.Tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]),
-                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]),
+                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
+                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
+                        self.device),
+                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
+                        self.device),
                     "is_training": False,
-                }, [torch.Tensor([s]) for s in state], torch.Tensor([1]))
+                }, [torch.Tensor([s]).to(self.device) for s in state],
+                                          torch.Tensor([1]).to(self.device))
                 return self.model.value_function()[0]
 
         else:

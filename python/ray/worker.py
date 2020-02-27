@@ -27,6 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 
@@ -34,6 +36,7 @@ from ray import (
     ActorID,
     JobID,
     ObjectID,
+    Language,
 )
 from ray import import_thread
 from ray import profiling
@@ -62,17 +65,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
-
-# Whether we should warn about slow put performance.
-if os.environ.get("OMP_NUM_THREADS") == "1":
-    should_warn_of_slow_puts = True
-else:
-    should_warn_of_slow_puts = False
 
 
 class ActorCheckpointInfo:
@@ -212,7 +204,6 @@ class Worker:
             if job_id not in self.serialization_context_map:
                 self.serialization_context_map[
                     job_id] = serialization.SerializationContext(self)
-                self.serialization_context_map[job_id].initialize()
             return self.serialization_context_map[job_id]
 
     def check_connected(self):
@@ -278,29 +269,13 @@ class Worker:
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        global should_warn_of_slow_puts
-        if should_warn_of_slow_puts:
-            start = time.perf_counter()
-
         serialized_value = self.get_serialization_context().serialize(value)
-        result = self.core_worker.put_serialized_object(
+        return self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
 
-        if should_warn_of_slow_puts:
-            delta = time.perf_counter() - start
-            if delta > 0.1:
-                logger.warning("OMP_NUM_THREADS=1 is set, this may slow down "
-                               "ray.put() for large objects (issue #6998).")
-                should_warn_of_slow_puts = False
-        return result
-
-    def deserialize_objects(self,
-                            data_metadata_pairs,
-                            object_ids,
-                            error_timeout=10):
+    def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids,
-                                           error_timeout)
+        return context.deserialize_objects(data_metadata_pairs, object_ids)
 
     def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
@@ -542,6 +517,7 @@ def print_failed_task(task_status):
 
 def init(address=None,
          redis_address=None,
+         redis_port=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -561,6 +537,7 @@ def init(address=None,
          redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
+         include_java=False,
          include_webui=None,
          webui_host="localhost",
          job_id=None,
@@ -598,6 +575,8 @@ def init(address=None,
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_address (str): Deprecated; same as address.
+        redis_port (int): The port that the primary Redis shard should listen
+            to. If None, then a random port will be chosen.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -640,6 +619,7 @@ def init(address=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        include_java: Boolean flag indicating whether to enable java worker.
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this argument
             is None, then the UI will be started if the relevant dependencies
@@ -719,6 +699,7 @@ def init(address=None,
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
+            redis_port=redis_port,
             node_ip_address=node_ip_address,
             object_id_seed=object_id_seed,
             local_mode=local_mode,
@@ -733,6 +714,7 @@ def init(address=None,
             redis_password=redis_password,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
+            include_java=include_java,
             include_webui=include_webui,
             webui_host=webui_host,
             memory=memory,
@@ -1362,6 +1344,7 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
+    ray.actor.ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager
@@ -1692,9 +1675,9 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls,
-                max_retries)
+                Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
+                memory, object_store_memory, resources, num_return_vals,
+                max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:

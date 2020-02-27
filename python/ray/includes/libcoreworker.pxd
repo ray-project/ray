@@ -17,6 +17,7 @@ from ray.includes.unique_ids cimport (
     CJobID,
     CTaskID,
     CObjectID,
+    CWorkerID,
 )
 from ray.includes.common cimport (
     CAddress,
@@ -32,6 +33,9 @@ from ray.includes.common cimport (
     CLanguage,
     CGcsClientOptions,
 )
+from ray.includes.function_descriptor cimport (
+    CFunctionDescriptor,
+)
 from ray.includes.task cimport CTaskSpec
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
@@ -40,6 +44,9 @@ ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
 ctypedef void (*ray_callback_function) \
     (shared_ptr[CRayObject] result_object,
      CObjectID object_id, void* user_data)
+
+ctypedef void (*plasma_callback_function) \
+    (CObjectID object_id, int64_t data_size, int64_t metadata_size)
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
@@ -65,6 +72,14 @@ cdef extern from "ray/core_worker/context.h" nogil:
         c_bool CurrentActorIsAsync()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
+    cdef cppclass CActorHandle "ray::ActorHandle":
+        CActorID GetActorID() const
+        CJobID CreationJobID() const
+        CLanguage ActorLanguage() const
+        CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
+        c_bool IsDirectCallActor() const
+        c_string ExtensionData() const
+
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
                     const c_string &store_socket,
@@ -79,7 +94,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const c_vector[shared_ptr[CRayObject]] &args,
                         const c_vector[CObjectID] &arg_reference_ids,
                         const c_vector[CObjectID] &return_ids,
-                        c_vector[shared_ptr[CRayObject]] *returns) nogil,
+                        c_vector[shared_ptr[CRayObject]] *returns,
+                        const CWorkerID &worker_id) nogil,
                     CRayStatus() nogil,
                     c_bool ref_counting_enabled)
         CWorkerType &GetWorkerType()
@@ -93,7 +109,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries)
         CRayStatus CreateActor(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CActorCreationOptions &options, CActorID *actor_id)
+            const CActorCreationOptions &options,
+            const c_string &extension_data, CActorID *actor_id)
         CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
@@ -106,6 +123,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &object_ids,
             const c_vector[size_t] &data_sizes,
             const c_vector[shared_ptr[CBuffer]] &metadatas,
+            const c_vector[c_vector[CObjectID]] &contained_object_ids,
             c_vector[shared_ptr[CRayObject]] *return_objects)
 
         CJobID GetCurrentJobId()
@@ -118,6 +136,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
+        CRayStatus GetActorHandle(const CActorID &actor_id,
+                                  CActorHandle **actor_handle) const
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
@@ -125,20 +145,27 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                                 CTaskID *owner_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
-                const CObjectID &object_id, const CTaskID &owner_id, const
-                CAddress &owner_address)
+                const CObjectID &object_id,
+                const CObjectID &outer_object_id,
+                const CTaskID &owner_id,
+                const CAddress &owner_address)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
-        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
-        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus Put(const CRayObject &object,
+                       const c_vector[CObjectID] &contained_object_ids,
+                       CObjectID *object_id)
+        CRayStatus Put(const CRayObject &object,
+                       const c_vector[CObjectID] &contained_object_ids,
+                       const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
+                          const c_vector[CObjectID] &contained_object_ids,
                           CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, const CObjectID &object_id,
+                          const size_t data_size,
+                          const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id, c_bool owns_object,
-                        c_bool pin_object)
+        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
@@ -167,3 +194,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CClientID &client_Id)
+
+        void SubscribeToAsyncPlasma(plasma_callback_function callback)

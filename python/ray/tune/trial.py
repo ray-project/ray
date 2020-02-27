@@ -194,6 +194,7 @@ class Trial:
         self.custom_trial_name = None
 
         # Checkpointing fields
+        self.saving_to = None
         if remote_checkpoint_dir:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
@@ -203,14 +204,13 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(str(self), self.runner))
+            checkpoint_deleter(self._trainable_name(), self.runner))
         checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
         self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
 
         # Restoration fields
         self.restoring_from = None
         self.num_failures = 0
-        self.num_consecutive_start_attempts = 0
 
         # AutoML fields
         self.results = None
@@ -271,7 +271,8 @@ class Trial:
         if not self.result_logger:
             if not self.logdir:
                 self.logdir = Trial.create_logdir(
-                    str(self) + "_" + self.experiment_tag, self.local_dir)
+                    self._trainable_name() + "_" + self.experiment_tag,
+                    self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
@@ -296,7 +297,8 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(str(self), runner)
+        self.checkpoint_manager.delete = checkpoint_deleter(
+            self._trainable_name(), runner)
 
     def set_location(self, location):
         """Sets the location of the trial."""
@@ -460,10 +462,17 @@ class Trial:
     def is_restoring(self):
         return self.restoring_from is not None
 
+    @property
+    def is_saving(self):
+        return self.saving_to is not None
+
     def __repr__(self):
-        return str(self)
+        return self._trainable_name(include_trial_id=True)
 
     def __str__(self):
+        return self._trainable_name(include_trial_id=True)
+
+    def _trainable_name(self, include_trial_id=False):
         """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
         Can be overridden with a custom string creator.
@@ -478,7 +487,8 @@ class Trial:
             identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
-        identifier += "_" + self.trial_id
+        if include_trial_id:
+            identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
     def __getstate__(self):
@@ -497,6 +507,9 @@ class Trial:
 
         state["runner"] = None
         state["result_logger"] = None
+        # Avoid waiting for events that will never occur on resume.
+        state["resuming_from"] = None
+        state["saving_to"] = None
         if self.result_logger:
             self.result_logger.flush(sync_down=False)
             state["__logger_started__"] = True

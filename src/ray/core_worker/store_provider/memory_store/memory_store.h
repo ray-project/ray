@@ -34,7 +34,8 @@ class CoreWorkerMemoryStore {
   CoreWorkerMemoryStore(
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
-      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr);
+      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
+      std::function<Status()> check_signals = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -133,6 +134,14 @@ class CoreWorkerMemoryStore {
   uint64_t UsedMemory();
 
  private:
+  /// See the public version of `Get` for meaning of the other arguments.
+  /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
+  /// is an exception.
+  Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
+                 int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
+                 std::vector<std::shared_ptr<RayObject>> *results,
+                 bool abort_if_any_object_is_exception);
+
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
 
@@ -160,6 +169,9 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_ GUARDED_BY(mu_);
+
+  /// Function passed in to be called to check for signals (e.g., Ctrl-C).
+  std::function<Status()> check_signals_;
 };
 
 }  // namespace ray

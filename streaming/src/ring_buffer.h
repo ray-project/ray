@@ -76,31 +76,22 @@ class StreamingTransientBuffer {
 };
 
 template <class T>
-class AbstractRingBufferImpl {
+class AbstractRingBuffer {
  public:
-  virtual void Push(T &&) = 0;
   virtual void Push(const T &) = 0;
   virtual void Pop() = 0;
   virtual T &Front() = 0;
-  virtual bool Empty() = 0;
-  virtual bool Full() = 0;
-  virtual size_t Size() = 0;
-  virtual size_t Capacity() = 0;
+  virtual bool Empty() const = 0;
+  virtual bool Full() const = 0;
+  virtual size_t Size() const = 0;
+  virtual size_t Capacity() const = 0;
 };
 
 template <class T>
-class RingBufferImplThreadSafe : public AbstractRingBufferImpl<T> {
- private:
-  boost::shared_mutex ring_buffer_mutex_;
-  boost::circular_buffer<T> buffer_;
-
+class RingBufferImplThreadSafe : public AbstractRingBuffer<T> {
  public:
   RingBufferImplThreadSafe(size_t size) : buffer_(size) {}
   virtual ~RingBufferImplThreadSafe() = default;
-  void Push(T &&t) {
-    boost::unique_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
-    buffer_.push_back(t);
-  }
   void Push(const T &t) {
     boost::unique_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     buffer_.push_back(t);
@@ -113,23 +104,27 @@ class RingBufferImplThreadSafe : public AbstractRingBufferImpl<T> {
     boost::shared_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     return buffer_.front();
   }
-  bool Empty() {
+  bool Empty() const {
     boost::shared_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     return buffer_.empty();
   }
-  bool Full() {
+  bool Full() const {
     boost::shared_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     return buffer_.full();
   }
-  size_t Size() {
+  size_t Size() const {
     boost::shared_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     return buffer_.size();
   }
-  size_t Capacity() { return buffer_.capacity(); }
+  size_t Capacity() const { return buffer_.capacity(); }
+
+ private:
+  mutable boost::shared_mutex ring_buffer_mutex_;
+  boost::circular_buffer<T> buffer_;
 };
 
 template <class T>
-class RingBufferImplLockFree : public AbstractRingBufferImpl<T> {
+class RingBufferImplLockFree : public AbstractRingBuffer<T> {
  private:
   std::vector<T> buffer_;
   std::atomic<size_t> capacity_;
@@ -140,12 +135,6 @@ class RingBufferImplLockFree : public AbstractRingBufferImpl<T> {
   RingBufferImplLockFree(size_t size)
       : buffer_(size, nullptr), capacity_(size), read_index_(0), write_index_(0) {}
   virtual ~RingBufferImplLockFree() = default;
-
-  void Push(T &&t) {
-    STREAMING_CHECK(!Full());
-    buffer_[write_index_] = t;
-    write_index_ = IncreaseIndex(write_index_);
-  }
 
   void Push(const T &t) {
     STREAMING_CHECK(!Full());
@@ -163,13 +152,13 @@ class RingBufferImplLockFree : public AbstractRingBufferImpl<T> {
     return buffer_[read_index_];
   }
 
-  bool Empty() { return write_index_ == read_index_; }
+  bool Empty() const { return write_index_ == read_index_; }
 
-  bool Full() { return IncreaseIndex(write_index_) == read_index_; }
+  bool Full() const { return IncreaseIndex(write_index_) == read_index_; }
 
-  size_t Size() { return (write_index_ + capacity_ - read_index_) % capacity_; }
+  size_t Size() const { return (write_index_ + capacity_ - read_index_) % capacity_; }
 
-  size_t Capacity() { return capacity_; }
+  size_t Capacity() const { return capacity_; }
 
  private:
   size_t IncreaseIndex(size_t index) const { return (index + 1) % capacity_; }
@@ -185,7 +174,7 @@ enum class StreamingRingBufferType : uint8_t { SPSC_LOCK, SPSC };
 /// it cann't be removed currently.
 class StreamingRingBuffer {
  private:
-  std::shared_ptr<AbstractRingBufferImpl<StreamingMessagePtr>> message_buffer_;
+  std::shared_ptr<AbstractRingBuffer<StreamingMessagePtr>> message_buffer_;
 
   StreamingTransientBuffer transient_buffer_;
 
@@ -193,19 +182,17 @@ class StreamingRingBuffer {
   explicit StreamingRingBuffer(size_t buf_size, StreamingRingBufferType buffer_type =
                                                     StreamingRingBufferType::SPSC_LOCK);
 
-  bool Push(StreamingMessagePtr &&msg);
-
   bool Push(const StreamingMessagePtr &msg);
 
   StreamingMessagePtr &Front();
 
   void Pop();
 
-  bool IsFull();
+  bool IsFull() const;
 
-  bool IsEmpty();
+  bool IsEmpty() const;
 
-  size_t Size();
+  size_t Size() const;
 
   size_t Capacity() const;
 

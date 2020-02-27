@@ -9,8 +9,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/rpc/worker/core_worker_client.h"
-
-#include <unistd.h>  // pid_t
+#include "ray/util/process.h"
 
 namespace ray {
 
@@ -22,7 +21,8 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
+  /// NOTE: You MUST manually set the worker process.
+  Worker(const WorkerID &worker_id, const Language &language, int port,
          std::shared_ptr<LocalClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
@@ -34,8 +34,9 @@ class Worker {
   bool IsBlocked() const;
   /// Return the worker's ID.
   WorkerID WorkerId() const;
-  /// Return the worker's PID.
-  pid_t Pid() const;
+  /// Return the worker process.
+  Process GetProcess() const;
+  void SetProcess(Process proc);
   Language GetLanguage() const;
   int Port() const;
   void AssignTaskId(const TaskID &task_id);
@@ -81,8 +82,8 @@ class Worker {
  private:
   /// The worker's ID.
   WorkerID worker_id_;
-  /// The worker's PID.
-  pid_t pid_;
+  /// The worker's process.
+  Process proc_;
   /// The language type of this worker.
   Language language_;
   /// Port that this worker listens on.
@@ -108,8 +109,6 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
-  /// The set of object IDs that are currently in use on the worker.
-  std::unordered_set<ObjectID> active_object_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;

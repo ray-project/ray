@@ -4,19 +4,23 @@ import io
 import json
 import logging
 import os
+import pickle
 import re
 import string
 import sys
+import tempfile
 import threading
 import time
+import uuid
+import weakref
 
 import numpy as np
 import pytest
 
 import ray
-from ray.exceptions import RayTimeoutError
 import ray.cluster_utils
 import ray.test_utils
+from ray.exceptions import RayTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,29 @@ def test_ignore_http_proxy(shutdown_only):
     assert ray.get(f.remote()) == 1
 
 
+# https://github.com/ray-project/ray/issues/7263
+def test_grpc_message_size(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def bar(*a):
+        return
+
+    # 50KiB, not enough to spill to plasma, but will be inlined.
+    def f():
+        return np.zeros(50000, dtype=np.uint8)
+
+    # Executes a 10MiB task spec
+    ray.get(bar.remote(*[f() for _ in range(200)]))
+
+
+# https://github.com/ray-project/ray/issues/7287
+def test_omp_threads_set(shutdown_only):
+    ray.init(num_cpus=1)
+    # Should have been auto set by ray init.
+    assert os.environ["OMP_NUM_THREADS"] == "1"
+
+
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.
@@ -42,6 +69,8 @@ def test_simple_serialization(ray_start_regular):
         0.9,
         1 << 62,
         1 << 999,
+        b"",
+        b"a",
         "a",
         string.printable,
         "\u262F",
@@ -351,6 +380,23 @@ def test_complex_serialization_with_pickle(shutdown_only):
     complex_serialization(use_pickle=True)
 
 
+def test_function_descriptor():
+    python_descriptor = ray._raylet.PythonFunctionDescriptor(
+        "module_name", "function_name", "class_name", "function_hash")
+    python_descriptor2 = pickle.loads(pickle.dumps(python_descriptor))
+    assert python_descriptor == python_descriptor2
+    assert hash(python_descriptor) == hash(python_descriptor2)
+    assert python_descriptor.function_id == python_descriptor2.function_id
+    java_descriptor = ray._raylet.JavaFunctionDescriptor(
+        "class_name", "function_name", "signature")
+    java_descriptor2 = pickle.loads(pickle.dumps(java_descriptor))
+    assert java_descriptor == java_descriptor2
+    assert python_descriptor != java_descriptor
+    assert python_descriptor != object()
+    d = {python_descriptor: 123}
+    assert d.get(python_descriptor2) == 123
+
+
 def test_nested_functions(ray_start_regular):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
@@ -431,6 +477,51 @@ def test_ray_recursive_objects(ray_start_regular):
         for obj in recursive_objects:
             with pytest.raises(Exception):
                 ray.put(obj)
+
+
+def test_reducer_override_no_reference_cycle(ray_start_regular):
+    # bpo-39492: reducer_override used to induce a spurious reference cycle
+    # inside the Pickler object, that could prevent all serialized objects
+    # from being garbage-collected without explicity invoking gc.collect.
+
+    # test a dynamic function
+    def f():
+        return 4669201609102990671853203821578
+
+    wr = weakref.ref(f)
+
+    bio = io.BytesIO()
+    from ray.cloudpickle import CloudPickler, loads, dumps
+    p = CloudPickler(bio, protocol=5)
+    p.dump(f)
+    new_f = loads(bio.getvalue())
+    assert new_f() == 4669201609102990671853203821578
+
+    del p
+    del f
+
+    assert wr() is None
+
+    # test a dynamic class
+    class ShortlivedObject:
+        def __del__(self):
+            print("Went out of scope!")
+
+    obj = ShortlivedObject()
+    new_obj = weakref.ref(obj)
+
+    dumps(obj)
+    del obj
+    assert new_obj() is None
+
+
+def test_deserialized_from_buffer_immutable(ray_start_regular):
+    x = np.full((2, 2), 1.)
+    o = ray.put(x)
+    y = ray.get(o)
+    with pytest.raises(
+            ValueError, match="assignment destination is read-only"):
+        y[0, 0] = 9.
 
 
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
@@ -1223,17 +1314,38 @@ def test_get_dict(ray_start_regular):
 
 
 def test_get_with_timeout(ray_start_regular):
+    def random_path():
+        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
+
+    def touch(path):
+        with open(path, "w"):
+            pass
+
     @ray.remote
-    def f(a):
-        time.sleep(a)
-        return a
+    def wait_for_file(path):
+        if path:
+            while True:
+                if os.path.exists(path):
+                    break
+                time.sleep(0.1)
 
-    assert ray.get(f.remote(3), timeout=10) == 3
+    # Check that get() returns early if object is ready.
+    start = time.time()
+    ray.get(wait_for_file.remote(None), timeout=30)
+    assert time.time() - start < 30
 
-    obj_id = f.remote(3)
+    # Check that get() raises a TimeoutError after the timeout if the object
+    # is not ready yet.
+    path = random_path()
+    result_id = wait_for_file.remote(path)
     with pytest.raises(RayTimeoutError):
-        ray.get(obj_id, timeout=2)
-    assert ray.get(obj_id, timeout=2) == 3
+        ray.get(result_id, timeout=0.1)
+
+    # Check that a subsequent get() returns early.
+    touch(path)
+    start = time.time()
+    ray.get(result_id, timeout=30)
+    assert time.time() - start < 30
 
 
 @pytest.mark.parametrize(
@@ -1633,6 +1745,35 @@ def test_wait(ray_start_regular):
         ray.wait(1)
     with pytest.raises(TypeError):
         ray.wait([1])
+
+
+def test_duplicate_args(ray_start_regular):
+    @ray.remote
+    def f(arg1,
+          arg2,
+          arg1_duplicate,
+          kwarg1=None,
+          kwarg2=None,
+          kwarg1_duplicate=None):
+        assert arg1 == kwarg1
+        assert arg1 != arg2
+        assert arg1 == arg1_duplicate
+        assert kwarg1 != kwarg2
+        assert kwarg1 == kwarg1_duplicate
+
+    # Test by-value arguments.
+    arg1 = [1]
+    arg2 = [2]
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
+
+    # Test by-reference arguments.
+    arg1 = ray.put([1])
+    arg2 = ray.put([2])
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
 if __name__ == "__main__":

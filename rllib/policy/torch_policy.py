@@ -1,12 +1,13 @@
 import numpy as np
 import time
 
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
+    ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
 
@@ -19,9 +20,9 @@ class TorchPolicy(Policy):
     Attributes:
         observation_space (gym.Space): observation space of the policy.
         action_space (gym.Space): action space of the policy.
-        config (dict): config of the policy
-        model (TorchModel): Torch model instance
-        dist_class (type): Torch action distribution class
+        config (dict): config of the policy.
+        model (TorchModel): Torch model instance.
+        dist_class (type): Torch action distribution class.
     """
 
     def __init__(self, observation_space, action_space, config, model, loss,
@@ -43,8 +44,8 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
-        super(TorchPolicy, self).__init__(observation_space, action_space,
-                                          config)
+        self.framework = "torch"
+        super().__init__(observation_space, action_space, config)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
@@ -64,7 +65,12 @@ class TorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        explore=None,
+                        timestep=None,
                         **kwargs):
+
+        explore = explore if explore is not None else self.config["explore"]
+
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
@@ -73,14 +79,49 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-            model_out = self.model(input_dict, state_batches, [1])
+            state_batches = [self._convert_to_tensor(s) for s in state_batches]
+            model_out = self.model(input_dict, state_batches,
+                                   self._convert_to_tensor([1]))
             logits, state = model_out
-            action_dist = self.dist_class(logits, self.model)
-            actions = action_dist.sample()
+            action_dist = None
+            actions, logp = \
+                self.exploration.get_exploration_action(
+                    logits, self.dist_class, self.model, explore,
+                    timestep if timestep is not None else
+                    self.global_timestep)
             input_dict[SampleBatch.ACTIONS] = actions
+
+            extra_action_out = self.extra_action_out(input_dict, state_batches,
+                                                     self.model, action_dist)
+            if logp is not None:
+                extra_action_out.update({
+                    ACTION_PROB: torch.exp(logp),
+                    ACTION_LOGP: logp
+                })
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
-                    self.extra_action_out(input_dict, state_batches,
-                                          self.model, action_dist))
+                    extra_action_out)
+
+    @override(Policy)
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
+        with torch.no_grad():
+            input_dict = self._lazy_tensor_dict({
+                SampleBatch.CUR_OBS: obs_batch,
+                SampleBatch.ACTIONS: actions
+            })
+            if prev_action_batch:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+            if prev_reward_batch:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+
+            parameters, _ = self.model(input_dict, state_batches, [1])
+            action_dist = self.dist_class(parameters, self.model)
+            log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+            return log_likelihoods
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
@@ -99,8 +140,14 @@ class TorchPolicy(Policy):
                 if p.grad is not None:
                     grads.append(p.grad)
             start = time.time()
-            torch.distributed.all_reduce_coalesced(
-                grads, op=torch.distributed.ReduceOp.SUM)
+            if torch.cuda.is_available():
+                # Sadly, allreduce_coalesced does not work with CUDA yet.
+                for g in grads:
+                    torch.distributed.all_reduce(
+                        g, op=torch.distributed.ReduceOp.SUM)
+            else:
+                torch.distributed.all_reduce_coalesced(
+                    grads, op=torch.distributed.ReduceOp.SUM)
             for p in self.model.parameters():
                 if p.grad is not None:
                     p.grad /= self.distributed_world_size
@@ -150,6 +197,10 @@ class TorchPolicy(Policy):
         self.model.load_state_dict(weights)
 
     @override(Policy)
+    def is_recurrent(self):
+        return len(self.model.get_initial_state()) > 0
+
+    @override(Policy)
     def num_state_tensors(self):
         return len(self.model.get_initial_state())
 
@@ -193,15 +244,16 @@ class TorchPolicy(Policy):
 
     def _lazy_tensor_dict(self, postprocessed_batch):
         train_batch = UsageTrackingDict(postprocessed_batch)
-
-        def convert(arr):
-            tensor = torch.from_numpy(np.asarray(arr))
-            if tensor.dtype == torch.double:
-                tensor = tensor.float()
-            return tensor.to(self.device)
-
-        train_batch.set_get_interceptor(convert)
+        train_batch.set_get_interceptor(self._convert_to_tensor)
         return train_batch
+
+    def _convert_to_tensor(self, arr):
+        if torch.is_tensor(arr):
+            return arr.to(self.device)
+        tensor = torch.from_numpy(np.asarray(arr))
+        if tensor.dtype == torch.double:
+            tensor = tensor.float()
+        return tensor.to(self.device)
 
     @override(Policy)
     def export_model(self, export_dir):
@@ -217,7 +269,7 @@ class TorchPolicy(Policy):
 
 
 @DeveloperAPI
-class LearningRateSchedule(object):
+class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
@@ -242,7 +294,7 @@ class LearningRateSchedule(object):
 
 
 @DeveloperAPI
-class EntropyCoeffSchedule(object):
+class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI
