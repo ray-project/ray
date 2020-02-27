@@ -8,7 +8,7 @@ Check out the documentation to understand a rich set of features we offer.
 
   - Visit `Getting Started <dashboard-getting-started.html>`_ to learn how to start using the Ray dashboard.
   - Visit `Dashboard Usages <dashboard-usage.html>`_ to see examples of dashboard usages. 
-  - Visit `Dashboard Internal <dashboard-concepts.html>`_ to learn dashboard components and its architecture.
+  - Visit `Dashboard Internal <dashboard-concepts.html>`_ to learn dashboard components.
 
 .. toctree::
    :maxdepth: -1

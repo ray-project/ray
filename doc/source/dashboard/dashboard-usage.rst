@@ -1,5 +1,5 @@
-Usages
-======
+Example Usage
+=============
 
 Let's learn the basic components before learning various dashboard usages.
 
