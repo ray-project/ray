@@ -95,14 +95,14 @@ class TrainingOperator:
     def train_epoch(self, iterator, info):
         """Runs one standard training pass over the train_iterator.
 
-        You do not need to call ``train_batch`` in this method if you plan
-        to implement a custom optimization/training routine here.
-
         By default, this method will iterate over the given iterator and
         call ``self.train_batch`` over each batch.
 
         If ``scheduler_step_freq`` is set, this class will also step the
         scheduler accordingly.
+
+        You do not need to call ``train_batch`` in this method if you plan
+        to implement a custom optimization/training routine here.
 
         Args:
             iterator (iter): Iterator over the training data for the entire
@@ -153,15 +153,19 @@ class TrainingOperator:
         """Computes loss and updates the model over one batch.
 
         This method is responsible for computing the loss and gradient and
-        updating the model. However, you do not need to override this method
-        if you plan to override ``train_epoch``.
+        updating the model.
 
         By default, this method implementation assumes that batches
         are in (features, labels) format. If using amp/fp16
         training, it will also scale the loss automatically.
 
         You can provide custom loss metrics and training operations if you
-        override this method.
+        override this method. If overriding this method, you can access model,
+        optimizer, criterion via ``self.model``, ``self.optimizer``,
+        and ``self.criterion``.
+
+        You do not need to override this method if you plan to
+        override ``train_epoch``.
 
         Args:
             batch: One item of the validation iterator.
