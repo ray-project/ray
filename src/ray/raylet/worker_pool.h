@@ -221,6 +221,14 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
+  /// Start a timer to monitor the starting worker process.
+  ///
+  /// If any workers in this process don't register within the timeout
+  /// (due to worker process crash or any other reasons), remove them
+  /// from `starting_worker_processes`. Otherwise if we'll mistakenly
+  /// think there are unregistered workers, and won't start new workers.
+  void MonitorStartingWorkerProcess(const Process &proc, const Language &language);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.

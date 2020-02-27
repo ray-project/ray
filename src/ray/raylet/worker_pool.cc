@@ -3,6 +3,7 @@
 #include <sys/wait.h>
 
 #include <algorithm>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
@@ -190,8 +191,28 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   Process proc = StartProcess(worker_command_args);
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
+  MonitorStartingWorkerProcess(proc, language);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   return proc;
+}
+
+void WorkerPool::MonitorStartingWorkerProcess(const Process &proc, const Language &language) {
+  constexpr static size_t timeout_seconds = 30;
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      *io_service_, boost::posix_time::seconds(timeout_seconds));
+  // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
+  timer->async_wait([timer, language, proc, this] (const boost::system::error_code e) -> void {
+    // check the error code.
+    auto &state = this->GetStateForLanguage(language);
+    // Since this process is timeout to start, remove it from starting_worker_processes
+    // to avoid the zombie worker.
+    auto it = state.starting_worker_processes.find(proc);
+    if (it != state.starting_worker_processes.end()) {
+      RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
+                    << ") have not been registering to raylet.";
+      state.starting_worker_processes.erase(it);
+    }
+  });
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
