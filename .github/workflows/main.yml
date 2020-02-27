@@ -106,7 +106,4 @@ jobs:
       - name: Run Jenkins
         continue-on-error: false
         shell: bash
-        run: |
-        export BOOST_ROOT=/opt/rise/boost
-        export HOME=$(pwd)
-        ./ci/jenkins_tests/run_multi_node_tests.sh
+        run: BOOST_ROOT=/opt/rise/boost HOME=$(pwd) ./ci/jenkins_tests/run_multi_node_tests.sh
