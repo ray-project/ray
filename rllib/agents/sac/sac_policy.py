@@ -187,7 +187,7 @@ def actor_critic_loss(policy, model, _, train_batch):
         train_batch[SampleBatch.REWARDS] +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
-    # compute the error (potentially clipped)
+    # Compute the error (potentially clipped).
     if policy.config["twin_q"]:
         base_td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
