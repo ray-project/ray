@@ -4,6 +4,18 @@
 namespace ray {
 namespace gcs {
 
+void Executor::Execute(std::function<void()> operation) {
+  operation_ = operation;
+  operation();
+}
+
+void Executor::PostExecute(Status status) {
+  if (status.IsIOError()) {
+    reconnect_count_ = client_impl_->Reconnect(reconnect_count_);
+    operation_();
+  }
+}
+
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),

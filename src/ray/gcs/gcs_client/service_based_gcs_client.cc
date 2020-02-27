@@ -7,7 +7,7 @@ namespace ray {
 namespace gcs {
 
 ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
-    : GcsClient(options), reconnect_count_(0) {}
+    : GcsClient(options), is_connecting_(false), reconnect_count_(0) {}
 
 Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
@@ -40,6 +40,13 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
 
+  // Create event loop for reconnect gcs service
+  work_thread_.reset(new std::thread([this] {
+    std::unique_ptr<boost::asio::io_service::work> work(
+        new boost::asio::io_service::work(io_service_));
+    io_service_.run();
+  }));
+
   is_connected_ = true;
 
   RAY_LOG(INFO) << "ServiceBasedGcsClient Connected.";
@@ -54,28 +61,29 @@ void ServiceBasedGcsClient::Disconnect() {
 
 uint64_t ServiceBasedGcsClient::Reconnect(uint64_t reconnect_count) {
   absl::MutexLock lock(&mutex_);
-  if (reconnect_count_ >= reconnect_count) {
-    int num_attempts = 0;
-    while (num_attempts < RayConfig::instance().gcs_service_rpc_connect_retries()) {
-      // Get gcs service address
-      std::pair<std::string, int> address;
-      GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
-                                   &address);
-      if (address != address_) {
-        // Connect to gcs service
-        gcs_rpc_client_.reset(
-            new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_));
-        is_connected_ = true;
-        RAY_LOG(INFO) << "ServiceBasedGcsClient reconnect success.";
-        break;
-      }
-
-      usleep(RayConfig::instance().gcs_service_rpc_connect_wait_milliseconds() * 1000);
-      num_attempts++;
+  if (reconnect_count_ >= reconnect_count && !is_connecting_) {
+    if (RayConfig::instance().gcs_service_rpc_auto_reconnect_enabled()) {
+      is_connecting_ = true;
+      io_service_.post([this] {
+        // Get gcs service address
+        std::pair<std::string, int> address;
+        GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+                                     &address);
+        absl::MutexLock lock(&mutex_);
+        if (address != address_) {
+          // Connect to gcs service
+          gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
+                                                      *client_call_manager_));
+          is_connected_ = true;
+          RAY_LOG(INFO) << "ServiceBasedGcsClient reconnect success.";
+        }
+        ++reconnect_count_;
+        is_connecting_ = false;
+      });
     }
   }
 
-  return ++reconnect_count_;
+  return reconnect_count_;
 }
 
 void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
@@ -91,7 +99,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
 
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().gcs_service_connect_wait_milliseconds() * 1000);
+    usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() * 1000);
     num_attempts++;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())

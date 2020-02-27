@@ -8,29 +8,32 @@
 namespace ray {
 namespace gcs {
 
+class ServiceBasedGcsClient;
+
+/// \class Executor
+/// Executor guarantees that when GCS service is abnormal, it reconnects and executes the
+/// operation again.
 class Executor {
  public:
-  Executor(ServiceBasedGcsClient *client_impl) { client_impl_ = client_impl; }
-
-  void Execute(std::function<void()> operation) {
-    operation_ = operation;
-    operation();
+  Executor(ServiceBasedGcsClient *client_impl) : reconnect_count_(0) {
+    client_impl_ = client_impl;
   }
 
-  void PostExecute(Status status) {
-    if (status.IsIOError()) {
-      reconnect_count_ = client_impl_->Reconnect(reconnect_count_);
-      operation_();
-    }
-  }
+  /// This function is used to execute the given operation.
+  ///
+  /// \param operation The operation to be executed.
+  void Execute(std::function<void()> operation);
+
+  /// This function should be used after the operation execution is completed.
+  ///
+  /// \param status The status of operation execution.
+  void PostExecute(Status status);
 
  private:
   std::function<void()> operation_;
   ServiceBasedGcsClient *client_impl_;
   uint64_t reconnect_count_;
 };
-
-class ServiceBasedGcsClient;
 
 /// \class ServiceBasedJobInfoAccessor
 /// ServiceBasedJobInfoAccessor is an implementation of `JobInfoAccessor`
