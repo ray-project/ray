@@ -1,4 +1,5 @@
 # coding: utf-8
+import asyncio
 import copy
 import json
 import logging
@@ -352,22 +353,34 @@ def test_basic_serialized_reference(one_worker_100MiB):
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
 def test_recursive_serialized_reference(one_worker_100MiB):
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
     @ray.remote
-    def recursive(ref, dep, max_depth, depth=0):
+    def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
-            return ray.get(dep[0])
+            return ray.get(signal.wait.remote())
         else:
-            return recursive.remote(ref, dep, max_depth, depth + 1)
+            return recursive.remote(ref, signal, max_depth, depth + 1)
 
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
+    signal = Signal.remote()
+
     max_depth = 5
     array_oid = put.remote()
-    random_oid = ray.ObjectID.from_random()
-    head_oid = recursive.remote([array_oid], [random_oid], max_depth)
+    head_oid = recursive.remote([array_oid], signal, max_depth)
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -381,7 +394,7 @@ def test_recursive_serialized_reference(one_worker_100MiB):
     _fill_object_store_and_get(array_oid_bytes)
 
     # Fulfill the dependency, causing the tail task to finish.
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     assert ray.get(tail_oid) is None
 
     # Reference should be gone, check that array gets evicted.
@@ -441,24 +454,34 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
 def test_worker_holding_serialized_reference(one_worker_100MiB):
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
     @ray.remote
     def child(dep1, dep2):
         return
 
     @ray.remote
-    def launch_pending_task(refs):
-        ref, dep = refs
-        return child.remote(ref, dep)
+    def launch_pending_task(ref, signal):
+        return child.remote(ref[0], signal.wait.remote())
 
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
+    signal = Signal.remote()
+
     # Test that the reference held by the actor isn't evicted.
     array_oid = put.remote()
-    random_oid = ray.ObjectID.from_random()
-    child_return_id = ray.get(
-        launch_pending_task.remote([array_oid, random_oid]))
+    child_return_id = ray.get(launch_pending_task.remote([array_oid], signal))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -467,7 +490,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
     # Test that the reference prevents the object from being evicted.
     _fill_object_store_and_get(array_oid_bytes)
 
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(child_return_id)
     del child_return_id
 
@@ -494,25 +517,37 @@ def test_basic_nested_ids(one_worker_100MiB):
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
 def test_recursively_nest_ids(one_worker_100MiB):
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
     @ray.remote
-    def recursive(ref, dep, max_depth, depth=0):
+    def recursive(ref, signal, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
         if depth == max_depth:
-            return ray.get(dep[0])
+            return ray.get(signal.wait.remote())
         else:
-            return recursive.remote(unwrapped, dep, max_depth, depth + 1)
+            return recursive.remote(unwrapped, signal, max_depth, depth + 1)
 
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
+    signal = Signal.remote()
+
     max_depth = 5
     array_oid = put.remote()
-    random_oid = ray.ObjectID.from_random()
     nested_oid = array_oid
     for _ in range(max_depth):
         nested_oid = ray.put([nested_oid])
-    head_oid = recursive.remote([nested_oid], [random_oid], max_depth)
+    head_oid = recursive.remote([nested_oid], signal, max_depth)
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -526,7 +561,7 @@ def test_recursively_nest_ids(one_worker_100MiB):
     _fill_object_store_and_get(array_oid_bytes)
 
     # Fulfill the dependency, causing the tail task to finish.
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(tail_oid)
 
     # Reference should be gone, check that array gets evicted.
@@ -564,6 +599,17 @@ def test_return_object_id(one_worker_100MiB):
 # Test that serialized objectIDs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
 def test_pass_returned_object_id(one_worker_100MiB):
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -573,14 +619,14 @@ def test_pass_returned_object_id(one_worker_100MiB):
         return [put.remote()]
 
     @ray.remote
-    def pending(ref, dep):
-        ray.get(dep[0])
+    def pending(ref, signal):
+        ray.get(signal.wait.remote())
         ray.get(ref[0])
 
+    signal = Signal.remote()
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
-    random_oid = ray.ObjectID.from_random()
-    pending_oid = pending.remote([outer_oid], [random_oid])
+    pending_oid = pending.remote([outer_oid], signal)
 
     # Remove the local reference to the returned ID.
     del outer_oid
@@ -589,7 +635,7 @@ def test_pass_returned_object_id(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_binary)
 
     # Check that the task finishing unpins the object.
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(pending_oid)
     _fill_object_store_and_get(inner_oid_binary, succeed=False)
 
@@ -599,6 +645,17 @@ def test_pass_returned_object_id(one_worker_100MiB):
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
 def test_recursively_pass_returned_object_id(one_worker_100MiB):
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -608,18 +665,18 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
         return [put.remote()]
 
     @ray.remote
-    def recursive(ref, dep, max_depth, depth=0):
+    def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
-            return ray.get(dep[0])
+            return ray.get(signal.wait.remote())
         else:
-            return recursive.remote(ref, dep, max_depth, depth + 1)
+            return recursive.remote(ref, signal, max_depth, depth + 1)
 
     max_depth = 5
     outer_oid = return_an_id.remote()
     inner_oid_bytes = ray.get(outer_oid)[0].binary()
-    random_oid = ray.ObjectID.from_random()
-    head_oid = recursive.remote([outer_oid], [random_oid], max_depth)
+    signal = Signal.remote()
+    head_oid = recursive.remote([outer_oid], signal, max_depth)
 
     # Remove the local reference.
     del outer_oid
@@ -632,7 +689,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_bytes)
 
     # Fulfill the dependency, causing the tail task to finish.
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(tail_oid)
 
     # Reference should be gone, check that returned ID gets evicted.
