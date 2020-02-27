@@ -3,7 +3,6 @@
 
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
-#include <list>
 #include <queue>
 #include <set>
 #include <utility>
@@ -81,8 +80,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Void.
   void PushActorTask(rpc::CoreWorkerClientInterface &client,
                      std::unique_ptr<rpc::PushTaskRequest> request,
-                     const ActorID &actor_id, const TaskID &task_id, int num_returns)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  void DisconnectActorInternal(const ActorID &actor_id, bool dead) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
   /// Note that this function doesn't take lock, the caller is expected to hold
@@ -125,17 +125,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   // TODO(apaszke): Get rid of those
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
-  absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
+  absl::flat_hash_map<ActorID, std::vector<std::unique_ptr<rpc::PushTaskRequest>>>
       pending_requests_ GUARDED_BY(mu_);
-
-  /// Map from actor id to the send position of the next task to queue for send
-  /// for that actor. This is always greater than or equal to next_send_position_.
-  absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_ GUARDED_BY(mu_);
-
-  /// Map from actor id to the send position of the next task to send to that actor.
-  /// Note that this differs from the PushTaskRequest's sequence number in that it
-  /// increases monotonically in this process independently of CallerId changes.
-  absl::flat_hash_map<ActorID, int64_t> next_send_position_ GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;

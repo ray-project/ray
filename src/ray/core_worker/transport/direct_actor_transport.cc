@@ -30,15 +30,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());
 
-  // We must fix the send order prior to resolving dependencies, which may complete
-  // out of order. This ensures we preserve the client-side send order.
-  int64_t send_pos = -1;
-  {
-    absl::MutexLock lock(&mu_);
-    send_pos = next_send_position_to_assign_[task_spec.ActorId()]++;
-  }
-
-  resolver_.ResolveDependencies(task_spec, [this, send_pos, task_spec]() mutable {
+  resolver_.ResolveDependencies(task_spec, [this, task_spec]() mutable {
     const auto &actor_id = task_spec.ActorId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
@@ -49,9 +41,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
     absl::MutexLock lock(&mu_);
-
-    auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
-    RAY_CHECK(inserted.second);
+    pending_requests_[actor_id].emplace_back(std::move(request));
 
     auto it = rpc_clients_.find(actor_id);
     if (it == rpc_clients_.end()) {
@@ -84,14 +74,16 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address, actor_counter));
   }
-  if (pending_requests_.count(actor_id) > 0) {
-    SendPendingTasks(actor_id);
-  }
+  auto& requests = pending_requests_[actor_id];
+  SendPendingTasks(actor_id);
+  // NOTE: We might have accumulated a fair amount of space in this vector while the actor
+  //       was constructed, so we reset its capacity to zero. The capacity will never rise
+  //       above 1 until it dies again.
+  requests.shrink_to_fit();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActorInternal(const ActorID &actor_id,
                                                          bool dead) {
-  absl::MutexLock lock(&mu_);
   pending_force_kills_.erase(actor_id);
   if (!dead) {
     // We're reconstructing the actor, so erase the client for now. The new client
@@ -104,10 +96,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {
-      auto head = pending_it->second.begin();
-      while (head != pending_it->second.end()) {
-        auto request = std::move(head->second);
-        head = pending_it->second.erase(head);
+      auto& requests = pending_it->second;
+      for (auto& request: requests) {
         auto task_id = TaskID::FromBinary(request->task_spec().task_id());
         auto status = Status::IOError("cancelling all pending tasks of dead actor");
         task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
@@ -121,6 +111,11 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   }
 }
 
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id, bool dead) {
+  absl::MutexLock lock(&mu_);
+  return DisconnectActorInternal(actor_id, dead);
+}
+
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
   RAY_CHECK(client);
@@ -130,27 +125,23 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
     rpc::KillActorRequest request;
     request.set_intended_actor_id(actor_id.Binary());
     RAY_CHECK_OK(client->KillActor(request, nullptr));
-    pending_force_kills_.erase(actor_id);
+    DisconnectActorInternal(actor_id, /*dead=*/false);
+    return; // There is no point in sending pending requests to an actor we've just killed.
   }
 
   // Submit all pending requests.
-  auto &requests = pending_requests_[actor_id];
-  auto head = requests.begin();
-  while (head != requests.end() && head->first == next_send_position_[actor_id]) {
-    auto request = std::move(head->second);
-    head = requests.erase(head);
-
-    auto num_returns = request->task_spec().num_returns();
-    auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    PushActorTask(*client, std::move(request), actor_id, task_id, num_returns);
+  auto& requests = pending_requests_[actor_id];
+  for (auto& request : requests) {
+    PushActorTask(*client, std::move(request), actor_id);
   }
+  requests.clear();
 }
 
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
-    const ActorID &actor_id, const TaskID &task_id, int num_returns) {
+    const ActorID &actor_id) {
+  auto task_id = TaskID::FromBinary(request->task_spec().task_id());
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
-  next_send_position_[actor_id]++;
   auto it = worker_ids_.find(actor_id);
   RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
   request->set_intended_worker_id(it->second);
