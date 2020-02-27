@@ -265,6 +265,17 @@ def test_basic_pinning(one_worker_100MiB):
 
 
 def test_pending_task_dependency_pinning(one_worker_100MiB):
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
     @ray.remote
     def pending(input1, input2):
         return
@@ -274,13 +285,13 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-    random_oid = ray.ObjectID.from_random()
-    oid = pending.remote(np_array, random_oid)
+    signal = Signal.remote()
+    oid = pending.remote(np_array, signal.wait.remote())
 
     for _ in range(2):
         ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(oid)
 
 
@@ -319,6 +330,17 @@ def test_feature_flag(shutdown_only):
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
 def test_basic_serialized_reference(one_worker_100MiB):
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
     @ray.remote
     def pending(ref, dep):
         ray.get(ref[0])
@@ -331,8 +353,8 @@ def test_basic_serialized_reference(one_worker_100MiB):
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
     array_oid = put.remote()
-    random_oid = ray.ObjectID.from_random()
-    oid = pending.remote([array_oid], random_oid)
+    signal = Signal.remote()
+    oid = pending.remote([array_oid], signal.wait.remote())
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -342,7 +364,7 @@ def test_basic_serialized_reference(one_worker_100MiB):
     _fill_object_store_and_get(array_oid_bytes)
 
     # Fulfill the dependency, causing the task to finish.
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(oid)
 
     # Reference should be gone, check that array gets evicted.
