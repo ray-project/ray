@@ -32,7 +32,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
 
     // Wait until server starts listening.
-    while (gcs_server_->GetPort() == 0) {
+    while (!gcs_server_->IsStarted()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

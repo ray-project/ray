@@ -5,6 +5,7 @@ import six.moves.queue as queue
 import threading
 import time
 
+from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
@@ -15,7 +16,7 @@ from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 

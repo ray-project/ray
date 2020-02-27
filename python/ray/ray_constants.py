@@ -13,21 +13,11 @@ def env_integer(key, default):
     return default
 
 
-def direct_call_enabled():
-    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "1")))
-
-
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
-# The default number of retries to call `put` when the object store is full.
-DEFAULT_PUT_OBJECT_RETRIES = 5
-# The default seconds for delay between calls to retry `put` when
-# the object store is full. This delay is exponentially doubled up to
-# DEFAULT_PUT_OBJECT_RETRIES times.
-DEFAULT_PUT_OBJECT_DELAY = 1
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
