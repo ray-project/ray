@@ -597,6 +597,15 @@ def detect_fate_sharing_support_linux():
     return bool(linux_prctl)
 
 
+def detect_fate_sharing_support():
+    result = None
+    if sys.platform == "win32":
+        result = detect_fate_sharing_support_win32()
+    elif sys.platform.startswith("linux"):
+        result = detect_fate_sharing_support_linux()
+    return result
+
+
 def set_kill_on_parent_death_linux():
     """Ensures this process dies if its parent dies (fate-sharing).
 
