@@ -388,5 +388,6 @@ Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
   auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
+}
 
 }  // namespace ray
