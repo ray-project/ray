@@ -6,7 +6,6 @@ import multiprocessing
 import os
 import random
 import re
-import resource
 import socket
 import subprocess
 import sys
@@ -18,6 +17,10 @@ import colorama
 import ray
 import ray.ray_constants as ray_constants
 import psutil
+
+resource = None
+if sys.platform != "win32":
+    import resource
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -903,7 +906,7 @@ def _start_redis_instance(executable,
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
-    else:
+    elif resource is not None:
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
         # clients.
