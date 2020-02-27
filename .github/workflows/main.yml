@@ -59,9 +59,8 @@ jobs:
       matrix:
         # Github Actions requires a single row to be added to the build matrix.
         # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
-        name: [
-          windows-clang-cl,
-        ]
+        name: 
+          - windows-clang-cl
         include:
           - name: windows-clang-cl
             os: windows-latest
@@ -103,6 +102,10 @@ jobs:
     name: tune integration
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 1
       - name: Run Jenkins
         continue-on-error: false
         shell: bash
