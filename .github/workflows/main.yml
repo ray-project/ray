@@ -13,9 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [
-          ubuntu-clang-iwyu,
-        ]
+        name: 
+          - ubuntu-clang-iwyu
         include:
           - name: ubuntu-clang-iwyu
             os: ubuntu-latest
