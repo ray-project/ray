@@ -11,7 +11,6 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
 
-
 RETRIES = 10
 NSG_NAME = "ray-nsg"
 SUBNET_NAME = "ray-subnet"
