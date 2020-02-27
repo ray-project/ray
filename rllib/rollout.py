@@ -189,13 +189,13 @@ def create_parser(parser_creator=None):
         default=False,
         action="store_true",
         help="Wrap environment in gym Monitor to record video. NOTE: This "
-            "option is deprecated: Use `--video-dir [some dir]` instead.")
+        "option is deprecated: Use `--video-dir [some dir]` instead.")
     parser.add_argument(
         "--video-dir",
         type=str,
         default=None,
         help="Specifies the directory into which videos of all episode "
-            "rollouts will be stored.")
+        "rollouts will be stored.")
     parser.add_argument(
         "--steps",
         default=10000,
@@ -204,10 +204,7 @@ def create_parser(parser_creator=None):
         "--episodes",
         default=0,
         help="Number of complete episodes to roll out (overrides --steps).")
-    parser.add_argument(
-        "--out",
-        default=None,
-        help="Output filename.")
+    parser.add_argument("--out", default=None, help="Output filename.")
     parser.add_argument(
         "--config",
         default="{}",
@@ -282,9 +279,8 @@ def run(args, parser):
     # Deprecated way: Use (--out|~/ray_results) + "/monitor" as dir.
     if args.monitor:
         video_dir = os.path.join(
-            os.path.dirname(args.out or "") or
-            os.path.expanduser("~/ray_results/"),
-            "monitor")
+            os.path.dirname(args.out or "")
+            or os.path.expanduser("~/ray_results/"), "monitor")
     # New way: Allow user to specify a video output path.
     else:
         video_dir = os.path.expanduser(args.video_dir)
