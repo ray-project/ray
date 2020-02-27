@@ -5,7 +5,6 @@ import sys
 import tempfile
 import threading
 import time
-import uuid
 
 import numpy as np
 import pytest
@@ -19,6 +18,7 @@ from ray.test_utils import (
     wait_for_condition,
     wait_for_errors,
     RayTestTimeoutException,
+    SignalActor,
 )
 
 RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
@@ -84,19 +84,6 @@ def test_failed_task(ray_start_regular):
 
 
 def test_get_throws_quickly_when_found_exception(ray_start_regular):
-    def random_path():
-        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
-
-    def touch(path):
-        with open(path, "w"):
-            pass
-
-    def wait_for_file(path):
-        while True:
-            if os.path.exists(path):
-                break
-            time.sleep(0.1)
-
     # We use an actor instead of functions here. If we use functions, it's
     # very likely that two normal tasks are submitted before the first worker
     # is registered to Raylet. Since `maximum_startup_concurrency` is 1,
@@ -112,25 +99,27 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
         def bad_func2(self):
             os._exit(0)
 
-        def slow_func(self, path):
-            wait_for_file(path)
+        def slow_func(self, signal):
+            ray.get(signal.wait.remote())
 
     def expect_exception(objects, exception):
         with pytest.raises(ray.exceptions.RayError) as err:
             ray.get(objects)
         assert err.type is exception
 
-    f = random_path()
-    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
-    expect_exception([actor.bad_func1.remote(),
-                      actor.slow_func.remote(f)], ray.exceptions.RayTaskError)
-    touch(f)
+    signal1 = SignalActor.remote()
+    actor = Actor.options(max_concurrency=2).remote()
+    expect_exception(
+        [actor.bad_func1.remote(),
+         actor.slow_func.remote(signal1)], ray.exceptions.RayTaskError)
+    ray.get(signal1.send.remote())
 
-    f = random_path()
+    signal2 = SignalActor.remote()
     actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
-    expect_exception([actor.bad_func2.remote(),
-                      actor.slow_func.remote(f)], ray.exceptions.RayActorError)
-    touch(f)
+    expect_exception(
+        [actor.bad_func2.remote(),
+         actor.slow_func.remote(signal2)], ray.exceptions.RayActorError)
+    ray.get(signal2.send.remote())
 
 
 def test_fail_importing_remote_function(ray_start_2_cpus):

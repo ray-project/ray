@@ -3,11 +3,8 @@ import asyncio
 import copy
 import json
 import logging
-import os
 import gc
-import tempfile
 import time
-import uuid
 import weakref
 
 import numpy as np
@@ -16,7 +13,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
+from ray.test_utils import SignalActor
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
@@ -128,45 +125,27 @@ def test_local_refcounts(ray_start_regular):
 
 
 def test_dependency_refcounts(ray_start_regular):
-    # Return a large object that will be spilled to plasma.
-    def large_object():
-        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
-
-    # TODO: Clean up tmpfiles?
-    def random_path():
-        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
-
-    def touch(path):
-        with open(path, "w"):
-            pass
-
-    def wait_for_file(path):
-        while True:
-            if os.path.exists(path):
-                break
-            time.sleep(0.1)
-
     @ray.remote
-    def one_dep(dep, path=None, fail=False):
-        if path is not None:
-            wait_for_file(path)
+    def one_dep(dep, signal=None, fail=False):
+        if signal is not None:
+            ray.get(signal.wait.remote())
         if fail:
             raise Exception("failed on purpose")
 
     @ray.remote
-    def one_dep_large(dep, path=None):
-        if path is not None:
-            wait_for_file(path)
-        # This should be spilled to plasma.
-        return large_object()
+    def one_dep_large(dep, signal=None):
+        if signal is not None:
+            ray.get(signal.wait.remote())
+        # This will be spilled to plasma.
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     # Test that regular plasma dependency refcounts are decremented once the
     # task finishes.
-    f = random_path()
-    large_dep = ray.put(large_object())
-    result = one_dep.remote(large_dep, path=f)
+    signal = SignalActor.remote()
+    large_dep = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+    result = one_dep.remote(large_dep, signal=signal)
     check_refcounts({large_dep: (1, 1), result: (1, 0)})
-    touch(f)
+    ray.get(signal.send.remote())
     # Reference count should be removed once the task finishes.
     check_refcounts({large_dep: (1, 0), result: (1, 0)})
     del large_dep, result
@@ -174,12 +153,12 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that inlined dependency refcounts are decremented once they are
     # inlined.
-    f = random_path()
-    dep = one_dep.remote(None, path=f)
+    signal = SignalActor.remote()
+    dep = one_dep.remote(None, signal=signal)
     check_refcounts({dep: (1, 0)})
     result = one_dep.remote(dep)
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f)
+    ray.get(signal.send.remote())
     # Reference count should be removed as soon as the dependency is inlined.
     check_refcounts({dep: (1, 0), result: (1, 0)}, timeout=1)
     del dep, result
@@ -187,16 +166,16 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that spilled plasma dependency refcounts are decremented once
     # the task finishes.
-    f1, f2 = random_path(), random_path()
-    dep = one_dep_large.remote(None, path=f1)
+    signal1, signal2 = SignalActor.remote(), SignalActor.remote()
+    dep = one_dep_large.remote(None, signal=signal1)
     check_refcounts({dep: (1, 0)})
-    result = one_dep.remote(dep, path=f2)
+    result = one_dep.remote(dep, signal=signal2)
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f1)
+    ray.get(signal1.send.remote())
     ray.get(dep, timeout=5.0)
     # Reference count should remain because the dependency is in plasma.
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f2)
+    ray.get(signal2.send.remote())
     # Reference count should be removed because the task finished.
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
@@ -204,11 +183,11 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that regular plasma dependency refcounts are decremented if a task
     # fails.
-    f = random_path()
-    large_dep = ray.put(large_object())
-    result = one_dep.remote(large_dep, path=f, fail=True)
+    signal = SignalActor.remote()
+    large_dep = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+    result = one_dep.remote(large_dep, signal=signal, fail=True)
     check_refcounts({large_dep: (1, 1), result: (1, 0)})
-    touch(f)
+    ray.get(signal.send.remote())
     # Reference count should be removed once the task finishes.
     check_refcounts({large_dep: (1, 0), result: (1, 0)})
     del large_dep, result
@@ -216,16 +195,16 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that spilled plasma dependency refcounts are decremented if a task
     # fails.
-    f1, f2 = random_path(), random_path()
-    dep = one_dep_large.remote(None, path=f1)
+    signal1, signal2 = SignalActor.remote(), SignalActor.remote()
+    dep = one_dep_large.remote(None, signal=signal1)
     check_refcounts({dep: (1, 0)})
-    result = one_dep.remote(dep, path=f2, fail=True)
+    result = one_dep.remote(dep, signal=signal2, fail=True)
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f1)
-    ray.get(dep, timeout=5.0)
+    ray.get(signal1.send.remote())
+    ray.get(dep, timeout=5)
     # Reference count should remain because the dependency is in plasma.
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f2)
+    ray.get(signal2.send.remote())
     # Reference count should be removed because the task finished.
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
@@ -274,13 +253,13 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-    random_oid = ray.ObjectID.from_random()
-    oid = pending.remote(np_array, random_oid)
+    signal = SignalActor.remote()
+    oid = pending.remote(np_array, signal.wait.remote())
 
     for _ in range(2):
         ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(oid)
 
 
@@ -331,8 +310,8 @@ def test_basic_serialized_reference(one_worker_100MiB):
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
     array_oid = put.remote()
-    random_oid = ray.ObjectID.from_random()
-    oid = pending.remote([array_oid], random_oid)
+    signal = SignalActor.remote()
+    oid = pending.remote([array_oid], signal.wait.remote())
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -342,7 +321,7 @@ def test_basic_serialized_reference(one_worker_100MiB):
     _fill_object_store_and_get(array_oid_bytes)
 
     # Fulfill the dependency, causing the task to finish.
-    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(signal.send.remote())
     ray.get(oid)
 
     # Reference should be gone, check that array gets evicted.
@@ -376,7 +355,7 @@ def test_recursive_serialized_reference(one_worker_100MiB):
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
 
     max_depth = 5
     array_oid = put.remote()
@@ -477,7 +456,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
 
     # Test that the reference held by the actor isn't evicted.
     array_oid = put.remote()
@@ -540,7 +519,7 @@ def test_recursively_nest_ids(one_worker_100MiB):
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
 
     max_depth = 5
     array_oid = put.remote()
@@ -623,7 +602,7 @@ def test_pass_returned_object_id(one_worker_100MiB):
         ray.get(signal.wait.remote())
         ray.get(ref[0])
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
     pending_oid = pending.remote([outer_oid], signal)
@@ -675,7 +654,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     max_depth = 5
     outer_oid = return_an_id.remote()
     inner_oid_bytes = ray.get(outer_oid)[0].binary()
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     head_oid = recursive.remote([outer_oid], signal, max_depth)
 
     # Remove the local reference.
