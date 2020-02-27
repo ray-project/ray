@@ -782,7 +782,6 @@ cdef class CoreWorker:
                     FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
-                    c_bool is_direct_call,
                     resources,
                     int max_retries):
         cdef:
@@ -795,7 +794,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call, c_resources)
+                num_return_vals, True, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
@@ -814,7 +813,6 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_bool is_asyncio,
@@ -838,7 +836,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, max_concurrency,
+                        max_reconstructions, True, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,

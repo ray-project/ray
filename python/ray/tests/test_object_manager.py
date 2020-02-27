@@ -7,13 +7,7 @@ import time
 import warnings
 
 import ray
-from ray import ray_constants
 from ray.cluster_utils import Cluster
-
-# TODO(yuhguo): This test file requires a lot of CPU/memory, and
-# better be put in Jenkins. However, it fails frequently in Jenkins, but
-# works well in Travis. We should consider moving it back to Jenkins once
-# we figure out the reason.
 
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):
@@ -42,7 +36,7 @@ def ray_start_cluster_with_resource():
 
 # This test is here to make sure that when we broadcast an object to a bunch of
 # machines, we don't have too many excess object transfers.
-@pytest.mark.skipif(ray_constants.direct_call_enabled(), reason="TODO(ekl)")
+@pytest.mark.skip(reason="TODO(ekl)")
 def test_object_broadcast(ray_start_cluster_with_resource):
     cluster, num_nodes = ray_start_cluster_with_resource
 
