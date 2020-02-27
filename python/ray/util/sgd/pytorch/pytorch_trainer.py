@@ -284,15 +284,15 @@ class PyTorchTrainer:
                 available resources. Behavior is not well-defined
                 in case of shared cluster usage.
             checkpoint (str): Path to checkpoint to restore from if retrying.
-                If max_retries is set and checkpoint == "auto", PyTorchTrainer
-                will save a checkpoint before starting to train.
+                If max_retries is set and ``checkpoint == "auto"``,
+                PyTorchTrainer will save a checkpoint before starting to train.
             info (dict): Optional dictionary passed to the training
-                operator for `train_epoch` and `train_batch`.
+                operator for ``train_epoch`` and ``train_batch``.
 
         Returns:
             A dictionary of metrics for training.
                 You can provide custom metrics by passing in a custom
-                ``training_operator_cls``
+                ``training_operator_cls``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
         if max_retries:
@@ -344,9 +344,28 @@ class PyTorchTrainer:
         return success, worker_stats
 
     def apply_all_workers(self, fn):
+        """Run a function on all operators on the workers.
+
+        Args:
+            fn (Callable): A function that takes in no arguments.
+
+        Returns:
+            A list of objects returned by ``fn`` on each worker.
+
+        """
         return ray.get([w.apply.remote(fn) for w in self.workers])
 
     def apply_all_operators(self, fn):
+        """Run a function on all operators on the workers.
+
+        Args:
+            fn (Callable[TrainingOperator]): A function that takes in a
+                TrainingOperator.
+
+        Returns:
+            A list of objects returned by ``fn`` on each operator.
+
+        """
         return ray.get([w.apply_operator.remote(fn) for w in self.workers])
 
     def validate(self, num_steps=None, info=None):
@@ -362,7 +381,7 @@ class PyTorchTrainer:
         Returns:
             A dictionary of metrics for validation.
                 You can provide custom metrics by passing in a custom
-                ``training_operator_cls``
+                ``training_operator_cls``.
         """
         worker_stats = ray.get([
             w.validate.remote(num_steps=num_steps, info=info)
