@@ -93,10 +93,6 @@ from ray.exceptions import (
 )
 from ray.experimental.no_return import NoReturn
 from ray.utils import decode
-from ray.ray_constants import (
-    DEFAULT_PUT_OBJECT_DELAY,
-    DEFAULT_PUT_OBJECT_RETRIES,
-)
 
 cimport cpython
 
@@ -673,32 +669,17 @@ cdef class CoreWorker:
                             size_t data_size, ObjectID object_id,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
-        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
-        for attempt in reversed(
-                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
-            try:
-                if object_id is None:
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                     metadata, data_size, contained_ids,
-                                     c_object_id, data))
-                else:
-                    c_object_id[0] = object_id.native()
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                    metadata, data_size,
-                                    c_object_id[0], data))
-                break
-            except ObjectStoreFullError as e:
-                if attempt:
-                    logger.warning("Waiting {} seconds for space to free up "
-                                   "in the object store.".format(delay))
-                    gc.collect()
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    self.dump_object_store_memory_usage()
-                    raise e
+        if object_id is None:
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                             metadata, data_size, contained_ids,
+                             c_object_id, data))
+        else:
+            c_object_id[0] = object_id.native()
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                            metadata, data_size,
+                            c_object_id[0], data))
 
         # If data is nullptr, that means the ObjectID already existed,
         # which we ignore.
