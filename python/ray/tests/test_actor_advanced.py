@@ -697,9 +697,12 @@ def test_kill(ray_start_regular):
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
-    actor.__ray_kill__()
+    ray.kill(actor)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result)
+
+    with pytest.raises(ValueError):
+        ray.kill("not_an_actor_handle")
 
 
 # This test verifies actor creation task failure will not

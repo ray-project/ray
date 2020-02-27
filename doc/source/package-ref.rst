@@ -13,6 +13,8 @@ Ray Package Reference
 
 .. autofunction:: ray.put
 
+.. autofunction:: ray.kill
+
 .. autofunction:: ray.get_gpu_ids
 
 .. autofunction:: ray.get_resource_ids
