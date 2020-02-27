@@ -355,7 +355,7 @@ void CoreWorker::InternalHeartbeat() {
     auto actor_id = pending_actor_kills_.front().second;
     RAY_LOG(WARNING) << "Actor " << actor_id << " hasn't been reconstructed within "
                      << kActorRestartDeadlineMillis << "ms of task submission failure. Killing it.";
-    RAY_CHECK_OK(direct_actor_submitter_->KillActor(actor_id));
+    RAY_CHECK_OK(KillActor(actor_id));
   }
   // Resubmit all tasks that are ready again
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
@@ -880,7 +880,11 @@ Status CoreWorker::KillActor(const ActorID &actor_id) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
   RAY_CHECK(actor_handle->IsDirectCallActor());
-  return direct_actor_submitter_->KillActor(actor_id);
+  if (actor_handle->IsDead())  {
+    return Status::OK();
+  } else {
+    return direct_actor_submitter_->KillActor(actor_id);
+  }
 }
 
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
