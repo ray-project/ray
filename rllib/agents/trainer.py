@@ -621,6 +621,13 @@ class Trainer(Trainable):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+
+        print("weights-in-policy={}".format(
+            self.get_weights()["default_policy"]["default_policy/value/kernel"]))
+        with self.get_policy().model.context():
+            print("weights-in-model={}".format(self.get_policy().model.base_model.get_weights()[0]))
+            self.get_policy().model.base_model.save_weights(os.path.join(checkpoint_dir, "weights.h5"))
+
         return checkpoint_path
 
     @override(Trainable)
