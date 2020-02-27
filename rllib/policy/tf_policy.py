@@ -493,8 +493,10 @@ class TFPolicy(Policy):
 
         # build output signatures
         output_signature = self._extra_output_signature_def()
-        output_signature["actions"] = \
-            tf.saved_model.utils.build_tensor_info(self._sampled_action)
+        for i, a in enumerate(tf.nest.flatten(self._sampled_action)):
+            output_signature["actions_{}".format(i)] = \
+                tf.saved_model.utils.build_tensor_info(a)
+
         for state_output in self._state_outputs:
             output_signature[state_output.name] = \
                 tf.saved_model.utils.build_tensor_info(state_output)
