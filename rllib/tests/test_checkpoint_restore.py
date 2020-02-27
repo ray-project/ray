@@ -13,23 +13,29 @@ from ray.tune.trial import ExportFormat
 def get_mean_action(alg, obs):
     out = []
     for _ in range(2000):
-        out.append(float(alg.compute_action(obs, explore=False)))
+        out.append(float(alg.compute_action(obs)))
     return np.mean(out)
 
 
 ray.init(num_cpus=10, object_store_memory=1e9)
 
 CONFIGS = {
-    "SAC": {},
+    "SAC": {
+        "explore": False,
+    },
     "ES": {
+        "explore": False,
         "episodes_per_batch": 10,
         "train_batch_size": 100,
         "num_workers": 2,
         "noise_size": 2500000,
         "observation_filter": "MeanStdFilter"
     },
-    "DQN": {},
+    "DQN": {
+        "explore": False
+    },
     "APEX_DDPG": {
+        "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
         "min_iter_time_s": 1,
@@ -38,21 +44,21 @@ CONFIGS = {
         },
     },
     "DDPG": {
-        "exploration_config": {
-            "random_timesteps": 0,
-            "ou_base_scale": 0.0
-        },
+        "explore": False,
         "timesteps_per_iteration": 100
     },
     "PPO": {
+        "explore": False,
         "num_sgd_iter": 5,
         "train_batch_size": 1000,
         "num_workers": 2
     },
     "A3C": {
+        "explore": False,
         "num_workers": 1
     },
     "ARS": {
+        "explore": False,
         "num_rollouts": 10,
         "num_workers": 2,
         "noise_size": 2500000,
