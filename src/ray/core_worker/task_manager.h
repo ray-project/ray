@@ -29,17 +29,20 @@ class TaskFinisherInterface {
 };
 
 using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
+using CompleteTaskCallback = std::function<void(const TaskSpecification &spec)>;
 
 class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
-              RetryTaskCallback retry_task_callback)
+              RetryTaskCallback retry_task_callback,
+              CompleteTaskCallback complete_task_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback) {}
+        retry_task_callback_(retry_task_callback),
+        complete_task_callback_(complete_task_callback) {}
 
   /// Add a task that is pending execution.
   ///
@@ -129,6 +132,9 @@ class TaskManager : public TaskFinisherInterface {
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
+
+  /// Called when a task is completed.
+  const CompleteTaskCallback complete_task_callback_;
 
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;

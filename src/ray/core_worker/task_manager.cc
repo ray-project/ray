@@ -79,10 +79,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.first;
+    spec = std::move(it->second.first);
     pending_tasks_.erase(it);
   }
 
+  complete_task_callback_(spec);
   RemoveFinishedTaskReferences(spec, worker_addr, reply.borrowed_refs());
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
@@ -114,7 +115,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           object_id));
     }
   }
-
   ShutdownIfNeeded();
 }
 

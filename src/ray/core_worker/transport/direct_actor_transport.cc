@@ -73,7 +73,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 }
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
-                                                      const rpc::Address &address) {
+                                                      const rpc::Address &address,
+                                                      uint64_t actor_counter) {
   absl::MutexLock lock(&mu_);
   // Update the mapping so new RPCs go out with the right intended worker id.
   worker_ids_[actor_id] = address.worker_id();
@@ -81,7 +82,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // TODO(edoakes): are these clients cleaned up properly?
   if (rpc_clients_.count(actor_id) == 0) {
     rpc_clients_[actor_id] =
-        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address, actor_counter));
   }
   if (pending_requests_.count(actor_id) > 0) {
     SendPendingTasks(actor_id);
@@ -91,6 +92,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                                          bool dead) {
   absl::MutexLock lock(&mu_);
+  pending_force_kills_.erase(actor_id);
   if (!dead) {
     // We're reconstructing the actor, so erase the client for now. The new client
     // will be inserted once actor reconstruction completes. We don't erase the

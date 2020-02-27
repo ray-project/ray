@@ -37,7 +37,7 @@ const int kMaxReorderWaitSeconds = 30;
 class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(rpc::Address rpc_address,
-                                     rpc::ClientFactoryFn client_factory,
+                                     rpc::ClientWithOffsetFactoryFn client_factory,
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
                                      std::shared_ptr<TaskFinisherInterface> task_finisher)
       : rpc_address_(rpc_address),
@@ -61,7 +61,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id Actor ID.
   /// \param[in] address The new address of the actor.
-  void ConnectActor(const ActorID &actor_id, const rpc::Address &address);
+  void ConnectActor(const ActorID &actor_id, const rpc::Address &address, uint64_t actor_counter);
 
   /// Disconnect from a failed actor.
   ///
@@ -99,7 +99,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   bool IsActorAlive(const ActorID &actor_id) const;
 
   /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
+  rpc::ClientWithOffsetFactoryFn client_factory_;
 
   /// Mutex to proect the various maps below.
   mutable absl::Mutex mu_;
@@ -122,6 +122,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Set of actor ids that should be force killed once a client is available.
   absl::flat_hash_set<ActorID> pending_force_kills_ GUARDED_BY(mu_);
 
+  // TODO(apaszke): Get rid of those
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
   absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>

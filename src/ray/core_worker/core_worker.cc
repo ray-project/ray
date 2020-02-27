@@ -198,13 +198,20 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
-      [this](const TaskSpecification &spec) {
+      /*retry_task_callback=*/[this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
                        << spec.DebugString();
         absl::MutexLock lock(&mutex_);
         to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
+      },
+      /*complete_task_callback=*/[this](const TaskSpecification &spec) {
+        if (spec.IsActorTask()) {
+          ActorHandle* handle = nullptr;
+          RAY_CHECK_OK(GetActorHandle(spec.ActorId(), &handle));
+          handle->CompleteNextTask();
+        }
       }));
 
   // Create an entry for the driver task in the task table. This task is
@@ -226,12 +233,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
+  auto client_factory_with_counter = [this](const rpc::Address &addr, uint64_t actor_counter) {
+    return std::make_shared<rpc::CoreWorkerClient>(addr, *client_call_manager_, actor_counter);
+  };
   auto client_factory = [this](const rpc::Address &addr) {
-    return std::shared_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(addr, *client_call_manager_));
+    return std::make_shared<rpc::CoreWorkerClient>(addr, *client_call_manager_);
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
+      new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory_with_counter, memory_store_,
                                              task_manager_));
 
   direct_task_submitter_ =
@@ -336,7 +345,19 @@ void CoreWorker::CheckForRayletFailure() {
 void CoreWorker::InternalHeartbeat() {
   absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
-    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
+    auto& spec = to_resubmit_.front().second;
+    if (spec.IsActorTask()) {
+      ActorHandle* handle = nullptr;
+      RAY_CHECK_OK(GetActorHandle(spec.ActorId(), &handle));
+      if (handle->IsDead()) {
+        task_manager_->PendingTaskFailed(spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
+      } else {
+        // TODO(apaszke): Set a timer to kill the actor!
+        RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(std::move(spec)));
+      }
+    } else {
+      RAY_CHECK_OK(direct_task_submitter_->SubmitTask(std::move(spec)));
+    }
     to_resubmit_.pop_front();
   }
   internal_timer_.expires_at(internal_timer_.expiry() +
@@ -825,7 +846,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec);
+    // TODO(apaszke): Adjust the threshold
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, 100000);
     if (actor_handle->IsDead()) {
       auto status = Status::IOError("sent task to dead actor");
       task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
@@ -872,30 +894,29 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
+      ActorHandle *actor_handle = nullptr;
+      RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
       if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
         absl::MutexLock lock(&actor_handles_mutex_);
-        auto it = actor_handles_.find(actor_id);
-        RAY_CHECK(it != actor_handles_.end());
-        if (it->second->IsDirectCallActor()) {
+        //auto it = actor_handles_.find(actor_id);
+        //RAY_CHECK(it != actor_handles_.end());
+        //if (it->second->IsDirectCallActor()) {
           // We have to reset the actor handle since the next instance of the
           // actor will not have the last sequence number that we sent.
           // TODO: Remove the check for direct calls. We do not reset for the
           // raylet codepath because it tries to replay all tasks since the
           // last actor checkpoint.
-          it->second->Reset();
-        }
+          //it->second->Reset();
+        //}
         direct_actor_submitter_->DisconnectActor(actor_id, false);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
-
-        ActorHandle *actor_handle = nullptr;
-        RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
         actor_handle->MarkDead();
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
       } else {
-        direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
+        direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(), actor_handle->NumCompletedTasks());
       }
 
       RAY_LOG(INFO) << "received notification on actor, state="

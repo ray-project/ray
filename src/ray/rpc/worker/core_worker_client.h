@@ -76,6 +76,8 @@ class WorkerAddress {
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
     ClientFactoryFn;
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &, uint64_t)>
+    ClientWithOffsetFactoryFn;
 
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
@@ -178,8 +180,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] address Address of the worker server.
   /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
-      : addr_(address), client_call_manager_(client_call_manager) {
+  CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager, uint64_t sequence_nr_offset = 0)
+      : addr_(address), client_call_manager_(client_call_manager), sequence_nr_offset_(sequence_nr_offset) {
     grpc_client_ =
         std::unique_ptr<GrpcClient<CoreWorkerService>>(new GrpcClient<CoreWorkerService>(
             addr_.ip_address(), addr_.port(), client_call_manager));
@@ -208,7 +210,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {
-    request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
+    request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter() - sequence_nr_offset_);
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (request->task_spec().caller_id() != cur_caller_id_) {
@@ -293,6 +295,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
+
+  uint64_t sequence_nr_offset_;
 
   /// The task id we are currently sending requests for. When this changes,
   /// the max finished seq no counter is reset.
