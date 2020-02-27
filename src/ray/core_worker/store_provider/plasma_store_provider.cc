@@ -77,8 +77,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
               << "is full. Object size is " << data_size << " bytes.";
       status = Status::ObjectStoreFull(message.str());
       if (max_retries < 0 || retries < max_retries) {
-        RAY_LOG(ERROR) << message.str() << " Plasma store status:\n"
-                       << MemoryUsageString() << "\nWaiting " << delay
+        RAY_LOG(ERROR) << message.str() << "\nWaiting " << delay
                        << "ms for space to free up...";
         if (on_store_full_) {
           on_store_full_();
@@ -87,6 +86,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
         delay *= 2;
         retries += 1;
         should_retry = true;
+      } else {
+        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after " << max_retries
+                       << " attempts. Plasma store status:\n"
+                       << MemoryUsageString();
       }
     } else if (plasma::IsPlasmaObjectExists(plasma_status)) {
       RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "

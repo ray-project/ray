@@ -139,6 +139,9 @@ def test_global_gc_when_full(shutdown_only):
         def has_garbage(self):
             return self.garbage() is not None
 
+        def return_large_array(self):
+            return np.zeros(80 * 1024 * 1024, dtype=np.uint8)
+
     try:
         gc.disable()
 
@@ -151,8 +154,26 @@ def test_global_gc_when_full(shutdown_only):
         assert all(ray.get([a.has_garbage.remote() for a in actors]))
 
         # GC should be triggered for all workers, including the local driver,
-        # allowing the captured ObjectIDs' numpy arrays to be evicted.
+        # when the driver tries to ray.put a value that doesn't fit in the
+        # object store. This should cause the captured ObjectIDs' numpy arrays
+        # to be evicted.
         ray.put(np.zeros(80 * 1024 * 1024, dtype=np.uint8))
+        assert local_ref() is None
+        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # Local driver.
+        local_ref = weakref.ref(LargeObjectWithCyclicRef())
+
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # GC should be triggered for all workers, including the local driver,
+        # when a remote task tries to put a return value that doesn't fit in
+        # the object store. This should cause the captured ObjectIDs' numpy
+        # arrays to be evicted.
+        ray.get(actors[0].return_large_array.remote())
         assert local_ref() is None
         assert not any(ray.get([a.has_garbage.remote() for a in actors]))
     finally:
