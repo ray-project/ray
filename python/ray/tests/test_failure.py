@@ -21,8 +21,6 @@ from ray.test_utils import (
     SignalActor,
 )
 
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
-
 
 def test_failed_task(ray_start_regular):
     @ray.remote
@@ -371,7 +369,7 @@ def test_actor_worker_dying(ray_start_regular):
         pass
 
     a = Actor.remote()
-    [obj], _ = ray.wait([a.kill.remote()], timeout=5.0)
+    [obj], _ = ray.wait([a.kill.remote()], timeout=5)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(obj)
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -579,7 +577,7 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO detect resource deadlock")
+@pytest.mark.skip(reason="TODO detect resource deadlock")
 def test_warning_for_resource_deadlock(shutdown_only):
     # Check that we get warning messages for infeasible tasks.
     ray.init(num_cpus=1)
@@ -868,11 +866,11 @@ def test_connect_with_disconnected_node(shutdown_only):
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(dead_node, allow_graceful=False)
-    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1, timeout=2)
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1)
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(dead_node, allow_graceful=False)
-    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=2)
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2)
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
     removing_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(removing_node, allow_graceful=True)
@@ -886,30 +884,33 @@ def test_connect_with_disconnected_node(shutdown_only):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 5,
-        "object_store_memory": 10**8
+        "object_store_memory": 10**8,
+        "_internal_config": json.dumps({
+            "object_store_full_max_retries": 0
+        })
     }],
     indirect=True)
-@pytest.mark.parametrize("num_actors", [1, 2, 5])
-def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
+def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor:
         def some_expensive_task(self):
             return np.zeros(10**8 // 2, dtype=np.uint8)
 
-    actors = [LargeMemoryActor.remote() for _ in range(num_actors)]
+    actors = [LargeMemoryActor.remote() for _ in range(5)]
     for _ in range(10):
         pending = [a.some_expensive_task.remote() for a in actors]
         while pending:
             [done], pending = ray.wait(pending, num_returns=1)
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 2,
-        "object_store_memory": 10**8
-    }],
-    indirect=True)
-def test_fill_object_store_exception(ray_start_cluster_head):
+def test_fill_object_store_exception(shutdown_only):
+    ray.init(
+        num_cpus=2,
+        object_store_memory=10**8,
+        _internal_config=json.dumps({
+            "object_store_full_max_retries": 0
+        }))
+
     @ray.remote
     def expensive_task():
         return np.zeros((10**8) // 10, dtype=np.uint8)
@@ -946,7 +947,7 @@ def test_fill_object_store_exception(ray_start_cluster_head):
         "num_cpus": 1,
     }],
     indirect=True)
-def test_direct_call_eviction(ray_start_cluster):
+def test_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)
@@ -980,7 +981,7 @@ def test_direct_call_eviction(ray_start_cluster):
         "num_cpus": 1,
     }],
     indirect=True)
-def test_direct_call_serialized_id_eviction(ray_start_cluster):
+def test_serialized_id_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)

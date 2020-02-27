@@ -93,10 +93,6 @@ from ray.exceptions import (
 )
 from ray.experimental.no_return import NoReturn
 from ray.utils import decode
-from ray.ray_constants import (
-    DEFAULT_PUT_OBJECT_DELAY,
-    DEFAULT_PUT_OBJECT_RETRIES,
-)
 
 cimport cpython
 
@@ -673,32 +669,17 @@ cdef class CoreWorker:
                             size_t data_size, ObjectID object_id,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
-        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
-        for attempt in reversed(
-                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
-            try:
-                if object_id is None:
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                     metadata, data_size, contained_ids,
-                                     c_object_id, data))
-                else:
-                    c_object_id[0] = object_id.native()
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                    metadata, data_size,
-                                    c_object_id[0], data))
-                break
-            except ObjectStoreFullError as e:
-                if attempt:
-                    logger.warning("Waiting {} seconds for space to free up "
-                                   "in the object store.".format(delay))
-                    gc.collect()
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    self.dump_object_store_memory_usage()
-                    raise e
+        if object_id is None:
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                             metadata, data_size, contained_ids,
+                             c_object_id, data))
+        else:
+            c_object_id[0] = object_id.native()
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                            metadata, data_size,
+                            c_object_id[0], data))
 
         # If data is nullptr, that means the ObjectID already existed,
         # which we ignore.
@@ -801,7 +782,6 @@ cdef class CoreWorker:
                     FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
-                    c_bool is_direct_call,
                     resources,
                     int max_retries):
         cdef:
@@ -814,7 +794,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call, c_resources)
+                num_return_vals, True, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
@@ -833,7 +813,6 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_bool is_asyncio,
@@ -857,7 +836,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, max_concurrency,
+                        max_reconstructions, True, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
