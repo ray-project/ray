@@ -729,13 +729,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             log_config=log_config)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
-            hyperparams = hyperparams or {
+            trial_hyperparams = hyperparams or {
                 "float_factor": 2.0,
                 "const_factor": 3,
                 "int_factor": 10,
                 "id_factor": i
             }
-            trial = _MockTrial(i, hyperparams)
+            trial = _MockTrial(i, trial_hyperparams)
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
             if step_once:
