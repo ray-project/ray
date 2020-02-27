@@ -1,4 +1,3 @@
-import asyncio
 import os
 import sys
 import pytest
@@ -200,17 +199,6 @@ def test_apply(pool):
 
 
 def test_apply_async(pool):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(arg1, arg2, kwarg1=None, kwarg2=None):
         assert arg1 == 1
         assert arg2 == 2
@@ -289,17 +277,6 @@ def test_map(pool_4_processes):
 
 
 def test_map_async(pool_4_processes):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(args):
         index, signal = args
         ray.get(signal.wait.remote())
@@ -463,17 +440,6 @@ def test_imap_unordered(pool_4_processes):
 
 
 def test_imap_timeout(pool_4_processes):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(args):
         index, wait_index, signal = args
         time.sleep(0.1 * random.random())
