@@ -65,47 +65,41 @@ auth:
 #    ssh_public_key: /path/to/your/public_key.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields based on example-full.yaml
+# Ray will auto-configure unspecified fields
 # The Azure Python SDK client expects slug_style property names
 # For more documentation on available fields, see:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
+# Note: the Azure Python SDK expects all parameter keys to be in slug_style
+#       the styles of parameter values are not changed
 head_node:
     hardware_profile:
         vm_size: Standard_D2s_v3
-    os_profile:
-        admin_username: ubuntu  # must match auth: ssh_user
-        computer_name: ray-node
-        linux_configuration:
-            disable_password_authentication: True
     storage_profile:
         os_disk:
             create_option: FromImage
             caching: ReadWrite
         image_reference:
-            # Query using az vm image list --publisher microsoft-dsvm --location westus --output table --offer ubuntu-1804 --sku 1804-gen2 --all
+            # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
             publisher: microsoft-dsvm
             offer: ubuntu-1804
             sku: 1804-gen2
             version: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields based on example-full.yaml
-# The Azure Python SDK client expects slug_style property names
-# For more documentation on available fields, see:
+# Ray will auto-configure unspecified fields
+# Documentation on fields used can be found here:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
+# Note: the Azure Python SDK expects all parameter keys to be in slug_style
+#       the styles of parameter values are not changed
 worker_nodes:
     hardware_profile:
         vm_size: Standard_D2s_v3
-    os_profile:
-        admin_username: ubuntu  # must match auth: ssh_user
-        computer_name: ray-node
-        linux_configuration:
-            disable_password_authentication: True    
     storage_profile:
         os_disk:
             create_option: FromImage
             caching: ReadWrite
         image_reference:
+            # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
             publisher: microsoft-dsvm
             offer: ubuntu-1804
             sku: 1804-gen2
@@ -138,21 +132,11 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    # - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    - pip install -U https://raywheels.blob.core.windows.net/ray/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
     # - sudo dpkg --configure -a
-    - git clone https://github.com/gramhagen/ray || true
-    - cd ray; git checkout gramhagen/azure_autoscaler
-    - ray/ci/travis/install-bazel.sh
-    - cd ray/python/ray/dashboard/client; npm ci; npm run build
-    - pip install azure-cli azure-core
-    - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

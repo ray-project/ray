@@ -11,8 +11,8 @@ from azure.mgmt.compute.models import ResourceIdentityType
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
-INSTANCE_NAME_MAX_LEN = 64
-INSTANCE_NAME_UUID_LEN = 4
+VM_NAME_MAX_LEN = 64
+VM_NAME_UUID_LEN = 4
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class AzureNodeProvider(NodeProvider):
     Azure Node Provider
     Assumes credentials are set by running `az login`
     and default subscription is configured through `az account`
+    or set in provider config
 
     Nodes may be in one of three states: {pending, running, terminated}. Nodes
     appear immediately once started by `create_node`, and transition
@@ -174,11 +175,12 @@ class AzureNodeProvider(NodeProvider):
         name_tag = config_tags.get(TAG_RAY_NODE_NAME, "node")
 
         for _ in range(count):
-            unique_id = uuid4().hex[:INSTANCE_NAME_UUID_LEN]
+            unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
             vm_name = "{name}-{id}".format(name=name_tag, id=unique_id)
+            config["os_profile"]["computer_name"] = vm_name
 
             try:
-                assert len(vm_name) <= INSTANCE_NAME_MAX_LEN
+                assert len(vm_name) <= VM_NAME_MAX_LEN
             except AssertionError as e:
                 e.args += ("name", vm_name)
                 raise
@@ -210,13 +212,11 @@ class AzureNodeProvider(NodeProvider):
                 parameters=nic_params).result()
 
             # update vm config with network parameters
-            config.update({
-                "network_profile": {
-                    "network_interfaces": [{
-                        "id": nic.id
-                    }]
-                }
-            })
+            config["network_profile"] = {
+                "network_interfaces": [{
+                    "id": nic.id
+                }]
+            }
 
             config["identity"] = {
                 "type": ResourceIdentityType.user_assigned,

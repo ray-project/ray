@@ -59,19 +59,23 @@ auth:
 #    ssh_public_key: /path/to/your/public_key.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields based on example-full.yaml
+# Ray will auto-configure unspecified fields
 # The Azure Python SDK client expects slug_style property names
 # For more documentation on available fields, see:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
+# Note: the Azure Python SDK expects all parameter keys to be in slug_style
+#       the styles of parameter values are not changed
 head_node:
     hardware_profile:
         vm_size: Standard_NC6s_v3
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields based on example-full.yaml
+# Ray will auto-configure unspecified fields
 # The Azure Python SDK client expects slug_style property names
 # For more documentation on available fields, see:
 # https://docs.microsoft.com/en-us/python/api/overview/azure/virtualmachines?view=azure-python
+# Note: the Azure Python SDK expects all parameter keys to be in slug_style
+#       the styles of parameter values are not changed
 worker_nodes:
     hardware_profile:
         vm_size: Standard_NC6s_v3
@@ -85,10 +89,10 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-
+    # change to use environment desired
+    - echo "conda activate py37_tensorflow" >> ~/.bashrc
+    - pip install -U https://raywheels.blob.core.windows.net/ray/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+ 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
 

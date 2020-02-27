@@ -10,18 +10,17 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
-import yaml
+
 
 RETRIES = 10
-SUBNET_NAME = "ray-subnet"
 NSG_NAME = "ray-nsg"
+SUBNET_NAME = "ray-subnet"
 VNET_NAME = "ray-vnet"
 
 logger = logging.getLogger(__name__)
 
 
 def bootstrap_azure(config):
-    config = _configure_nodes(config)
     config = _configure_resource_group(config)
     config = _configure_msi_user(config)
     config = _configure_key_pair(config)
@@ -35,20 +34,6 @@ def _get_client(client_class, config):
         kwargs["subscription_id"] = config["provider"]["subscription_id"]
 
     return get_client_from_cli_profile(client_class=client_class, **kwargs)
-
-
-def _configure_nodes(config):
-    """Add default node configuration if not provided"""
-    # get default from example-full.yaml
-    azure_dir = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(azure_dir, "example-full.yaml"), "r") as f:
-        default_config = yaml.safe_load(f)
-
-    for node_type in ["head_node", "worker_nodes"]:
-        node_config = default_config[node_type]
-        node_config.update(config.get(node_type, {}))
-        config[node_type] = node_config
-    return config
 
 
 def _configure_resource_group(config):
@@ -160,15 +145,21 @@ def _configure_key_pair(config):
 
     config["auth"]["ssh_private_key"] = private_key_path
 
-    ssh_config = {
-        "public_keys": [{
-            "key_data": public_key,
-            "path": "/home/{}/.ssh/authorized_keys".format(ssh_user)
-        }]
+    os_profile = {
+        "admin_username": ssh_user,
+        "computer_name": None,
+        "linux_configuration": {
+            "disable_password_authentiation": True,
+            "ssh": {
+                "public_keys": [{
+                    "key_data": public_key,
+                    "path": "/home/{}/.ssh/authorized_keys".format(ssh_user)
+                }]
+            }
+        }
     }
     for node_type in ["head_node", "worker_nodes"]:
-        linux_config = config[node_type]["os_profile"]["linux_configuration"]
-        linux_config["ssh"] = ssh_config
+        config[node_type]["os_profile"] = os_profile
 
     return config
 
