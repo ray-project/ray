@@ -74,8 +74,8 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
                            << ", job id = " << job_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to mark job state, try again, status = " << status
-                             << ", job id = " << job_id;
+            RAY_LOG(DEBUG) << "Failed to mark job state, try again, status = " << status
+                           << ", job id = " << job_id;
             executor->PostExecute(status);
           }
         });
@@ -128,8 +128,8 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
                            << ", actor id = " << actor_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to get actor info, try again, status = " << status
-                             << ", actor id = " << actor_id;
+            RAY_LOG(DEBUG) << "Failed to get actor info, try again, status = " << status
+                           << ", actor id = " << actor_id;
             executor->PostExecute(status);
           }
         });
@@ -276,8 +276,8 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
                            << ", checkpoint id = " << checkpoint_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to get actor checkpoint, try again, status = "
-                             << status << ", checkpoint id = " << checkpoint_id;
+            RAY_LOG(DEBUG) << "Failed to get actor checkpoint, try again, status = "
+                           << status << ", checkpoint id = " << checkpoint_id;
             executor->PostExecute(status);
           }
         });
@@ -310,8 +310,8 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
                            << ", actor id = " << actor_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to get actor checkpoint id, try again, status = "
-                             << status << ", actor id = " << actor_id;
+            RAY_LOG(DEBUG) << "Failed to get actor checkpoint id, try again, status = "
+                           << status << ", actor id = " << actor_id;
             executor->PostExecute(status);
           }
         });
@@ -352,8 +352,8 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to register node info, try again, status = "
-                             << status << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to register node info, try again, status = "
+                           << status << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -384,8 +384,8 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to unregister node info, try again, status = "
-                             << status << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to unregister node info, try again, status = "
+                           << status << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -421,8 +421,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to register node info, try again, status = "
-                             << status << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to register node info, try again, status = "
+                           << status << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -451,8 +451,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to unregister node info, try again, status = "
-                             << status << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to unregister node info, try again, status = "
+                           << status << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -468,29 +468,28 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
   rpc::GetAllNodeInfoRequest request;
 
   Executor *executor = new Executor(client_impl_);
-  auto operation =
-      [this, request, callback, executor] {
-        client_impl_->GetGcsRpcClient().GetAllNodeInfo(
-            request, [callback, executor](const Status &status,
-                                          const rpc::GetAllNodeInfoReply &reply) {
-              if (!status.IsIOError()) {
-                std::vector<GcsNodeInfo> result;
-                result.reserve((reply.node_info_list_size()));
-                for (int index = 0; index < reply.node_info_list_size(); ++index) {
-                  result.emplace_back(reply.node_info_list(index));
-                }
-                callback(status, result);
-                RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
-                               << status;
-                delete executor;
-              } else {
-                RAY_LOG(WARNING)
-                    << "Failed to get information of all nodes, try again, status = "
-                    << status;
-                executor->PostExecute(status);
-              }
-            });
-      };
+  auto operation = [this, request, callback, executor] {
+    client_impl_->GetGcsRpcClient().GetAllNodeInfo(
+        request, [callback, executor](const Status &status,
+                                      const rpc::GetAllNodeInfoReply &reply) {
+          if (!status.IsIOError()) {
+            std::vector<GcsNodeInfo> result;
+            result.reserve((reply.node_info_list_size()));
+            for (int index = 0; index < reply.node_info_list_size(); ++index) {
+              result.emplace_back(reply.node_info_list(index));
+            }
+            callback(status, result);
+            RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
+                           << status;
+            delete executor;
+          } else {
+            RAY_LOG(DEBUG)
+                << "Failed to get information of all nodes, try again, status = "
+                << status;
+            executor->PostExecute(status);
+          }
+        });
+  };
   executor->Execute(operation);
 
   return Status::OK();
@@ -552,8 +551,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to get node resources, try again, status = "
-                             << status << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to get node resources, try again, status = "
+                           << status << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -651,8 +650,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to report heartbeat, try again, status = "
-                             << status << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to report heartbeat, try again, status = " << status
+                           << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -693,8 +692,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
                            << ", batch size = " << data_ptr->batch_size();
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to report batch heartbeat, try again, status = "
-                             << status << ", batch size = " << data_ptr->batch_size();
+            RAY_LOG(DEBUG) << "Failed to report batch heartbeat, try again, status = "
+                           << status << ", batch size = " << data_ptr->batch_size();
             executor->PostExecute(status);
           }
         });
@@ -747,8 +746,8 @@ Status ServiceBasedTaskInfoAccessor::AsyncAdd(
                            << ", task id = " << task_id << ", job id = " << job_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to add task, try again, status = " << status
-                             << ", task id = " << task_id << ", job id = " << job_id;
+            RAY_LOG(DEBUG) << "Failed to add task, try again, status = " << status
+                           << ", task id = " << task_id << ", job id = " << job_id;
             executor->PostExecute(status);
           }
         });
@@ -780,8 +779,8 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
                            << ", task id = " << task_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to get task, try again, status = " << status
-                             << ", task id = " << task_id;
+            RAY_LOG(DEBUG) << "Failed to get task, try again, status = " << status
+                           << ", task id = " << task_id;
             executor->PostExecute(status);
           }
         });
@@ -812,8 +811,8 @@ Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task
                            << ", task id list size = " << task_ids.size();
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to delete task, try again, status = " << status
-                             << ", task id list size = " << task_ids.size();
+            RAY_LOG(DEBUG) << "Failed to delete task, try again, status = " << status
+                           << ", task id list size = " << task_ids.size();
             executor->PostExecute(status);
           }
         });
@@ -864,8 +863,8 @@ Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
                            << ", task id = " << task_id << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to add task lease, try again, status = " << status
-                             << ", task id = " << task_id << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to add task lease, try again, status = " << status
+                           << ", task id = " << task_id << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -921,10 +920,10 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to reconstruct task, try again, status = "
-                             << status << ", reconstructions num = "
-                             << data_ptr->num_reconstructions()
-                             << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to reconstruct task, try again, status = " << status
+                           << ", reconstructions num = "
+                           << data_ptr->num_reconstructions()
+                           << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -962,8 +961,8 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
                            << ", object id = " << object_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to get object locations, try again, status = "
-                             << status << ", object id = " << object_id;
+            RAY_LOG(DEBUG) << "Failed to get object locations, try again, status = "
+                           << status << ", object id = " << object_id;
             executor->PostExecute(status);
           }
         });
@@ -1075,10 +1074,10 @@ Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
                            << ", node id = " << node_id;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to adding profile data, try again, status = "
-                             << status
-                             << ", component type = " << data_ptr->component_type()
-                             << ", node id = " << node_id;
+            RAY_LOG(DEBUG) << "Failed to adding profile data, try again, status = "
+                           << status
+                           << ", component type = " << data_ptr->component_type()
+                           << ", node id = " << node_id;
             executor->PostExecute(status);
           }
         });
@@ -1114,8 +1113,8 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
                            << ", job id = " << job_id << ", type = " << type;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to report job error, try again, status = "
-                             << status << ", job id = " << job_id << ", type = " << type;
+            RAY_LOG(DEBUG) << "Failed to report job error, try again, status = " << status
+                           << ", job id = " << job_id << ", type = " << type;
             executor->PostExecute(status);
           }
         });
@@ -1163,8 +1162,8 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
                            << worker_address.DebugString() << ", status = " << status;
             delete executor;
           } else {
-            RAY_LOG(WARNING) << "Failed to report worker failure, try again, "
-                             << worker_address.DebugString() << ", status = " << status;
+            RAY_LOG(DEBUG) << "Failed to report worker failure, try again, "
+                           << worker_address.DebugString() << ", status = " << status;
             executor->PostExecute(status);
           }
         });
