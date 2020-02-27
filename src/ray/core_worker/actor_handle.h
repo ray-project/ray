@@ -69,16 +69,6 @@ class ActorHandle {
     return state_ == rpc::ActorTableData::DEAD;
   }
 
-  void CompleteNextTask() {
-    absl::MutexLock lock(&mutex_);
-    ++complete_task_counter_;
-  }
-
-  uint64_t NumCompletedTasks() const {
-    absl::MutexLock lock(&mutex_);
-    return complete_task_counter_;
-  }
-
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;
@@ -92,11 +82,6 @@ class ActorHandle {
   /// only.
   // TODO: Save this state in the core worker.
   ObjectID actor_cursor_ GUARDED_BY(mutex_);
-  /// Number of tasks that have been submitted on this handle.
-  uint64_t task_counter_ GUARDED_BY(mutex_) = 0;
-
-  /// Nuber of tasks submitted to this handle that have been completed by the actor.
-  uint64_t complete_task_counter_ GUARDED_BY(mutex_) = 0;
 
   /// Mutex to protect fields in the actor handle.
   mutable absl::Mutex mutex_;

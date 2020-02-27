@@ -29,7 +29,6 @@ class TaskFinisherInterface {
 };
 
 using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
-using CompleteTaskCallback = std::function<void(const TaskSpecification &spec)>;
 
 class TaskManager : public TaskFinisherInterface {
  public:
@@ -38,24 +37,22 @@ class TaskManager : public TaskFinisherInterface {
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
-              RetryTaskCallback retry_task_callback,
-              CompleteTaskCallback complete_task_callback)
+              RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback),
-        complete_task_callback_(complete_task_callback) {}
+        retry_task_callback_(retry_task_callback) {}
 
   /// Add a task that is pending execution.
   ///
   /// \param[in] caller_id The TaskID of the calling task.
   /// \param[in] caller_address The rpc address of the calling task.
-  /// \param[in] spec The spec of the pending task.
+  /// \param[in,out] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      const TaskSpecification &spec, uint64_t max_retries = 0);
+                      TaskSpecification &spec, uint64_t max_retries = 0);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -101,10 +98,21 @@ class TaskManager : public TaskFinisherInterface {
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
+  void SetActorCounter(TaskSpecBuilder &builder, const ActorID &actor_id);
+
   void SetRemainingRetries(const TaskID &task_id, uint64_t retries);
 
   /// Return the number of pending tasks.
-  int NumPendingTasks() const { return pending_tasks_.size(); }
+  int NumPendingTasks() const {
+    absl::MutexLock lock(&mu_);
+    return pending_tasks_.size();
+  }
+
+  int NumCompletedActorTasks(const ActorID &actor_id) const {
+    absl::MutexLock lock(&mu_);
+    auto it = actor_task_states_.find(actor_id);
+    return it == actor_task_states_.end() ? 0 : it->second.completed;
+  }
 
  private:
   /// Treat a pending task as failed. The lock should not be held when calling
@@ -137,9 +145,6 @@ class TaskManager : public TaskFinisherInterface {
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
 
-  /// Called when a task is completed.
-  const CompleteTaskCallback complete_task_callback_;
-
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
 
@@ -148,6 +153,14 @@ class TaskManager : public TaskFinisherInterface {
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
+
+  struct ActorTaskState {
+    uint64_t submitted = 0;
+    uint64_t completed = 0;
+  };
+
+  /// Maintains state of tasks submitted to each actor.
+  absl::flat_hash_map<ActorID, ActorTaskState> actor_task_states_ GUARDED_BY(mu_);
 
   /// Map from task ID to a pair of:
   ///   {task spec, number of allowed retries left}

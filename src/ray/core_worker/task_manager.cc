@@ -12,7 +12,7 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 void TaskManager::AddPendingTask(const TaskID &caller_id,
                                  const rpc::Address &caller_address,
-                                 const TaskSpecification &spec, uint64_t max_retries) {
+                                 TaskSpecification &spec, uint64_t max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, uint64_t> entry = {spec, max_retries};
@@ -81,9 +81,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         << "Tried to complete task that was not pending " << task_id;
     spec = std::move(it->second.first);
     pending_tasks_.erase(it);
+    if (spec.IsActorTask()) {
+      ++actor_task_states_[spec.ActorId()].completed;
+    }
   }
 
-  complete_task_callback_(spec);
   RemoveFinishedTaskReferences(spec, worker_addr, reply.borrowed_refs());
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
@@ -115,6 +117,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           object_id));
     }
   }
+
   ShutdownIfNeeded();
 }
 
@@ -243,6 +246,11 @@ TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());
   return it->second.first;
+}
+
+void TaskManager::SetActorCounter(TaskSpecBuilder &builder, const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+  builder.SetActorCounter(actor_task_states_[actor_id].submitted++);
 }
 
 void TaskManager::SetRemainingRetries(const TaskID &task_id, uint64_t retries) {

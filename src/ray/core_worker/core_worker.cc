@@ -218,13 +218,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           }
         }
         to_resubmit_.push_back(std::make_pair(now + kTaskRetryDelayMillis, spec));
-      },
-      /*complete_task_callback=*/[this](const TaskSpecification &spec) {
-        if (spec.IsActorTask()) {
-          ActorHandle* handle = nullptr;
-          RAY_CHECK_OK(GetActorHandle(spec.ActorId(), &handle));
-          handle->CompleteNextTask();
-        }
       }));
 
   // Create an entry for the driver task in the task table. This task is
@@ -860,6 +853,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
+  // TODO: It would be better to fold this into AddPendingTask once non-direct calls are removed
+  task_manager_->SetActorCounter(builder, actor_id);
   // Remove cursor from return ids.
   return_ids->pop_back();
 
@@ -928,25 +923,23 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         {
           absl::MutexLock lock(&actor_handles_mutex_);
           if (actor_handle->IsDirectCallActor()) {
-            // We have to reset the actor handle since the next instance of the
-            // actor will not have the last sequence number that we sent.
             // TODO: Remove the check for direct calls. We do not reset for the
             // raylet codepath because it tries to replay all tasks since the
             // last actor checkpoint.
             actor_handle->Reset();
           }
-          direct_actor_submitter_->DisconnectActor(actor_id, false);
+          direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/false);
         }
         cancel_kill_task();
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        direct_actor_submitter_->DisconnectActor(actor_id, true);
+        direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/true);
         actor_handle->MarkDead();
         cancel_kill_task();
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
       } else {
-        direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(), actor_handle->NumCompletedTasks());
+        direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(), task_manager_->NumCompletedActorTasks(actor_id));
       }
 
       RAY_LOG(INFO) << "received notification on actor, state="

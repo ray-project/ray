@@ -53,8 +53,7 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
       ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1,
                               /*transport_type=*/static_cast<int>(transport_type));
   builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id,
-                           /*previous_actor_task_dummy_object_id=*/actor_cursor_,
-                           task_counter_++);
+                           /*previous_actor_task_dummy_object_id=*/actor_cursor_);
   actor_cursor_ = new_cursor;
 }
 
