@@ -16,11 +16,9 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
   request.set_owner_id(owner_id.Binary());
-  RAY_LOG(ERROR) << "resolving future";
   RAY_CHECK_OK(it->second->GetObjectStatus(
       request,
       [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
-  RAY_LOG(ERROR) << "resolved future!";
         if (!status.ok()) {
           RAY_LOG(WARNING) << "Error retrieving the value of object ID " << object_id
                            << " that was deserialized: " << status.ToString();

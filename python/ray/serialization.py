@@ -153,15 +153,15 @@ class SerializationContext:
             return serialized_obj[0](*serialized_obj[1])
 
         def object_id_serializer(obj):
-            self.add_contained_object_id(obj)
-            print("Serialize!", obj)
-            if not self.is_in_band_serialization():
-                # If this serialization is out-of-band (e.g., from a call to cloudpickle
-                # directly or captured in a remote function/actor), then pin the object
-                # for the lifetime of this worker by adding a local reference that won't
-                # ever be removed.
-                print("Adding permanent reference!", obj)
-                ray.worker.get_global_worker().core_worker.add_object_id_reference(obj)
+            if self.is_in_band_serialization():
+                self.add_contained_object_id(obj)
+            else:
+                # If this serialization is out-of-band (e.g., from a call to
+                # cloudpickle directly or captured in a remote function/actor),
+                # then pin the object for the lifetime of this worker by adding
+                # a local reference that won't ever be removed.
+                ray.worker.get_global_worker(
+                ).core_worker.add_object_id_reference(obj)
             owner_id = ""
             owner_address = ""
             # TODO(swang): Remove this check. Otherwise, we will not be able to

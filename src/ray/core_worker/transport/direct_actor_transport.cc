@@ -178,24 +178,6 @@ void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
   client_factory_ = client_factory;
 }
 
-void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
-  if (max_concurrency != max_concurrency_) {
-    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
-    RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
-    pool_.reset(new BoundedExecutor(max_concurrency));
-    max_concurrency_ = max_concurrency;
-  }
-}
-
-void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
-  if (!is_asyncio_) {
-    RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
-    fiber_state_.reset(new FiberState(max_concurrency));
-    max_concurrency_ = max_concurrency;
-    is_asyncio_ = true;
-  }
-};
-
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -206,14 +188,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;
-  }
-
-  // Only call SetMaxActorConcurrency to configure threadpool size when the
-  // actor is not async actor. Async actor is single threaded.
-  if (worker_context_.CurrentActorIsAsync()) {
-    SetActorAsAsync(worker_context_.CurrentActorMaxConcurrency());
-  } else {
-    SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
   }
 
   std::vector<ObjectID> dependencies;
@@ -325,9 +299,8 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_state_)));
+        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                  task_main_io_service_, *waiter_, worker_context_)));
     it = result.first;
   }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),
