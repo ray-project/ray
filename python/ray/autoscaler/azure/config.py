@@ -11,7 +11,8 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
 
-RETRIES = 10
+
+RETRIES = 30
 NSG_NAME = "ray-nsg"
 SUBNET_NAME = "ray-subnet"
 VNET_NAME = "ray-vnet"
@@ -78,7 +79,7 @@ def _configure_msi_user(config):
         logger.info("Creating MSI user assigned identity")
         identity = msi_client.user_assigned_identities.create_or_update(
             resource_group_name=resource_group,
-            resource_name=uuid.uuid4(),
+            resource_name="ray-user-{}".format(uuid.uuid4()),
             location=location)
 
     identity_id = identity.id
@@ -107,9 +108,9 @@ def _configure_msi_user(config):
             logger.info("Creating contributor role assignment")
         except CloudError as ce:
             if ce.inner_exception.error == "PrincipalNotFound":
-                time.sleep(3)
+                time.sleep(5)
     else:
-        raise Exception("Failed to create contributor role assignment")
+        raise Exception("Failed to create contributor role assignment (timeout)")
 
     return config
 
