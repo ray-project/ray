@@ -563,9 +563,10 @@ cdef void gc_collect() nogil:
         start = time.perf_counter()
         num_freed = gc.collect()
         end = time.perf_counter()
-        logger.info(
-            "gc.collect() freed {} refs in {} seconds".format(
-                num_freed, end - start))
+        if num_freed > 0:
+            logger.info(
+                "gc.collect() freed {} refs in {} seconds".format(
+                    num_freed, end - start))
 
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
@@ -1031,8 +1032,9 @@ cdef class CoreWorker:
                 contained_ids.push_back(
                     ObjectIDsToVector(serialized_object.contained_object_ids))
 
-        check_status(self.core_worker.get().AllocateReturnObjects(
-            return_ids, data_sizes, metadatas, contained_ids, returns))
+        with nogil:
+            check_status(self.core_worker.get().AllocateReturnObjects(
+                return_ids, data_sizes, metadatas, contained_ids, returns))
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.

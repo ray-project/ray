@@ -116,6 +116,70 @@ def test_global_gc(shutdown_only):
         gc.enable()
 
 
+def test_global_gc_when_full(shutdown_only):
+    cluster = ray.cluster_utils.Cluster()
+    for _ in range(2):
+        cluster.add_node(
+            num_cpus=1, num_gpus=0, object_store_memory=100 * 1024 * 1024)
+    ray.init(address=cluster.address)
+
+    class LargeObjectWithCyclicRef:
+        def __init__(self):
+            self.loop = self
+            self.large_object = ray.put(
+                np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote(num_cpus=1)
+    class GarbageHolder:
+        def __init__(self):
+            gc.disable()
+            x = LargeObjectWithCyclicRef()
+            self.garbage = weakref.ref(x)
+
+        def has_garbage(self):
+            return self.garbage() is not None
+
+        def return_large_array(self):
+            return np.zeros(80 * 1024 * 1024, dtype=np.uint8)
+
+    try:
+        gc.disable()
+
+        # Local driver.
+        local_ref = weakref.ref(LargeObjectWithCyclicRef())
+
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # GC should be triggered for all workers, including the local driver,
+        # when the driver tries to ray.put a value that doesn't fit in the
+        # object store. This should cause the captured ObjectIDs' numpy arrays
+        # to be evicted.
+        ray.put(np.zeros(80 * 1024 * 1024, dtype=np.uint8))
+        assert local_ref() is None
+        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # Local driver.
+        local_ref = weakref.ref(LargeObjectWithCyclicRef())
+
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # GC should be triggered for all workers, including the local driver,
+        # when a remote task tries to put a return value that doesn't fit in
+        # the object store. This should cause the captured ObjectIDs' numpy
+        # arrays to be evicted.
+        ray.get(actors[0].return_large_array.remote())
+        assert local_ref() is None
+        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+    finally:
+        gc.enable()
+
+
 def test_local_refcounts(ray_start_regular):
     oid1 = ray.put(None)
     check_refcounts({oid1: (1, 0)})
