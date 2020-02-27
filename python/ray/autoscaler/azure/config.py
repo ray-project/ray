@@ -11,7 +11,6 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
 
-
 RETRIES = 30
 NSG_NAME = "ray-nsg"
 SUBNET_NAME = "ray-subnet"
@@ -110,7 +109,8 @@ def _configure_msi_user(config):
             if ce.inner_exception.error == "PrincipalNotFound":
                 time.sleep(5)
     else:
-        raise Exception("Failed to create contributor role assignment (timeout)")
+        raise Exception(
+            "Failed to create contributor role assignment (timeout)")
 
     return config
 
