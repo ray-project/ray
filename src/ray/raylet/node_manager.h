@@ -563,6 +563,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                           rpc::GetNodeStatsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GlobalGC` request.
+  void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
+                      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Trigger local GC on each worker of this raylet.
+  void DoLocalGC();
+
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
@@ -668,6 +675,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
+
+  /// Whether to trigger global GC in the next heartbeat. This will broadcast
+  /// a global GC message to all raylets except for this one.
+  bool should_global_gc_ = false;
+
+  /// Whether to trigger local GC in the next heartbeat. This will trigger gc
+  /// on all local workers of this raylet.
+  bool should_local_gc_ = false;
 
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;

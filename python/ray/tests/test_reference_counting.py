@@ -3,9 +3,11 @@ import copy
 import json
 import logging
 import os
+import gc
 import tempfile
 import time
 import uuid
+import weakref
 
 import numpy as np
 
@@ -14,6 +16,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.test_utils
+from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +73,46 @@ def check_refcounts(expected, timeout=10):
                 raise e
             else:
                 time.sleep(0.1)
+
+
+def test_global_gc(shutdown_only):
+    cluster = ray.cluster_utils.Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=1, num_gpus=0)
+    ray.init(address=cluster.address)
+
+    class ObjectWithCyclicRef:
+        def __init__(self):
+            self.loop = self
+
+    @ray.remote(num_cpus=1)
+    class GarbageHolder:
+        def __init__(self):
+            gc.disable()
+            x = ObjectWithCyclicRef()
+            self.garbage = weakref.ref(x)
+
+        def has_garbage(self):
+            return self.garbage() is not None
+
+    try:
+        gc.disable()
+
+        # Local driver.
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # GC should be triggered for all workers, including the local driver.
+        global_gc()
+        time.sleep(1)
+        assert local_ref() is None
+        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+    finally:
+        gc.enable()
 
 
 def test_local_refcounts(ray_start_regular):

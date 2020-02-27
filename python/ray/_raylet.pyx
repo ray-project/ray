@@ -562,6 +562,16 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
+cdef void gc_collect() nogil:
+    with gil:
+        start = time.perf_counter()
+        num_freed = gc.collect()
+        end = time.perf_counter()
+        logger.info(
+            "gc.collect() freed {} refs in {} seconds".format(
+                num_freed, end - start))
+
+
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
     if c_str.size() == 0:
@@ -607,7 +617,7 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, True))
+            task_execution_handler, check_signals, gc_collect, True))
 
     def run_task_loop(self):
         with nogil:
@@ -759,6 +769,10 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Delete(
                 free_ids, local_only, delete_creating_tasks))
+
+    def global_gc(self):
+        with nogil:
+            self.core_worker.get().TriggerGlobalGC()
 
     def set_object_store_client_options(self, client_name,
                                         int64_t limit_bytes):
