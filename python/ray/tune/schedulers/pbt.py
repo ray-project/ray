@@ -180,8 +180,7 @@ class PopulationBasedTraining(FIFOScheduler):
                  custom_explore_fn=None,
                  log_config=True):
         for value in hyperparam_mutations.values():
-            if not (isinstance(value, list) or callable(value)
-                    or isinstance(value, dict)):
+            if not (isinstance(value, (list, dict)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, or callable.")
 

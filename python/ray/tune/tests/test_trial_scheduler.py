@@ -985,12 +985,12 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             TrialScheduler.CONTINUE)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(trials[0].config["float_factor"], 100.0)
-        self.assertEqual(type(trials[0].config["float_factor"]), float)
+        self.assertIsInstance(trials[0].config["float_factor"], float)
         self.assertEqual(trials[0].config["int_factor"], 10)
-        self.assertEqual(type(trials[0].config["int_factor"]), int)
+        self.assertIsInstance(trials[0].config["int_factor"], int)
         self.assertEqual(trials[0].config["const_factor"], 3)
         self.assertEqual(trials[0].config["nest"]["nest_float"], 101.0)
-        self.assertEqual(type(trials[0].config["nest"]["nest_float"]), float)
+        self.assertIsInstance(trials[0].config["nest"]["nest_float"], float)
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
