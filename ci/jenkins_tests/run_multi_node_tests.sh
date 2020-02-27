@@ -6,8 +6,8 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-MEMORY_SIZE="20G"
-SHM_SIZE="20G"
+MEMORY_SIZE="8G"
+SHM_SIZE="4G"
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
@@ -43,5 +43,6 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 ######################## RAY BACKEND TESTS #################################
 
-$SUPPRESS_OUTPUT docker run --rm --shm-size=60G --memory=60G --memory-swap=-1 $DOCKER_SHA \
-    python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py
+# TODO: this should be part of the periodic stress test
+# $SUPPRESS_OUTPUT docker run --rm --shm-size=60G --memory=60G --memory-swap=-1 $DOCKER_SHA \
+#     python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py

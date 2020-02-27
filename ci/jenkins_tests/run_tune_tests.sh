@@ -94,9 +94,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/tune/examples/hyperopt_example.py \
     --smoke-test
 
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 -e SIGOPT_KEY $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/sigopt_example.py \
-    --smoke-test
+# TODO: insert sigopt key as github action secret, need @pcmortiz to do it
+# $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 -e SIGOPT_KEY $DOCKER_SHA \
+#     python /ray/python/ray/tune/examples/sigopt_example.py \
+#     --smoke-test
 
 # Runs only on Python3
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \

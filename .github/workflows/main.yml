@@ -100,3 +100,14 @@ jobs:
           --show_timestamps \
           --verbose_failures \
           "//:ray_pkg"
+  jenkins:
+    name: tune integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Jenkins
+        continue-on-error: false
+        shell: bash
+        run: |
+        export BOOST_ROOT=/opt/rise/boost
+        export HOME=$(pwd)
+        ./ci/jenkins_tests/run_multi_node_tests.sh
