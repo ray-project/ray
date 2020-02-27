@@ -195,7 +195,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 2, 4, 8]
         """
         return self._add_transform(lambda local_it: local_it.for_each(fn),
-                                    ".for_each()")
+                                   ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
         """Remotely filter items from this iterator.
@@ -209,7 +209,7 @@ class ParallelIterator(Generic[T]):
             ... [1, 2]
         """
         return self._add_transform(lambda local_it: local_it.filter(fn),
-                                    ".filter()")
+                                   ".filter()")
 
     def batch(self, n: int) -> "ParallelIterator[List[T]]":
         """Remotely batch together items in this iterator.
@@ -222,7 +222,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 1, 2, 3]
         """
         return self._add_transform(lambda local_it: local_it.batch(n),
-                                    ".batch({})".format(n))
+                                   ".batch({})".format(n))
 
     def flatten(self) -> "ParallelIterator[T[0]]":
         """Flatten batches of items into individual items.
@@ -232,7 +232,7 @@ class ParallelIterator(Generic[T]):
             ... 0
         """
         return self._add_transform(lambda local_it: local_it.flatten(),
-                                    ".flatten()")
+                                   ".flatten()")
 
     def combine(self, fn: Callable[[T], List[U]]) -> "ParallelIterator[U]":
         """Transform and then combine items horizontally.
