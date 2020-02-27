@@ -8,7 +8,27 @@ indent_style = space
 indent_size = 4
 wrap_width = 79
 
+[*.{bzl,bazel}]
+indent_style = space
+indent_size = 4
+
 [*.{h,hpp,hxx,cpp,cxx,cc,c}]
 indent_style = space
 indent_size = 2
 wrap_width = 90
+
+[*.html]
+indent_style = space
+indent_size = 2
+
+[*.java]
+indent_style = space
+indent_size = 2
+
+[*.proto]
+indent_style = space
+indent_size = 2
+
+[*.sh]
+indent_style = space
+indent_size = 2
