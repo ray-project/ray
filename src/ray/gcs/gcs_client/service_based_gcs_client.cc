@@ -56,6 +56,9 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
+  io_service_.stop();
+  work_thread_->join();
+  work_thread_.reset();
   RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
 }
 
