@@ -21,8 +21,6 @@ from ray.test_utils import (
     RayTestTimeoutException,
 )
 
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
-
 
 def test_failed_task(ray_start_regular):
     @ray.remote
@@ -121,13 +119,13 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
         assert err.type is exception
 
     f = random_path()
-    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    actor = Actor.options(max_concurrency=2).remote()
     expect_exception([actor.bad_func1.remote(),
                       actor.slow_func.remote(f)], ray.exceptions.RayTaskError)
     touch(f)
 
     f = random_path()
-    actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
+    actor = Actor.options(max_concurrency=2).remote()
     expect_exception([actor.bad_func2.remote(),
                       actor.slow_func.remote(f)], ray.exceptions.RayActorError)
     touch(f)
@@ -590,7 +588,7 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO detect resource deadlock")
+@pytest.mark.skip(reason="TODO detect resource deadlock")
 def test_warning_for_resource_deadlock(shutdown_only):
     # Check that we get warning messages for infeasible tasks.
     ray.init(num_cpus=1)
@@ -955,7 +953,7 @@ def test_fill_object_store_exception(shutdown_only):
         "num_cpus": 1,
     }],
     indirect=True)
-def test_direct_call_eviction(ray_start_cluster):
+def test_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)
@@ -989,7 +987,7 @@ def test_direct_call_eviction(ray_start_cluster):
         "num_cpus": 1,
     }],
     indirect=True)
-def test_direct_call_serialized_id_eviction(ray_start_cluster):
+def test_serialized_id_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)
