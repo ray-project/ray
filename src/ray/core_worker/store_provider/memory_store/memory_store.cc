@@ -212,7 +212,9 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     }
   }
 
-  // Must be called without holding the lock.
+  // Must be called without holding the lock because store_in_plasma_ goes
+  // through the regular CoreWorker::Put() codepath, which calls into the
+  // in-memory store (would cause deadlock).
   if (should_put_in_plasma) {
     store_in_plasma_(object, object_id);
   }
