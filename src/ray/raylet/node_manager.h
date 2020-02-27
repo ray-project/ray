@@ -543,8 +543,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that sent the message.
   /// \param message_data A pointer to the message data.
   /// \return void.
-  void ProcessSubscribePlasma(const std::shared_ptr<LocalClientConnection> &client,
-                              const uint8_t *message_data);
+  void ProcessSubscribePlasmaReady(const std::shared_ptr<LocalClientConnection> &client,
+                                   const uint8_t *message_data);
 
   /// Setup callback with Object Manager.
   ///
@@ -717,11 +717,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
 
   /// Concurrency for the following map
-  absl::Mutex plasma_object_notification_lock__;
+  mutable absl::Mutex plasma_object_notification_lock_;
 
   /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
-      async_plasma_objects_notification_;
+      async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
   /// Objects that are out of scope in the application and that should be freed
   /// from plasma. The cache is flushed when it reaches the config's

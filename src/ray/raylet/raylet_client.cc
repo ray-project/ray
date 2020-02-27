@@ -379,9 +379,9 @@ Status raylet::RayletClient::PinObjectIDs(
 
 Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSubscribePlasma(fbb, to_flatbuf(fbb, object_id));
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubscribePlasma, &fbb);
+  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
 }
 
 }  // namespace ray

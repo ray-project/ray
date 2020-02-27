@@ -968,8 +968,8 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
   } break;
-  case protocol::MessageType::SubscribePlasma: {
-    ProcessSubscribePlasma(client, message_data);
+  case protocol::MessageType::SubscribePlasmaReady: {
+    ProcessSubscribePlasmaReady(client, message_data);
   } break;
 
   default:
@@ -3018,7 +3018,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
   }
 }
 
-void NodeManager::ProcessSubscribePlasma(
+void NodeManager::ProcessSubscribePlasmaReady(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
   if (associated_worker == nullptr) {
@@ -3027,10 +3027,10 @@ void NodeManager::ProcessSubscribePlasma(
   RAY_CHECK(associated_worker != nullptr)
       << "No worker exists for CoreWorker with client: " << client->DebugString();
 
-  auto message = flatbuffers::GetRoot<protocol::SubscribePlasma>(message_data);
+  auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
   {
-    absl::MutexLock guard(&plasma_object_notification_lock__);
+    absl::MutexLock guard(&plasma_object_notification_lock_);
     if (!async_plasma_objects_notification_.contains(id)) {
       async_plasma_objects_notification_.emplace(
           id, absl::flat_hash_set<std::shared_ptr<Worker>>());
@@ -3049,7 +3049,7 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
         ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
         auto waiting_workers = absl::flat_hash_set<std::shared_ptr<Worker>>();
         {
-          absl::MutexLock guard(&plasma_object_notification_lock__);
+          absl::MutexLock guard(&plasma_object_notification_lock_);
           auto waiting = this->async_plasma_objects_notification_.extract(object_id);
           if (!waiting.empty()) {
             waiting_workers.swap(waiting.mapped());
@@ -3099,8 +3099,11 @@ std::string NodeManager::DebugString() const {
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
   result << "\n" << lineage_cache_.DebugString();
-  result << "\nnum async plasma notifications: "
-         << async_plasma_objects_notification_.size();
+  {
+    absl::MutexLock guard(&plasma_object_notification_lock_);
+    result << "\nnum async plasma notifications: "
+           << async_plasma_objects_notification_.size();
+  }
   result << "\nActorRegistry:";
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
