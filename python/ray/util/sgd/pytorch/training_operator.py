@@ -18,7 +18,7 @@ except ImportError:
 
 def _is_multiple(component):
     """Checks if a component (optimizer, model, etc) is not singular."""
-    return isinstance(component, list) and len(component) > 1
+    return isinstance(component, collections.Iterable) and len(component) > 1
 
 
 class TrainingOperator:
@@ -30,58 +30,19 @@ class TrainingOperator:
     correctly during training. If using a learning rate scheduler
     that depends on validation loss, you can use ``trainer.update_scheduler``.
 
+    For both training and validation, there are two granularities that
+    you can provide customization: per epoch or per batch.
+    You do not need to override both.
+
+    .. image:: raysgd-custom.jpg
+        :scale: 80%
+        :align: center
 
     Raises:
-        ValueError if multiple models/optimizers/schedulers are provided. You
-            are expected to subclass this class if you wish
+        ValueError if multiple models/optimizers/schedulers are provided.
+            You are expected to subclass this class if you wish
             to train over multiple models/optimizers/schedulers.
     """
-
-    @property
-    def config(self):
-        """Dictionary as provided into PyTorchTrainer."""
-        return self._config
-
-    @property
-    def model(self):
-        """First or only model created by the provided model_creator."""
-        return self._models[0]
-
-    @property
-    def models(self):
-        """List of models created by the provided model_creator."""
-        return self._models
-
-    @property
-    def optimizer(self):
-        """First or only optimizer(s) created by the optimizer_creator."""
-        return self._optimizers[0]
-
-    @property
-    def optimizers(self):
-        """List of optimizers created by the optimizer_creator."""
-        return self._optimizers
-
-    @property
-    def criterion(self):
-        """Criterion created by the provided loss_creator."""
-        return self._criterion
-
-    @property
-    def scheduler(self):
-        """First or only scheduler(s) created by the scheduler_creator."""
-        if self._schedulers:
-            return self._schedulers[0]
-
-    @property
-    def schedulers(self):
-        """List of schedulers created by the scheduler_creator."""
-        return self._schedulers
-
-    @property
-    def use_fp16(self):
-        """Whether the model and optimizer have been FP16 enabled."""
-        return self._use_fp16
 
     def __init__(self,
                  config,
@@ -93,7 +54,7 @@ class TrainingOperator:
         # You are not expected to override this method.
         self.timers = {
             k: TimerStat()
-            for k in ["fwd", "grad", "apply", "train_step"]
+            for k in ["fwd", "grad", "apply", "epoch_time"]
         }
         self._validated_customization = False
         self._models = models  # List of models
@@ -126,7 +87,8 @@ class TrainingOperator:
         """Override this method to implement custom operator setup.
 
         Args:
-            config (dict): Same as ``self.config``.
+            config (dict): Custom configuration value to be passed to
+                all creator and operator constructors. Same as ``self.config``.
         """
         pass
 
@@ -172,8 +134,7 @@ class TrainingOperator:
                         metrics["loss"], n=metrics.get("num_samples", 1))
                 self.global_step += 1
 
-        if self.scheduler and info.get(
-                SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
             self.scheduler.step()
 
         stats = {
@@ -196,8 +157,8 @@ class TrainingOperator:
         if you plan to override ``train_epoch``.
 
         By default, this method implementation assumes that batches
-        are in (features, labels) format. It will also only operate on
-        the first model, optimizer if multiple are provided.
+        are in (features, labels) format. If using amp/fp16
+        training, it will also scale the loss automatically.
 
         You can provide custom loss metrics and training operations if you
         override this method.
@@ -207,8 +168,10 @@ class TrainingOperator:
             batch_info (dict): Information dict passed in from ``train_epoch``.
 
         Returns:
-            A dict of metrics. Defaults to "loss" and "num_samples",
-                corresponding to the total number of datapoints in the batch.
+            A dictionary of metrics.
+                By default, this dictionary contains "loss" and "num_samples".
+                "num_samples" corresponds to number of datapoints in the batch.
+                However, you can provide any number of other values.
 
         """
         features, target = batch
@@ -254,6 +217,10 @@ class TrainingOperator:
 
         Returns:
             A dict of metrics from the evaluation.
+                By default, returns "mean_accuracy" and "mean_validation_loss"
+                which is computed by aggregating "loss" and "correct" values
+                from ``validate_batch`` and dividing it by the sum of
+                ``num_samples`` from all calls to ``self.validate_batch``.
         """
         losses = AverageMeter()
         total_correct = 0
@@ -290,8 +257,8 @@ class TrainingOperator:
                 ``validate()``.
 
         Returns:
-            A dict of metrics. By default, returns "loss", "num_correct", and
-                "num_samples".
+            A dict of metrics.
+                By default, returns "loss", "num_correct", and "num_samples".
         """
         features, target = batch
         if torch.cuda.is_available():
@@ -316,3 +283,49 @@ class TrainingOperator:
     def load_state_dict(self, state_dict):
         """Loads a serializable representation of the operator state."""
         pass
+
+    @property
+    def config(self):
+        """Dictionary as provided into PyTorchTrainer."""
+        return self._config
+
+    @property
+    def model(self):
+        """First or only model created by the provided ``model_creator``."""
+        return self._models[0]
+
+    @property
+    def models(self):
+        """List of models created by the provided ``model_creator``."""
+        return self._models
+
+    @property
+    def optimizer(self):
+        """First or only optimizer(s) created by the ``optimizer_creator``."""
+        return self._optimizers[0]
+
+    @property
+    def optimizers(self):
+        """List of optimizers created by the ``optimizer_creator``."""
+        return self._optimizers
+
+    @property
+    def criterion(self):
+        """Criterion created by the provided ``loss_creator``."""
+        return self._criterion
+
+    @property
+    def scheduler(self):
+        """First or only scheduler(s) created by the ``scheduler_creator``."""
+        if self._schedulers:
+            return self._schedulers[0]
+
+    @property
+    def schedulers(self):
+        """List of schedulers created by the ``scheduler_creator``."""
+        return self._schedulers
+
+    @property
+    def use_fp16(self):
+        """Whether the model and optimizer have been FP16 enabled."""
+        return self._use_fp16

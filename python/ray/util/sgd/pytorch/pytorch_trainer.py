@@ -64,7 +64,7 @@ class PyTorchTrainer:
         model_creator (dict -> Model(s)): Constructor function that takes in
             config and returns the model(s) to be optimized. These must be
             ``torch.nn.Module`` objects. If multiple models are returned,
-            a ``train_function`` must be specified. You do not need to
+            a ``training_operator_cls`` must be specified. You do not need to
             handle GPU/devices in this function; RaySGD will do that under
             the hood.
         data_creator (dict -> Dataset(s)): Constructor function
@@ -288,6 +288,11 @@ class PyTorchTrainer:
                 will save a checkpoint before starting to train.
             info (dict): Optional dictionary passed to the training
                 operator for `train_epoch` and `train_batch`.
+
+        Returns:
+            A dictionary of metrics for training.
+                You can provide custom metrics by passing in a custom
+                ``training_operator_cls``
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
         if max_retries:
@@ -353,6 +358,11 @@ class PyTorchTrainer:
                 ``TrainingOperator.validate_batch`` is called.
             info (dict): Optional dictionary passed to the training
                 operator for `validate` and `validate_batch`.
+
+        Returns:
+            A dictionary of metrics for validation.
+                You can provide custom metrics by passing in a custom
+                ``training_operator_cls``
         """
         worker_stats = ray.get([
             w.validate.remote(num_steps=num_steps, info=info)
@@ -390,6 +400,8 @@ class PyTorchTrainer:
         Args:
             checkpoint (str): Path to target checkpoint file.
 
+        Returns:
+            checkpoint (str): Path to target checkpoint file.
         """
         state = ray.get(self.workers[0].get_state.remote())
         torch.save(state, checkpoint)
@@ -400,7 +412,6 @@ class PyTorchTrainer:
 
         Args:
             checkpoint (str): Path to target checkpoint file.
-
         """
         state = torch.load(checkpoint)
         state_id = ray.put(state)
