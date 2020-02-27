@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # info key for the individual rewards of an agent, for example:
 # info: {
 #   group_1: {

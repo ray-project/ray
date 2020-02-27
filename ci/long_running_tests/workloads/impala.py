@@ -1,12 +1,8 @@
 # This workload tests running IMPALA with remote envs
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.tune import run_experiments
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -29,7 +25,8 @@ for i in range(num_nodes):
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory)
+        redis_max_memory=redis_max_memory,
+        webui_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.

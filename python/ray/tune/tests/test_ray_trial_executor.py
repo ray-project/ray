@@ -1,14 +1,8 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
-import sys
 import unittest
 
 import ray
-from ray.exceptions import RayTimeoutError
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -17,11 +11,6 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -41,36 +30,28 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(1, len(running))
         self.trial_executor.stop_trial(trial)
 
+    def testAsyncSave(self):
+        """Tests that saved checkpoint value not immediately set."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        self.assertEqual(checkpoint, trial.saving_to)
+        self.assertEqual(trial.checkpoint.value, None)
+        self.process_trial_save(trial)
+        self.assertEqual(checkpoint, trial.checkpoint)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
     def testSaveRestore(self):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.DISK)
+        self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        self.process_trial_save(trial)
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
-
-    def testSaveRestoreTimeout(self):
-        trial = Trial("__fake")
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.DISK)
-        self.trial_executor.set_status(trial, Trial.PAUSED)
-
-        ray_get = ray.get
-        start_trial = self.trial_executor._start_trial
-
-        # Timeout on first two attempts, then succeed on subsequent gets.
-        side_effects = [RayTimeoutError, RayTimeoutError, ray_get, ray_get]
-        with patch.object(self.trial_executor, "_start_trial") as mock_start:
-            with patch("ray.get", side_effect=side_effects):
-                mock_start.side_effect = start_trial
-                self.trial_executor.start_trial(trial, trial.checkpoint)
-
-        # Trial starts successfully on 3rd attempt.
-        assert mock_start.call_count == 3
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.stop_trial(trial)
 
     def testPauseResume(self):
         """Tests that pausing works for trials in flight."""
@@ -81,6 +62,29 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(Trial.PAUSED, trial.status)
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testSavePauseResumeRestore(self):
+        """Tests that pause checkpoint does not replace restore checkpoint."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        # Save
+        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.assertEqual(checkpoint.storage, Checkpoint.PERSISTENT)
+        # Process save result (simulates trial runner)
+        self.process_trial_save(trial)
+        # Pause
+        self.trial_executor.pause_trial(trial)
+        self.assertEqual(Trial.PAUSED, trial.status)
+        self.assertEqual(trial.checkpoint.storage, Checkpoint.MEMORY)
+        # Resume
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.assertEqual(trial.checkpoint, checkpoint)
+        # Restore
+        self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
@@ -96,9 +100,9 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.fetch_result(trial)
-        self.trial_executor.pause_trial(trial)
+        checkpoint = self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial)
+        self.trial_executor.start_trial(trial, checkpoint)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
@@ -137,10 +141,19 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.experiment_tag, "modified_mock")
         self.assertEqual(Trial.RUNNING, trial.status)
 
-    def generate_trials(self, spec, name):
+    @staticmethod
+    def generate_trials(spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
         return suggester.next_trials()
+
+    @staticmethod
+    def process_trial_save(trial):
+        """Simulates trial runner save."""
+        checkpoint = trial.saving_to
+        checkpoint_value = ray.get(checkpoint.value)
+        checkpoint.value = checkpoint_value
+        trial.on_checkpoint(checkpoint)
 
 
 class RayExecutorQueueTest(unittest.TestCase):

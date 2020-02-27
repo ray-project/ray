@@ -1,13 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from gym.spaces import Box
 import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn
+from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog
@@ -32,7 +28,7 @@ TWIN_Q_TARGET_SCOPE = "twin_target_critic"
 PRIO_WEIGHTS = "weights"
 
 
-class DDPGPostprocessing(object):
+class DDPGPostprocessing:
     """Implements n-step learning and param noise adjustments."""
 
     @override(Policy)
@@ -68,7 +64,7 @@ class DDPGPostprocessing(object):
             self.parameter_noise_sigma.load(
                 self.parameter_noise_sigma_val, session=self.sess)
 
-        return _postprocess_dqn(self, sample_batch)
+        return postprocess_nstep_and_prio(self, sample_batch)
 
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
@@ -292,9 +288,10 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             self,
             observation_space,
             action_space,
+            self.config,
             self.sess,
             obs_input=self.cur_observations,
-            action_sampler=self.output_actions,
+            sampled_action=self.output_actions,
             loss=self.actor_loss + self.critic_loss,
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops)

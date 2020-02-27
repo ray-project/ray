@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.agents.dqn.dqn_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
@@ -23,7 +19,7 @@ tf = try_import_tf()
 tfp = try_import_tfp()
 
 
-class MADDPGPostprocessing(object):
+class MADDPGPostprocessing:
     """Implements agentwise termination signal and n-step learning."""
 
     @override(Policy)
@@ -51,8 +47,7 @@ class MADDPGPostprocessing(object):
 class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
-        self.config = config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG,
-                                    **config)
+        config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG, **config)
         self.global_step = tf.train.get_or_create_global_step()
 
         # FIXME: Get done from info is required since agentwise done is not
@@ -124,8 +119,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             act_ph_n,
             obs_space_n,
             act_space_n,
-            hiddens=config["critic_hiddens"],
-            activation=getattr(tf.nn, config["critic_hidden_activation"]),
+            config["use_state_preprocessor"],
+            config["critic_hiddens"],
+            getattr(tf.nn, config["critic_hidden_activation"]),
             scope="critic")
 
         # Build critic network for t + 1.
@@ -134,8 +130,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             new_act_ph_n,
             obs_space_n,
             act_space_n,
-            hiddens=config["critic_hiddens"],
-            activation=getattr(tf.nn, config["critic_hidden_activation"]),
+            config["use_state_preprocessor"],
+            config["critic_hiddens"],
+            getattr(tf.nn, config["critic_hidden_activation"]),
             scope="target_critic")
 
         # Build critic loss.
@@ -153,8 +150,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 obs_ph_n[agent_id],
                 obs_space_n[agent_id],
                 act_space_n[agent_id],
-                hiddens=config["actor_hiddens"],
-                activation=getattr(tf.nn, config["actor_hidden_activation"]),
+                config["use_state_preprocessor"],
+                config["actor_hiddens"],
+                getattr(tf.nn, config["actor_hidden_activation"]),
                 scope="actor"))
 
         # Build actor network for t + 1.
@@ -164,8 +162,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 self.new_obs_ph,
                 obs_space_n[agent_id],
                 act_space_n[agent_id],
-                hiddens=config["actor_hiddens"],
-                activation=getattr(tf.nn, config["actor_hidden_activation"]),
+                config["use_state_preprocessor"],
+                config["actor_hiddens"],
+                getattr(tf.nn, config["actor_hidden_activation"]),
                 scope="target_actor"))
 
         # Build actor loss.
@@ -176,8 +175,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             act_n,
             obs_space_n,
             act_space_n,
-            hiddens=config["critic_hiddens"],
-            activation=getattr(tf.nn, config["critic_hidden_activation"]),
+            config["use_state_preprocessor"],
+            config["critic_hiddens"],
+            getattr(tf.nn, config["critic_hidden_activation"]),
             scope="critic")
         actor_loss = -tf.reduce_mean(critic)
         if config["actor_feature_reg"] is not None:
@@ -242,9 +242,10 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             self,
             obs_space,
             act_space,
-            self.sess,
+            config=config,
+            sess=self.sess,
             obs_input=obs_ph_n[agent_id],
-            action_sampler=act_sampler,
+            sampled_action=act_sampler,
             loss=actor_loss + critic_loss,
             loss_inputs=loss_inputs)
 
@@ -317,11 +318,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                               act_n,
                               obs_space_n,
                               act_space_n,
+                              use_state_preprocessor,
                               hiddens,
                               activation=None,
                               scope=None):
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
-            if self.config["use_state_preprocessor"]:
+            if use_state_preprocessor:
                 model_n = [
                     ModelCatalog.get_model({
                         "obs": obs,
@@ -347,11 +349,12 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                              obs,
                              obs_space,
                              act_space,
+                             use_state_preprocessor,
                              hiddens,
                              activation=None,
                              scope=None):
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
-            if self.config["use_state_preprocessor"]:
+            if use_state_preprocessor:
                 model = ModelCatalog.get_model({
                     "obs": obs,
                     "is_training": self._get_is_training_placeholder(),

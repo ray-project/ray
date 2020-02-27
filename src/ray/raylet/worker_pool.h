@@ -2,10 +2,13 @@
 #define RAY_RAYLET_WORKER_POOL_H
 
 #include <inttypes.h>
+
+#include <boost/asio/io_service.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "gtest/gtest.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
@@ -27,19 +30,20 @@ class Worker;
 /// is a container for a unit of work.
 class WorkerPool {
  public:
-  /// Create a pool and asynchronously start the specified number of worker processes.
-  /// Once each worker process has registered with an external server,
-  /// the process should create and register the specified number of workers,
-  /// and add them to the pool.
+  /// Create a pool and asynchronously start at least the specified number of workers per
+  /// language.
+  /// Once each worker process has registered with an external server, the
+  /// process should create and register the specified number of workers, and add them to
+  /// the pool.
   ///
-  /// \param num_worker_processes The number of worker processes to start, per language.
+  /// \param num_workers The number of workers to start, per language.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(int num_worker_processes, int maximum_startup_concurrency,
-             std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+  WorkerPool(boost::asio::io_service &io_service, int num_workers,
+             int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -50,7 +54,7 @@ class WorkerPool {
   ///
   /// \param The Worker to be registered.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<Worker> &worker);
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid);
 
   /// Register a new driver.
   ///
@@ -155,14 +159,16 @@ class WorkerPool {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  int StartWorkerProcess(const Language &language,
-                         const std::vector<std::string> &dynamic_options = {});
+  Process StartWorkerProcess(const Language &language,
+                             const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
+  /// The lifetime of the process is tied to that of the returned object,
+  /// unless the caller manually detaches the process after the call.
   ///
   /// \param worker_command_args The command arguments of new worker process.
-  /// \return The process ID of started worker process.
-  virtual pid_t StartProcess(const std::vector<std::string> &worker_command_args);
+  /// \return An object representing the started worker process.
+  virtual Process StartProcess(const std::vector<std::string> &worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -187,12 +193,12 @@ class WorkerPool {
     std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
-    std::unordered_map<pid_t, int> starting_worker_processes;
+    std::unordered_map<Process, int> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
+    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, pid_t> tasks_to_dedicated_workers;
+    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -205,14 +211,24 @@ class WorkerPool {
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
  private:
+  /// Force-start at least num_workers workers for this language. Used for internal and
+  /// test purpose only.
+  ///
+  /// \param num_workers The number of workers to start, per language.
+  void Start(int num_workers);
+
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
+  /// For Process class for managing subprocesses (e.g. reaping zombies).
+  boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 };
 
 }  // namespace raylet

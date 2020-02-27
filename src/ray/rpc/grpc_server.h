@@ -1,17 +1,32 @@
 #ifndef RAY_RPC_GRPC_SERVER_H
 #define RAY_RPC_GRPC_SERVER_H
 
+#include <grpcpp/grpcpp.h>
+
+#include <boost/asio.hpp>
 #include <thread>
 #include <utility>
-
-#include <grpcpp/grpcpp.h>
-#include <boost/asio.hpp>
 
 #include "ray/common/status.h"
 #include "ray/rpc/server_call.h"
 
 namespace ray {
 namespace rpc {
+
+#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, CONCURRENCY)                      \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
+      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
+                                HANDLER##Reply>(                                \
+          service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
+          &SERVICE##Handler::Handle##HANDLER, cq, main_service_));              \
+  server_call_factories_and_concurrencies->emplace_back(                        \
+      std::move(HANDLER##_call_factory), CONCURRENCY);
+
+// Define a void RPC client method.
+#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
+  virtual void Handle##METHOD(const rpc::METHOD##Request &request, \
+                              rpc::METHOD##Reply *reply,           \
+                              rpc::SendReplyCallback send_reply_callback) = 0;
 
 class GrpcService;
 
@@ -42,7 +57,9 @@ class GrpcServer {
   // Shutdown this server
   void Shutdown() {
     if (!is_closed_) {
-      server_->Shutdown();
+      // Shutdown the server with an immediate deadline.
+      // TODO(edoakes): do we want to do this in all cases?
+      server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
       for (const auto &cq : cqs_) {
         cq->Shutdown();
       }

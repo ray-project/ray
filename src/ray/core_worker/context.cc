@@ -60,9 +60,9 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                              ? TaskID::ForDriverTask(job_id)
-                                              : TaskID::Nil());
+  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                          ? TaskID::ForDriverTask(job_id)
+                                          : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -125,7 +125,13 @@ bool WorkerContext::CurrentThreadIsMain() const {
 }
 
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
-  return !CurrentActorIsDirectCall() && CurrentThreadIsMain();
+  // Check if we need to release resources when we block:
+  //  - Driver doesn't acquire resources and thus doesn't need to release.
+  //  - We only support lifetime resources for direct actors, which can be
+  //    acquired when the actor is created, per call resources are not supported,
+  //    thus we don't need to release resources for direct actor call.
+  return worker_type_ != WorkerType::DRIVER && !CurrentActorIsDirectCall() &&
+         CurrentThreadIsMain();
 }
 
 bool WorkerContext::CurrentActorIsDirectCall() const {
@@ -142,7 +148,7 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 
 bool WorkerContext::CurrentActorIsAsync() const { return current_actor_is_asyncio_; }
 
-WorkerThreadContext &WorkerContext::GetThreadContext(bool for_main_thread) {
+WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {
     thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
   }

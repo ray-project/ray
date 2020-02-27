@@ -3,6 +3,7 @@
 
 #include <jni.h>
 #include "ray/common/buffer.h"
+#include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
@@ -60,6 +61,11 @@ extern jmethodID java_map_entry_get_value;
 /// RayException class
 extern jclass java_ray_exception_class;
 
+/// JniExceptionUtil class
+extern jclass java_jni_exception_util_class;
+/// getStackTrace method of JniExceptionUtil class
+extern jmethodID java_jni_exception_util_get_stack_trace;
+
 /// BaseId class
 extern jclass java_base_id_class;
 /// getBytes method of BaseId class
@@ -88,17 +94,19 @@ extern jfieldID java_function_arg_value;
 extern jclass java_base_task_options_class;
 /// resources field of BaseTaskOptions class
 extern jfieldID java_base_task_options_resources;
+/// useDirectCall field of BaseTaskOptions class
+extern jfieldID java_base_task_options_use_direct_call;
+/// DEFAULT_USE_DIRECT_CALL field of BaseTaskOptions class
+extern jfieldID java_base_task_options_default_use_direct_call;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// DEFAULT_USE_DIRECT_CALL field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_default_use_direct_call;
 /// maxReconstructions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_reconstructions;
-/// useDirectCall field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_use_direct_call;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
+/// maxConcurrency field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_concurrency;
 
 /// GcsClientOptions class
 extern jclass java_gcs_client_options_class;
@@ -123,6 +131,9 @@ extern jclass java_task_executor_class;
 /// execute method of TaskExecutor class
 extern jmethodID java_task_executor_execute;
 
+/// The `get` method in TaskExecutor class
+extern jmethodID java_task_executor_get;
+
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
 extern JavaVM *jvm;
@@ -134,6 +145,29 @@ extern JavaVM *jvm;
       (env)->ThrowNew(java_ray_exception_class, (status).message().c_str()); \
       return (ret);                                                          \
     }                                                                        \
+  }
+
+#define RAY_CHECK_JAVA_EXCEPTION(env)                                                 \
+  {                                                                                   \
+    jthrowable throwable = env->ExceptionOccurred();                                  \
+    if (throwable) {                                                                  \
+      jstring java_file_name = env->NewStringUTF(__FILE__);                           \
+      jstring java_function = env->NewStringUTF(__func__);                            \
+      jobject java_error_message = env->CallStaticObjectMethod(                       \
+          java_jni_exception_util_class, java_jni_exception_util_get_stack_trace,     \
+          java_file_name, __LINE__, java_function, throwable);                        \
+      std::string error_message =                                                     \
+          JavaStringToNativeString(env, static_cast<jstring>(java_error_message));    \
+      env->DeleteLocalRef(throwable);                                                 \
+      env->DeleteLocalRef(java_file_name);                                            \
+      env->DeleteLocalRef(java_function);                                             \
+      env->DeleteLocalRef(java_error_message);                                        \
+      RAY_LOG(FATAL) << "An unexpected exception occurred while executing Java code " \
+                        "from JNI ("                                                  \
+                     << __FILE__ << ":" << __LINE__ << " " << __func__ << ")."        \
+                     << "\n"                                                          \
+                     << error_message;                                                \
+    }                                                                                 \
   }
 
 /// Represents a byte buffer of Java byte array.
@@ -152,8 +186,11 @@ class JavaByteArrayBuffer : public ray::Buffer {
 
   bool OwnsData() const override { return true; }
 
+  bool IsPlasmaBuffer() const override { return false; }
+
   ~JavaByteArrayBuffer() {
     env_->ReleaseByteArrayElements(java_byte_array_, native_bytes_, JNI_ABORT);
+    env_->DeleteLocalRef(java_byte_array_);
   }
 
  private:
@@ -201,10 +238,13 @@ inline void JavaListToNativeVector(
     JNIEnv *env, jobject java_list, std::vector<NativeT> *native_vector,
     std::function<NativeT(JNIEnv *, jobject)> element_converter) {
   int size = env->CallIntMethod(java_list, java_list_size);
+  RAY_CHECK_JAVA_EXCEPTION(env);
   native_vector->clear();
   for (int i = 0; i < size; i++) {
-    native_vector->emplace_back(
-        element_converter(env, env->CallObjectMethod(java_list, java_list_get, (jint)i)));
+    auto element = env->CallObjectMethod(java_list, java_list_get, (jint)i);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    native_vector->emplace_back(element_converter(env, element));
+    env->DeleteLocalRef(element);
   }
 }
 
@@ -226,7 +266,10 @@ inline jobject NativeVectorToJavaList(
       env->NewObject(java_array_list_class, java_array_list_init_with_capacity,
                      (jint)native_vector.size());
   for (const auto &item : native_vector) {
-    env->CallVoidMethod(java_list, java_list_add, element_converter(env, item));
+    auto element = element_converter(env, item);
+    env->CallVoidMethod(java_list, java_list_add, element);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    env->DeleteLocalRef(element);
   }
   return java_list;
 }
@@ -289,7 +332,9 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
-  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
+  // TODO: Support nested IDs for Java.
+  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
+                                          std::vector<ray::ObjectID>());
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.
@@ -302,7 +347,31 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   auto java_obj = env->NewObject(java_native_ray_object_class,
                                  java_native_ray_object_init, java_data, java_metadata);
+  env->DeleteLocalRef(java_metadata);
+  env->DeleteLocalRef(java_data);
   return java_obj;
+}
+
+// TODO(po): Convert C++ ray::FunctionDescriptor to Java FunctionDescriptor
+inline jobject NativeRayFunctionDescriptorToJavaStringList(
+    JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
+  if (function_descriptor->Type() ==
+      ray::FunctionDescriptorType::kJavaFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::JavaFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {typed_descriptor->ClassName(),
+                                                         typed_descriptor->FunctionName(),
+                                                         typed_descriptor->Signature()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  } else if (function_descriptor->Type() ==
+             ray::FunctionDescriptorType::kPythonFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {
+        typed_descriptor->ModuleName(), typed_descriptor->ClassName(),
+        typed_descriptor->FunctionName(), typed_descriptor->FunctionHash()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  }
+  RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
+  return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
 
 #endif  // RAY_COMMON_JAVA_JNI_UTILS_H

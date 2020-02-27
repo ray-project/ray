@@ -61,6 +61,8 @@ and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
 
+For more advanced evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
+
 Configuration
 -------------
 
@@ -107,8 +109,8 @@ You can run these with the ``rllib train`` command as follows:
 
     rllib train -f /path/to/tuned/example.yaml
 
-Python API
-----------
+Basic Python API
+----------------
 
 The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
@@ -177,12 +179,77 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
-Custom Training Workflows
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Computing Actions
+~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+The simplest way to programmatically compute actions from a trained agent is to use ``trainer.compute_action()``.
+This method preprocesses and filters the observation before passing it to the agent policy.
+For more advanced usage, you can access the ``workers`` and policies held by the trainer
+directly as ``compute_action()`` does:
 
-For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+.. code-block:: python
+
+  class Trainer(Trainable):
+
+    @PublicAPI
+    def compute_action(self,
+                       observation,
+                       state=None,
+                       prev_action=None,
+                       prev_reward=None,
+                       info=None,
+                       policy_id=DEFAULT_POLICY_ID,
+                       full_fetch=False):
+        """Computes an action for the specified policy.
+
+        Note that you can also access the policy object through
+        self.get_policy(policy_id) and call compute_actions() on it directly.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any. If state is not None,
+                          then all of compute_single_action(...) is returned
+                          (computed action, rnn state, logits dictionary).
+                          Otherwise compute_single_action(...)[0] is
+                          returned (computed action).
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
+            policy_id (str): policy to query (only applies to multi-agent).
+            full_fetch (bool): whether to return extra action fetch results.
+                This is always set to true if RNN state is specified.
+
+        Returns:
+            Just the computed action if full_fetch=False, or the full output
+            of policy.compute_actions() otherwise.
+        """
+
+        if state is None:
+            state = []
+        preprocessed = self.workers.local_worker().preprocessors[
+            policy_id].transform(observation)
+        filtered_obs = self.workers.local_worker().filters[policy_id](
+            preprocessed, update=False)
+        if state:
+            return self.get_policy(policy_id).compute_single_action(
+                filtered_obs,
+                state,
+                prev_action,
+                prev_reward,
+                info,
+                clip_actions=self.config["clip_actions"])
+        res = self.get_policy(policy_id).compute_single_action(
+            filtered_obs,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"])
+        if full_fetch:
+            return res
+        else:
+            return res[0]  # backwards compatibility
+
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -359,13 +426,23 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
+Advanced Python APIs
+--------------------
+
+Custom Training Workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+
+For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
 Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
 
-    from ray.experimental import named_actors
+    from ray.util import named_actors
 
     @ray.remote
     class Counter:
@@ -443,10 +520,72 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
+Customized Evaluation During Training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib will report online training rewards, however in some cases you may want to compute
+rewards with different settings (e.g., with exploration turned off, or on a specific set
+of environment configurations). You can evaluate policies during training by setting one
+or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
+``evaluation_num_workers``, and ``custom_eval_function`` configs
+(see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
+
+There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
+
+Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
+    INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+    INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+    INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+    INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+    INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+
+    Result for PG_SimpleCorridor_2c6b27dc:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 15.864661654135338
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.49624060150375937
+        episode_reward_min: 0.0
+        episodes_this_iter: 133
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py --custom-eval`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:631 -- Running custom eval function <function ...>
+    Update corridor length to 4
+    Update corridor length to 7
+    Custom evaluation round 1
+    Custom evaluation round 2
+    Custom evaluation round 3
+    Custom evaluation round 4
+
+    Result for PG_SimpleCorridor_0de4e686:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 9.15695067264574
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.9596412556053812
+        episode_reward_min: 0.0
+        episodes_this_iter: 223
+        foo: 1
+
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+Note that in the ``on_postprocess_traj`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
 
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
@@ -546,9 +685,26 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 Eager Mode
 ~~~~~~~~~~
 
-Policies built with ``build_tf_policy`` (most of the reference algorithms are) can be run in eager mode by setting the ``"eager": True`` / ``"eager_tracing": True`` config options or using ``rllib train --eager [--trace]``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+Policies built with ``build_tf_policy`` (most of the reference algorithms are)
+can be run in eager mode by setting the
+``"eager": True`` / ``"eager_tracing": True`` config options or using
+``rllib train --eager [--trace]``.
+This will tell RLlib to execute the model forward pass, action distribution,
+loss, and stats functions in eager mode.
 
-Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it can be slower than graph mode unless tracing is enabled.
+Eager mode makes debugging much easier, since you can now use line-by-line
+debugging with breakpoints or Python ``print()`` to inspect
+intermediate tensor values.
+However, eager can be slower than graph mode unless tracing is enabled.
+
+Using PyTorch
+~~~~~~~~~~~~~
+
+Trainers that have an implemented TorchPolicy, will allow you to run
+`rllib train` using the the command line ``--torch`` flag.
+Algorithms that do not have a torch version yet will complain with an error in
+this case.
+
 
 Episode Traces
 ~~~~~~~~~~~~~~

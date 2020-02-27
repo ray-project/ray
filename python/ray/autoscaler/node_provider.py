@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 import logging
 import os
@@ -129,7 +125,7 @@ def get_default_config(provider_config):
     return defaults
 
 
-class NodeProvider(object):
+class NodeProvider:
     """Interface for getting and returning nodes from a Cloud.
 
     NodeProviders are namespaced by the `cluster_name` parameter; they only

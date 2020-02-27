@@ -1,10 +1,13 @@
 package org.ray.runtime;
 
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.ray.api.RayActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.LocalModeWorkerContext;
+import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.object.LocalModeObjectStore;
 import org.ray.runtime.task.LocalModeTaskExecutor;
 import org.ray.runtime.task.LocalModeTaskSubmitter;
@@ -17,8 +20,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private AtomicInteger jobCounter = new AtomicInteger(0);
 
-  public RayDevRuntime(RayConfig rayConfig) {
-    super(rayConfig);
+  public RayDevRuntime(RayConfig rayConfig, FunctionManager functionManager) {
+    super(rayConfig, functionManager);
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
@@ -38,11 +41,26 @@ public class RayDevRuntime extends AbstractRayRuntime {
       taskSubmitter = null;
     }
     taskExecutor = null;
+    RayConfig.reset();
   }
 
   @Override
   public void setResource(String resourceName, double capacity, UniqueId nodeId) {
     LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
+  }
+
+  @Override
+  public void killActor(RayActor<?> actor) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Object getAsyncContext() {
+    return null;
+  }
+
+  @Override
+  public void setAsyncContext(Object asyncContext) {
   }
 
   private JobId nextJobId() {

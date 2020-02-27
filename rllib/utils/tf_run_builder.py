@@ -1,19 +1,15 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import os
 import time
 
-from ray.rllib.utils.debug import log_once
+from ray.util.debug import log_once
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class TFRunBuilder(object):
+class TFRunBuilder:
     """Used to incrementally build up a TensorFlow run.
 
     This is particularly useful for batching ops from multiple different

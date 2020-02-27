@@ -18,7 +18,7 @@ namespace gcs {
 template <typename ID, typename Data, typename Table>
 class SubscriptionExecutor {
  public:
-  SubscriptionExecutor(Table &table) : table_(table) {}
+  explicit SubscriptionExecutor(Table &table) : table_(table) {}
 
   ~SubscriptionExecutor() {}
 
@@ -32,9 +32,9 @@ class SubscriptionExecutor {
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const ClientID &client_id,
-                        const SubscribeCallback<ID, Data> &subscribe,
-                        const StatusCallback &done);
+  Status AsyncSubscribeAll(const ClientID &client_id,
+                           const SubscribeCallback<ID, Data> &subscribe,
+                           const StatusCallback &done);
 
   /// Subscribe to operations of an element.
   /// Repeated subscription to an element will return a failure.

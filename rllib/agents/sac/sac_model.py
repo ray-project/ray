@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -76,52 +72,25 @@ class SACModel(TFModelV2):
 
         super(SACModel, self).__init__(obs_space, action_space, num_outputs,
                                        model_config, name)
-
         self.action_dim = np.product(action_space.shape)
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
-        self.actions = tf.keras.layers.Input(
-            shape=(self.action_dim, ), name="actions")
-
-        shift_and_log_scale_diag = tf.keras.Sequential([
+        self.action_model = tf.keras.Sequential([
             tf.keras.layers.Dense(
                 units=hidden,
-                activation=getattr(tf.nn, actor_hidden_activation),
-                name="action_hidden_{}".format(i))
+                activation=getattr(tf.nn, actor_hidden_activation, None),
+                name="action_{}".format(i + 1))
             for i, hidden in enumerate(actor_hiddens)
         ] + [
             tf.keras.layers.Dense(
-                units=tfp.layers.MultivariateNormalTriL.params_size(
-                    self.action_dim),
-                activation=None,
-                name="action_out")
-        ])(self.model_out)
+                units=2 * self.action_dim, activation=None, name="action_out")
+        ])
+        self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
-        shift, log_scale_diag = tf.keras.layers.Lambda(
-            lambda shift_and_log_scale_diag: tf.split(
-                shift_and_log_scale_diag,
-                num_or_size_splits=2,
-                axis=-1)
-        )(shift_and_log_scale_diag)
+        self.register_variables(self.action_model.variables)
 
-        log_scale_diag = tf.keras.layers.Lambda(
-            lambda log_sd: tf.clip_by_value(log_sd, *SCALE_DIAG_MIN_MAX))(
-                log_scale_diag)
-
-        shift_and_log_scale_diag = tf.keras.layers.Concatenate(axis=-1)(
-            [shift, log_scale_diag])
-
-        raw_action_distribution = tfp.layers.MultivariateNormalTriL(
-            self.action_dim)(shift_and_log_scale_diag)
-
-        action_distribution = tfp.layers.DistributionLambda(
-            make_distribution_fn=SquashBijector())(raw_action_distribution)
-
-        # TODO(hartikainen): Remove the unnecessary Model call here
-        self.action_distribution_model = tf.keras.Model(
-            self.model_out, action_distribution)
-
-        self.register_variables(self.action_distribution_model.variables)
+        self.actions_input = tf.keras.layers.Input(
+            shape=(self.action_dim, ), name="actions")
 
         def build_q_net(name, observations, actions):
             q_net = tf.keras.Sequential([
@@ -142,12 +111,12 @@ class SACModel(TFModelV2):
                                    q_net([observations, actions]))
             return q_net
 
-        self.q_net = build_q_net("q", self.model_out, self.actions)
+        self.q_net = build_q_net("q", self.model_out, self.actions_input)
         self.register_variables(self.q_net.variables)
 
         if twin_q:
             self.twin_q_net = build_q_net("twin_q", self.model_out,
-                                          self.actions)
+                                          self.actions_input)
             self.register_variables(self.twin_q_net.variables)
         else:
             self.twin_q_net = None
@@ -156,29 +125,6 @@ class SACModel(TFModelV2):
         self.alpha = tf.exp(self.log_alpha)
 
         self.register_variables([self.log_alpha])
-
-    def get_policy_output(self, model_out, deterministic=False):
-        """Return the (unscaled) output of the policy network.
-
-        This returns the unscaled outputs of pi(s).
-
-        Arguments:
-            model_out (Tensor): obs embeddings from the model layers, of shape
-                [BATCH_SIZE, num_outputs].
-
-        Returns:
-            tensor of shape [BATCH_SIZE, action_dim] with range [-inf, inf].
-        """
-        action_distribution = self.action_distribution_model(model_out)
-        if deterministic:
-            actions = action_distribution.bijector(
-                action_distribution.distribution.mean())
-            log_pis = None
-        else:
-            actions = action_distribution.sample()
-            log_pis = action_distribution.log_prob(actions)
-
-        return actions, log_pis
 
     def get_q_values(self, model_out, actions):
         """Return the Q estimates for the most recent forward pass.
@@ -217,7 +163,7 @@ class SACModel(TFModelV2):
     def policy_variables(self):
         """Return the list of variables for the policy net."""
 
-        return list(self.action_distribution_model.variables)
+        return list(self.action_model.variables)
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""

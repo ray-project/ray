@@ -1,12 +1,6 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
-import torch as th
-import torch.nn as nn
 from torch.optim import RMSprop
 from torch.distributions import Categorical
 
@@ -14,13 +8,18 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.policy import TupleActions, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.tuple_actions import TupleActions
+
+# Torch must be installed.
+torch, nn = try_import_torch(error=True)
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class QMixLoss(nn.Module):
         mac_out = _unroll_mac(self.model, obs)
 
         # Pick the Q-Values for the actions taken -> [B * n_agents, T]
-        chosen_action_qvals = th.gather(
+        chosen_action_qvals = torch.gather(
             mac_out, dim=3, index=actions.unsqueeze(3)).squeeze(3)
 
         # Calculate the Q-Values necessary for the target
@@ -117,8 +116,8 @@ class QMixLoss(nn.Module):
 
             # use the target network to estimate the Q-values of policy
             # network's selected actions
-            target_max_qvals = th.gather(target_mac_out, 3,
-                                         cur_max_actions).squeeze(3)
+            target_max_qvals = torch.gather(target_mac_out, 3,
+                                            cur_max_actions).squeeze(3)
         else:
             target_max_qvals = target_mac_out.max(dim=3)[0]
 
@@ -147,6 +146,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
+# TODO(sven): Make this a TorchPolicy child.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -162,16 +162,15 @@ class QMixTorchPolicy(Policy):
     def __init__(self, obs_space, action_space, config):
         _validate(obs_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)
-        self.config = config
-        self.observation_space = obs_space
-        self.action_space = action_space
+        self.framework = "torch"
+        super().__init__(obs_space, action_space, config)
         self.n_agents = len(obs_space.original_space.spaces)
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
         self.has_action_mask = False
-        self.device = (th.device("cuda")
-                       if th.cuda.is_available() else th.device("cpu"))
+        self.device = (torch.device("cuda")
+                       if torch.cuda.is_available() else torch.device("cpu"))
 
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
@@ -257,27 +256,31 @@ class QMixTorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        explore=None,
                         **kwargs):
+        explore = explore if explore is not None else self.config["explore"]
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
         # We need to ensure we do not use the env global state
         # to compute actions
 
         # Compute actions
-        with th.no_grad():
+        with torch.no_grad():
             q_values, hiddens = _mac(
                 self.model,
-                th.as_tensor(obs_batch, dtype=th.float, device=self.device), [
-                    th.as_tensor(
-                        np.array(s), dtype=th.float, device=self.device)
-                    for s in state_batches
-                ])
-            avail = th.as_tensor(
-                action_mask, dtype=th.float, device=self.device)
+                torch.as_tensor(
+                    obs_batch, dtype=torch.float, device=self.device), [
+                        torch.as_tensor(
+                            np.array(s), dtype=torch.float, device=self.device)
+                        for s in state_batches
+                    ])
+            avail = torch.as_tensor(
+                action_mask, dtype=torch.float, device=self.device)
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
             # epsilon-greedy action selector
-            random_numbers = th.rand_like(q_values[:, :, 0])
-            pick_random = (random_numbers < self.cur_epsilon).long()
+            random_numbers = torch.rand_like(q_values[:, :, 0])
+            pick_random = (random_numbers < (self.cur_epsilon
+                                             if explore else 0.0)).long()
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.argmax(dim=2))
@@ -285,6 +288,16 @@ class QMixTorchPolicy(Policy):
             hiddens = [s.cpu().numpy() for s in hiddens]
 
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
+
+    @override(Policy)
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
+        obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
+        return np.zeros(obs_batch.size()[0])
 
     @override(Policy)
     def learn_on_batch(self, samples):
@@ -323,31 +336,32 @@ class QMixTorchPolicy(Policy):
 
         def to_batches(arr, dtype):
             new_shape = [B, T] + list(arr.shape[1:])
-            return th.as_tensor(
+            return torch.as_tensor(
                 np.reshape(arr, new_shape), dtype=dtype, device=self.device)
 
-        rewards = to_batches(rew, th.float)
-        actions = to_batches(act, th.long)
-        obs = to_batches(obs, th.float).reshape(
+        rewards = to_batches(rew, torch.float)
+        actions = to_batches(act, torch.long)
+        obs = to_batches(obs, torch.float).reshape(
             [B, T, self.n_agents, self.obs_size])
-        action_mask = to_batches(action_mask, th.float)
-        next_obs = to_batches(next_obs, th.float).reshape(
+        action_mask = to_batches(action_mask, torch.float)
+        next_obs = to_batches(next_obs, torch.float).reshape(
             [B, T, self.n_agents, self.obs_size])
-        next_action_mask = to_batches(next_action_mask, th.float)
+        next_action_mask = to_batches(next_action_mask, torch.float)
         if self.has_env_global_state:
-            env_global_state = to_batches(env_global_state, th.float)
-            next_env_global_state = to_batches(next_env_global_state, th.float)
+            env_global_state = to_batches(env_global_state, torch.float)
+            next_env_global_state = to_batches(next_env_global_state,
+                                               torch.float)
 
         # TODO(ekl) this treats group termination as individual termination
-        terminated = to_batches(dones, th.float).unsqueeze(2).expand(
+        terminated = to_batches(dones, torch.float).unsqueeze(2).expand(
             B, T, self.n_agents)
 
         # Create mask for where index is < unpadded sequence length
         filled = np.reshape(
             np.tile(np.arange(T, dtype=np.float32), B),
             [B, T]) < np.expand_dims(seq_lens, 1)
-        mask = th.as_tensor(
-            filled, dtype=th.float, device=self.device).unsqueeze(2).expand(
+        mask = torch.as_tensor(
+            filled, dtype=torch.float, device=self.device).unsqueeze(2).expand(
                 B, T, self.n_agents)
 
         # Compute loss
@@ -359,7 +373,7 @@ class QMixTorchPolicy(Policy):
         # Optimise
         self.optimiser.zero_grad()
         loss_out.backward()
-        grad_norm = th.nn.utils.clip_grad_norm_(
+        grad_norm = torch.nn.utils.clip_grad_norm_(
             self.params, self.config["grad_norm_clipping"])
         self.optimiser.step()
 
@@ -432,7 +446,7 @@ class QMixTorchPolicy(Policy):
 
     def _device_dict(self, state_dict):
         return {
-            k: th.as_tensor(v, device=self.device)
+            k: torch.as_tensor(v, device=self.device)
             for k, v in state_dict.items()
         }
 
@@ -539,7 +553,7 @@ def _unroll_mac(model, obs_tensor):
     for t in range(T):
         q, h = _mac(model, obs_tensor[:, t], h)
         mac_out.append(q)
-    mac_out = th.stack(mac_out, dim=1)  # Concat over time
+    mac_out = torch.stack(mac_out, dim=1)  # Concat over time
 
     return mac_out
 

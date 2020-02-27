@@ -1,9 +1,13 @@
 #ifndef RAY_UTIL_TEST_UTIL_H
 #define RAY_UTIL_TEST_UTIL_H
 
+#include <unistd.h>
+
 #include <string>
 
+#include "gtest/gtest.h"
 #include "ray/common/buffer.h"
+#include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/util/util.h"
 
@@ -52,9 +56,48 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
   return std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size(), true);
 }
 
-std::shared_ptr<RayObject> GenerateRandomObject() {
-  return std::shared_ptr<RayObject>(new RayObject(GenerateRandomBuffer(), nullptr));
+std::shared_ptr<RayObject> GenerateRandomObject(
+    const std::vector<ObjectID> &inlined_ids = {}) {
+  return std::shared_ptr<RayObject>(
+      new RayObject(GenerateRandomBuffer(), nullptr, inlined_ids));
 }
+
+/// Path to redis server executable binary.
+std::string REDIS_SERVER_EXEC_PATH;
+/// Path to redis client executable binary.
+std::string REDIS_CLIENT_EXEC_PATH;
+/// Path to redis module library.
+std::string REDIS_MODULE_LIBRARY_PATH;
+/// Port of redis server.
+int REDIS_SERVER_PORT;
+
+/// Test helper class, it will start redis server before the test runs,
+/// and stop redis server after the test is completed.
+class RedisServiceManagerForTest : public ::testing::Test {
+ public:
+  static void SetUpTestCase() {
+    auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::mt19937 gen(seed);
+    std::uniform_int_distribution<int> random_gen{2000, 7000};
+    // Use random port to avoid port conflicts between UTs.
+    REDIS_SERVER_PORT = random_gen(gen);
+
+    std::string start_redis_command =
+        REDIS_SERVER_EXEC_PATH + " --loglevel warning --loadmodule " +
+        REDIS_MODULE_LIBRARY_PATH + " --port " + std::to_string(REDIS_SERVER_PORT) + " &";
+    RAY_LOG(INFO) << "Start redis command is: " << start_redis_command;
+    RAY_CHECK(system(start_redis_command.c_str()) == 0);
+    usleep(200 * 1000);
+  }
+
+  static void TearDownTestCase() {
+    std::string stop_redis_command =
+        REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SERVER_PORT) + " shutdown";
+    RAY_LOG(INFO) << "Stop redis command is: " << stop_redis_command;
+    RAY_CHECK(system(stop_redis_command.c_str()) == 0);
+    usleep(100 * 1000);
+  }
+};
 
 }  // namespace ray
 

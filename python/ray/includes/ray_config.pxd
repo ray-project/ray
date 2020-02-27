@@ -48,10 +48,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t max_time_for_handler_milliseconds() const
 
-        int64_t size_limit() const
-
-        int64_t num_elements_limit() const
-
         int64_t max_time_for_loop() const
 
         int64_t redis_db_connect_retries()
@@ -86,4 +82,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         uint32_t maximum_gcs_deletion_batch_size() const
 
-        void initialize(const unordered_map[c_string, int] &config_map)
+        int64_t max_direct_call_object_size() const
+
+        void initialize(const unordered_map[c_string, c_string] &config_map)

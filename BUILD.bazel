@@ -7,19 +7,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-
-# TODO(mehrdadn): (How to) support dynamic linking?
-PROPAGATED_WINDOWS_DEFINES = ["RAY_STATIC"]
-
-COPTS = ["-DRAY_USE_GLOG"] + select({
-    "@bazel_tools//src/conditions:windows": [
-        "-DWIN32_LEAN_AND_MEAN=",  # Block the inclusion of WinSock.h, which is obsolete and causes errors
-        "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
-        "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
-    ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
-    "//conditions:default": [
-    ],
-})
+load("//bazel:ray.bzl", "COPTS", "PROPAGATED_WINDOWS_DEFINES")
 
 # === Begin of protobuf definitions ===
 
@@ -73,6 +61,28 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "reporter_proto",
+    srcs = ["src/ray/protobuf/reporter.proto"],
+    deps = [":common_proto"],
+)
+
+python_grpc_compile(
+    name = "reporter_py_proto",
+    deps = [":reporter_proto"],
+)
+
+proto_library(
+    name = "gcs_service_proto",
+    srcs = ["src/ray/protobuf/gcs_service.proto"],
+    deps = [":gcs_proto"],
+)
+
+cc_proto_library(
+    name = "gcs_service_cc_proto",
+    deps = [":gcs_service_proto"],
+)
+
+proto_library(
     name = "object_manager_proto",
     srcs = ["src/ray/protobuf/object_manager.proto"],
 )
@@ -86,6 +96,11 @@ proto_library(
     name = "core_worker_proto",
     srcs = ["src/ray/protobuf/core_worker.proto"],
     deps = [":common_proto"],
+)
+
+python_grpc_compile(
+    name = "core_worker_py_proto",
+    deps = [":core_worker_proto"],
 )
 
 cc_proto_library(
@@ -143,6 +158,31 @@ cc_library(
     deps = [
         ":grpc_common_lib",
         ":node_manager_cc_grpc",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# gcs_service gRPC lib.
+cc_grpc_library(
+    name = "gcs_service_cc_grpc",
+    srcs = [":gcs_service_proto"],
+    grpc_only = True,
+    deps = [":gcs_service_cc_proto"],
+)
+
+# gcs rpc server and client.
+cc_library(
+    name = "gcs_service_rpc",
+    hdrs = glob([
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+        "src/ray/rpc/gcs_server/gcs_rpc_client.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":gcs_service_cc_grpc",
+        ":grpc_common_lib",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -219,6 +259,7 @@ cc_library(
     includes = [
         "@boost//:asio",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":common_cc_proto",
         ":gcs_cc_proto",
@@ -256,6 +297,42 @@ cc_binary(
     deps = [
         ":gcs",
         ":ray_util",
+    ],
+)
+
+cc_library(
+    name = "gcs_server_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/gcs_server/*.cc",
+        ],
+        exclude = [
+            "src/ray/gcs/gcs_server/gcs_server_main.cc",
+            "src/ray/gcs/gcs_server/test/*.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/gcs_server/*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":gcs_service_rpc",
+    ],
+)
+
+cc_binary(
+    name = "gcs_server",
+    srcs = [
+        "src/ray/gcs/gcs_server/gcs_server_main.cc",
+    ],
+    copts = COPTS,
+    visibility = ["//java:__subpackages__"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_github_gflags_gflags//:gflags",
     ],
 )
 
@@ -327,6 +404,7 @@ cc_library(
             "-lpthread",
         ],
     }),
+    visibility = ["//streaming:__subpackages__"],
     deps = [
         ":common_cc_proto",
         ":gcs",
@@ -335,6 +413,7 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "@boost//:asio",
@@ -373,6 +452,7 @@ cc_library(
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -588,11 +668,82 @@ cc_test(
 )
 
 cc_test(
+    name = "url_test",
+    srcs = ["src/ray/util/url_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "sequencer_test",
+    srcs = ["src/ray/util/sequencer_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
     deps = [
         ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_server_rpc_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "service_based_gcs_client_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/gcs_client/service_based_*.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/gcs_client/service_based_*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+    ],
+)
+
+cc_test(
+    name = "gcs_server_test",
+    srcs = ["src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -643,6 +794,31 @@ cc_binary(
 )
 
 cc_library(
+    name = "platform_shims",
+    srcs = [] + select({
+        "@bazel_tools//src/conditions:windows": glob([
+            "src/shims/windows/**/*.c",
+            "src/shims/windows/**/*.cc",
+        ]),
+        "//conditions:default": [],
+    }),
+    hdrs = [] + select({
+        "@bazel_tools//src/conditions:windows": glob([
+            "src/shims/windows/**/*.h",
+        ]),
+        "//conditions:default": [],
+    }),
+    copts = COPTS,
+    includes = [] + select({
+        "@bazel_tools//src/conditions:windows": [
+            "src/shims/windows",
+        ],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "ray_util",
     srcs = glob(
         [
@@ -659,11 +835,45 @@ cc_library(
     includes = [
         "src",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":sha256",
+        "@boost//:asio",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
+    ],
+)
+
+filegroup(
+    name = "iwyu_sh",
+    srcs = ["ci/travis/iwyu.sh"],
+)
+
+filegroup(
+    name = "extra_actions_base_proto",
+    srcs = [
+        # TODO: Replace our file with the built-in copy once this issue is resolved:
+        #   https://github.com/bazelbuild/bazel/issues/8738
+        "thirdparty/protobuf/extra_actions_base.proto",
+        #"@bazel_tools//src/main/protobuf:extra_actions_base.proto",
+    ],
+)
+
+action_listener(
+    name = "iwyu_cpp",
+    extra_actions = [":iwyu_action"],
+    mnemonics = ["CppCompile"],
+)
+
+extra_action(
+    name = "iwyu_action",
+    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
+    tools = [
+        ":extra_actions_base_proto",
+        ":iwyu_sh",
+        "@com_google_protobuf//:protoc",
     ],
 )
 
@@ -691,6 +901,7 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/gcs/*.h",
+        "src/ray/gcs/test/*.h",
     ]),
     copts = COPTS,
     deps = [
@@ -705,45 +916,113 @@ cc_library(
     ],
 )
 
-# TODO(micafan) Replace cc_binary with cc_test for GCS test.
-cc_binary(
+# TODO(micafan) Support test group in future. Use test group we can run all gcs test once.
+cc_test(
     name = "redis_gcs_client_test",
-    testonly = 1,
-    srcs = ["src/ray/gcs/redis_gcs_client_test.cc"],
+    srcs = ["src/ray/gcs/test/redis_gcs_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_binary(
-    name = "actor_state_accessor_test",
-    testonly = 1,
-    srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+cc_test(
+    name = "redis_actor_info_accessor_test",
+    srcs = ["src/ray/gcs/test/redis_actor_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_binary(
+cc_test(
+    name = "redis_object_info_accessor_test",
+    srcs = ["src/ray/gcs/test/redis_object_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "subscription_executor_test",
-    testonly = 1,
-    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
+    srcs = ["src/ray/gcs/test/subscription_executor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_binary(
-    name = "asio_test",
-    testonly = 1,
-    srcs = ["src/ray/gcs/asio_test.cc"],
+cc_test(
+    name = "redis_job_info_accessor_test",
+    srcs = ["src/ray/gcs/test/redis_job_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "redis_node_info_accessor_test",
+    srcs = ["src/ray/gcs/test/redis_node_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "asio_test",
+    srcs = ["src/ray/gcs/test/asio_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         ":ray_util",
@@ -759,7 +1038,7 @@ FLATC_ARGS = [
 
 flatbuffer_cc_library(
     name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
+    srcs = ["@plasma//:cpp/src/plasma/common.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/common/",
 )
@@ -782,15 +1061,56 @@ pyx_library(
     name = "_raylet",
     srcs = glob([
         "python/ray/__init__.py",
+        "python/ray/_raylet.pxd",
         "python/ray/_raylet.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    copts = COPTS,
+    # Export ray ABI symbols, which can then be used by _streaming.so.
+    # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
+    # shared lib, see python/ray/__init__.py.
+    cc_kwargs = dict(
+        copts = COPTS,
+        # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
+        linkopts = select({
+            "@bazel_tools//src/conditions:darwin": [
+                "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+            ],
+            "@bazel_tools//src/conditions:windows": [
+            ],
+            "//conditions:default": [
+                "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+            ],
+        }),
+        linkstatic = 1,
+    ),
     deps = [
         "//:core_worker_lib",
+        "//:ray_util",
         "//:raylet_lib",
         "//:serialization_cc_proto",
+        "//:src/ray/ray_exported_symbols.lds",
+        "//:src/ray/ray_version_script.lds",
+    ],
+)
+
+pyx_library(
+    name = "_streaming",
+    srcs = glob([
+        "python/ray/streaming/_streaming.pyx",
+        "python/ray/__init__.py",
+        "python/ray/_raylet.pxd",
+        "python/ray/includes/*.pxd",
+        "python/ray/includes/*.pxi",
+        "python/ray/streaming/__init__.pxd",
+        "python/ray/streaming/includes/*.pxd",
+        "python/ray/streaming/includes/*.pxi",
+    ]),
+    cc_kwargs = dict(
+        copts = COPTS,
+    ),
+    deps = [
+        "//streaming:streaming_lib",
     ],
 )
 
@@ -806,6 +1126,7 @@ cc_binary(
         "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
     }),
+    copts = COPTS,
     includes = [
         "src",
         "external/bazel_tools/tools/jdk/include",
@@ -814,10 +1135,24 @@ cc_binary(
         "@bazel_tools//src/conditions:darwin": ["external/bazel_tools/tools/jdk/include/darwin"],
         "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
     }),
+    # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+        ],
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+        ],
+    }),
     linkshared = 1,
     linkstatic = 1,
     deps = [
         "//:core_worker_lib",
+        "//:src/ray/ray_exported_symbols.lds",
+        "//:src/ray/ray_version_script.lds",
+        "//streaming:jni",
     ],
 )
 
@@ -853,6 +1188,7 @@ filegroup(
         "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/dashboard/dashboard.py",
         "python/ray/experimental/*.py",
+        "python/ray/util/*.py",
         "python/ray/internal/*.py",
         "python/ray/projects/*.py",
         "python/ray/projects/schema.json",
@@ -869,15 +1205,28 @@ genrule(
         "redis-server",
         "redis-cli",
     ],
-    cmd = """
-        set -x &&
-        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
-        make &&
-        mv ./src/redis-server $(location redis-server) &&
-        chmod +x $(location redis-server) &&
-        mv ./src/redis-cli $(location redis-cli) &&
-        chmod +x $(location redis-cli)
-    """,
+    cmd = select({
+        # Windows is not supported yet, so make stubs for it
+        "@bazel_tools//src/conditions:windows": """
+            set -eu
+            for f in $(OUTS); do
+                {
+                    echo '#!/usr/bin/env bash'
+                    echo 'echo "$${0##*/} is unsupported on this platform" 1>&2 && false'
+                } > "$$f"
+                chmod +x "$$f"
+            done
+        """,
+        "//conditions:default": """
+            set -x &&
+            curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
+            make &&
+            mv ./src/redis-server $(location redis-server) &&
+            chmod +x $(location redis-server) &&
+            mv ./src/redis-cli $(location redis-cli) &&
+            chmod +x $(location redis-cli)
+        """,
+    }),
     visibility = ["//java:__subpackages__"],
 )
 
@@ -902,8 +1251,10 @@ filegroup(
     name = "all_py_proto",
     srcs = [
         "common_py_proto",
+        "core_worker_py_proto",
         "gcs_py_proto",
         "node_manager_py_proto",
+        "reporter_py_proto",
     ],
 )
 
@@ -919,6 +1270,19 @@ py_library(
 )
 
 genrule(
+    name = "cp_streaming_lib",
+    srcs = ["python/ray/streaming/_streaming.so"],
+    outs = ["cp_streaming_lib.out"],
+    cmd = """
+        set -x &&
+        WORK_DIR=$$(pwd) &&
+        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
+)
+
+genrule(
     name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
@@ -929,12 +1293,17 @@ genrule(
         "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_monitor",
+        "//:gcs_server",
         "@plasma//:plasma_store_server",
-    ],
+        "//streaming:copy_streaming_py_proto",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [],  # ignore build streaming for windows
+        "//conditions:default": [":cp_streaming_lib"],
+    }),
     outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
-        WORK_DIR=$$(pwd) &&
+        WORK_DIR="$$(pwd)" &&
         cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
@@ -944,6 +1313,7 @@ genrule(
         cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
         for f in $(locations //:all_py_proto); do
             cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";
@@ -954,6 +1324,10 @@ genrule(
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2_grpc.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2_grpc.py" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,

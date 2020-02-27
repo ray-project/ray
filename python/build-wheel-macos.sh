@@ -13,23 +13,19 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
-PY_VERSIONS=("2.7.13"
-             "3.5.3"
+PY_VERSIONS=("3.5.3"
              "3.6.1"
              "3.7.0")
-PY_INSTS=("python-2.7.13-macosx10.6.pkg"
-          "python-3.5.3-macosx10.6.pkg"
+PY_INSTS=("python-3.5.3-macosx10.6.pkg"
           "python-3.6.1-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg")
-PY_MMS=("2.7"
-        "3.5"
+PY_MMS=("3.5"
         "3.6"
         "3.7")
 
 # The minimum supported numpy version is 1.14, see
 # https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
-                "1.14.5"
                 "1.14.5"
                 "1.14.5")
 
@@ -83,6 +79,13 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q numpy==$NUMPY_VERSION cython==0.29.0
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
+    # Set the commit SHA in __init__.py.
+    if [ -n "$TRAVIS_COMMIT" ]; then
+      sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+    else
+      echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
+      exit 1
+    fi
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel

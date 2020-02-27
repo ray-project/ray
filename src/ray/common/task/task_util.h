@@ -25,16 +25,14 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
       const TaskID &task_id, const Language &language,
-      const std::vector<std::string> &function_descriptor, const JobID &job_id,
+      const ray::FunctionDescriptor &function_descriptor, const JobID &job_id,
       const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
       const rpc::Address &caller_address, uint64_t num_returns, bool is_direct_call,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_language(language);
-    for (const auto &fd : function_descriptor) {
-      message_->add_function_descriptor(fd);
-    }
+    *message_->mutable_function_descriptor() = function_descriptor->GetMessage();
     message_->set_job_id(job_id.Binary());
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
@@ -50,24 +48,33 @@ class TaskSpecBuilder {
     return *this;
   }
 
+  /// Set the driver attributes of the task spec.
+  /// See `common.proto` for meaning of the arguments.
+  ///
+  /// \return Reference to the builder object itself.
+  TaskSpecBuilder &SetDriverTaskSpec(const TaskID &task_id, const Language &language,
+                                     const JobID &job_id, const TaskID &parent_task_id,
+                                     const TaskID &caller_id,
+                                     const rpc::Address &caller_address) {
+    message_->set_type(TaskType::DRIVER_TASK);
+    message_->set_language(language);
+    message_->set_job_id(job_id.Binary());
+    message_->set_task_id(task_id.Binary());
+    message_->set_parent_task_id(parent_task_id.Binary());
+    message_->set_parent_counter(0);
+    message_->set_caller_id(caller_id.Binary());
+    message_->mutable_caller_address()->CopyFrom(caller_address);
+    message_->set_num_returns(0);
+    message_->set_is_direct_call(false);
+    return *this;
+  }
+
   /// Add a by-reference argument to the task.
   ///
   /// \param arg_id Id of the argument.
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &AddByRefArg(const ObjectID &arg_id) {
     message_->add_args()->add_object_ids(arg_id.Binary());
-    return *this;
-  }
-
-  /// Add a by-value argument to the task.
-  ///
-  /// \param data String object that contains the data.
-  /// \param metadata String object that contains the metadata.
-  /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const std::string &data, const std::string &metadata) {
-    auto arg = message_->add_args();
-    arg->set_data(data);
-    arg->set_metadata(metadata);
     return *this;
   }
 
@@ -84,6 +91,9 @@ class TaskSpecBuilder {
     if (value.HasMetadata()) {
       const auto &metadata = value.GetMetadata();
       arg->set_metadata(metadata->Data(), metadata->Size());
+    }
+    for (const auto &nested_id : value.GetNestedIds()) {
+      arg->add_nested_inlined_ids(nested_id.Binary());
     }
     return *this;
   }

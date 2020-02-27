@@ -1,3 +1,5 @@
+.. _configuring-ray:
+
 Configuring Ray
 ===============
 
@@ -5,7 +7,7 @@ This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
-.. important:: For the multi-node setting, you must first run `ray start` on the command line before ``ray.init`` in Python. On a single machine, you can run ``ray.init()`` without `ray start`.
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
 
 
 Cluster Resources
@@ -28,7 +30,7 @@ If not running cluster mode, you can specify cluster resources overrides through
   # Specifying custom resources
   ray.init(num_gpus=1, resources={'Resource1': 4, 'Resource2': 16})
 
-When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-cpus`` flags into ``ray start``. You can also specify custom resources.
+When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-gpus`` flags into ``ray start``. You can also specify custom resources.
 
 .. code-block:: bash
 
@@ -48,6 +50,14 @@ If using the command line, connect to the Ray cluster as follow:
   # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
   ray.init(address=<address>)
 
+.. note::
+    Ray sets the environment variable ``OMP_NUM_THREADS=1`` by default. This is done 
+    to avoid performance degradation with many workers (issue #6998). You can 
+    override this by explicitly setting ``OMP_NUM_THREADS``. ``OMP_NUM_THREADS`` is commonly
+    used in numpy, PyTorch, and Tensorflow to perform multit-threaded linear algebra.
+    In multi-worker setting, we want one thread per worker instead of many threads
+    per worker to avoid contention.
+    
 
 Logging and Debugging
 ---------------------
@@ -137,6 +147,13 @@ password-protected Redis ports:
 While Redis port authentication may protect against external attackers,
 Ray does not encrypt traffic between nodes so man-in-the-middle attacks are
 possible for clusters on untrusted networks.
+
+One of most common attack with Redis is port-scanning attack. Attacker scans
+open port with unprotected redis instance and execute arbitrary code. Ray
+enables a default password for redis. Even though this does not prevent brute
+force password cracking, the default password should alleviate most of the
+port-scanning attack. Furtheremore, redis and other ray services are bind
+to localhost when the ray is started using ``ray.init``.
 
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.

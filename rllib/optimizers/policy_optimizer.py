@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -11,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class PolicyOptimizer(object):
+class PolicyOptimizer:
     """Policy optimizers encapsulate distributed RL optimization strategies.
 
     Policy optimizers serve as the "control plane" of algorithms.

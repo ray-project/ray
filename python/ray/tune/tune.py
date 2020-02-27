@@ -1,16 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
-import time
 import six
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
@@ -55,6 +50,21 @@ def _check_default_resources_override(run_identifier):
         Trainable.default_resource_request.__code__)
 
 
+def _report_progress(runner, reporter, done=False):
+    """Reports experiment progress.
+
+    Args:
+        runner (TrialRunner): Trial runner to report on.
+        reporter (ProgressReporter): Progress reporter.
+        done (bool): Whether this is the last progress report attempt.
+    """
+    trials = runner.get_trials()
+    if reporter.should_report(trials, done=done):
+        sched_debug_str = runner.scheduler_alg.debug_string()
+        executor_debug_str = runner.trial_executor.debug_string()
+        reporter.report(trials, done, sched_debug_str, executor_debug_str)
+
+
 def run(run_or_experiment,
         name=None,
         stop=None,
@@ -81,6 +91,7 @@ def run(run_or_experiment,
         with_server=False,
         server_port=TuneServer.DEFAULT_PORT,
         verbose=2,
+        progress_reporter=None,
         resume=False,
         queue_trials=False,
         reuse_actors=False,
@@ -101,11 +112,14 @@ def run(run_or_experiment,
             If Experiment, then Tune will execute training based on
             Experiment.spec.
         name (str): Name of experiment.
-        stop (dict|func): The stopping criteria. If dict, the keys may be
+        stop (dict|callable): The stopping criteria. If dict, the keys may be
             any field in the return result of 'train()', whichever is
             reached first. If function, it must take (trial_id, result) as
             arguments and return a boolean (True if trial should be stopped,
-            False otherwise).
+            False otherwise). This can also be a subclass of
+            ``ray.tune.Stopper``, which allows users to implement
+            custom experiment-wide stopping (i.e., stopping an entire Tune
+            run based on some time constraint).
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.
@@ -119,8 +133,8 @@ def run(run_or_experiment,
             `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results to
-            (e.g. ``s3://bucket``).
+        upload_dir (str): Optional URI to sync training results and checkpoints
+            to (e.g. ``s3://bucket`` or ``gs://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
         loggers (list): List of logger creators to be used with
@@ -130,20 +144,20 @@ def run(run_or_experiment,
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
             provided, the sync command defaults to standard S3 or gsutil sync
-            comamnds.
-        sync_to_driver (func|str): Function for syncing trial logdir from
+            commands.
+        sync_to_driver (func|str|bool): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
-            If not provided, defaults to using rsync.
+            If True or not provided, it defaults to using rsync. If False,
+            syncing to driver is disabled.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
-        sync_on_checkpoint (bool): Force sync-down of trial checkpoint, to
-            guarantee recoverability. If set to False, checkpoint syncing from
-            worker to driver is asynchronous. Set this to False only if
-            synchronous checkpointing is too slow and trial restoration
-            failures can be tolerated. Defaults to True.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
+            driver. If set to False, checkpoint syncing from worker to driver
+            is asynchronous and best-effort. This does not affect persistent
+            storage syncing. Defaults to True.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
@@ -173,6 +187,10 @@ def run(run_or_experiment,
         server_port (int): Port number for launching TuneServer.
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
+        progress_reporter (ProgressReporter): Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
             LOCAL/True restores the checkpoint from the local_checkpoint_dir.
             REMOTE restores the checkpoint from remote_checkpoint_dir.
@@ -224,10 +242,7 @@ def run(run_or_experiment,
         experiments = run_or_experiment
     else:
         experiments = [run_or_experiment]
-    if len(experiments) > 1:
-        logger.info(
-            "Running multiple concurrent experiments is experimental and may "
-            "not work with certain features.")
+
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
             run_identifier = Experiment.register_if_needed(exp)
@@ -266,6 +281,7 @@ def run(run_or_experiment,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
+        stopper=experiments[0].stopper,
         checkpoint_period=global_checkpoint_period,
         resume=resume,
         launch_web_server=with_server,
@@ -276,10 +292,11 @@ def run(run_or_experiment,
     for exp in experiments:
         runner.add_experiment(exp)
 
-    if IS_NOTEBOOK:
-        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
-    else:
-        reporter = CLIReporter()
+    if progress_reporter is None:
+        if IS_NOTEBOOK:
+            progress_reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+        else:
+            progress_reporter = CLIReporter()
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
@@ -299,13 +316,10 @@ def run(run_or_experiment,
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
-    last_debug = 0
     while not runner.is_finished():
         runner.step()
-        if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            if verbose:
-                reporter.report(runner)
-            last_debug = time.time()
+        if verbose:
+            _report_progress(runner, progress_reporter)
 
     try:
         runner.checkpoint(force=True)
@@ -313,7 +327,7 @@ def run(run_or_experiment,
         logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
-        reporter.report(runner)
+        _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
 
@@ -331,9 +345,6 @@ def run(run_or_experiment,
     trials = runner.get_trials()
     if return_trials:
         return trials
-    logger.info("Returning an analysis object by default. You can call "
-                "`analysis.trials` to retrieve a list of trials. "
-                "This message will be removed in future versions of Tune.")
     return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
 
 
@@ -343,12 +354,13 @@ def run_experiments(experiments,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=2,
+                    progress_reporter=None,
                     resume=False,
                     queue_trials=False,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
-                    concurrent=False):
+                    concurrent=True):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -384,6 +396,7 @@ def run_experiments(experiments,
             with_server=with_server,
             server_port=server_port,
             verbose=verbose,
+            progress_reporter=progress_reporter,
             resume=resume,
             queue_trials=queue_trials,
             reuse_actors=reuse_actors,
@@ -400,6 +413,7 @@ def run_experiments(experiments,
                 with_server=with_server,
                 server_port=server_port,
                 verbose=verbose,
+                progress_reporter=progress_reporter,
                 resume=resume,
                 queue_trials=queue_trials,
                 reuse_actors=reuse_actors,

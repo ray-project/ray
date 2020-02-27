@@ -39,8 +39,7 @@ class TestEagerSupport(unittest.TestCase):
         check_support("A2C", {"num_workers": 0})
 
     def testA3C(self):
-        # TODO(ekl) trace on is flaky
-        check_support("A3C", {"num_workers": 1}, test_trace=False)
+        check_support("A3C", {"num_workers": 1})
 
     def testPG(self):
         check_support("PG", {"num_workers": 0})
@@ -61,16 +60,17 @@ class TestEagerSupport(unittest.TestCase):
                 "learning_starts": 0,
                 "num_gpus": 0,
                 "min_iter_time_s": 1,
-                "timesteps_per_iteration": 100
+                "timesteps_per_iteration": 100,
+                "optimizer": {
+                    "num_replay_buffer_shards": 1,
+                },
             })
 
     def testSAC(self):
-        check_support("SAC", {
-            "num_workers": 0,
-            "learning_starts": 0,
-            "timesteps_per_iteration": 100
-        })
+        check_support("SAC", {"num_workers": 0})
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

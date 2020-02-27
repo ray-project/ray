@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import shutil
 import gym
@@ -84,7 +80,7 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
     else:
         alg2.restore(alg1.save())
 
-    for _ in range(10):
+    for _ in range(5):
         if "DDPG" in alg_name or "SAC" in alg_name:
             obs = np.clip(
                 np.random.uniform(size=3),

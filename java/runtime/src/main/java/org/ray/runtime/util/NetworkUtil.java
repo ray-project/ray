@@ -8,12 +8,16 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.util.Enumeration;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class NetworkUtil {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(NetworkUtil.class);
+
+  private static final int MIN_PORT = 10000;
+  private static final int MAX_PORT = 65535;
 
   public static String getIpAddress(String interfaceName) {
     try {
@@ -45,6 +49,15 @@ public class NetworkUtil {
     }
 
     return "127.0.0.1";
+  }
+
+  public static int getUnusedPort() {
+    while (true) {
+      int port = ThreadLocalRandom.current().nextInt(MAX_PORT - MIN_PORT) + MIN_PORT;
+      if (isPortAvailable(port)) {
+        return port;
+      }
+    }
   }
 
   public static boolean isPortAvailable(int port) {

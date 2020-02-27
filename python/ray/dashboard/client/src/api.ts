@@ -1,6 +1,6 @@
 const base =
   process.env.NODE_ENV === "development"
-    ? "http://localhost:8080"
+    ? "http://localhost:8265"
     : window.location.origin;
 
 // TODO(mitchellstern): Add JSON schema validation for the responses.
@@ -21,6 +21,18 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
 
   return result as T;
 };
+
+export interface RayConfigResponse {
+  min_workers: number;
+  max_workers: number;
+  initial_workers: number;
+  autoscaling_mode: string;
+  idle_timeout_minutes: number;
+  head_type: string;
+  worker_type: string;
+}
+
+export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
 export interface NodeInfoResponse {
   clients: Array<{
@@ -44,7 +56,6 @@ export interface NodeInfoResponse {
     workers: Array<{
       pid: number;
       create_time: number;
-      name: string;
       cmdline: string[];
       cpu_percent: number;
       cpu_times: {
@@ -59,7 +70,6 @@ export interface NodeInfoResponse {
         vms: number;
         rss: number;
       };
-      memory_full_info: null; // Currently unused as it requires superuser permission on some systems
     }>;
   }>;
   log_counts: {
@@ -76,6 +86,55 @@ export interface NodeInfoResponse {
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
+export interface RayletInfoResponse {
+  nodes: {
+    [ip: string]: {
+      extraInfo?: string;
+      workersStats: {
+        pid: number;
+        isDriver?: boolean;
+      }[];
+    };
+  };
+  actors: {
+    [actorId: string]:
+      | {
+          actorId: string;
+          actorTitle: string;
+          averageTaskExecutionSpeed: number;
+          children: RayletInfoResponse["actors"];
+          // currentTaskFuncDesc: string[];
+          ipAddress: string;
+          isDirectCall: boolean;
+          jobId: string;
+          nodeId: string;
+          numExecutedTasks: number;
+          numLocalObjects: number;
+          numObjectIdsInScope: number;
+          pid: number;
+          port: number;
+          state: 0 | 1 | 2;
+          taskQueueLength: number;
+          timestamp: number;
+          usedObjectStoreMemory: number;
+          usedResources: { [key: string]: number };
+          currentTaskDesc?: string;
+          numPendingTasks?: number;
+          webuiDisplay?: Record<string, string>;
+        }
+      | {
+          actorId: string;
+          actorTitle: string;
+          requiredResources: { [key: string]: number };
+          state: -1;
+          invalidStateType?: "infeasibleActor" | "pendingActor";
+        };
+  };
+}
+
+export const getRayletInfo = () =>
+  get<RayletInfoResponse>("/api/raylet_info", {});
+
 export interface ErrorsResponse {
   [pid: string]: Array<{
     message: string;
@@ -84,12 +143,95 @@ export interface ErrorsResponse {
   }>;
 }
 
-export const getErrors = (hostname: string, pid: string | undefined) =>
-  get<ErrorsResponse>("/api/errors", { hostname, pid: pid || "" });
+export const getErrors = (hostname: string, pid: number | null) =>
+  get<ErrorsResponse>("/api/errors", {
+    hostname,
+    pid: pid === null ? "" : pid
+  });
 
 export interface LogsResponse {
   [pid: string]: string[];
 }
 
-export const getLogs = (hostname: string, pid: string | undefined) =>
-  get<LogsResponse>("/api/logs", { hostname, pid: pid || "" });
+export const getLogs = (hostname: string, pid: number | null) =>
+  get<LogsResponse>("/api/logs", {
+    hostname,
+    pid: pid === null ? "" : pid
+  });
+
+export type LaunchProfilingResponse = string;
+
+export const launchProfiling = (
+  nodeId: string,
+  pid: number,
+  duration: number
+) =>
+  get<LaunchProfilingResponse>("/api/launch_profiling", {
+    node_id: nodeId,
+    pid: pid,
+    duration: duration
+  });
+
+export type CheckProfilingStatusResponse =
+  | { status: "pending" }
+  | { status: "finished" }
+  | { status: "error"; error: string };
+
+export const checkProfilingStatus = (profilingId: string) =>
+  get<CheckProfilingStatusResponse>("/api/check_profiling_status", {
+    profiling_id: profilingId
+  });
+
+export const getProfilingResultURL = (profilingId: string) =>
+  `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
+    `${base}/api/get_profiling_info?profiling_id=${profilingId}`
+  )}`;
+
+export const launchKillActor = (
+  actorId: string,
+  actorIpAddress: string,
+  actorPort: number
+) =>
+  get<string>("/api/kill_actor", {
+    actor_id: actorId,
+    ip_address: actorIpAddress,
+    port: actorPort
+  });
+
+export interface TuneTrial {
+  date: string;
+  episodes_total: string;
+  experiment_id: string;
+  experiment_tag: string;
+  hostname: string;
+  iterations_since_restore: number;
+  logdir: string;
+  node_ip: string;
+  pid: number;
+  time_since_restore: number;
+  time_this_iter_s: number;
+  time_total_s: number;
+  timestamp: number;
+  timesteps_since_restore: number;
+  timesteps_total: number;
+  training_iteration: number;
+  start_time: string;
+  status: string;
+  trial_id: string;
+  job_id: string;
+  params: { [key: string]: string };
+  metrics: { [key: string]: string };
+}
+
+export interface TuneJobResponse {
+  trial_records: { [key: string]: TuneTrial };
+}
+
+export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
+
+export interface TuneAvailabilityResponse {
+  available: boolean;
+}
+
+export const getTuneAvailability = () =>
+  get<TuneAvailabilityResponse>("/api/tune_availability", {});

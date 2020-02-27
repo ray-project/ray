@@ -1,13 +1,11 @@
-Tune: A Scalable Hyperparameter Tuning Library
-==============================================
-
-.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
+Tune: Scalable Hyperparameter Tuning
+====================================
 
 .. image:: images/tune.png
     :scale: 30%
     :align: center
 
-Tune is a Python library for hyperparameter tuning at any scale. Core features:
+Tune is a Python library for experiment execution and hyperparameter tuning at any scale. Core features:
 
   * Launch a multi-node `distributed hyperparameter sweep <tune-distributed.html>`_ in less than 10 lines of code.
   * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras. See `examples here <tune-examples.html>`_.
@@ -40,7 +38,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune] torch torchvision filelock
+    $ pip install 'ray[tune]' torch torchvision
 
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
@@ -67,49 +65,7 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
     :scale: 20%
     :align: center
 
-Distributed Quick Start
------------------------
-
-1. Import and initialize Ray by appending the following to your example script.
-
-.. code-block:: python
-
-    # Append to top of your script
-    import ray
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-address")
-    args = parser.parse_args()
-    ray.init(address=args.ray_address)
-
-Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
-
-2. Download the following example Ray cluster configuration as ``tune-local-default.yaml`` and replace the appropriate fields:
-
-.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
-   :language: yaml
-
-Alternatively, download it here: :download:`tune-local-default.yaml <../../python/ray/tune/examples/tune-local-default.yaml>`. See `Ray cluster docs here <autoscaling.html>`_.
-
-3. Run ``ray submit`` like the following.
-
-.. code-block:: bash
-
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
-
-This will start Ray on all of your machines and run a distributed hyperparameter search across them.
-
-To summarize, here are the full set of commands:
-
-.. code-block:: bash
-
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-local-default.yaml
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
-
-
-Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including:
+Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for:
 
  1. Setting up distributed experiments on your local cluster
  2. Using AWS and GCP
@@ -124,7 +80,8 @@ Below are some blog posts and talks about Tune:
  - [blog] `Cutting edge hyperparameter tuning with Ray Tune <https://medium.com/riselab/cutting-edge-hyperparameter-tuning-with-ray-tune-be6c0447afdf>`_
  - [blog] `Simple hyperparameter and architecture search in tensorflow with Ray Tune <http://louiskirsch.com/ai/ray-tune>`_
  - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
- - [Talk] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
+ - [video] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
+ - [video] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://www.youtube.com/watch?v=10uz5U3Gy6E>`_ (`slides <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_)
 
 Open Source Projects using Tune
 -------------------------------
@@ -136,6 +93,7 @@ Here are some of the popular open source repositories and research projects that
  - `Population Based Augmentation <https://github.com/arcelien/pba>`_: Population Based Augmentation (PBA) is a algorithm that quickly and efficiently learns data augmentation functions for neural network training. PBA matches state-of-the-art results on CIFAR with one thousand times less compute.
  - `Fast AutoAugment by Kakao <https://github.com/kakaobrain/fast-autoaugment>`_: Fast AutoAugment (Accepted at NeurIPS 2019) learns augmentation policies using a more efficient search strategy based on density matching.
  - `Allentune <https://github.com/allenai/allentune>`_: Hyperparameter Search for AllenNLP from AllenAI.
+ - `machinable <https://github.com/frthjf/machinable>`_: A modular configuration system for machine learning research. See `machinable.org <machinable.org>`_.
 
 Citing Tune
 -----------

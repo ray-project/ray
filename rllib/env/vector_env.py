@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import numpy as np
 
@@ -11,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class VectorEnv(object):
+class VectorEnv:
     """An environment that supports batch evaluation.
 
     Subclasses must define the following attributes:

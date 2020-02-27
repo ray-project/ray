@@ -7,7 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/asio.h"
-#include "ray/gcs/gcs_client_interface.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/gcs/tables.h"
 #include "ray/util/logging.h"
 
@@ -17,18 +17,22 @@ namespace gcs {
 
 class RedisContext;
 
-class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
-  friend class ActorStateAccessor;
-  friend class SubscriptionExecutorTest;
-
+class RAY_EXPORT RedisGcsClient : public GcsClient {
  public:
   /// Constructor of RedisGcsClient.
   /// Connect() must be called(and return ok) before you call any other methods.
   /// TODO(micafan) To read and write from the GCS tables requires a further
   /// call to Connect() to the client table. Will fix this in next pr.
   ///
-  /// \param GcsClientOptions Options of client, e.g. server address, is test client ...
+  /// \param options Options of this client, e.g. server address, password and so on.
   RedisGcsClient(const GcsClientOptions &options);
+
+  /// This constructor is only used for testing.
+  /// Connect() must be called(and return ok) before you call any other methods.
+  ///
+  /// \param options Options of this client, e.g. server address, password and so on.
+  /// \param command_type The commands issued type.
+  RedisGcsClient(const GcsClientOptions &options, CommandType command_type);
 
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.
@@ -37,25 +41,15 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// Must be single-threaded io_service (get more information from RedisAsioClient).
   ///
   /// \return Status
-  Status Connect(boost::asio::io_service &io_service);
+  Status Connect(boost::asio::io_service &io_service) override;
 
   /// Disconnect with GCS Service. Non-thread safe.
-  void Disconnect();
+  void Disconnect() override;
 
-  // TODO: Some API for getting the error on the driver
-  ObjectTable &object_table();
-  raylet::TaskTable &raylet_task_table();
-  TaskReconstructionLog &task_reconstruction_log();
-  TaskLeaseTable &task_lease_table();
-  ClientTable &client_table();
-  HeartbeatTable &heartbeat_table();
-  HeartbeatBatchTable &heartbeat_batch_table();
-  ErrorTable &error_table();
-  JobTable &job_table();
-  ProfileTable &profile_table();
-  ActorCheckpointTable &actor_checkpoint_table();
-  ActorCheckpointIdTable &actor_checkpoint_id_table();
-  DynamicResourceTable &resource_table();
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const override;
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -68,18 +62,40 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
-  /// Returns debug string for class.
-  ///
-  /// \return string.
-  std::string DebugString() const;
+  /// The following xxx_table methods implement the Accessor interfaces.
+  /// Implements the Actors() interface.
+  ActorTable &actor_table();
+  ActorCheckpointTable &actor_checkpoint_table();
+  ActorCheckpointIdTable &actor_checkpoint_id_table();
+  /// Implements the Jobs() interface.
+  JobTable &job_table();
+  /// Implements the Objects() interface.
+  ObjectTable &object_table();
+  /// Implements the Nodes() interface.
+  ClientTable &client_table();
+  HeartbeatTable &heartbeat_table();
+  HeartbeatBatchTable &heartbeat_batch_table();
+  DynamicResourceTable &resource_table();
+  /// Implements the Tasks() interface.
+  raylet::TaskTable &raylet_task_table();
+  TaskLeaseTable &task_lease_table();
+  TaskReconstructionLog &task_reconstruction_log();
+  /// Implements the Errors() interface.
+  // TODO: Some API for getting the error on the driver
+  ErrorTable &error_table();
+  /// Implements the Stats() interface.
+  ProfileTable &profile_table();
+  /// Implements the Workers() interface.
+  WorkerFailureTable &worker_failure_table();
 
  private:
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
-  Status Attach(boost::asio::io_service &io_service);
+  void Attach(boost::asio::io_service &io_service);
 
-  /// Use method Actors() instead
-  ActorTable &actor_table();
+  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
+  // might be used, if available.
+  CommandType command_type_{CommandType::kUnknown};
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
@@ -94,6 +110,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
+  std::unique_ptr<WorkerFailureTable> worker_failure_table_;
   // The following contexts write to the data shard
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;

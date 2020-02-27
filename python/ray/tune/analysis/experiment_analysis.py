@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import logging
 import os
@@ -11,13 +7,17 @@ try:
 except ImportError:
     pd = None
 
+from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.error import TuneError
-from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX
+from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
+    CONFIG_PREFIX, TRAINING_ITERATION
+from ray.tune.trial import Trial
+from ray.tune.trainable import TrainableUtil
 
 logger = logging.getLogger(__name__)
 
 
-class Analysis(object):
+class Analysis:
     """Analyze all results from a directory of experiments."""
 
     def __init__(self, experiment_dir):
@@ -118,6 +118,36 @@ class Analysis(object):
             logger.warning(
                 "Couldn't read config from {} paths".format(fail_count))
         return self._configs
+
+    def get_trial_checkpoints_paths(self, trial, metric=TRAINING_ITERATION):
+        """Returns a list of [path, metric] lists for all disk checkpoints of
+         a trial.
+
+        Arguments:
+            trial(Trial): The log directory of a trial, or a trial instance.
+            metric (str): key for trial info to return, e.g. "mean_accuracy".
+                "training_iteration" is used by default.
+        """
+
+        if isinstance(trial, str):
+            trial_dir = os.path.expanduser(trial)
+
+            # get checkpoints from logdir
+            chkpt_df = TrainableUtil.get_checkpoints_paths(trial_dir)
+
+            # join with trial dataframe to get metrics
+            trial_df = self.trial_dataframes[trial_dir]
+            path_metric_df = chkpt_df.merge(
+                trial_df, on="training_iteration", how="inner")
+            return path_metric_df[["chkpt_path", metric]].values.tolist()
+        elif isinstance(trial, Trial):
+            checkpoints = trial.checkpoint_manager.best_checkpoints()
+            # TODO(ujvl): Remove condition once the checkpoint manager is
+            #  modified to only track PERSISTENT checkpoints.
+            return [[c.value, c.result[metric]] for c in checkpoints
+                    if c.storage == Checkpoint.PERSISTENT]
+        else:
+            raise ValueError("trial should be a string or a Trial instance.")
 
     def _retrieve_rows(self, metric=None, mode=None):
         assert mode is None or mode in ["max", "min"]

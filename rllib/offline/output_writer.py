@@ -1,13 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.annotations import PublicAPI
 
 
 @PublicAPI
-class OutputWriter(object):
+class OutputWriter:
     """Writer object for saving experiences from policy evaluation."""
 
     @PublicAPI

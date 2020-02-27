@@ -21,6 +21,12 @@ echo "Linting Java code with checkstyle."
 # Thus, we add the `build_tests_only` option to avoid re-building everything.
 bazel test //java:all --test_tag_filters="checkstyle" --build_tests_only
 
+echo "Build java maven deps."
+bazel build //java:gen_maven_deps
+
+echo "Build test jar."
+bazel build //java:all_tests_deploy.jar
+
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
 # TestNG will exit with code 2. And bazel treats it as test failure.
@@ -28,14 +34,11 @@ echo "Running tests under cluster mode."
 ENABLE_MULTI_LANGUAGE_TESTS=1 run_testng java -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
 
 echo "Running tests under cluster mode with direct actor call turned on."
-ENABLE_MULTI_LANGUAGE_TESTS=1 ACTOR_CREATION_OPTIONS_DEFAULT_USE_DIRECT_CALL=1 run_testng java -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
+ENABLE_MULTI_LANGUAGE_TESTS=1 DEFAULT_USE_DIRECT_CALL=1 run_testng java -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
 
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --test_output="errors" || single_exit_code=$?
 run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
-
-echo "Running streaming tests."
-run_testng java -cp $ROOT_DIR/../bazel-bin/java/streaming_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/streaming/testng.xml
 
 popd
 

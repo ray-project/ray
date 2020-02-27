@@ -1,45 +1,14 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray.worker
 from ray import profiling
 
-__all__ = ["free", "pin_object_data"]
+__all__ = ["free", "global_gc"]
 
 
-def pin_object_data(object_id):
-    """Pin the object data referenced by this object id in memory.
+def global_gc():
+    """Trigger gc.collect() on all workers in the cluster."""
 
-    The object data cannot be evicted while there exists a Python reference to
-    the object id passed to this function. In order to pin the object, we will
-    also download the object to the current node (this overhead is unavoidable
-    for now without a distributed ref counting solution).
-
-    Examples:
-        >>> x_id = f.remote()
-        >>> x_id = pin_object_id(x_id)  # x pinned, cannot be evicted
-        >>> del x_id  # x can be evicted again
-
-    Note that ray will automatically do this for objects created with
-    ray.put() already, unless you ray.put with weakref=True.
-    """
     worker = ray.worker.get_global_worker()
-
-    object_id.set_buffer_ref(
-        worker.core_worker.get_objects([object_id], worker.current_task_id))
-
-
-def unpin_object_data(object_id):
-    """Unpin an object pinned by pin_object_id.
-
-    Examples:
-        >>> x_id = f.remote()
-        >>> pin_object_id(x_id)
-        >>> unpin_object_id(x_id)  # as if the pin didn't happen
-    """
-
-    object_id.set_buffer_ref(None)
+    worker.core_worker.global_gc()
 
 
 def free(object_ids, local_only=False, delete_creating_tasks=False):
@@ -81,7 +50,6 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Attempting to call `free` on the value {}, "
                             "which is not an ray.ObjectID.".format(object_id))
-        unpin_object_data(object_id)
 
     if ray.worker._mode() == ray.worker.LOCAL_MODE:
         worker.local_mode_manager.free(object_ids)

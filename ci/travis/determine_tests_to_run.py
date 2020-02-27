@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 import subprocess
 import sys
 from functools import partial
@@ -33,16 +34,19 @@ if __name__ == "__main__":
 
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_RLLIB_AFFECTED = 0
+    RAY_CI_RLLIB_FULL_AFFECTED = 0
     RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
     RAY_CI_MACOS_WHEELS_AFFECTED = 0
+    RAY_CI_STREAMING_CPP_AFFECTED = 0
+    RAY_CI_STREAMING_PYTHON_AFFECTED = 0
+    RAY_CI_STREAMING_JAVA_AFFECTED = 0
 
     if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
 
-        files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"].replace(
-            "...", ".."))
+        files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"])
 
         print(pformat(files), file=sys.stderr)
 
@@ -51,16 +55,18 @@ if __name__ == "__main__":
         ]
 
         for changed_file in files:
-            if changed_file.startswith("python/ray/tune/"):
+            if changed_file.startswith("python/ray/tune"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_FULL_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/rllib/"):
+            elif re.match("^(python/ray/)?rllib/", changed_file):
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_FULL_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/experimental/serve"):
+            elif changed_file.startswith("python/ray/serve"):
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -71,8 +77,10 @@ if __name__ == "__main__":
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif any(
                     changed_file.startswith(prefix)
                     for prefix in skip_prefix_list):
@@ -86,6 +94,17 @@ if __name__ == "__main__":
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+                RAY_CI_STREAMING_CPP_AFFECTED = 1
+                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
+            elif changed_file.startswith("streaming/src"):
+                RAY_CI_STREAMING_CPP_AFFECTED = 1
+                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
+            elif changed_file.startswith("streaming/python"):
+                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+            elif changed_file.startswith("streaming/java"):
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             else:
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
@@ -94,20 +113,29 @@ if __name__ == "__main__":
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+                RAY_CI_STREAMING_CPP_AFFECTED = 1
+                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
     else:
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
+        RAY_CI_RLLIB_FULL_AFFECTED = 1
         RAY_CI_SERVE_AFFECTED = 1
         RAY_CI_JAVA_AFFECTED = 1
         RAY_CI_PYTHON_AFFECTED = 1
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
+        RAY_CI_STREAMING_CPP_AFFECTED = 1
+        RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+        RAY_CI_STREAMING_JAVA_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
     for output_stream in [sys.stdout, sys.stderr]:
         _print = partial(print, file=output_stream)
         _print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
         _print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
+        _print("export RAY_CI_RLLIB_FULL_AFFECTED={}".format(
+            RAY_CI_RLLIB_FULL_AFFECTED))
         _print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
         _print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
         _print(
@@ -116,3 +144,9 @@ if __name__ == "__main__":
                .format(RAY_CI_LINUX_WHEELS_AFFECTED))
         _print("export RAY_CI_MACOS_WHEELS_AFFECTED={}"
                .format(RAY_CI_MACOS_WHEELS_AFFECTED))
+        _print("export RAY_CI_STREAMING_CPP_AFFECTED={}"
+               .format(RAY_CI_STREAMING_CPP_AFFECTED))
+        _print("export RAY_CI_STREAMING_PYTHON_AFFECTED={}"
+               .format(RAY_CI_STREAMING_PYTHON_AFFECTED))
+        _print("export RAY_CI_STREAMING_JAVA_AFFECTED={}"
+               .format(RAY_CI_STREAMING_JAVA_AFFECTED))

@@ -10,16 +10,11 @@ cdef class Buffer:
     """Cython wrapper class of C++ `ray::Buffer`.
 
     This class implements the Python 'buffer protocol', which allows
-    us to use it for calls into pyarrow (and other Python libraries
-    down the line) without having to copy the data.
+    us to use it for calls into Python libraries without having to
+    copy the data.
 
     See https://docs.python.org/3/c-api/buffer.html for details.
     """
-    cdef:
-        shared_ptr[CBuffer] buffer
-        Py_ssize_t shape
-        Py_ssize_t strides
-
     @staticmethod
     cdef make(const shared_ptr[CBuffer]& buffer):
         cdef Buffer self = Buffer.__new__(Buffer)

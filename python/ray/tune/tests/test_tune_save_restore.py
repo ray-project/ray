@@ -1,8 +1,4 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import pickle
 import shutil
@@ -51,6 +47,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         _register_all()
 
     def _get_trial_dir(self, absoulte_exp_dir):
+        print("looking for", self.MockTrainable._name)
+        print("in", os.listdir(absoulte_exp_dir))
         trial_dirname = next(
             (child_dir for child_dir in os.listdir(absoulte_exp_dir)
              if (os.path.isdir(os.path.join(absoulte_exp_dir, child_dir))

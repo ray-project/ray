@@ -74,7 +74,9 @@ class BaseID {
 
  protected:
   BaseID(const std::string &binary) {
-    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), T::Size());
+    RAY_CHECK(binary.size() == Size() || binary.size() == 0)
+        << "expected size is " << Size() << ", but got " << binary.size();
+    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), binary.size());
   }
   // All IDs are immutable for hash evaluations. MutableData is only allow to use
   // in construction time, so this function is protected.
@@ -99,9 +101,9 @@ class UniqueID : public BaseID<UniqueID> {
 
 class JobID : public BaseID<JobID> {
  public:
-  static constexpr int64_t kLength = 4;
+  static constexpr int64_t kLength = 2;
 
-  static JobID FromInt(uint32_t value);
+  static JobID FromInt(uint16_t value);
 
   static size_t Size() { return kLength; }
 
@@ -161,7 +163,7 @@ class ActorID : public BaseID<ActorID> {
 
 class TaskID : public BaseID<TaskID> {
  private:
-  static constexpr size_t kUniqueBytesLength = 6;
+  static constexpr size_t kUniqueBytesLength = 8;
 
  public:
   static constexpr size_t kLength = kUniqueBytesLength + ActorID::kLength;
@@ -389,7 +391,9 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
                                                                                \
    private:                                                                    \
     explicit type(const std::string &binary) {                                 \
-      std::memcpy(&id_, binary.data(), kUniqueIDSize);                         \
+      RAY_CHECK(binary.size() == Size() || binary.size() == 0)                 \
+          << "expected size is " << Size() << ", but got " << binary.size();   \
+      std::memcpy(&id_, binary.data(), binary.size());                         \
     }                                                                          \
   };
 
@@ -416,10 +420,10 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size())
+  RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
       << "expected size is " << T::Size() << ", but got " << binary.size();
   T t = T::Nil();
-  std::memcpy(t.MutableData(), binary.data(), T::Size());
+  std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;
 }
 

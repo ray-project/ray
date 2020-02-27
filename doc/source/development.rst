@@ -1,35 +1,38 @@
 Development Tips
 ================
 
+**Note:** Unless otherwise stated, directory and file paths are relative to the
+project root directory.
+
 Compilation
 -----------
 
-To speed up compilation, be sure to install Ray with
+To speed up compilation, be sure to install Ray with the following commands:
 
 .. code-block:: shell
 
- cd ray/python
+ cd python
  pip install -e . --verbose
 
 The ``-e`` means "editable", so changes you make to files in the Ray
 directory will take effect without reinstalling the package. In contrast, if
 you do ``python setup.py install``, files will be copied from the Ray
 directory to a directory of Python packages (often something like
-``/home/ubuntu/anaconda3/lib/python3.6/site-packages/ray``). This means that
+``$HOME/anaconda3/lib/python3.6/site-packages/ray``). This means that
 changes you make to files in the Ray directory will not have any effect.
 
 If you run into **Permission Denied** errors when running ``pip install``,
 you can try adding ``--user``. You may also need to run something like ``sudo
-chown -R $USER /home/ubuntu/anaconda3`` (substituting in the appropriate
-path).
+chown -R $USER $HOME/anaconda3`` (substituting in the appropriate path).
 
-If you make changes to the C++ or Python files, you will need to run the build so C++ code is recompiled and/or Python files are redeployed in `ray/python`.
-However, you do not need to rerun ``pip install -e .``. Instead, you can
-recompile much more quickly by doing
+If you make changes to the C++ or Python files, you will need to run the 
+build so C++ code is recompiled and/or Python files are redeployed in 
+the ``python`` directory. However, you do not need to rerun 
+``pip install -e .``. Instead, you can recompile much more quickly by running
+the following:
 
 .. code-block:: shell
 
- cd ray
  bash build.sh
 
 This command is not enough to recompile all C++ unit tests. To do so, see
@@ -134,40 +137,148 @@ This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
 
 Testing locally
 ---------------
-Suppose that one of the tests (e.g., ``test_basic.py``) is failing. You can run
-that test locally by running ``python -m pytest -v python/ray/tests/test_basic.py``. However, doing so will run all of the tests which can take a while. To run a specific test that is
-failing, you can do
+
+Testing for Python development
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Suppose that one of the tests in a file of tests, e.g., 
+``python/ray/tests/test_basic.py``, is failing. You can run just that
+test file locally as follows:
 
 .. code-block:: shell
 
- cd ray
+ python -m pytest -v python/ray/tests/test_basic.py
+
+However, this will run all of the tests in the file, which can take some
+time. To run a specific test that is failing, you can do the following
+instead:
+
+.. code-block:: shell
+
  python -m pytest -v python/ray/tests/test_basic.py::test_keyword_args
 
 When running tests, usually only the first test failure matters. A single
 test failure often triggers the failure of subsequent tests in the same
-script.
+file.
+
+Testing for C++ development
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To compile and run all C++ tests, you can run:
 
 .. code-block:: shell
 
- cd ray
  bazel test $(bazel query 'kind(cc_test, ...)')
 
+Alternatively, you can also run one specific C++ test. You can use:
 
-Linting
--------
+.. code-block:: shell
 
-**Running linter locally:** To run the Python linter on a specific file, run
-something like ``flake8 ray/python/ray/worker.py``. You may need to first run
-``pip install flake8``.
+ bazel test $(bazel query 'kind(cc_test, ...)') --test_filter=ClientConnectionTest --test_output=streamed
+
+
+Building the Docs
+-----------------
+
+If you make changes that require documentation changes, don't forget to 
+update the documentation!
+
+When you make documentation changes, build them locally to verify they render
+correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentation.
+
+.. code-block:: shell
+
+ cd doc
+ pip install -r requirements-doc.txt 
+ make html
+
+Once done, the docs will be in ``doc/_build/html``. For example, on Mac 
+OSX, you can open the docs (assuming you are still in the ``doc`` 
+directory) using ``open _build/html/index.html``.
+ 
+
+Creating a pull request
+-----------------------
+
+To create a pull request (PR) for your change, first go through the
+`PR template`_ checklist and ensure you've completed all the steps.
+
+When you push changes to GitHub, the formatting and verification script 
+``ci/travis/format.sh`` is run first. For pushing to your fork, you can
+skip this step with ``git push --no-verify``.
+
+Before submitting the PR, you should run this script. If it fails, the
+push operation will not proceed. This script requires *specific versions*
+of the following tools. Installation commands are shown for convenience:
+
+* `yapf <https://github.com/google/yapf>`_ version ``0.23.0`` (``pip install yapf==0.23.0``)
+* `flake8 <https://flake8.pycqa.org/en/latest/>`_ version ``3.7.7`` (``pip install flake8==3.7.7``)
+* `flake8-quotes <https://github.com/zheller/flake8-quotes>`_ (``pip install flake8-quotes``)
+* `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``7.0.0`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
+
+**Note:** On MacOS X, don't use HomeBrew to install ``clang-format``, as the only version available is too new.
+
+The Ray project automatically runs continuous integration (CI) tests once a PR
+is opened using `Travis-CI <https://travis-ci.com/ray-project/ray/>`_ with 
+multiple CI test jobs.
+
+
+Understand CI test jobs
+-----------------------
+
+The `Travis CI`_ test folder contains all integration test scripts and they
+invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
+scripts. Some of the examples include:
+
+* Raylet integration tests commands:
+    * ``src/ray/test/run_core_worker_tests.sh``
+    * ``src/ray/test/run_object_manager_tests.sh``
+
+* Bazel test command:
+    * ``bazel test --build_tests_only //:all``
+
+* Ray serving test commands:
+    * ``python -m pytest python/ray/serve/tests``
+    * ``python python/ray/serve/examples/echo_full.py``
+
+If a Travis-CI build exception doesn't appear to be related to your change,
+please visit `this link <https://ray-travis-tracker.herokuapp.com/>`_ to 
+check recent tests known to be flaky.
+
+
+Format and Linting
+------------------
+
+Installation instructions for the tools mentioned here are discussed above in
+`Creating a pull request`_.
+
+**Running the linter locally:** To run the Python linter on a specific file, run
+``flake8`` as in this example, ``flake8 python/ray/worker.py``. 
 
 **Autoformatting code**. We use `yapf <https://github.com/google/yapf>`_ for
-linting, and the config file is located at ``.style.yapf``. We recommend
-running ``scripts/yapf.sh`` prior to pushing to format changed files.
-Note that some projects such as dataframes and rllib are currently excluded.
+linting. The config file is ``.style.yapf``. We recommend running
+``scripts/yapf.sh`` prior to pushing a PR to format any changed files. Note 
+that some projects, such as dataframes and rllib, are currently excluded.
 
+**Running CI linter:** The Travis CI linter script has multiple components to
+run. We recommend running ``ci/travis/format.sh``, which runs both linters for
+Python and C++ codes. In addition, there are other formatting checkers for
+components like the following:
+
+* Python REAME format:
+
+.. code-block:: shell
+
+    cd python
+    python setup.py check --restructuredtext --strict --metadata
+
+* Bazel format:
+
+.. code-block:: shell
+
+    ./ci/travis/bazel-format.sh
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
 .. _`Temporary Files`: http://ray.readthedocs.io/en/latest/tempfile.html
+.. _`PR template`: https://github.com/ray-project/ray/blob/master/.github/PULL_REQUEST_TEMPLATE.md
+.. _`Travis CI`: https://github.com/ray-project/ray/tree/master/ci/travis

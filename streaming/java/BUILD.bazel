@@ -1,0 +1,226 @@
+load("//bazel:ray.bzl", "define_java_module")
+load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+
+exports_files([
+    "testng.xml",
+])
+
+all_modules = [
+    "streaming-api",
+    "streaming-runtime",
+]
+
+java_import(
+    name = "all_modules",
+    jars = [
+        "liborg_ray_ray_" + module + ".jar"
+        for module in all_modules
+    ] + [
+        "liborg_ray_ray_" + module + "-src.jar"
+        for module in all_modules
+    ] + [
+        "all_streaming_tests_deploy.jar",
+        "all_streaming_tests_deploy-src.jar",
+    ],
+    deps = [
+        ":org_ray_ray_" + module
+        for module in all_modules
+    ] + [
+        ":all_streaming_tests",
+    ],
+)
+
+define_java_module(
+    name = "streaming-api",
+    define_test_lib = True,
+    test_deps = [
+        "//java:org_ray_ray_api",
+        ":org_ray_ray_streaming-api",
+        "@ray_streaming_maven//:com_google_guava_guava",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
+        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
+        "@ray_streaming_maven//:org_testng_testng",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@ray_streaming_maven//:com_google_guava_guava",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
+        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
+    ],
+)
+
+# `//streaming:streaming_java` will be located in jar `streaming` directory,
+# but we need it located in jar root path.
+# resource_strip_prefix = "streaming" will make other resources file located in wrong path.
+# So we copy libs explicitly to remove `streaming` path.
+filegroup(
+    name = "java_native_deps",
+    srcs = [":streaming_java"],
+)
+
+filegroup(
+    name = "streaming_java",
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [":streaming_java_darwin"],
+        "//conditions:default": [":streaming_java_linux"],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "streaming_java_darwin",
+    srcs = ["//streaming:libstreaming_java.so"],
+    outs = ["libstreaming_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+genrule(
+    name = "streaming_java_linux",
+    srcs = ["//streaming:libstreaming_java.so"],
+    outs = ["libstreaming_java.so"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+define_java_module(
+    name = "streaming-runtime",
+    additional_resources = [
+        ":java_native_deps",
+    ],
+    additional_srcs = [
+        ":all_java_proto",
+    ],
+    define_test_lib = True,
+    exclude_srcs = [
+        "streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/*.java",
+    ],
+    test_deps = [
+        "//java:org_ray_ray_api",
+        "//java:org_ray_ray_runtime",
+        ":org_ray_ray_streaming-api",
+        ":org_ray_ray_streaming-runtime",
+        "@ray_streaming_maven//:com_google_guava_guava",
+        "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
+        "@ray_streaming_maven//:org_aeonbits_owner_owner",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
+        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
+        "@ray_streaming_maven//:org_testng_testng",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":org_ray_ray_streaming-api",
+        "//java:org_ray_ray_api",
+        "//java:org_ray_ray_runtime",
+        "@ray_streaming_maven//:com_github_davidmoten_flatbuffers_java",
+        "@ray_streaming_maven//:com_google_guava_guava",
+        "@ray_streaming_maven//:com_google_protobuf_protobuf_java",
+        "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@ray_streaming_maven//:org_aeonbits_owner_owner",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
+        "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
+    ],
+)
+
+java_binary(
+    name = "all_streaming_tests",
+    args = ["streaming/java/testng.xml"],
+    data = ["testng.xml"],
+    main_class = "org.testng.TestNG",
+    runtime_deps = [
+        ":org_ray_ray_streaming-api_test",
+        ":org_ray_ray_streaming-runtime",
+        ":org_ray_ray_streaming-runtime_test",
+        "//java:org_ray_ray_runtime",
+        "@ray_streaming_maven//:com_beust_jcommander",
+        "@ray_streaming_maven//:org_testng_testng",
+    ],
+)
+
+# proto buffer
+java_proto_compile(
+    name = "streaming_java_proto",
+    deps = ["//streaming:streaming_proto"],
+)
+
+java_proto_compile(
+    name = "remote_call_java_proto",
+    deps = ["//streaming:remote_call_proto"],
+)
+
+filegroup(
+    name = "all_java_proto",
+    srcs = [
+        ":remote_call_java_proto",
+        ":streaming_java_proto",
+    ],
+)
+
+genrule(
+    name = "copy_pom_file",
+    srcs = [
+        "//streaming/java:org_ray_ray_" + module + "_pom"
+        for module in all_modules
+    ],
+    outs = ["copy_pom_file.out"],
+    cmd = """
+        set -x
+        WORK_DIR="$$(pwd)"
+        cp -f $(location //streaming/java:org_ray_ray_streaming-api_pom) "$$WORK_DIR/streaming/java/streaming-api/pom.xml"
+        cp -f $(location //streaming/java:org_ray_ray_streaming-runtime_pom) "$$WORK_DIR/streaming/java/streaming-runtime/pom.xml"
+        date > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
+genrule(
+    name = "cp_java_generated",
+    srcs = [
+        ":all_java_proto",
+        ":copy_pom_file",
+    ],
+    outs = ["cp_java_generated.out"],
+    cmd = """
+        set -x
+        WORK_DIR="$$(pwd)"
+        GENERATED_DIR="$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated"
+        rm -rf "$$GENERATED_DIR"
+        mkdir -p "$$GENERATED_DIR"
+        # Copy protobuf-generated files.
+        for f in $(locations //streaming/java:all_java_proto); do
+            unzip -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
+        done
+        date > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
+# Generates the dependencies needed by maven.
+genrule(
+    name = "gen_maven_deps",
+    srcs = [
+        ":java_native_deps",
+        ":cp_java_generated",
+    ],
+    outs = ["gen_maven_deps.out"],
+    cmd = """
+        set -x
+        WORK_DIR="$$(pwd)"
+        # Copy native dependencies.
+        NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/"
+        rm -rf "$$NATIVE_DEPS_DIR"
+        mkdir -p "$$NATIVE_DEPS_DIR"
+        for f in $(locations //streaming/java:java_native_deps); do
+            chmod +w "$$f"
+            cp "$$f" "$$NATIVE_DEPS_DIR"
+        done
+        date > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+    visibility = ["//visibility:public"],
+)

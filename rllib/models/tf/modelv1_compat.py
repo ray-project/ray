@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import copy
 import logging
 import numpy as np
 
@@ -10,7 +7,6 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.debug import log_once
 from ray.rllib.utils.tf_ops import scope_vars
 
 tf = try_import_tf()
@@ -128,19 +124,29 @@ def make_v1_wrapper(legacy_model_cls):
                     # Create a new separate model with no RNN state, etc.
                     branch_model_config = self.model_config.copy()
                     branch_model_config["free_log_std"] = False
+                    obs_space_vf = self.obs_space
+
                     if branch_model_config["use_lstm"]:
                         branch_model_config["use_lstm"] = False
-                        if log_once("vf_warn"):
-                            logger.warning(
-                                "It is not recommended to use a LSTM model "
-                                "with vf_share_layers=False (consider setting "
-                                "it to True). If you want to not share "
-                                "layers, you can implement a custom LSTM "
-                                "model that overrides the value_function() "
-                                "method.")
+                        logger.warning(
+                            "It is not recommended to use an LSTM model "
+                            "with the `vf_share_layers=False` option. "
+                            "If you want to use separate policy- and vf-"
+                            "networks with LSTMs, you can implement a custom "
+                            "LSTM model that overrides the value_function() "
+                            "method. "
+                            "NOTE: Your policy- and vf-NNs will use the same "
+                            "shared LSTM!")
+                        # Remove original space from obs-space not to trigger
+                        # preprocessing (input to vf-NN is already vectorized
+                        # LSTM output).
+                        obs_space_vf = copy.copy(self.obs_space)
+                        if hasattr(obs_space_vf, "original_space"):
+                            delattr(obs_space_vf, "original_space")
+
                     branch_instance = self.legacy_model_cls(
                         self.cur_instance.input_dict,
-                        self.obs_space,
+                        obs_space_vf,
                         self.action_space,
                         1,
                         branch_model_config,

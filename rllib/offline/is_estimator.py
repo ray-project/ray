@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
 from ray.rllib.utils.annotations import override
@@ -11,9 +7,6 @@ class ImportanceSamplingEstimator(OffPolicyEstimator):
     """The step-wise IS estimator.
 
     Step-wise IS estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
-
-    def __init__(self, policy, gamma):
-        OffPolicyEstimator.__init__(self, policy, gamma)
 
     @override(OffPolicyEstimator)
     def estimate(self, batch):

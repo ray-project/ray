@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
-import org.ray.api.id.UniqueId;
 
 /**
  * RayActor implementation for local mode.
@@ -33,11 +32,6 @@ public class LocalModeRayActor implements RayActor, Externalizable {
   @Override
   public ActorId getId() {
     return actorId;
-  }
-
-  @Override
-  public UniqueId getHandleId() {
-    return UniqueId.NIL;
   }
 
   public ObjectId exchangePreviousActorTaskDummyObjectId(ObjectId previousActorTaskDummyObjectId) {

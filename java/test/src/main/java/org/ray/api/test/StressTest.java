@@ -17,7 +17,7 @@ public class StressTest extends BaseTest {
     return x;
   }
 
-  @Test
+  @Test(enabled = false)
   public void testSubmittingTasks() {
     TestUtils.skipTestUnderSingleProcess();
     for (int numIterations : ImmutableList.of(1, 10, 100, 1000)) {
@@ -27,6 +27,7 @@ public class StressTest extends BaseTest {
         for (int j = 0; j < numTasks; j++) {
           resultIds.add(Ray.call(StressTest::echo, 1).getId());
         }
+
         for (Integer result : Ray.<Integer>get(resultIds)) {
           Assert.assertEquals(result, Integer.valueOf(1));
         }
@@ -34,13 +35,14 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test
+  @Test(enabled = false)
   public void testDependency() {
     TestUtils.skipTestUnderSingleProcess();
     RayObject<Integer> x = Ray.call(StressTest::echo, 1);
     for (int i = 0; i < 1000; i++) {
       x = Ray.call(StressTest::echo, x);
     }
+
     Assert.assertEquals(x.get(), Integer.valueOf(1));
   }
 
@@ -72,8 +74,8 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test(groups = {"directCall"})
-  public void testSubmittingManyTasksToOneActor() {
+  @Test(enabled = false)
+  public void testSubmittingManyTasksToOneActor() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Actor> actor = Ray.createActor(Actor::new);
     List<ObjectId> objectIds = new ArrayList<>();
@@ -81,12 +83,13 @@ public class StressTest extends BaseTest {
       RayActor<Worker> worker = Ray.createActor(Worker::new, actor);
       objectIds.add(Ray.call(Worker::ping, worker, 100).getId());
     }
+
     for (Integer result : Ray.<Integer>get(objectIds)) {
       Assert.assertEquals(result, Integer.valueOf(100));
     }
   }
 
-  @Test
+  @Test(enabled = false)
   public void testPuttingAndGettingManyObjects() {
     TestUtils.skipTestUnderSingleProcess();
     Integer objectToPut = 1;
@@ -94,6 +97,7 @@ public class StressTest extends BaseTest {
     for (int i = 0; i < 100_000; i++) {
       objects.add(Ray.put(objectToPut));
     }
+
     for (RayObject<Integer> object : objects) {
       Assert.assertEquals(object.get(), objectToPut);
     }

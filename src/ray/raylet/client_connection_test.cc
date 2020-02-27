@@ -6,6 +6,11 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#if !defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+#include <sys/socket.h>
+#include <sys/types.h>
+#endif
+
 #include "ray/common/client_connection.h"
 
 namespace ray {
@@ -15,7 +20,14 @@ class ClientConnectionTest : public ::testing::Test {
  public:
   ClientConnectionTest()
       : io_service_(), in_(io_service_), out_(io_service_), error_message_type_(1) {
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
     boost::asio::local::connect_pair(in_, out_);
+#else
+    int pair[2] = {};  // TODO(mehrdadn): This should be type SOCKET for Windows
+    RAY_CHECK(socketpair(AF_INET, SOCK_STREAM, 0, pair) == 0);
+    in_.assign(local_stream_protocol::v4(), pair[0]);
+    out_.assign(local_stream_protocol::v4(), pair[1]);
+#endif
   }
 
   ray::Status WriteBadMessage(std::shared_ptr<ray::LocalClientConnection> conn,
@@ -31,8 +43,8 @@ class ClientConnectionTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  boost::asio::local::stream_protocol::socket in_;
-  boost::asio::local::stream_protocol::socket out_;
+  local_stream_protocol::socket in_;
+  local_stream_protocol::socket out_;
   int64_t error_message_type_;
 };
 
@@ -40,10 +52,10 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
-  ClientHandler<boost::asio::local::stream_protocol> client_handler =
+  ClientHandler<local_stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> message_handler =
+  MessageHandler<local_stream_protocol> message_handler =
       [&arr, &num_messages](std::shared_ptr<LocalClientConnection> client,
                             int64_t message_type, const uint8_t *message) {
         ASSERT_TRUE(!std::memcmp(arr, message, 5));
@@ -70,16 +82,16 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   const uint8_t msg3[5] = {8, 8, 8, 8, 8};
   int num_messages = 0;
 
-  ClientHandler<boost::asio::local::stream_protocol> client_handler =
+  ClientHandler<local_stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+  MessageHandler<local_stream_protocol> noop_handler =
       [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
          const uint8_t *message) {};
 
   std::shared_ptr<LocalClientConnection> reader = NULL;
 
-  MessageHandler<boost::asio::local::stream_protocol> message_handler =
+  MessageHandler<local_stream_protocol> message_handler =
       [&msg1, &msg2, &msg3, &num_messages, &reader](
           std::shared_ptr<LocalClientConnection> client, int64_t message_type,
           const uint8_t *message) {
@@ -117,10 +129,10 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
 TEST_F(ClientConnectionTest, SimpleAsyncError) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
 
-  ClientHandler<boost::asio::local::stream_protocol> client_handler =
+  ClientHandler<local_stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+  MessageHandler<local_stream_protocol> noop_handler =
       [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
          const uint8_t *message) {};
 
@@ -139,10 +151,10 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
 TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
 
-  ClientHandler<boost::asio::local::stream_protocol> client_handler =
+  ClientHandler<local_stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> noop_handler =
+  MessageHandler<local_stream_protocol> noop_handler =
       [](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
          const uint8_t *message) {};
 
@@ -162,10 +174,10 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
-  ClientHandler<boost::asio::local::stream_protocol> client_handler =
+  ClientHandler<local_stream_protocol> client_handler =
       [](LocalClientConnection &client) {};
 
-  MessageHandler<boost::asio::local::stream_protocol> message_handler =
+  MessageHandler<local_stream_protocol> message_handler =
       [&arr, &num_messages](std::shared_ptr<LocalClientConnection> client,
                             int64_t message_type, const uint8_t *message) {
         ASSERT_TRUE(!std::memcmp(arr, message, 5));

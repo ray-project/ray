@@ -64,14 +64,10 @@ cdef class TaskSpec:
         """Return the parent counter of this task."""
         return self.task_spec.get().ParentCounter()
 
-    def function_descriptor_list(self):
+    def function_descriptor(self):
         """Return the function descriptor for this task."""
-        cdef c_vector[c_string] function_descriptor = (
+        return CFunctionDescriptorToPython(
             self.task_spec.get().FunctionDescriptor())
-        results = []
-        for i in range(function_descriptor.size()):
-            results.append(function_descriptor[i])
-        return results
 
     def arguments(self):
         """Return the arguments for the task."""
@@ -95,8 +91,6 @@ cdef class TaskSpec:
                         :self.task_spec.get().ArgMetadataSize(i)]
                     if metadata == RAW_BUFFER_METADATA:
                         obj = data
-                    elif metadata == PICKLE_BUFFER_METADATA:
-                        obj = pickle.loads(data)
                     else:
                         obj = data
                     arg_list.append(obj)

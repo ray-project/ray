@@ -10,7 +10,7 @@ DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 
-cdef extern from "arrow/util/memory.h" namespace "arrow::internal" nogil:
+cdef extern from "ray/util/memory.h" namespace "ray" nogil:
     void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
                           uintptr_t block_size, int num_threads)
 
@@ -97,6 +97,10 @@ cdef class SubBuffer:
         The buffer size in bytes.
         """
         return self.len
+
+    @property
+    def readonly(self):
+        return self.readonly
 
     def tobytes(self):
         """
@@ -212,7 +216,9 @@ cdef class Pickle5Writer:
                                    cpython.PyBUF_FULL_RO)
         buffer.set_length(view.len)
         buffer.set_ndim(view.ndim)
-        buffer.set_readonly(view.readonly)
+        # It should be 'view.readonly'. But for the sake of shared memory,
+        # we have to make it immutable.
+        buffer.set_readonly(1)
         buffer.set_itemsize(view.itemsize)
         if view.format:
             buffer.set_format(view.format)

@@ -1,9 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+import logging
+from os.path import dirname
 import sys
+
+logger = logging.getLogger(__name__)
 
 # MUST add pickle5 to the import path because it will be imported by some
 # raylet modules.
@@ -13,29 +13,32 @@ if "pickle5" in sys.modules:
                       "requires a specific version of pickle5 (which is "
                       "packaged along with Ray).")
 
+if "OMP_NUM_THREADS" not in os.environ:
+    logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+                 "degradation with many workers (issue #6998). You can "
+                 "override this by explicitly setting OMP_NUM_THREADS.")
+    os.environ["OMP_NUM_THREADS"] = "1"
+
 # Add the directory containing pickle5 to the Python path so that we find the
 # pickle5 version packaged with ray and not a pre-existing pickle5.
 pickle5_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
 sys.path.insert(0, pickle5_path)
 
-# MUST import ray._raylet before pyarrow to initialize some global variables.
-# It seems the library related to memory allocation in pyarrow will destroy the
-# initialization of grpc if we import pyarrow at first.
-# NOTE(JoeyJiang): See https://github.com/ray-project/ray/issues/5219 for more
-# details.
+# Importing psutil & setproctitle. Must be before ray._raylet is initialized.
+thirdparty_files = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
+sys.path.insert(0, thirdparty_files)
+
+# Expose ray ABI symbols which may be dependent by other shared
+# libraries such as _streaming.so. See BUILD.bazel:_raylet
+so_path = os.path.join(dirname(__file__), "_raylet.so")
+if os.path.exists(so_path):
+    import ctypes
+    from ctypes import CDLL
+    CDLL(so_path, ctypes.RTLD_GLOBAL)
+
 import ray._raylet  # noqa: E402
-
-if "pyarrow" in sys.modules:
-    raise ImportError("Ray must be imported before pyarrow because Ray "
-                      "requires a specific version of pyarrow (which is "
-                      "packaged along with Ray).")
-
-# Add the directory containing pyarrow to the Python path so that we find the
-# pyarrow version packaged with ray and not a pre-existing pyarrow.
-pyarrow_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "pyarrow_files")
-sys.path.insert(0, pyarrow_path)
 
 # See https://github.com/ray-project/ray/issues/131.
 helpful_message = """
@@ -44,37 +47,6 @@ If you are using Anaconda, try fixing this problem by running:
 
     conda install libgcc
 """
-
-try:
-    import pyarrow  # noqa: F401
-
-    # pyarrow is not imported inside of _raylet because of the issue described
-    # above. In order for Cython to compile _raylet, pyarrow is set to None
-    # in _raylet instead, so we give _raylet a real reference to it here.
-    # We first do the attribute checks here so that building the documentation
-    # succeeds without fully installing ray..
-    # TODO(edoakes): Fix this.
-    if hasattr(ray, "_raylet") and hasattr(ray._raylet, "pyarrow"):
-        ray._raylet.pyarrow = pyarrow
-except ImportError as e:
-    if ((hasattr(e, "msg") and isinstance(e.msg, str)
-         and ("libstdc++" in e.msg or "CXX" in e.msg))):
-        # This code path should be taken with Python 3.
-        e.msg += helpful_message
-    elif (hasattr(e, "message") and isinstance(e.message, str)
-          and ("libstdc++" in e.message or "CXX" in e.message)):
-        # This code path should be taken with Python 2.
-        condition = (hasattr(e, "args") and isinstance(e.args, tuple)
-                     and len(e.args) == 1 and isinstance(e.args[0], str))
-        if condition:
-            e.args = (e.args[0] + helpful_message, )
-        else:
-            if not hasattr(e, "args"):
-                e.args = ()
-            elif not isinstance(e.args, tuple):
-                e.args = (e.args, )
-            e.args += (helpful_message, )
-    raise
 
 from ray._raylet import (
     ActorCheckpointID,
@@ -88,12 +60,13 @@ from ray._raylet import (
     ObjectID,
     TaskID,
     UniqueID,
+    Language,
 )  # noqa: E402
 
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
-from ray.state import (global_state, jobs, nodes, tasks, objects, timeline,
+from ray.state import (jobs, nodes, actors, tasks, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources, errors)  # noqa: E402
 from ray.worker import (
@@ -112,6 +85,7 @@ from ray.worker import (
     register_custom_serializer,
     remote,
     shutdown,
+    show_in_webui,
     wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
@@ -121,14 +95,17 @@ import ray.projects  # noqa: E402
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
+from ray.cross_language import java_function, java_actor_class  # noqa: E402
+from ray import util  # noqa: E402
 
-# Ray version string.
-__version__ = "0.8.0.dev6"
+# Replaced with the current commit when building the wheels.
+__commit__ = "{{RAY_COMMIT_SHA}}"
+__version__ = "0.9.0.dev0"
 
 __all__ = [
-    "global_state",
     "jobs",
     "nodes",
+    "actors",
     "tasks",
     "objects",
     "timeline",
@@ -160,7 +137,12 @@ __all__ = [
     "register_custom_serializer",
     "remote",
     "shutdown",
+    "show_in_webui",
     "wait",
+    "Language",
+    "java_function",
+    "java_actor_class",
+    "util",
 ]
 
 # ID types
