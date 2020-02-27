@@ -1,4 +1,3 @@
-import asyncio
 import os
 import sys
 import pytest
@@ -9,6 +8,7 @@ from collections import defaultdict
 import queue
 
 import ray
+from ray.test_utils import SignalActor
 from ray.util.multiprocessing import Pool, TimeoutError
 
 
@@ -138,22 +138,11 @@ def test_initializer(shutdown_only):
 
 
 def test_close(pool_4_processes):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(signal):
         ray.get(signal.wait.remote())
         return "hello"
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     result = pool_4_processes.map_async(f, [signal for _ in range(4)])
     assert not result.ready()
     pool_4_processes.close()
@@ -171,21 +160,10 @@ def test_close(pool_4_processes):
 
 
 def test_terminate(pool_4_processes):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(signal):
         return ray.get(signal.wait.remote())
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     result = pool_4_processes.map_async(f, [signal for _ in range(4)])
     assert not result.ready()
     pool_4_processes.terminate()
@@ -221,17 +199,6 @@ def test_apply(pool):
 
 
 def test_apply_async(pool):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(arg1, arg2, kwarg1=None, kwarg2=None):
         assert arg1 == 1
         assert arg2 == 2
@@ -258,7 +225,7 @@ def test_apply_async(pool):
         ray.get(signal.wait.remote())
         return 10 / val
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     result = pool.apply_async(ten_over, ([signal, 10], ))
     result.wait(timeout=0.01)
     assert not result.ready()
@@ -272,7 +239,7 @@ def test_apply_async(pool):
     assert result.successful()
     assert result.get() == 1
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     result = pool.apply_async(ten_over, ([signal, 0], ))
     with pytest.raises(ValueError, match="not ready"):
         result.successful()
@@ -310,23 +277,12 @@ def test_map(pool_4_processes):
 
 
 def test_map_async(pool_4_processes):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(args):
         index, signal = args
         ray.get(signal.wait.remote())
         return index, os.getpid()
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     async_result = pool_4_processes.map_async(
         f, [(i, signal) for i in range(1000)])
     assert not async_result.ready()
@@ -484,17 +440,6 @@ def test_imap_unordered(pool_4_processes):
 
 
 def test_imap_timeout(pool_4_processes):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     def f(args):
         index, wait_index, signal = args
         time.sleep(0.1 * random.random())
@@ -503,7 +448,7 @@ def test_imap_timeout(pool_4_processes):
         return index
 
     wait_index = 23
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     result_iter = pool_4_processes.imap(
         f, [(index, wait_index, signal) for index in range(100)])
     for i in range(100):
@@ -519,7 +464,7 @@ def test_imap_timeout(pool_4_processes):
         result_iter.next()
 
     wait_index = 23
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     result_iter = pool_4_processes.imap_unordered(
         f, [(index, wait_index, signal) for index in range(100)], chunksize=11)
     in_order = []

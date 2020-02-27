@@ -1,5 +1,4 @@
 # coding: utf-8
-import asyncio
 import copy
 import json
 import logging
@@ -13,7 +12,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.test_utils
+from ray.test_utils import SignalActor
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
@@ -125,17 +124,6 @@ def test_local_refcounts(ray_start_regular):
 
 
 def test_dependency_refcounts(ray_start_regular):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def one_dep(dep, signal=None, fail=False):
         if signal is not None:
@@ -152,7 +140,7 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that regular plasma dependency refcounts are decremented once the
     # task finishes.
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     large_dep = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
     result = one_dep.remote(large_dep, signal=signal)
     check_refcounts({large_dep: (1, 1), result: (1, 0)})
@@ -164,7 +152,7 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that inlined dependency refcounts are decremented once they are
     # inlined.
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     dep = one_dep.remote(None, signal=signal)
     check_refcounts({dep: (1, 0)})
     result = one_dep.remote(dep)
@@ -177,7 +165,7 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that spilled plasma dependency refcounts are decremented once
     # the task finishes.
-    signal1, signal2 = Signal.remote(), Signal.remote()
+    signal1, signal2 = SignalActor.remote(), SignalActor.remote()
     dep = one_dep_large.remote(None, signal=signal1)
     check_refcounts({dep: (1, 0)})
     result = one_dep.remote(dep, signal=signal2)
@@ -194,7 +182,7 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that regular plasma dependency refcounts are decremented if a task
     # fails.
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     large_dep = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
     result = one_dep.remote(large_dep, signal=signal, fail=True)
     check_refcounts({large_dep: (1, 1), result: (1, 0)})
@@ -206,7 +194,7 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that spilled plasma dependency refcounts are decremented if a task
     # fails.
-    signal1, signal2 = Signal.remote(), Signal.remote()
+    signal1, signal2 = SignalActor.remote(), SignalActor.remote()
     dep = one_dep_large.remote(None, signal=signal1)
     check_refcounts({dep: (1, 0)})
     result = one_dep.remote(dep, signal=signal2, fail=True)
@@ -255,17 +243,6 @@ def test_basic_pinning(one_worker_100MiB):
 
 
 def test_pending_task_dependency_pinning(one_worker_100MiB):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def pending(input1, input2):
         return
@@ -275,7 +252,7 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     oid = pending.remote(np_array, signal.wait.remote())
 
     for _ in range(2):
@@ -320,17 +297,6 @@ def test_feature_flag(shutdown_only):
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
 def test_basic_serialized_reference(one_worker_100MiB):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def pending(ref, dep):
         ray.get(ref[0])
@@ -343,7 +309,7 @@ def test_basic_serialized_reference(one_worker_100MiB):
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
     array_oid = put.remote()
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     oid = pending.remote([array_oid], signal.wait.remote())
 
     # Remove the local reference.
@@ -365,17 +331,6 @@ def test_basic_serialized_reference(one_worker_100MiB):
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
 def test_recursive_serialized_reference(one_worker_100MiB):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
@@ -388,7 +343,7 @@ def test_recursive_serialized_reference(one_worker_100MiB):
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
 
     max_depth = 5
     array_oid = put.remote()
@@ -466,17 +421,6 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
 def test_worker_holding_serialized_reference(one_worker_100MiB):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def child(dep1, dep2):
         return
@@ -489,7 +433,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
 
     # Test that the reference held by the actor isn't evicted.
     array_oid = put.remote()
@@ -529,17 +473,6 @@ def test_basic_nested_ids(one_worker_100MiB):
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
 def test_recursively_nest_ids(one_worker_100MiB):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def recursive(ref, signal, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
@@ -552,7 +485,7 @@ def test_recursively_nest_ids(one_worker_100MiB):
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
 
     max_depth = 5
     array_oid = put.remote()
@@ -611,17 +544,6 @@ def test_return_object_id(one_worker_100MiB):
 # Test that serialized objectIDs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
 def test_pass_returned_object_id(one_worker_100MiB):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -635,7 +557,7 @@ def test_pass_returned_object_id(one_worker_100MiB):
         ray.get(signal.wait.remote())
         ray.get(ref[0])
 
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
     pending_oid = pending.remote([outer_oid], signal)
@@ -657,17 +579,6 @@ def test_pass_returned_object_id(one_worker_100MiB):
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
 def test_recursively_pass_returned_object_id(one_worker_100MiB):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self):
-            await self.ready_event.wait()
-
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -687,7 +598,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     max_depth = 5
     outer_oid = return_an_id.remote()
     inner_oid_bytes = ray.get(outer_oid)[0].binary()
-    signal = Signal.remote()
+    signal = SignalActor.remote()
     head_oid = recursive.remote([outer_oid], signal, max_depth)
 
     # Remove the local reference.

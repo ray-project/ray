@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -19,6 +18,7 @@ from ray.test_utils import (
     wait_for_condition,
     wait_for_errors,
     RayTestTimeoutException,
+    SignalActor,
 )
 
 RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
@@ -84,18 +84,6 @@ def test_failed_task(ray_start_regular):
 
 
 def test_get_throws_quickly_when_found_exception(ray_start_regular):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self, should_wait=True):
-            if should_wait:
-                await self.ready_event.wait()
-
     # We use an actor instead of functions here. If we use functions, it's
     # very likely that two normal tasks are submitted before the first worker
     # is registered to Raylet. Since `maximum_startup_concurrency` is 1,
@@ -119,14 +107,14 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
             ray.get(objects)
         assert err.type is exception
 
-    signal1 = Signal.remote()
+    signal1 = SignalActor.remote()
     actor = Actor.options(max_concurrency=2).remote()
     expect_exception(
         [actor.bad_func1.remote(),
          actor.slow_func.remote(signal1)], ray.exceptions.RayTaskError)
     ray.get(signal1.send.remote())
 
-    signal2 = Signal.remote()
+    signal2 = SignalActor.remote()
     actor = Actor.options(is_direct_call=True, max_concurrency=2).remote()
     expect_exception(
         [actor.bad_func2.remote(),

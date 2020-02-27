@@ -1,5 +1,4 @@
 # coding: utf-8
-import asyncio
 import collections
 import io
 import json
@@ -1313,19 +1312,7 @@ def test_get_dict(ray_start_regular):
 
 
 def test_get_with_timeout(ray_start_regular):
-    @ray.remote(num_cpus=0)
-    class Signal:
-        def __init__(self):
-            self.ready_event = asyncio.Event()
-
-        def send(self):
-            self.ready_event.set()
-
-        async def wait(self, should_wait=True):
-            if should_wait:
-                await self.ready_event.wait()
-
-    signal = Signal.remote()
+    signal = ray.test_utils.SignalActor.remote()
 
     # Check that get() returns early if object is ready.
     start = time.time()
