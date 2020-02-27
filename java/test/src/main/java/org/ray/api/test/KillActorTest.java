@@ -58,9 +58,8 @@ public class KillActorTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     TestUtils.skipTestIfDirectActorCallDisabled();
 
-    ActorCreationOptions options = new ActorCreationOptions.Builder()
-        .setMaxReconstructions(ActorCreationOptions.INFINITE_RECONSTRUCTIONS)
-        .createActorCreationOptions();
+    ActorCreationOptions options =
+        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<HangActor> actor = Ray.createActor(HangActor::new, options);
     RayObject<Boolean> result = Ray.call(HangActor::hang, actor);
     // The actor will hang in this task.
