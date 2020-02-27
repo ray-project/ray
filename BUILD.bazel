@@ -1296,7 +1296,7 @@ genrule(
         RAYDIR="$$WORK_DIR/python/ray"
         RAYLET="$(location python/ray/_raylet.so)"
         RAYLET_TARGET_FILENAME="$${RAYLET##*/}" &&
-        if [ "${OSTYPE-}" = "msys" ]; then
+        if [ "$${OSTYPE-}" = "msys" ]; then
             # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
             RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}" &&
             RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd" &&
