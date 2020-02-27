@@ -3,7 +3,7 @@ root = true
 [*]
 end_of_line = lf
 
-[*.py]
+[*.{py,pyx,pxd,pxi}]
 indent_style = space
 indent_size = 4
 wrap_width = 79
