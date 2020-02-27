@@ -1304,7 +1304,18 @@ genrule(
     cmd = """
         set -x &&
         WORK_DIR="$$(pwd)" &&
-        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
+        RAYDIR="$$WORK_DIR/python/ray"
+        RAYLET="$(location python/ray/_raylet.so)"
+        RAYLET_TARGET_FILENAME="$${RAYLET##*/}" &&
+        if [ "$${OSTYPE-}" = "msys" ]; then
+            # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}" &&
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd" &&
+            if [ -f "$${RAYLET%.*}.pdb" ]; then
+                cp -f "$${RAYLET%.*}.pdb" "$${RAYDIR}";
+            fi;
+        fi &&
+        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
