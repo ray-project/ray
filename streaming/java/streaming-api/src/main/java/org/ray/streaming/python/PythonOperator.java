@@ -1,6 +1,7 @@
 package org.ray.streaming.python;
 
 import java.util.List;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.RuntimeContext;
 import org.ray.streaming.operator.OperatorType;
 import org.ray.streaming.operator.StreamOperator;
@@ -39,5 +40,8 @@ public class PythonOperator extends StreamOperator {
     throw new UnsupportedOperationException(msg);
   }
 
-
+  @Override
+  public Language getLanguage() {
+    return Language.PYTHON;
+  }
 }

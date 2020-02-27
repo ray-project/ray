@@ -31,9 +31,9 @@ class Exploration:
         self.framework = check_framework(framework)
 
     def get_exploration_action(self,
-                               model_output,
-                               model,
+                               distribution_inputs,
                                action_dist_class,
+                               model=None,
                                explore=True,
                                timestep=None):
         """Returns a (possibly) exploratory action.
@@ -42,10 +42,12 @@ class Exploration:
         exploratory action.
 
         Args:
-            model_output (any): The raw output coming from the model
+            distribution_inputs (any): The output coming from the model,
+                ready for parameterizing a distribution
                 (e.g. q-values or PG-logits).
+            action_dist_class (class): The action distribution class
+                to use.
             model (ModelV2): The Model object.
-            action_dist_class: The ActionDistribution class.
             explore (bool): True: "Normal" exploration behavior.
                 False: Suppress all exploratory behavior and return
                     a deterministic action.

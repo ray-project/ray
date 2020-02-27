@@ -3,9 +3,11 @@ import copy
 import json
 import logging
 import os
+import gc
 import tempfile
 import time
 import uuid
+import weakref
 
 import numpy as np
 
@@ -14,6 +16,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.test_utils
+from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,7 @@ logger = logging.getLogger(__name__)
 def one_worker_100MiB(request):
     config = json.dumps({
         "distributed_ref_counting_enabled": 1,
+        "object_store_full_max_retries": 1,
     })
     yield ray.init(
         num_cpus=1,
@@ -70,6 +74,46 @@ def check_refcounts(expected, timeout=10):
                 raise e
             else:
                 time.sleep(0.1)
+
+
+def test_global_gc(shutdown_only):
+    cluster = ray.cluster_utils.Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=1, num_gpus=0)
+    ray.init(address=cluster.address)
+
+    class ObjectWithCyclicRef:
+        def __init__(self):
+            self.loop = self
+
+    @ray.remote(num_cpus=1)
+    class GarbageHolder:
+        def __init__(self):
+            gc.disable()
+            x = ObjectWithCyclicRef()
+            self.garbage = weakref.ref(x)
+
+        def has_garbage(self):
+            return self.garbage() is not None
+
+    try:
+        gc.disable()
+
+        # Local driver.
+        local_ref = weakref.ref(ObjectWithCyclicRef())
+
+        # Remote workers.
+        actors = [GarbageHolder.remote() for _ in range(2)]
+        assert local_ref() is not None
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        # GC should be triggered for all workers, including the local driver.
+        global_gc()
+        time.sleep(1)
+        assert local_ref() is None
+        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+    finally:
+        gc.enable()
 
 
 def test_local_refcounts(ray_start_regular):
@@ -594,6 +638,44 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
 
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
+
+
+# Call a recursive chain of tasks. The final task in the chain returns an
+# ObjectID returned by a task that it submitted. Every other task in the chain
+# returns the same ObjectID by calling ray.get() on its submitted task and
+# returning the result. The reference should still exist while the driver has a
+# reference to the final task's ObjectID.
+def test_recursively_return_borrowed_object_id(one_worker_100MiB):
+    @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote
+    def recursive(num_tasks_left):
+        if num_tasks_left == 0:
+            return put.remote()
+
+        final_id = ray.get(recursive.remote(num_tasks_left - 1))
+        ray.get(final_id)
+        return final_id
+
+    max_depth = 5
+    head_oid = recursive.remote(max_depth)
+    final_oid = ray.get(head_oid)
+    final_oid_bytes = final_oid.binary()
+
+    # Check that the driver's reference pins the object.
+    _fill_object_store_and_get(final_oid_bytes)
+
+    # Remove the local reference and try it again.
+    final_oid = ray.get(head_oid)
+    _fill_object_store_and_get(final_oid_bytes)
+
+    # Remove all references.
+    del head_oid
+    del final_oid
+    # Reference should be gone, check that returned ID gets evicted.
+    _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
 
 if __name__ == "__main__":

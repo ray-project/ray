@@ -68,25 +68,20 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &log_dir, const std::string &node_ip_address,
                        int node_manager_port,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals, bool ref_counting_enabled)
+                       std::function<Status()> check_signals,
+                       std::function<void()> gc_collect, bool ref_counting_enabled)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
       ref_counting_enabled_(ref_counting_enabled),
       check_signals_(check_signals),
+      gc_collect_(gc_collect),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      reference_counter_(std::make_shared<ReferenceCounter>(
-          /*distributed_ref_counting_enabled=*/RayConfig::instance()
-              .distributed_ref_counting_enabled(),
-          [this](const rpc::Address &addr) {
-            return std::shared_ptr<rpc::CoreWorkerClient>(
-                new rpc::CoreWorkerClient(addr, *client_call_manager_));
-          })),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -165,6 +160,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_port(core_worker_server_.GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
+
+  reference_counter_ = std::make_shared<ReferenceCounter>(
+      rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
+      [this](const rpc::Address &addr) {
+        return std::shared_ptr<rpc::CoreWorkerClient>(
+            new rpc::CoreWorkerClient(addr, *client_call_manager_));
+      });
 
   if (worker_type_ == ray::WorkerType::WORKER) {
     death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
@@ -372,11 +374,6 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
 }
 
-void CoreWorker::AddContainedObjectIDs(
-    const ObjectID &object_id, const std::vector<ObjectID> &contained_object_ids) {
-  // TODO(edoakes,swang): integrate with the reference counting logic.
-}
-
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   // Currently only the Plasma store supports client options.
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);
@@ -479,16 +476,20 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                          &result_map, &got_exception));
   }
 
+  // Erase any objects that were promoted to plasma from the results. These get
+  // requests will be retried at the plasma store.
+  for (auto it = result_map.begin(); it != result_map.end(); it++) {
+    if (it->second->IsInPlasmaError()) {
+      RAY_LOG(DEBUG) << it->first << " in plasma, doing fetch-and-get";
+      plasma_object_ids.insert(it->first);
+      result_map.erase(it);
+    }
+  }
+
   if (!got_exception) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
     // the transport type again and return them for the original direct call ids.
-    for (const auto &pair : result_map) {
-      if (pair.second->IsInPlasmaError()) {
-        RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
-        plasma_object_ids.insert(pair.first);
-      }
-    }
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
@@ -668,6 +669,18 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
                                                    delete_creating_tasks));
 
   return Status::OK();
+}
+
+void CoreWorker::TriggerGlobalGC() {
+  auto status = local_raylet_client_->GlobalGC(
+      [](const Status &status, const rpc::GlobalGCReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
+        }
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to send global GC request: " << status.ToString();
+  }
 }
 
 std::string CoreWorker::MemoryUsageString() {
@@ -931,12 +944,7 @@ Status CoreWorker::AllocateReturnObjects(
   RAY_CHECK(object_ids.size() == data_sizes.size());
   return_objects->resize(object_ids.size(), nullptr);
 
-  absl::optional<rpc::Address> owner_address(
-      worker_context_.GetCurrentTask()->CallerAddress());
-  bool owned_by_us = owner_address->worker_id() == rpc_address_.worker_id();
-  if (owned_by_us) {
-    owner_address.reset();
-  }
+  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;
@@ -946,8 +954,8 @@ Status CoreWorker::AllocateReturnObjects(
       // Mark this object as containing other object IDs. The ref counter will
       // keep the inner IDs in scope until the outer one is out of scope.
       if (!contained_object_ids[i].empty()) {
-        reference_counter_->WrapObjectIds(object_ids[i], contained_object_ids[i],
-                                          owner_address);
+        reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
+                                               owner_address);
       }
 
       // Allocate a buffer for the return object.
@@ -1060,7 +1068,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // return them to the caller. This will notify the caller of any IDs that we
   // (or a nested task) are still borrowing. It will also any new IDs that were
   // contained in a borrowed ID that we (or a nested task) are now borrowing.
-  reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
+  if (!borrowed_ids.empty()) {
+    reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
+  }
   // Unpin the borrowed IDs.
   std::vector<ObjectID> deleted;
   for (const auto &borrowed_id : borrowed_ids) {
@@ -1099,7 +1109,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   arg_reference_ids->resize(num_args);
 
   absl::flat_hash_set<ObjectID> by_ref_ids;
-  absl::flat_hash_map<ObjectID, int> by_ref_indices;
+  absl::flat_hash_map<ObjectID, std::vector<size_t>> by_ref_indices;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     if (task.ArgByRef(i)) {
@@ -1114,7 +1124,12 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       }
       const auto &arg_id = task.ArgId(i, 0);
       by_ref_ids.insert(arg_id);
-      by_ref_indices.emplace(arg_id, i);
+      auto it = by_ref_indices.find(arg_id);
+      if (it == by_ref_indices.end()) {
+        by_ref_indices.emplace(arg_id, std::vector<size_t>({i}));
+      } else {
+        it->second.push_back(i);
+      }
       arg_reference_ids->at(i) = arg_id;
       // The task borrows all args passed by reference. Because the task does
       // not have a reference to the argument ID in the frontend, it is not
@@ -1152,7 +1167,9 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   RAY_RETURN_NOT_OK(plasma_store_provider_->Get(by_ref_ids, -1, worker_context_,
                                                 &result_map, &got_exception));
   for (const auto &it : result_map) {
-    args->at(by_ref_indices[it.first]) = it.second;
+    for (size_t idx : by_ref_indices[it.first]) {
+      args->at(idx) = it.second;
+    }
   }
 
   return Status::OK();
@@ -1339,6 +1356,18 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
+                               rpc::LocalGCReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
+  if (gc_collect_ != nullptr) {
+    gc_collect_();
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,
+                        nullptr);
+  }
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
