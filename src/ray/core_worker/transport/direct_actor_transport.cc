@@ -116,6 +116,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // replies. They will be treated as failed once the connection dies.
     // We retain the sequencing information so that we can properly fail
     // any tasks submitted after the actor death.
+
+    pending_force_kills_.erase(actor_id);
   }
 }
 
@@ -127,6 +129,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   if (pending_force_kills_.find(actor_id) != pending_force_kills_.end()) {
     rpc::KillActorRequest request;
     request.set_intended_actor_id(actor_id.Binary());
+    RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
     RAY_CHECK_OK(client->KillActor(request, nullptr));
     pending_force_kills_.erase(actor_id);
   }

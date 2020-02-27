@@ -1326,6 +1326,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     return;
   }
   RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
+  RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
   if (log_dir_ != "") {
     RayLog::ShutDownRayLog();
   }
