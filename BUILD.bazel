@@ -679,6 +679,16 @@ cc_test(
 )
 
 cc_test(
+    name = "sequencer_test",
+    srcs = ["src/ray/util/sequencer_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
@@ -830,6 +840,7 @@ cc_library(
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
     ],
