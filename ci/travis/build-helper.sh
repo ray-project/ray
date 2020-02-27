@@ -3,6 +3,7 @@
 prep_build_env() {
   export PATH="${PATH}:${HOME}/bin"
   if [ "${OSTYPE}" = "msys" ]; then
+    export USE_CLANG_CL=1
     export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
     local latest_python_bin=""
     for latest_python_bin in /proc/registry/HKEY_LOCAL_MACHINE/Software/Python/PythonCore/*/InstallPath/@; do

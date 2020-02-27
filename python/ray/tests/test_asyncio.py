@@ -22,7 +22,7 @@ def test_asyncio_actor(ray_start_regular_shared):
                 await self.event.wait()
             return sorted(self.batch)
 
-    a = AsyncBatcher.options(is_direct_call=True).remote()
+    a = AsyncBatcher.remote()
     x1 = a.add.remote(1)
     x2 = a.add.remote(2)
     x3 = a.add.remote(3)
@@ -42,7 +42,7 @@ def test_asyncio_actor_same_thread(ray_start_regular_shared):
         async def async_thread_id(self):
             return threading.current_thread().ident
 
-    a = Actor.options(is_direct_call=True).remote()
+    a = Actor.remote()
     sync_id, async_id = ray.get(
         [a.sync_thread_id.remote(),
          a.async_thread_id.remote()])
@@ -66,7 +66,7 @@ def test_asyncio_actor_concurrency(ray_start_regular_shared):
 
     num_calls = 10
 
-    a = RecordOrder.options(is_direct_call=True, max_concurrency=1).remote()
+    a = RecordOrder.options(max_concurrency=1).remote()
     ray.get([a.do_work.remote() for _ in range(num_calls)])
     history = ray.get(a.get_history.remote())
 
@@ -99,8 +99,8 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
             return sorted(self.batch)
 
     batch_size = sys.getrecursionlimit() * 4
-    actor = AsyncConcurrencyBatcher.options(
-        max_concurrency=batch_size * 2, is_direct_call=True).remote(batch_size)
+    actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size *
+                                            2).remote(batch_size)
     result = ray.get([actor.add.remote(i) for i in range(batch_size)])
     assert result[0] == list(range(batch_size))
     assert result[-1] == list(range(batch_size))
@@ -130,11 +130,11 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     with pytest.raises(ray.exceptions.RayTaskError):
         await ray.async_compat.get_async(task_throws.remote())
 
-    # Test Direct Actor Call
+    # Test actor calls.
     str_len = 200 * 1024
 
     @ray.remote
-    class DirectActor:
+    class Actor:
         def echo(self, i):
             return i
 
@@ -145,18 +145,17 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
         def throw_error(self):
             1 / 0
 
-    direct = DirectActor.options(is_direct_call=True).remote()
+    actor = Actor.remote()
 
-    direct_actor_call_future = ray.async_compat.get_async(
-        direct.echo.remote(2))
-    assert await direct_actor_call_future == 2
+    actor_call_future = ray.async_compat.get_async(actor.echo.remote(2))
+    assert await actor_call_future == 2
 
     promoted_to_plasma_future = ray.async_compat.get_async(
-        direct.big_object.remote())
+        actor.big_object.remote())
     assert await promoted_to_plasma_future == "a" * str_len
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await ray.async_compat.get_async(direct.throw_error.remote())
+        await ray.async_compat.get_async(actor.throw_error.remote())
 
 
 def test_asyncio_actor_async_get(ray_start_regular_shared):
