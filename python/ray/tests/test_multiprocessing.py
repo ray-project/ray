@@ -258,7 +258,6 @@ def test_apply_async(pool):
         ray.get(signal.wait.remote())
         return 10 / val
 
-    # Generate a random ObjectID that will be fulfilled later.
     signal = Signal.remote()
     result = pool.apply_async(ten_over, ([signal, 10], ))
     result.wait(timeout=0.01)
@@ -273,7 +272,6 @@ def test_apply_async(pool):
     assert result.successful()
     assert result.get() == 1
 
-    # Generate a random ObjectID that will be fulfilled later.
     signal = Signal.remote()
     result = pool.apply_async(ten_over, ([signal, 0], ))
     with pytest.raises(ValueError, match="not ready"):

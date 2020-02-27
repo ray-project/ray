@@ -3,11 +3,8 @@ import asyncio
 import copy
 import json
 import logging
-import os
 import gc
-import tempfile
 import time
-import uuid
 import weakref
 
 import numpy as np
@@ -128,45 +125,38 @@ def test_local_refcounts(ray_start_regular):
 
 
 def test_dependency_refcounts(ray_start_regular):
-    # Return a large object that will be spilled to plasma.
-    def large_object():
-        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
 
-    # TODO: Clean up tmpfiles?
-    def random_path():
-        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
+        def send(self):
+            self.ready_event.set()
 
-    def touch(path):
-        with open(path, "w"):
-            pass
-
-    def wait_for_file(path):
-        while True:
-            if os.path.exists(path):
-                break
-            time.sleep(0.1)
+        async def wait(self):
+            await self.ready_event.wait()
 
     @ray.remote
-    def one_dep(dep, path=None, fail=False):
-        if path is not None:
-            wait_for_file(path)
+    def one_dep(dep, signal=None, fail=False):
+        if signal is not None:
+            ray.get(signal.wait.remote())
         if fail:
             raise Exception("failed on purpose")
 
     @ray.remote
-    def one_dep_large(dep, path=None):
-        if path is not None:
-            wait_for_file(path)
-        # This should be spilled to plasma.
-        return large_object()
+    def one_dep_large(dep, signal=None):
+        if signal is not None:
+            ray.get(signal.wait.remote())
+        # This will be spilled to plasma.
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     # Test that regular plasma dependency refcounts are decremented once the
     # task finishes.
-    f = random_path()
-    large_dep = ray.put(large_object())
-    result = one_dep.remote(large_dep, path=f)
+    signal = Signal.remote()
+    large_dep = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+    result = one_dep.remote(large_dep, signal=signal)
     check_refcounts({large_dep: (1, 1), result: (1, 0)})
-    touch(f)
+    ray.get(signal.send.remote())
     # Reference count should be removed once the task finishes.
     check_refcounts({large_dep: (1, 0), result: (1, 0)})
     del large_dep, result
@@ -174,12 +164,12 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that inlined dependency refcounts are decremented once they are
     # inlined.
-    f = random_path()
-    dep = one_dep.remote(None, path=f)
+    signal = Signal.remote()
+    dep = one_dep.remote(None, signal=signal)
     check_refcounts({dep: (1, 0)})
     result = one_dep.remote(dep)
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f)
+    ray.get(signal.send.remote())
     # Reference count should be removed as soon as the dependency is inlined.
     check_refcounts({dep: (1, 0), result: (1, 0)}, timeout=1)
     del dep, result
@@ -187,16 +177,16 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that spilled plasma dependency refcounts are decremented once
     # the task finishes.
-    f1, f2 = random_path(), random_path()
-    dep = one_dep_large.remote(None, path=f1)
+    signal1, signal2 = Signal.remote(), Signal.remote()
+    dep = one_dep_large.remote(None, signal=signal1)
     check_refcounts({dep: (1, 0)})
-    result = one_dep.remote(dep, path=f2)
+    result = one_dep.remote(dep, signal=signal2)
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f1)
+    ray.get(signal1.send.remote())
     ray.get(dep, timeout=5.0)
     # Reference count should remain because the dependency is in plasma.
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f2)
+    ray.get(signal2.send.remote())
     # Reference count should be removed because the task finished.
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
@@ -204,11 +194,11 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that regular plasma dependency refcounts are decremented if a task
     # fails.
-    f = random_path()
-    large_dep = ray.put(large_object())
-    result = one_dep.remote(large_dep, path=f, fail=True)
+    signal = Signal.remote()
+    large_dep = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+    result = one_dep.remote(large_dep, signal=signal, fail=True)
     check_refcounts({large_dep: (1, 1), result: (1, 0)})
-    touch(f)
+    ray.get(signal.send.remote())
     # Reference count should be removed once the task finishes.
     check_refcounts({large_dep: (1, 0), result: (1, 0)})
     del large_dep, result
@@ -216,16 +206,16 @@ def test_dependency_refcounts(ray_start_regular):
 
     # Test that spilled plasma dependency refcounts are decremented if a task
     # fails.
-    f1, f2 = random_path(), random_path()
-    dep = one_dep_large.remote(None, path=f1)
+    signal1, signal2 = Signal.remote(), Signal.remote()
+    dep = one_dep_large.remote(None, signal=signal1)
     check_refcounts({dep: (1, 0)})
-    result = one_dep.remote(dep, path=f2, fail=True)
+    result = one_dep.remote(dep, signal=signal2, fail=True)
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f1)
-    ray.get(dep, timeout=5.0)
+    ray.get(signal1.send.remote())
+    ray.get(dep, timeout=5)
     # Reference count should remain because the dependency is in plasma.
     check_refcounts({dep: (1, 1), result: (1, 0)})
-    touch(f2)
+    ray.get(signal2.send.remote())
     # Reference count should be removed because the task finished.
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result

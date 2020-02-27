@@ -1,4 +1,5 @@
 # coding: utf-8
+import asyncio
 import collections
 import io
 import json
@@ -8,10 +9,8 @@ import pickle
 import re
 import string
 import sys
-import tempfile
 import threading
 import time
-import uuid
 import weakref
 
 import numpy as np
@@ -1314,35 +1313,33 @@ def test_get_dict(ray_start_regular):
 
 
 def test_get_with_timeout(ray_start_regular):
-    def random_path():
-        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
 
-    def touch(path):
-        with open(path, "w"):
-            pass
+        def send(self):
+            self.ready_event.set()
 
-    @ray.remote
-    def wait_for_file(path):
-        if path:
-            while True:
-                if os.path.exists(path):
-                    break
-                time.sleep(0.1)
+        async def wait(self, should_wait=True):
+            if should_wait:
+                await self.ready_event.wait()
+
+    signal = Signal.remote()
 
     # Check that get() returns early if object is ready.
     start = time.time()
-    ray.get(wait_for_file.remote(None), timeout=30)
+    ray.get(signal.wait.remote(should_wait=False), timeout=30)
     assert time.time() - start < 30
 
     # Check that get() raises a TimeoutError after the timeout if the object
     # is not ready yet.
-    path = random_path()
-    result_id = wait_for_file.remote(path)
+    result_id = signal.wait.remote()
     with pytest.raises(RayTimeoutError):
         ray.get(result_id, timeout=0.1)
 
     # Check that a subsequent get() returns early.
-    touch(path)
+    ray.get(signal.send.remote())
     start = time.time()
     ray.get(result_id, timeout=30)
     assert time.time() - start < 30
