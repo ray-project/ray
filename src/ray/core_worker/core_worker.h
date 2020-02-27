@@ -798,6 +798,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Plasma Callback
   PlasmaSubscriptionCallback plasma_done_callback_;
+  // List of deadlines for delayed actor kill requests.
+  std::list<std::pair<int64_t, ActorID>> pending_actor_kills_ GUARDED_BY(mutex_);
+
+  // Contains iterators to entries in pending_actor_kills_ for each actor.  Useful for cancelling pending kills.
+  absl::flat_hash_map<ActorID, std::list<std::pair<int64_t, ActorID>>::iterator> pending_kill_for_actor_ GUARDED_BY(mutex_);
+
+  // Plasma notification manager
+  std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
 
   friend class CoreWorkerTest;
 };

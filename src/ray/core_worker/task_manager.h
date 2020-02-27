@@ -33,6 +33,8 @@ using CompleteTaskCallback = std::function<void(const TaskSpecification &spec)>;
 
 class TaskManager : public TaskFinisherInterface {
  public:
+  static constexpr uint64_t kInfiniteRetries = std::numeric_limits<uint64_t>::max();
+
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
@@ -53,7 +55,7 @@ class TaskManager : public TaskFinisherInterface {
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      const TaskSpecification &spec, int max_retries = 0);
+                      const TaskSpecification &spec, uint64_t max_retries = 0);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -153,7 +155,7 @@ class TaskManager : public TaskFinisherInterface {
   /// the worker fails. We could avoid this by either not caching the full
   /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
   /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-  absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
+  absl::flat_hash_map<TaskID, std::pair<TaskSpecification, uint64_t>> pending_tasks_
       GUARDED_BY(mu_);
 
   /// Optional shutdown hook to call when pending tasks all finish.

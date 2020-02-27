@@ -12,10 +12,10 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 void TaskManager::AddPendingTask(const TaskID &caller_id,
                                  const rpc::Address &caller_address,
-                                 const TaskSpecification &spec, int max_retries) {
+                                 const TaskSpecification &spec, uint64_t max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
-  std::pair<TaskSpecification, int> entry = {spec, max_retries};
+  std::pair<TaskSpecification, uint64_t> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
 
   // Add references for the dependencies to the task.
@@ -124,7 +124,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
-  int num_retries_left = 0;
+  uint64_t num_retries_left = 0;
   TaskSpecification spec;
   {
     absl::MutexLock lock(&mu_);

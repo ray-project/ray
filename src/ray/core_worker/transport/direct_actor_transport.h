@@ -122,7 +122,6 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Set of actor ids that should be force killed once a client is available.
   absl::flat_hash_set<ActorID> pending_force_kills_ GUARDED_BY(mu_);
 
-  // TODO(apaszke): Get rid of those
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
   absl::flat_hash_map<ActorID, std::vector<std::unique_ptr<rpc::PushTaskRequest>>>

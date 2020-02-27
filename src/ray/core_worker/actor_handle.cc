@@ -62,7 +62,6 @@ void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(outp
 
 void ActorHandle::Reset() {
   absl::MutexLock guard(&mutex_);
-  task_counter_ = 0;
   actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
 }
 
