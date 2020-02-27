@@ -40,6 +40,9 @@ if [[ "$platform" == "linux" ]]; then
   # Install the wheel.
   $PIP_CMD install -q "$PYTHON_WHEEL"
 
+  # Check that ray.__commit__ was set properly.
+  $PYTHON_EXE -u -c "import ray; print(ray.__commit__)" | grep $TRAVIS_COMMIT || (echo "ray.__commit__ not set properly!" && exit 1)
+
   # Run a simple test script to make sure that the wheel works.
   INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
   $PYTHON_EXE "$TEST_SCRIPT"
