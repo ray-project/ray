@@ -371,7 +371,7 @@ def test_actor_worker_dying(ray_start_regular):
         pass
 
     a = Actor.remote()
-    [obj], _ = ray.wait([a.kill.remote()], timeout=5.0)
+    [obj], _ = ray.wait([a.kill.remote()], timeout=5)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(obj)
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -863,11 +863,11 @@ def test_connect_with_disconnected_node(shutdown_only):
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(dead_node, allow_graceful=False)
-    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1, timeout=2)
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 1)
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(dead_node, allow_graceful=False)
-    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2, timeout=2)
+    wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 2)
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
     removing_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(removing_node, allow_graceful=True)

@@ -159,7 +159,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({dep: (1, 1), result: (1, 0)})
     ray.get(signal.send.remote())
     # Reference count should be removed as soon as the dependency is inlined.
-    check_refcounts({dep: (1, 0), result: (1, 0)}, timeout=1)
+    check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
     check_refcounts({})
 
@@ -171,7 +171,7 @@ def test_dependency_refcounts(ray_start_regular):
     result = one_dep.remote(dep, signal=signal2)
     check_refcounts({dep: (1, 1), result: (1, 0)})
     ray.get(signal1.send.remote())
-    ray.get(dep, timeout=5.0)
+    ray.get(dep, timeout=10)
     # Reference count should remain because the dependency is in plasma.
     check_refcounts({dep: (1, 1), result: (1, 0)})
     ray.get(signal2.send.remote())
@@ -200,7 +200,7 @@ def test_dependency_refcounts(ray_start_regular):
     result = one_dep.remote(dep, signal=signal2, fail=True)
     check_refcounts({dep: (1, 1), result: (1, 0)})
     ray.get(signal1.send.remote())
-    ray.get(dep, timeout=5)
+    ray.get(dep, timeout=10)
     # Reference count should remain because the dependency is in plasma.
     check_refcounts({dep: (1, 1), result: (1, 0)})
     ray.get(signal2.send.remote())
