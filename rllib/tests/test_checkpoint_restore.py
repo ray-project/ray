@@ -13,7 +13,7 @@ from ray.tune.trial import ExportFormat
 def get_mean_action(alg, obs):
     out = []
     for _ in range(2000):
-        out.append(float(alg.compute_action(obs)))
+        out.append(float(alg.compute_action(obs, explore=False)))
     return np.mean(out)
 
 
