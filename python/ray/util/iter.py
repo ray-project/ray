@@ -53,7 +53,11 @@ def from_range(n: int, num_shards: int = 2,
         generators.append(range(start, end))
     name = "from_range[{}, shards={}{}]".format(
         n, num_shards, ", repeat=True" if repeat else "")
-    return from_iterators(generators, repeat=repeat, name=name)
+    return from_iterators(
+        generators,
+        repeat=repeat,
+        name=name,
+    )
 
 
 def from_iterators(generators: List[Iterable[T]],
@@ -99,7 +103,7 @@ def from_actors(actors: List["ray.actor.ActorHandle"],
     """
     if not name:
         name = "from_actors[shards={}]".format(len(actors))
-    return ParallelIterator([_ActorSet(actors, [])], name)
+    return ParallelIterator([_ActorSet(actors, [])], name, parent_iterator=[])
 
 
 class ParallelIterator(Generic[T]):
@@ -151,7 +155,8 @@ class ParallelIterator(Generic[T]):
         ... [worker_1_result_2, worker_2_result_2]
     """
 
-    def __init__(self, actor_sets: List["_ActorSet"], name: str):
+    def __init__(self, actor_sets: List["_ActorSet"], name: str,
+                 parent_iterator: List["ParallelIterator[Any]"]):
         """Create a parallel iterator (this is an internal function)."""
 
         # We track multiple sets of actors to support parallel .union().
@@ -159,7 +164,7 @@ class ParallelIterator(Generic[T]):
         self.name = name
 
         # keep explicit reference to parent iterator for repartition
-        self.parent_iterator = []
+        self.parent_iterator = parent_iterator
 
     def __iter__(self):
         raise TypeError(
@@ -172,14 +177,12 @@ class ParallelIterator(Generic[T]):
     def __repr__(self):
         return "ParallelIterator[{}]".format(self.name)
 
-    def __add_transform(self, local_it_fn, name):
+    def _add_transform(self, local_it_fn, name):
         """Helper function to create new Parallel Iterator"""
-        new_iter = ParallelIterator(
+        return ParallelIterator(
             [a.with_transform(local_it_fn) for a in self.actor_sets],
-            name=self.name + name)
-
-        new_iter.parent_iterator = self.parent_iterator
-        return new_iter
+            name=self.name + name,
+            parent_iterator=self.parent_iterator)
 
     def for_each(self, fn: Callable[[T], U]) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator.
@@ -191,7 +194,7 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(4).for_each(lambda x: x * 2).gather_sync())
             ... [0, 2, 4, 8]
         """
-        return self.__add_transform(lambda local_it: local_it.for_each(fn),
+        return self._add_transform(lambda local_it: local_it.for_each(fn),
                                     ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
@@ -205,7 +208,7 @@ class ParallelIterator(Generic[T]):
             >>> next(it.gather_sync())
             ... [1, 2]
         """
-        return self.__add_transform(lambda local_it: local_it.filter(fn),
+        return self._add_transform(lambda local_it: local_it.filter(fn),
                                     ".filter()")
 
     def batch(self, n: int) -> "ParallelIterator[List[T]]":
@@ -218,7 +221,7 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(10, 1).batch(4).gather_sync())
             ... [0, 1, 2, 3]
         """
-        return self.__add_transform(lambda local_it: local_it.batch(n),
+        return self._add_transform(lambda local_it: local_it.batch(n),
                                     ".batch({})".format(n))
 
     def flatten(self) -> "ParallelIterator[T[0]]":
@@ -228,7 +231,7 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(10, 1).batch(4).flatten())
             ... 0
         """
-        return self.__add_transform(lambda local_it: local_it.flatten(),
+        return self._add_transform(lambda local_it: local_it.flatten(),
                                     ".flatten()")
 
     def combine(self, fn: Callable[[T], List[U]]) -> "ParallelIterator[U]":
@@ -269,7 +272,7 @@ class ParallelIterator(Generic[T]):
             >>> next(it)
             1
         """
-        return self.__add_transform(
+        return self._add_transform(
             lambda local_it: local_it.shuffle(shuffle_buffer_size, seed),
             ".local_shuffle(shuffle_buffer_size={}, seed={})".format(
                 shuffle_buffer_size,
@@ -347,10 +350,9 @@ class ParallelIterator(Generic[T]):
         generators = [make_gen_i(s) for s in range(num_partitions)]
         worker_cls = ray.remote(ParallelIteratorWorker)
         actors = [worker_cls.remote(g, repeat=False) for g in generators]
-        new_iter = ParallelIterator([_ActorSet(actors, [])], name)
         # need explicit reference to self so actors in this instance do not die
-        new_iter.parent_iterator = [self]
-        return new_iter
+        return ParallelIterator(
+            [_ActorSet(actors, [])], name, parent_iterator=[self])
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -482,12 +484,12 @@ class ParallelIterator(Generic[T]):
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
-        new_iter = ParallelIterator(
-            actor_sets, "ParallelUnion[{}, {}]".format(self, other))
         # if one of these iterators is a result of a repartition, we need to
         # keep an explicit reference to its parent iterator
-        new_iter.parent_iterator = self.parent_iterator + other.parent_iterator
-        return new_iter
+        return ParallelIterator(
+            actor_sets,
+            "ParallelUnion[{}, {}]".format(self, other),
+            parent_iterator=self.parent_iterator + other.parent_iterator)
 
     def num_shards(self) -> int:
         """Return the number of worker actors backing this iterator."""
