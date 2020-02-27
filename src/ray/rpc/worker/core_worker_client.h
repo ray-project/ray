@@ -296,6 +296,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
 
+  /// An offset subtracted from every sequence number before the request is sent.
   uint64_t sequence_nr_offset_;
 
   /// The task id we are currently sending requests for. When this changes,

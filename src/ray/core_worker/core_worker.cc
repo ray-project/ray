@@ -919,8 +919,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         absl::MutexLock lock(&mutex_);
         auto task_it = pending_kill_for_actor_.find(actor_id);
         if (task_it != pending_kill_for_actor_.end()) {
-          auto it = task_it->second;
-          pending_actor_kills_.erase(it);
+          pending_actor_kills_.erase(task_it->second);
         }
       };
       if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {

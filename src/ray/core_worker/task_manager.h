@@ -47,12 +47,12 @@ class TaskManager : public TaskFinisherInterface {
   ///
   /// \param[in] caller_id The TaskID of the calling task.
   /// \param[in] caller_address The rpc address of the calling task.
-  /// \param[in,out] spec The spec of the pending task.
+  /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      TaskSpecification &spec, uint64_t max_retries = 0);
+                      const TaskSpecification &spec, uint64_t max_retries = 0);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -98,8 +98,10 @@ class TaskManager : public TaskFinisherInterface {
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
+  /// Sets the actor counter in the task spec being built.
   void SetActorCounter(TaskSpecBuilder &builder, const ActorID &actor_id);
 
+  /// Resets the number of retries remaining for a pending task to the given value.
   void SetRemainingRetries(const TaskID &task_id, uint64_t retries);
 
   /// Return the number of pending tasks.
