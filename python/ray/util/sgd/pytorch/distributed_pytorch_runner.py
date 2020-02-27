@@ -108,9 +108,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
         Automatically sets epoch of sampler if possible.
         """
-        logger.debug("Starting step")
         if hasattr(self.train_loader.sampler, "set_epoch"):
-            self.train_loader.sampler.set_epoch(self.steps)
+            self.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedPyTorchRunner, self).train_epoch(**kwargs)
 
     def _get_model_state_dicts(self):

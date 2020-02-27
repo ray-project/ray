@@ -340,8 +340,10 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
     def single_loader(config):
         return LinearDataset(2, 5, size=1000000)
 
-    def step_with_fail(self, info=None):
-        worker_stats = [w.train_epoch.remote(info=info) for w in self.workers]
+    def step_with_fail(self, *args, **kwargs):
+        worker_stats = [
+            w.train_epoch.remote(*args, **kwargs) for w in self.workers
+        ]
         if self._num_failures < 3:
             time.sleep(1)  # Make the batch will fail correctly.
             self.workers[0].__ray_kill__()
@@ -368,8 +370,10 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
     def single_loader(config):
         return LinearDataset(2, 5, size=1000000)
 
-    def step_with_fail(self, info=None):
-        worker_stats = [w.train_epoch.remote(info=info) for w in self.workers]
+    def step_with_fail(self, *args, **kwargs):
+        worker_stats = [
+            w.train_epoch.remote(*args, **kwargs) for w in self.workers
+        ]
         if self._num_failures < 1:
             time.sleep(1)  # Make the batch will fail correctly.
             self.workers[0].__ray_kill__()
@@ -402,8 +406,10 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
     def single_loader(config):
         return LinearDataset(2, 5, size=1000000)
 
-    def step_with_fail(self, info=None):
-        worker_stats = [w.train_epoch.remote(info=info) for w in self.workers]
+    def step_with_fail(self, *args, **kwargs):
+        worker_stats = [
+            w.train_epoch.remote(*args, **kwargs) for w in self.workers
+        ]
         if self._num_failures < 2:
             time.sleep(1)
             self.workers[0].__ray_kill__()
