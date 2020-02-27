@@ -400,7 +400,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"soft_q\": true}'"
+        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 

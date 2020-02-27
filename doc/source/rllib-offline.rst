@@ -58,8 +58,10 @@ Then, we can tell DQN to train using these previously generated experiences with
         --config='{
             "input": "/tmp/cartpole-out",
             "input_evaluation": ["is", "wis"],
-            "soft_q": true,
-            "softmax_temp": 1.0}'
+            "exploration_config": {
+                "type": "SoftQ",
+                "temperature": 1.0,
+            }'
 
 This example plot shows the Q-value metric in addition to importance sampling (IS) and weighted importance sampling (WIS) gain estimates (>1.0 means there is an estimated improvement over the original policy):
 
