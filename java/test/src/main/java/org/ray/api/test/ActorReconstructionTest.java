@@ -87,7 +87,7 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
-  @Test(timeOut = 2 * 60 * 1000)
+  @Test(timeOut = 3 * 60 * 1000)
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =

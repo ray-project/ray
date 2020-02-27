@@ -3,7 +3,7 @@
 <suite name="RAY suite" verbose="2">
     <test name = "RAY test">
         <classes>
-            <class name="org.ray.api.test.MultiThreadingTest"/>
+            <class name="org.ray.api.test.ActorReconstructionTest"/>
         </classes>
     </test>
     <listeners>
