@@ -559,7 +559,7 @@ class ActorClass:
                 function_signature = meta.method_meta.signatures["__init__"]
                 creation_args = signature.flatten_args(function_signature,
                                                        args, kwargs)
-            actor_id = worker.core_worker.create_actor(
+            actor_id, actor_object_id = worker.core_worker.create_actor(
                 meta.language,
                 meta.actor_creation_function_descriptor,
                 creation_args,
@@ -576,6 +576,7 @@ class ActorClass:
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
+            actor_object_id,
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_return_vals,
@@ -623,6 +624,7 @@ class ActorHandle:
     def __init__(self,
                  language,
                  actor_id,
+                 actor_creation_return_id,
                  method_decorators,
                  method_signatures,
                  method_num_return_vals,
@@ -632,6 +634,7 @@ class ActorHandle:
                  original_handle=False):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
+        self._ray_actor_creation_return_id = actor_creation_return_id
         self._ray_original_handle = original_handle
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
@@ -771,6 +774,7 @@ class ActorHandle:
         worker = ray.worker.get_global_worker()
         exported_in_current_session_and_job = (
             self._ray_session_and_job == worker.current_session_and_job)
+        print("__del__")
         if (worker.mode == ray.worker.SCRIPT_MODE
                 and not exported_in_current_session_and_job):
             # If the worker is a driver and driver id has changed because
@@ -781,6 +785,8 @@ class ActorHandle:
                 " Actor id = %s, class name = %s.", self._ray_actor_id,
                 self._ray_actor_creation_function_descriptor.class_name)
             return
+        print("worker connected?", worker.connected)
+        print("original handle?", self._ray_original_handle)
         if worker.connected and self._ray_original_handle:
             # Note: in py2 the weakref is destroyed prior to calling __del__
             # so we need to set the hardref here briefly
@@ -824,11 +830,13 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             state = worker.core_worker.serialize_actor_handle(self)
+            state = (state, self._ray_actor_creation_return_id)
         else:
             # Local mode
             state = {
                 "actor_language": self._ray_actor_language,
                 "actor_id": self._ray_actor_id,
+                "actor_creation_return_id": self._ray_actor_creation_return_id,
                 "method_decorators": self._ray_method_decorators,
                 "method_signatures": self._ray_method_signatures,
                 "method_num_return_vals": self._ray_method_num_return_vals,
@@ -854,7 +862,7 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state)
+                *state)
         else:
             # Local mode
             return cls(
@@ -862,6 +870,7 @@ class ActorHandle:
                 # thread-safe.
                 state["actor_language"],
                 state["actor_id"],
+                state["actor_creation_return_id"],
                 state["method_decorators"],
                 state["method_signatures"],
                 state["method_num_return_vals"],
@@ -898,6 +907,7 @@ def modify_class(cls):
         __ray_actor_class__ = cls  # The original actor class
 
         def __ray_terminate__(self):
+            print("RAY TERMINATE")
             worker = ray.worker.get_global_worker()
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()

@@ -744,7 +744,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
-                               ActorID *return_actor_id) {
+                               ActorID *return_actor_id,
+                               ObjectID *actor_object_id) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -766,8 +767,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.is_direct_call, actor_creation_options.max_concurrency,
       actor_creation_options.is_detached, actor_creation_options.is_asyncio);
 
+  *actor_object_id = return_ids[0];
   std::unique_ptr<ActorHandle> actor_handle(
-      new ActorHandle(actor_id, job_id, /*actor_cursor=*/return_ids[0],
+      new ActorHandle(actor_id, job_id, /*actor_cursor=*/*actor_object_id,
                       function.GetLanguage(), actor_creation_options.is_direct_call,
                       function.GetFunctionDescriptor(), extension_data));
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
@@ -860,6 +862,13 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
 }
 
 bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
+  const auto actor_creation_return_id = actor_handle->GetActorCreationReturnId();
+  RAY_CHECK(reference_counter_->SetDeleteCallback(actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
+        // Unsubscribe from the actor table.
+        // If we own the actor, also terminate the actor.
+        RAY_LOG(ERROR) << "Actor " << actor_id << " out of scope";
+        }));
+
   absl::MutexLock lock(&actor_handles_mutex_);
   const auto &actor_id = actor_handle->GetActorID();
 

@@ -363,7 +363,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     const std::string &extension_data, ActorID *actor_id);
+                     const std::string &extension_data, ActorID *actor_id,
+                     ObjectID *actor_creation_return_id);
 
   /// Submit an actor task.
   ///

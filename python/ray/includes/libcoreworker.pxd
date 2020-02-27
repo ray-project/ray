@@ -110,7 +110,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CreateActor(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CActorCreationOptions &options,
-            const c_string &extension_data, CActorID *actor_id)
+            const c_string &extension_data, CActorID *actor_id,
+            CObjectID *actor_creation_return_id)
         CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,

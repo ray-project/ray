@@ -831,6 +831,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
+            CObjectID c_actor_creation_return_id
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -847,9 +848,10 @@ cdef class CoreWorker:
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
-                    &c_actor_id))
+                    &c_actor_id,
+                    &c_actor_creation_return_id))
 
-            return ActorID(c_actor_id.Binary())
+            return ActorID(c_actor_id.Binary()), ObjectID(c_actor_creation_return_id.Binary())
 
     def submit_actor_task(self,
                           Language language,
@@ -918,7 +920,8 @@ cdef class CoreWorker:
             self.core_worker.get().CreateProfileEvent(event_type),
             extra_data)
 
-    def deserialize_and_register_actor_handle(self, const c_string &bytes):
+    def deserialize_and_register_actor_handle(self, const c_string &bytes,
+            ObjectID actor_creation_return_id):
         cdef CActorHandle* c_actor_handle
         worker = ray.worker.get_global_worker()
         worker.check_connected()
@@ -947,6 +950,7 @@ cdef class CoreWorker:
             method_meta = ray.actor.ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id,
+                                         actor_creation_return_id,
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_return_vals,
@@ -955,6 +959,7 @@ cdef class CoreWorker:
                                          worker.current_session_and_job)
         else:
             return ray.actor.ActorHandle(language, actor_id,
+                                         actor_creation_return_id,
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_return_vals
