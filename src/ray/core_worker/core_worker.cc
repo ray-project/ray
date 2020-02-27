@@ -368,9 +368,10 @@ void CoreWorker::InternalHeartbeat() {
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto& spec = to_resubmit_.front().second;
     if (spec.IsActorTask()) {
-      ActorHandle* handle = nullptr;
+      ActorHandle *handle = nullptr;
       RAY_CHECK_OK(GetActorHandle(spec.ActorId(), &handle));
       if (handle->IsDead()) {
+        task_manager_->SetRemainingRetries(spec.TaskId(), 0);
         task_manager_->PendingTaskFailed(spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
       } else {
         RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(std::move(spec)));

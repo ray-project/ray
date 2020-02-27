@@ -245,4 +245,11 @@ TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
   return it->second.first;
 }
 
+void TaskManager::SetRemainingRetries(const TaskID &task_id, uint64_t retries) {
+  absl::MutexLock lock(&mu_);
+  auto it = pending_tasks_.find(task_id);
+  RAY_CHECK(it != pending_tasks_.end());
+  it->second.second = retries;
+}
+
 }  // namespace ray

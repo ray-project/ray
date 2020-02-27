@@ -101,6 +101,8 @@ class TaskManager : public TaskFinisherInterface {
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
+  void SetRemainingRetries(const TaskID &task_id, uint64_t retries);
+
   /// Return the number of pending tasks.
   int NumPendingTasks() const { return pending_tasks_.size(); }
 
