@@ -16,6 +16,7 @@ from sac.rllib_proxy._constants import DEFAULT_POLICY_ID
 from sac.rllib_proxy._trainer_template import build_trainer
 from sac.rllib_proxy._tf_policy_template import build_tf_policy
 from sac.rllib_proxy._tf_model_v2 import TFModelV2
+from sac.rllib_proxy._patched import PolicyEvaluator
 from sac.rllib_proxy._utils import (
     add_mixins,
     executing_eagerly,
@@ -45,4 +46,5 @@ __all__ = [
     "SyncReplayOptimizer",
     "ConstantSchedule",
     "LinearSchedule",
+    "PolicyEvaluator"
 ]

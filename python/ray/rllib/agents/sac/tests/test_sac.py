@@ -31,6 +31,8 @@ def config(env_id):
     config["env_config"] = dict(env_id=env_id)
     if env_id == "Pendulum-v0":
         config["timesteps_per_iteration"] = 100
+    elif env_id == "LunarLander-v2":
+        config["timesteps_per_iteration"] = 1000
     config["num_workers"] = 8
     config["num_envs_per_worker"] = 8
     return config
@@ -43,13 +45,13 @@ def trainer(config):
 
 @pytest.mark.parametrize(
     "env_id, threshold", [
-        ("Pendulum-v0", -750),
+        ('LunarLander-v2', -750),
     ]
 )
 @pytest.mark.usefixtures("ray_env")
 def test_convergence(trainer, env_id, threshold):
     mean_episode_reward = -float("inf")
-    for i in range(250):
+    for i in range(300):
         result = trainer.train()
         mean_episode_reward = result["episode_reward_mean"]
         print(f"{i}: {mean_episode_reward}")
