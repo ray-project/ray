@@ -6,7 +6,7 @@ end_of_line = lf
 [*.py]
 indent_style = space
 indent_size = 4
-wrap_width = 80
+wrap_width = 79
 
 [*.{hpp,hxx,h,cpp,cxx,cc,c}]
 indent_style = space
