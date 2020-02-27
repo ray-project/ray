@@ -277,12 +277,13 @@ def run(args, parser):
 
     # Determine the video output directory.
     # Deprecated way: Use (--out|~/ray_results) + "/monitor" as dir.
+    video_dir = None
     if args.monitor:
         video_dir = os.path.join(
             os.path.dirname(args.out or "")
             or os.path.expanduser("~/ray_results/"), "monitor")
     # New way: Allow user to specify a video output path.
-    else:
+    elif args.video_dir:
         video_dir = os.path.expanduser(args.video_dir)
 
     # Do the actual rollout.
