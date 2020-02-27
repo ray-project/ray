@@ -44,11 +44,11 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def f(x):
         return
 
-    x = np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+    x = np.zeros(1024 * 1024, dtype=np.uint8)
 
     @ray.remote
     def create_object():
-        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+        return np.zeros(1024 * 1024, dtype=np.uint8)
 
     object_ids = []
 
@@ -145,7 +145,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
 
     # Broadcast a large object to all actors.
     for _ in range(5):
-        x_id = ray.put(np.zeros(10**7, dtype=np.uint8))
+        x_id = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
         object_ids.append(x_id)
         # Pass the object into a method for every actor.
         ray.get([a.set_weights.remote(x_id) for a in actors])
