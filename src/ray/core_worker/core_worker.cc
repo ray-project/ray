@@ -1400,13 +1400,12 @@ void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
 
 void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
                                          rpc::PlasmaObjectReadyReply *reply,
-                                         rpc::SendReplyCallback
-
-                                             send_reply_callback) {
+                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
-
+  RAY_LOG(ERROR) << "ARRIVAL";
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
+  RAY_LOG(ERROR) << "Going to send reply callback";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

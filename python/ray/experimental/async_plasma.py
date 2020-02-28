@@ -23,6 +23,7 @@ class PlasmaEventHandler:
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
+                print("HANDLING")
                 self._complete_future(object_id)
 
     def close(self):
@@ -36,11 +37,14 @@ class PlasmaEventHandler:
         # waiting_dict and as_future appending to the waiting_dict's list.
         logger.debug(
             "Completing plasma futures for object id {}".format(ray_object_id))
-
-        obj = self._worker.get_objects([ray_object_id])[0]
+        print('pre get', ray_object_id)
+        # obj = self._worker.get_objects([ray_object_id])[0]
+        obj = ray.get(ray_object_id, timeout=5)
+        print('post get', ray_object_id, obj)
         futures = self._waiting_dict.pop(ray_object_id)
         for fut in futures:
             loop = fut._loop
+            print("inside loop", loop, fut)
 
             def complete_closure():
                 try:
@@ -52,6 +56,7 @@ class PlasmaEventHandler:
                                  "Most likely already set.".format(fut))
 
             loop.call_soon_threadsafe(complete_closure)
+        print("Exiting _completeFuture")
 
     def check_immediately(self, object_id):
         ready, _ = ray.wait([object_id], timeout=0)
@@ -78,5 +83,5 @@ class PlasmaEventHandler:
                 self._waiting_dict[object_id]) == 1:
             # Only subscribe once
             self._worker.core_worker.subscribe_to_plasma_object(object_id)
-
+            print("AS FUTURE CALLED")
         return future
