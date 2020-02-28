@@ -837,6 +837,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
