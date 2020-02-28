@@ -199,7 +199,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
 }
 
 void WorkerPool::MonitorStartingWorkerProcess(const Process &proc, const Language &language) {
-  constexpr static size_t timeout_seconds = 30;
+  constexpr static size_t worker_register_timeout_seconds = 30;
   auto timer = std::make_shared<boost::asio::deadline_timer>(
       *io_service_, boost::posix_time::seconds(timeout_seconds));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
