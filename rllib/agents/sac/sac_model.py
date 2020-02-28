@@ -62,6 +62,8 @@ class SACModel(TFModelV2):
 
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
+        # For discrete case: Add Softmax at end to make sure the NN outputs
+        # valid action probs.
         self.action_model = tf.keras.Sequential([
             tf.keras.layers.Dense(
                 units=hidden,
@@ -71,15 +73,19 @@ class SACModel(TFModelV2):
         ] + [
             tf.keras.layers.Dense(
                 units=action_outs, activation=None, name="action_out")
-        ])
+        ] + ([tf.keras.layers.Softmax()] if self.discrete else []))
         self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
         self.register_variables(self.action_model.variables)
 
-        self.actions_input = tf.keras.layers.Input(
-            shape=(self.action_dim, ), name="actions")
+        self.actions_input = None
+        if not self.discrete:
+            self.actions_input = tf.keras.layers.Input(
+                shape=(self.action_dim, ), name="actions")
 
         def build_q_net(name, observations, actions):
+            # For continuous actions: Feed obs and actions (concatenated)
+            # through the NN. For discrete actions, only obs.
             q_net = tf.keras.Sequential(([
                 tf.keras.layers.Concatenate(axis=1),
             ] if not self.discrete else []) + [
@@ -93,7 +99,7 @@ class SACModel(TFModelV2):
                     units=q_outs, activation=None, name="{}_out".format(name))
             ])
 
-            # TODO(hartikainen): Remove the unnecessary Model call here
+            # TODO(hartikainen): Remove the unnecessary Model calls here
             if self.discrete:
                 q_net = tf.keras.Model(observations, q_net(observations))
             else:
@@ -117,7 +123,7 @@ class SACModel(TFModelV2):
 
         self.register_variables([self.log_alpha])
 
-    def get_q_values(self, model_out, actions):
+    def get_q_values(self, model_out, actions=None):
         """Return the Q estimates for the most recent forward pass.
 
         This implements Q(s, a).
@@ -125,16 +131,19 @@ class SACModel(TFModelV2):
         Arguments:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
-            actions (Tensor): action values that correspond with the most
-                recent batch of observations passed through forward(), of shape
-                [BATCH_SIZE, action_dim].
+            actions (Optional[Tensor]): Actions to return the Q-values for.
+                Shape: [BATCH_SIZE, action_dim]. If None (discrete action
+                case), return Q-values for all actions.
 
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.q_net([model_out, actions])
+        if actions is not None:
+            return self.q_net([model_out, actions])
+        else:
+            return self.q_net(model_out)
 
-    def get_twin_q_values(self, model_out, actions):
+    def get_twin_q_values(self, model_out, actions=None):
         """Same as get_q_values but using the twin Q net.
 
         This implements the twin Q(s, a).
@@ -142,14 +151,17 @@ class SACModel(TFModelV2):
         Arguments:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
-            actions (Tensor): action values that correspond with the most
-                recent batch of observations passed through forward(), of shape
-                [BATCH_SIZE, action_dim].
+            actions (Optional[Tensor]): Actions to return the Q-values for.
+                Shape: [BATCH_SIZE, action_dim]. If None (discrete action
+                case), return Q-values for all actions.
 
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.twin_q_net([model_out, actions])
+        if actions is not None:
+            return self.twin_q_net([model_out, actions])
+        else:
+            return self.twin_q_net(model_out)
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""

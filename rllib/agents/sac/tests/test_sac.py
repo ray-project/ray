@@ -13,7 +13,7 @@ class TestSAC(unittest.TestCase):
         ray.init()
         config = sac.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        num_iterations = 2
+        num_iterations = 20
 
         # eager (discrete and cont. actions).
         for fw in ["eager", "tf", "torch"]:
@@ -28,6 +28,7 @@ class TestSAC(unittest.TestCase):
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
+
 
 if __name__ == "__main__":
     import unittest
