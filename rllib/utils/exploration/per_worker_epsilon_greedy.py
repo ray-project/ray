@@ -18,7 +18,8 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
                  num_workers=0,
                  worker_index=0,
                  framework="tf"):
-        """
+        """Create a PerWorkerEpsilonGreedy exploration class.
+
         Args:
             action_space (Space): The gym action space used by the environment.
             initial_epsilon (float): The initial epsilon value to use.
