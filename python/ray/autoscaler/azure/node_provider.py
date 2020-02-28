@@ -29,15 +29,15 @@ def synchronized(f):
 
 
 class AzureNodeProvider(NodeProvider):
-    """
-    Azure Node Provider
-    Assumes credentials are set by running `az login`
-    and default subscription is configured through `az account`
-    or set in provider config
+    """Node Provider for Azure.
+    
+    This provider assumes Azure credentials are set by running ``az login``
+    and the default subscription is configured through ``az account``
+    or set in the ``provider`` field of the autoscaler configuration.
 
     Nodes may be in one of three states: {pending, running, terminated}. Nodes
-    appear immediately once started by `create_node`, and transition
-    immediately to terminated when `terminate_node` is called.
+    appear immediately once started by ``create_node``, and transition
+    immediately to terminated when ``terminate_node`` is called.
     """
 
     def __init__(self, provider_config, cluster_name):
