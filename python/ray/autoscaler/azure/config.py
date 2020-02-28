@@ -11,7 +11,6 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
 
-
 RETRIES = 30
 MSI_NAME = "ray-msi-user-identity"
 NSG_NAME = "ray-nsg"

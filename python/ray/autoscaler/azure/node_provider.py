@@ -188,12 +188,7 @@ class AzureNodeProvider(NodeProvider):
                 e.args += ("name", vm_name)
                 raise
 
-            ip_configuration = {
-                "name": uuid4(),
-                "subnet": {
-                    "id": subnet_id
-                }
-            }
+            ip_configuration = {"name": uuid4(), "subnet": {"id": subnet_id}}
 
             if not self.provider_config.get("use_internal_ips", False):
                 # create public ip address
@@ -255,7 +250,7 @@ class AzureNodeProvider(NodeProvider):
         self.cached_nodes[node_id]["tags"] = node_tags
 
     def terminate_node(self, node_id):
-        """Terminates the specified node. This will delete the VM and 
+        """Terminates the specified node. This will delete the VM and
            associated resources (NIC, IP, Storage) for the specified node."""
         # self.compute_client.virtual_machines.deallocate(
         # resource_group_name=self.provider_config["resource_group"],
