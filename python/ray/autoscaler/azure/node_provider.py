@@ -12,7 +12,7 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
 VM_NAME_MAX_LEN = 64
-VM_NAME_UUID_LEN = 4
+VM_NAME_UUID_LEN = 8
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +102,15 @@ class AzureNodeProvider(NodeProvider):
             resource_group_name=resource_group,
             network_interface_name=metadata["nic_name"])
         ip_config = nic.ip_configurations[0]
-        public_ip_id = ip_config.public_ip_address.id
-        metadata["public_ip_name"] = public_ip_id.split("/")[-1]
-        public_ip = self.network_client.public_ip_addresses.get(
-            resource_group_name=resource_group,
-            public_ip_address_name=metadata["public_ip_name"])
-        metadata["external_ip"] = public_ip.ip_address
+
+        if not self.provider_config.get("use_internal_ips", False):
+            public_ip_id = ip_config.public_ip_address.id
+            metadata["public_ip_name"] = public_ip_id.split("/")[-1]
+            public_ip = self.network_client.public_ip_addresses.get(
+                resource_group_name=resource_group,
+                public_ip_address_name=metadata["public_ip_name"])
+            metadata["external_ip"] = public_ip.ip_address
+
         metadata["internal_ip"] = ip_config.private_ip_address
 
         return metadata
@@ -185,26 +188,29 @@ class AzureNodeProvider(NodeProvider):
                 e.args += ("name", vm_name)
                 raise
 
-            # get public ip address
-            public_ip_addess_params = {
-                "location": location,
-                "public_ip_allocation_method": "Dynamic"
+            ip_configuration = {
+                "name": uuid4(),
+                "subnet": {
+                    "id": subnet_id
+                }
             }
-            public_ip_address = (
-                self.network_client.public_ip_addresses.create_or_update(
-                    resource_group_name=resource_group,
-                    public_ip_address_name="{}-ip".format(vm_name),
-                    parameters=public_ip_addess_params).result())
+
+            if not self.provider_config.get("use_internal_ips", False):
+                # create public ip address
+                public_ip_addess_params = {
+                    "location": location,
+                    "public_ip_allocation_method": "Dynamic"
+                }
+                public_ip_address = (
+                    self.network_client.public_ip_addresses.create_or_update(
+                        resource_group_name=resource_group,
+                        public_ip_address_name="{}-ip".format(vm_name),
+                        parameters=public_ip_addess_params).result())
+                ip_configuration["public_ip_address"] = public_ip_address
 
             nic_params = {
                 "location": location,
-                "ip_configurations": [{
-                    "name": uuid4().hex,
-                    "public_ip_address": public_ip_address,
-                    "subnet": {
-                        "id": subnet_id
-                    }
-                }]
+                "ip_configurations": [ip_configuration]
             }
             nic = self.network_client.network_interfaces.create_or_update(
                 resource_group_name=resource_group,
@@ -249,7 +255,8 @@ class AzureNodeProvider(NodeProvider):
         self.cached_nodes[node_id]["tags"] = node_tags
 
     def terminate_node(self, node_id):
-        """Terminates the specified node."""
+        """Terminates the specified node. This will delete the VM and 
+           associated resources (NIC, IP, Storage) for the specified node."""
         # self.compute_client.virtual_machines.deallocate(
         # resource_group_name=self.provider_config["resource_group"],
         # vm_name=node_id)
@@ -270,9 +277,10 @@ class AzureNodeProvider(NodeProvider):
                 resource_group_name=resource_group,
                 network_interface_name=metadata["nic_name"])
             # delete ip address
-            self.network_client.public_ip_addresses.delete(
-                resource_group_name=resource_group,
-                public_ip_address_name=metadata["public_ip_name"])
+            if "public_ip_name" in metadata:
+                self.network_client.public_ip_addresses.delete(
+                    resource_group_name=resource_group,
+                    public_ip_address_name=metadata["public_ip_name"])
             # delete disks
             for disk in disks:
                 self.compute_client.disks.delete(

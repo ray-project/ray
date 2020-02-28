@@ -43,9 +43,9 @@ Test that it works by running the following commands from your local machine:
 Azure
 ~~~~~
 
-First, install the Azure CLI (```pip install azure-cli azure-core```) then login using (```az login```). 
+First, install the Azure CLI (``pip install azure-cli azure-core``) then login using (``az login``). 
 
-Set the subscription to use from the command line (```az account set -s <subscription_id>```) or by modifying the provider section of the config provided e.g: `ray/python/ray/autoscaler/azure/example-full.yaml`
+Set the subscription to use from the command line (``az account set -s <subscription_id>``) or by modifying the provider section of the config provided e.g: `ray/python/ray/autoscaler/azure/example-full.yaml`
 
 Once the Azure CLI is configured to manage resources on your Azure account, you should be ready to run the autoscaler. The provided `ray/python/ray/autoscaler/azure/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/azure/example-full.yaml>`__ cluster config file will create a small cluster with a Standard DS2v3 head node (on-demand) configured to autoscale up to two Standard DS2v3 `spot workers <https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms>`__. Note that you'll need to fill in your resource group and location in those templates.
 

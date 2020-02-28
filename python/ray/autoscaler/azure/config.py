@@ -11,7 +11,9 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
 import paramiko
 
+
 RETRIES = 30
+MSI_NAME = "ray-msi-user-identity"
 NSG_NAME = "ray-nsg"
 SUBNET_NAME = "ray-subnet"
 VNET_NAME = "ray-vnet"
@@ -55,7 +57,7 @@ def _configure_resource_group(config):
     if "tags" in config["provider"]:
         params["tags"] = config["provider"]["tags"]
 
-    logger.info("Creating resource group: %s", resource_group)
+    logger.info("Creating/Updating Resource Group: %s", resource_group)
     resource_client.resource_groups.create_or_update(
         resource_group_name=resource_group, parameters=params)
 
@@ -73,12 +75,14 @@ def _configure_msi_user(config):
     resource_group_id = resource_client.resource_groups.get(resource_group).id
     try:
         identity = msi_client.user_assigned_identities.list_by_resource_group(
-            resource_group_name=resource_group).next()
+            resource_group_name=resource_group,
+            filter="name eq '{}'".format(MSI_NAME)).next()
+        logger.info("Found MSI User Assigned Identity: %s", MSI_NAME)
     except StopIteration:
-        logger.info("Creating MSI user assigned identity")
+        logger.info("Creating MSI User Assigned Identity: %s", MSI_NAME)
         identity = msi_client.user_assigned_identities.create_or_update(
             resource_group_name=resource_group,
-            resource_name="ray-user-{}".format(uuid.uuid4()),
+            resource_name=MSI_NAME,
             location=location)
 
     identity_id = identity.id
@@ -104,7 +108,7 @@ def _configure_msi_user(config):
                 scope=resource_group_id,
                 role_assignment_name=uuid.uuid4(),
                 parameters=role_params)
-            logger.info("Creating contributor role assignment")
+            logger.info("Assigning Contributor Role to MSI User")
         except CloudError as ce:
             if ce.inner_exception.error == "PrincipalNotFound":
                 time.sleep(5)
@@ -136,12 +140,12 @@ def _configure_key_pair(config):
         private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
 
     if os.path.exists(public_key_path) and os.path.exists(private_key_path):
-        logger.info("SSH key pair found: %s", key_name)
+        logger.info("Found SSH key pair: %s", key_name)
         with open(public_key_path, "r") as f:
             public_key = f.read()
     else:
         public_key, private_key_path = _generate_ssh_keys(key_name)
-        logger.info("SSH key pair created: %s", key_name)
+        logger.info("Creating SSH key pair: %s", key_name)
 
     config["auth"]["ssh_private_key"] = private_key_path
 
@@ -190,7 +194,7 @@ def _configure_network(config):
     # can't update vnet if subnet already exists
     if not vnets:
         # create vnet
-        logger.info("Creating VNet: %s", VNET_NAME)
+        logger.info("Creating/Updating VNet: %s", VNET_NAME)
         vnet_params = {
             "location": location,
             "address_space": {
@@ -203,7 +207,7 @@ def _configure_network(config):
             parameters=vnet_params).wait()
 
     # create subnet
-    logger.info("Creating Subnet: %s", SUBNET_NAME)
+    logger.info("Creating/Updating Subnet: %s", SUBNET_NAME)
     subnet_params = {"address_prefix": "10.0.0.0/24"}
     subnet = network_client.subnets.create_or_update(
         resource_group_name=resource_group,
@@ -214,7 +218,7 @@ def _configure_network(config):
     config["provider"]["subnet_id"] = subnet.id
 
     # create network security group
-    logger.info("Creating Network Security Group: %s", NSG_NAME)
+    logger.info("Creating/Updating Network Security Group: %s", NSG_NAME)
     nsg_params = {
         "location": location,
         "security_rules": [{
