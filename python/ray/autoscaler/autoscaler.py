@@ -769,7 +769,8 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    schema = f.read(os.path.join(ray.autoscaler.__file__, "ray-schema.json")) 
+    with open(os.path.join(ray.autoscaler.__file__, "ray-schema.json")) as f:
+        schema = f.read() 
     jsonschema.validate(config, json.loads(schema))
 
 
