@@ -167,6 +167,7 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+        self._trial_info = None
 
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
@@ -206,8 +207,11 @@ class Trainable:
         """
         return ""
 
+    def set_trial_info(self, trial_info):
+        self._trial_info = trial_info
+
     def current_ip(self):
-        logger.warning("Getting current IP.")
+        logger.info("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
@@ -510,6 +514,18 @@ class Trainable:
 
         """
         return os.path.join(self._logdir, "")
+
+    @property
+    def trial_info(self):
+        """TrialInfo object for the corresponding trial of this Trainable.
+
+        This allows you to access fields such as the trial_id and trial name
+        inside the training loop. See the documentation on TrialInfo for more
+        informatino.
+
+        This is not set if not using Tune.
+        """
+        return self._trial_info
 
     @property
     def iteration(self):

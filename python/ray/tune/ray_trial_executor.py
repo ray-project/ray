@@ -15,7 +15,7 @@ from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
-from ray.tune.trial import Trial, Checkpoint, Location
+from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 
@@ -127,7 +127,8 @@ class RayTrialExecutor(TrialExecutor):
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
 
         with self._change_working_directory(trial):
-            return cls.remote(**kwargs)
+            training_actor = cls.remote(**kwargs)
+            training_actor.set_trial_info.remote(TrialInfo(trial))
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""

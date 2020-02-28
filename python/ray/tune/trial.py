@@ -102,6 +102,19 @@ def checkpoint_deleter(trial_id, runner):
     return delete
 
 
+class TrialInfo:
+    """Serializable struct for holding information for a Trial.
+
+    Attributes:
+        trial_name (str): String name of the currernt trial.
+        trial_id (str): trial_id of the trial
+    """
+
+    def __init__(self, trial):
+        self.trial_name = str(trial)
+        self.trial_id = trial.trial_id
+
+
 class Trial:
     """A trial object holds the state for one model training run.
 
