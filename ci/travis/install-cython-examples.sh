@@ -13,7 +13,7 @@ if [[ "$PYTHON" == "3.6" ]]; then
    export PATH="$HOME/miniconda/bin:$PATH"
 
    pushd $cython_examples
-   pip install --progress-bar=off scipy
+   pip install scipy
    python setup.py install --user
    popd
 

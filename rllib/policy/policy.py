@@ -169,7 +169,6 @@ class Policy(metaclass=ABCMeta):
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
-    @abstractmethod
     @DeveloperAPI
     def compute_log_likelihoods(self,
                                 actions,

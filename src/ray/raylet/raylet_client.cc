@@ -377,4 +377,10 @@ Status raylet::RayletClient::PinObjectIDs(
   return grpc_client_->PinObjectIDs(request, callback);
 }
 
+Status raylet::RayletClient::GlobalGC(
+    const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
+  rpc::GlobalGCRequest request;
+  return grpc_client_->GlobalGC(request, callback);
+}
+
 }  // namespace ray

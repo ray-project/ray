@@ -1273,6 +1273,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rock_paper_scissors_multiagent.py"],
+    args = ["--stop=200"],
+)
+
+py_test(
     name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
     tags = ["examples", "examples_T"],
     size = "large",

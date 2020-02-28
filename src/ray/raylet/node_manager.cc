@@ -304,6 +304,19 @@ void NodeManager::Heartbeat() {
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
   }
 
+  // Set the global gc bit on the outgoing heartbeat message.
+  if (should_global_gc_) {
+    heartbeat_data->set_should_global_gc(true);
+    should_global_gc_ = false;
+  }
+
+  // Trigger local GC if needed. This throttles the frequency of local GC calls
+  // to at most once per heartbeat interval.
+  if (should_local_gc_) {
+    DoLocalGC();
+    should_local_gc_ = false;
+  }
+
   ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
                                                                  /*done*/ nullptr);
   RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
@@ -328,6 +341,26 @@ void NodeManager::Heartbeat() {
     RAY_CHECK(!error);
     Heartbeat();
   });
+}
+
+void NodeManager::DoLocalGC() {
+  auto all_workers = worker_pool_.GetAllWorkers();
+  for (const auto &driver : worker_pool_.GetAllDrivers()) {
+    all_workers.push_back(driver);
+  }
+  RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size() << " workers.";
+  for (const auto &worker : all_workers) {
+    rpc::LocalGCRequest request;
+    auto status = worker->rpc_client()->LocalGC(
+        request, [](const ray::Status &status, const rpc::LocalGCReply &r) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send local GC request: " << status.ToString();
+          }
+        });
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to send local GC request: " << status.ToString();
+    }
+  }
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -650,6 +683,12 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
                   << client_id;
     return;
   }
+
+  // Trigger local GC at the next heartbeat interval.
+  if (heartbeat_data.should_global_gc()) {
+    should_local_gc_ = true;
+  }
+
   SchedulingResources &remote_resources = it->second;
 
   ResourceSet remote_total(VectorFromProtobuf(heartbeat_data.resources_total_label()),
@@ -3270,6 +3309,15 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                        << status.ToString();
     }
   }
+}
+
+void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
+                                 rpc::GlobalGCReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
+  should_global_gc_ = true;
+  // We won't see our own request, so trigger local GC in the next heartbeat.
+  should_local_gc_ = true;
 }
 
 void NodeManager::RecordMetrics() {
