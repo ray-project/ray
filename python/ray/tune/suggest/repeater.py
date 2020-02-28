@@ -6,19 +6,13 @@ from ray.tune.suggest.search import SearchAlgorithm
 class _TrialGroup:
     """Class for grouping trials of same parameters.
 
-    This is used when repeating trials for reducing training variance. See
-    https://github.com/ray-project/ray/issues/6994.
+    This is used when repeating trials for reducing training variance.
 
     Args:
         primary_trial_id (str): Trial ID of the "primary trial".
             This trial is the one that the Searcher is aware of.
-        trial_ids (List[str]): List of trial ids of the trials in the group.
-            All trials should be using the same hyperparameters.
         config (dict): Suggested configuration shared across all trials
             in the trial group.
-        metric (str): The training result objective value attribute.
-        use_clipped_trials (bool): Whether to use early terminated trials
-            in the calculation of the group aggregate score.
 
     """
 
