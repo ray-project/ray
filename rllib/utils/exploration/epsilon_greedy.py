@@ -86,7 +86,6 @@ class EpsilonGreedy(Exploration):
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
-        print("TIMESTEP", timestep)
         epsilon = tf.convert_to_tensor(self.epsilon_schedule(timestep))
 
         # Get the exploit action as the one with the highest logit value.
