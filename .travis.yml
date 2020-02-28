@@ -110,7 +110,7 @@ matrix:
         - python setup.py check --restructuredtext --strict --metadata
         - cd ..
         # Run Bazel linter Buildifier.
-        - wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
+        - wget -q https://dl.google.com/go/go1.11.linux-amd64.tar.gz
         - tar -xf go1.11.linux-amd64.tar.gz
         - mkdir $HOME/go_dir
         - export GOROOT=`pwd`/go
