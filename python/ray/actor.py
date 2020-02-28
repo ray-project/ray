@@ -782,6 +782,12 @@ class ActorHandle:
             finally:
                 self.__ray_terminate__._actor_hard_ref = None
 
+    def __ray_kill__(self):
+        """Deprecated - use ray.kill() instead."""
+        logger.warning("actor.__ray_kill__() is deprecated and will be removed"
+                       " in the near future. Use ray.kill(actor) instead.")
+        ray.kill(self)
+
     @property
     def _actor_id(self):
         return self._ray_actor_id
