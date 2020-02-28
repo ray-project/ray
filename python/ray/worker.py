@@ -1657,7 +1657,8 @@ def kill(actor):
         actor (ActorHandle): Handle to the actor to kill.
     """
     if not isinstance(actor, ray.actor.ActorHandle):
-        raise ValueError("ray.kill() only supported for actors.")
+        raise ValueError("ray.kill() only supported for actors. "
+                         "Got: {}.".format(type(actor)))
 
     worker = ray.worker.get_global_worker()
     worker.core_worker.kill_actor(actor._ray_actor_id)
