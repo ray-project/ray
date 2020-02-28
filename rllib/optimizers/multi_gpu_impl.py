@@ -1,7 +1,8 @@
 from collections import namedtuple
 import logging
 
-from ray.rllib.utils.debug import log_once, summarize
+from ray.util.debug import log_once
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()

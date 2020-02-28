@@ -160,7 +160,7 @@ def actor_critic_loss(policy, model, _, train_batch):
     # Q-values for current policy (no noise) in given current state
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
     if policy.config["twin_q"]:
-        twin_q_t_det_policy = model.get_q_values(model_out_t, policy_t)
+        twin_q_t_det_policy = model.get_twin_q_values(model_out_t, policy_t)
         q_t_det_policy = tf.reduce_min(
             (q_t_det_policy, twin_q_t_det_policy), axis=0)
 

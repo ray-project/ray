@@ -229,6 +229,7 @@ class ModelCatalog:
                 else:
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
+            size = int(size)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
         elif isinstance(action_space, gym.spaces.Dict):
             raise NotImplementedError(

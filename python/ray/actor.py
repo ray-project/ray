@@ -444,8 +444,8 @@ class ActorClass:
             args = []
         if kwargs is None:
             kwargs = {}
-        if is_direct_call is None:
-            is_direct_call = ray_constants.direct_call_enabled()
+        if is_direct_call is not None and not is_direct_call:
+            raise ValueError("Non-direct call actors are no longer supported.")
 
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
@@ -460,15 +460,8 @@ class ActorClass:
             else:
                 max_concurrency = 1
 
-        if max_concurrency > 1 and not is_direct_call:
-            raise ValueError(
-                "setting max_concurrency requires is_direct_call=True")
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
-
-        if is_asyncio and not is_direct_call:
-            raise ValueError(
-                "Setting is_asyncio requires is_direct_call=True.")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
@@ -566,7 +559,6 @@ class ActorClass:
                 meta.max_reconstructions,
                 resources,
                 actor_placement_resources,
-                is_direct_call,
                 max_concurrency,
                 detached,
                 is_asyncio,

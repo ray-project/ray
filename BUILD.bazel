@@ -679,6 +679,16 @@ cc_test(
 )
 
 cc_test(
+    name = "sequencer_test",
+    srcs = ["src/ray/util/sequencer_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
@@ -830,6 +840,7 @@ cc_library(
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
     ],
@@ -1293,7 +1304,18 @@ genrule(
     cmd = """
         set -x &&
         WORK_DIR="$$(pwd)" &&
-        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
+        RAYDIR="$$WORK_DIR/python/ray"
+        RAYLET="$(location python/ray/_raylet.so)"
+        RAYLET_TARGET_FILENAME="$${RAYLET##*/}" &&
+        if [ "$${OSTYPE-}" = "msys" ]; then
+            # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}" &&
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd" &&
+            if [ -f "$${RAYLET%.*}.pdb" ]; then
+                cp -f "$${RAYLET%.*}.pdb" "$${RAYDIR}";
+            fi;
+        fi &&
+        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
