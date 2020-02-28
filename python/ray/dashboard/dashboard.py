@@ -108,6 +108,7 @@ class DashboardController(BaseDashboardController):
         self.node_stats = NodeStats(redis_address, redis_password)
         self.raylet_stats = RayletStats(redis_address, update_frequency,
                                         redis_password)
+        self.is_hosted = False
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -245,13 +246,6 @@ class Dashboard(object):
         self.hosted_dashboard_addr = hosted_dashboard_addr
         self.dashboard_client = None
 
-        if self.hosted_dashboard_addr:
-            hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
-                self.hosted_dashboard_addr)
-            self.dashboard_client = DashboardClient(hosted_dashboard_host,
-                                                    hosted_dashboard_port,
-                                                    self.dashboard_controller)
-
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
         # using the React dev server. Specifically, when this option is set, we
@@ -388,28 +382,75 @@ class Dashboard(object):
             result = self.dashboard_controller.get_errors(hostname, pid)
             return await json_response(result=result)
 
-        if self.hosted_dashboard_addr is None:
-            # Hosted dashboard mode won't use local dashboard frontend.
-            self.app.router.add_get("/", get_index)
-            self.app.router.add_get("/favicon.ico", get_favicon)
+        async def is_hosted(req) -> aiohttp.web.Response:
+            is_hosted = self.dashboard_controller.is_hosted
+            return await json_response(result={"is_hosted": is_hosted})
 
-            build_dir = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "client/build")
-            if not os.path.isdir(build_dir):
-                raise OSError(
-                    errno.ENOENT,
-                    "Dashboard build directory not found. If installing "
-                    "from source, please follow the additional steps "
-                    "required to build the dashboard"
-                    "(cd python/ray/dashboard/client "
-                    "&& npm ci "
-                    "&& npm run build)", build_dir)
+        async def to_hosted(req) -> aiohttp.web.Response:
+            return aiohttp.web.Response(text="""
+<html>
+    <head>
+        <title> Ray Hosted Dashboard </title>
+        <style>
+        body {
+            font-family: noto sans,sans-serif;
+            padding: 25px;
+        }
+        button {
+        background-color: #0099e6;
+    color: white;
+    font-size: x-large;
+    border: none;
+    padding: 3px 6px;
+    border-radius: 5%;
+        }
+        </style>
+    </head>
+    <body>
+      <h1>
+        Ray Hosted Dashboard Terms and Conditions
+      </h1>
 
-            static_dir = os.path.join(build_dir, "static")
-            self.app.router.add_static("/static", static_dir)
+      <h2> 📜 📜 📜 </h2>
+      <p> Please agree to our EULA. </p>
 
-            speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
-            self.app.router.add_static("/speedscope", speedscope_dir)
+      <button id="agreed"> Agree </id>
+
+      <script type="text/javascript">
+          document.getElementById("agreed").onclick = function () {
+              location.href = "/to_hosted_agreed";
+          };
+      </script>
+
+    </body>
+</html>
+""", content_type="text/html"
+        )
+
+        async def to_hosted_redirect(req) -> aiohttp.web.Response:
+            dashboard_url = self.start_exporter()
+            raise aiohttp.web.HTTPFound(dashboard_url)
+
+        self.app.router.add_get("/", get_index)
+        self.app.router.add_get("/favicon.ico", get_favicon)
+
+        build_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "client/build")
+        if not os.path.isdir(build_dir):
+            raise OSError(
+                errno.ENOENT,
+                "Dashboard build directory not found. If installing "
+                "from source, please follow the additional steps "
+                "required to build the dashboard"
+                "(cd python/ray/dashboard/client "
+                "&& npm ci "
+                "&& npm run build)", build_dir)
+
+        static_dir = os.path.join(build_dir, "static")
+        self.app.router.add_static("/static", static_dir)
+
+        speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
+        self.app.router.add_static("/speedscope", speedscope_dir)
 
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
@@ -424,6 +465,10 @@ class Dashboard(object):
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
 
+        self.app.router.add_get('/api/is_hosted', is_hosted)
+        self.app.router.add_get("/to_hosted", to_hosted)
+        self.app.router.add_get("/to_hosted_agreed", to_hosted_redirect)
+
         self.app.router.add_get("/{_}", get_forbidden)
 
     def log_dashboard_url(self):
@@ -434,11 +479,21 @@ class Dashboard(object):
             f.write(url)
         logger.info("Dashboard running on {}".format(url))
 
+    def start_exporter(self) -> str:
+        assert self.hosted_dashboard_addr
+
+        hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
+            self.hosted_dashboard_addr)
+        self.dashboard_client = DashboardClient(hosted_dashboard_host,
+                                                hosted_dashboard_port,
+                                                self.dashboard_controller)
+        self.dashboard_client.start_exporting_metrics()
+
+        return self.dashboard_client.hosted_dashboard_url
+
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
-        if self.hosted_dashboard_addr:
-            self.dashboard_client.start_exporting_metrics()
         if Analysis is not None:
             self.tune_stats.start()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)

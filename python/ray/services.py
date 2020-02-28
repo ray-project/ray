@@ -1080,11 +1080,11 @@ def start_dashboard(require_webui,
         dashboard_url = ""
 
         if not hosted_dashboard_addr:
-            dashboard_url = "{}:{}".format(
+            dashboard_url = "http://{}:{}".format(
                 host if host != "0.0.0.0" else get_node_ip_address(), port)
         else:
             # TODO(sang): Find a way to read hosted dashboard url
-            dashboard_url = "localhost:8266"
+            dashboard_url = "http://localhost:8266"
             logger.info(
                 "Dashboard is running in a host {}".format(dashboard_url))
 
@@ -1094,7 +1094,7 @@ def start_dashboard(require_webui,
 
         if not hosted_dashboard_addr:
             # TODO(simon): Implement frontend UI for this.
-            enable_hosted_dashboard_url = "{}/to_host".format(dashboard_url)
+            enable_hosted_dashboard_url = "{}/to_hosted".format(dashboard_url)
             logger.info("To host your dashboard, go to {}{}{}{}{}".format(
                 colorama.Style.BRIGHT, colorama.Fore.GREEN,
                 enable_hosted_dashboard_url, colorama.Fore.RESET,

@@ -238,3 +238,10 @@ export interface TuneAvailabilityResponse {
 
 export const getTuneAvailability = () =>
   get<TuneAvailabilityResponse>("/api/tune_availability", {});
+
+export interface IsHostedResponse {
+  is_hosted: boolean
+}
+
+export const getIsHosted = () =>
+  get<IsHostedResponse>("/api/is_hosted", {});
