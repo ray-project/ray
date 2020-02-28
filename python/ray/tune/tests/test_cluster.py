@@ -303,7 +303,6 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         runner.step()
 
 
-@pytest.mark.skip(reason="Fault tolerance tests are failing.")
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
 def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     """Removing a node in full cluster causes Trial to be requeued."""
