@@ -206,7 +206,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc, const Languag
   timer->async_wait([timer, language, proc, this] (const boost::system::error_code e) -> void {
     // check the error code.
     auto &state = this->GetStateForLanguage(language);
-    // Since this process is timeout to start, remove it from starting_worker_processes
+    // Since this process times out to start, remove it from starting_worker_processes
     // to avoid the zombie worker.
     auto it = state.starting_worker_processes.find(proc);
     if (it != state.starting_worker_processes.end()) {
