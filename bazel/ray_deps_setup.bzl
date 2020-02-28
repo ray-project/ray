@@ -1,5 +1,5 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 def github_repository(*, name=None, remote=None, commit=None, tag=None,
                       branch=None, build_file=None, build_file_content=None,
@@ -85,6 +85,18 @@ def ray_deps_setup():
             "//thirdparty/patches:hiredis-windows-poll.patch",
             "//thirdparty/patches:redis-windows-poll.patch",
         ],
+    )
+
+    http_file(
+        name = "win-redis-bin",
+        sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
+        urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
+    )
+
+    http_file(
+        name = "redis-src",
+        sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
+        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.gz"],
     )
 
     github_repository(
