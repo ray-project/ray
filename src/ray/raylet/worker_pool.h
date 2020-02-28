@@ -238,7 +238,7 @@ class WorkerPool {
   int maximum_startup_concurrency_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The callback will be triggered once it's timeout to start a worker.
+  /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 };
