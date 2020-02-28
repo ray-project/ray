@@ -108,7 +108,7 @@ class NevergradSearch(SuggestionAlgorithm):
             raise ValueError("len(parameters_names) must match optimizer "
                              "dimension for non-instrumented optimizers")
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
         suggested_config = self._nevergrad_opt.ask()

@@ -252,7 +252,7 @@ class TrialRunnerTest3(unittest.TestCase):
                     self._finished = True
                 return trials
 
-            def _suggest(self, trial_id):
+            def suggest(self, trial_id):
                 return {}
 
         ray.init(num_cpus=2)
@@ -469,7 +469,7 @@ class TrialRunnerTest3(unittest.TestCase):
 class SearchAlgorithmTest(unittest.TestCase):
     def testNestedSuggestion(self):
         class TestSuggestion(SuggestionAlgorithm):
-            def _suggest(self, trial_id):
+            def suggest(self, trial_id):
                 return {"a": {"b": {"c": {"d": 4, "e": 5}}}}
 
         alg = TestSuggestion()

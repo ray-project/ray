@@ -97,7 +97,7 @@ class SigOptSearch(SuggestionAlgorithm):
 
         super(SigOptSearch, self).__init__(**kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
 

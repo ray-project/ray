@@ -14,18 +14,18 @@ class SuggestionAlgorithm(SearchAlgorithm):
     """Abstract class for suggestion-based algorithms.
 
     Custom search algorithms can extend this class easily by overriding the
-    `_suggest` method provide generated parameters for the trials.
+    `suggest` method provide generated parameters for the trials.
 
     To track suggestions and their corresponding evaluations, the method
-    `_suggest` will be passed a trial_id, which will be used in
+    `suggest` will be passed a trial_id, which will be used in
     subsequent notifications.
 
     Example:
         >>> suggester = SuggestionAlgorithm()
         >>> suggester.add_configurations({ ... })
-        >>> new_parameters = suggester._suggest()
+        >>> new_parameters = suggester.suggest()
         >>> suggester.on_trial_complete(trial_id, result)
-        >>> better_parameters = suggester._suggest()
+        >>> better_parameters = suggester.suggest()
     """
 
     def __init__(self, use_early_stopped_trials=True):
@@ -68,9 +68,9 @@ class SuggestionAlgorithm(SearchAlgorithm):
         return trials
 
     def _generate_trials(self, experiment_spec, output_path=""):
-        """Generates trials with configurations from `_suggest`.
+        """Generates trials with configurations from `suggest`.
 
-        Creates a trial_id that is passed into `_suggest`.
+        Creates a trial_id that is passed into `suggest`.
 
         Yields:
             Trial objects constructed according to `spec`
@@ -80,7 +80,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
         for _ in range(experiment_spec.get("num_samples", 1)):
             trial_id = Trial.generate_id()
             while True:
-                suggested_config = self._suggest(trial_id)
+                suggested_config = self.suggest(trial_id)
                 if suggested_config is None:
                     yield None
                 else:
@@ -103,7 +103,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
     def is_finished(self):
         return self._finished
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         """Queries the algorithm to retrieve the next set of parameters.
 
         Arguments:
@@ -117,11 +117,11 @@ class SuggestionAlgorithm(SearchAlgorithm):
         Example:
             >>> suggester = SuggestionAlgorithm(max_concurrent=1)
             >>> suggester.add_configurations({ ... })
-            >>> parameters_1 = suggester._suggest()
-            >>> parameters_2 = suggester._suggest()
+            >>> parameters_1 = suggester.suggest()
+            >>> parameters_2 = suggester.suggest()
             >>> parameters_2 is None
             >>> suggester.on_trial_complete(trial_id, result)
-            >>> parameters_2 = suggester._suggest()
+            >>> parameters_2 = suggester.suggest()
             >>> parameters_2 is not None
         """
         raise NotImplementedError
@@ -143,7 +143,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         self.results = []
         super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if len(self.live_trials) < self._max_concurrent and not self.stall:
             self.live_trials[trial_id] = 1
             return {"test_variable": 2}

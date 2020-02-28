@@ -80,7 +80,7 @@ class TuneBOHB(SuggestionAlgorithm):
         self.bohber = BOHB(space, **bohb_config)
         super(TuneBOHB, self).__init__()
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if len(self.running) < self._max_concurrent:
             # This parameter is not used in hpbandster implementation.
             config, info = self.bohber.get_config(None)

@@ -124,7 +124,7 @@ class SkOptSearch(SuggestionAlgorithm):
         self._live_trial_mapping = {}
         super(SkOptSearch, self).__init__(**kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
         if self._initial_points:
