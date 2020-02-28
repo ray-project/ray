@@ -800,15 +800,14 @@ class LocalIterator(Generic[T]):
             timeout = 0
 
         active = []
-        new_ctx = MetricsContext()
+        shared_metrics = MetricsContext()
         for it in [self] + list(others):
             active.append(
                 LocalIterator(
                     it.base_iterator,
-                    it.metrics,
+                    shared_metrics,
                     it.local_transforms,
                     timeout=timeout))
-            new_ctx.parent_metrics.append(it.metrics)
 
         def build_union(timeout=None):
             while True:
@@ -831,7 +830,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             build_union,
-            new_ctx, [],
+            shared_metrics, [],
             name="LocalUnion[{}, {}]".format(self, ", ".join(map(str,
                                                                  others))))
 

@@ -278,9 +278,7 @@ class CollectMetrics:
         self.timeout_seconds = timeout_seconds
 
     def __call__(self, _):
-        metrics = LocalIterator.get_metrics()
-        if metrics.parent_metrics:
-            print("TODO: support nested metrics")
+        # Collect worker metrics.
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             self.workers.remote_workers(),
@@ -294,22 +292,31 @@ class CollectMetrics:
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]
         res = summarize_episodes(episodes, orig_episodes)
-        res.update(info=metrics.info)
-        res["info"].update({
-            STEPS_SAMPLED_COUNTER: metrics.counters[STEPS_SAMPLED_COUNTER],
-            STEPS_TRAINED_COUNTER: metrics.counters[STEPS_TRAINED_COUNTER],
-        })
+
+        # Add in iterator metrics.
+        metrics = LocalIterator.get_metrics()
+        if metrics.parent_metrics:
+            print("TODO: support nested metrics better")
+        all_metrics = [metrics] + metrics.parent_metrics
         timers = {}
-        for k, timer in metrics.timers.items():
-            timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
-            if timer.has_units_processed():
-                timers["{}_throughput".format(k)] = round(
-                    timer.mean_throughput, 3)
+        counters = {}
+        info = {}
+        for metrics in all_metrics:
+            info.update(metrics.info)
+            for k, counter in metrics.counters.items():
+                counters[k] = counter
+            for k, timer in metrics.timers.items():
+                timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
+                if timer.has_units_processed():
+                    timers["{}_throughput".format(k)] = round(
+                        timer.mean_throughput, 3)
+            res.update({
+                "num_healthy_workers": len(self.workers.remote_workers()),
+                "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
+            })
         res["timers"] = timers
-        res.update({
-            "num_healthy_workers": len(self.workers.remote_workers()),
-            "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
-        })
+        res["info"] = info
+        res["info"].update(counters)
         return res
 
 
@@ -544,7 +551,7 @@ class UpdateTargetNetwork:
         cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
-            trainer.workers.local_worker().foreach_trainable_policy(
+            self.workers.local_worker().foreach_trainable_policy(
                 lambda p, _: p.update_target())
-            metric.counters[NUM_TARGET_UPDATES] += 1
-            metric.counters[LAST_TARGET_UPDATE_TS] = cur_ts
+            metrics.counters[NUM_TARGET_UPDATES] += 1
+            metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
