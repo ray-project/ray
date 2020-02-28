@@ -136,6 +136,7 @@ RLlib Quick Start
 -----------------
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib-wide.jpg
+    :align: center
 
 `RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
 
