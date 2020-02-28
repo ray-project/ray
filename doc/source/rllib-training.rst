@@ -651,53 +651,7 @@ The following are example excerpts from different Trainers' configs
 The following table lists all existing Exploration sub-classes and where they
 are currently used (by default):
 
-.. list-table:: Exploration
-   :widths: 10 30 30 30
-   :header-rows: 1
-
-   * - Class
-     - Behavior (if explore=True)
-     - Behavior (if explore=False)
-     - Agents
-   * - EpsilonGreedy
-     - Decaying epsilon (e.g. 1.0 to 0.0) is used to either return random
-       action (if rand(1) <= eps) or greedy one (argmax over categorical
-       distribution’s logits (q-values)) (if rand(1) > eps).
-     - Greedy action (argmax over categorical distribution’s logits (q-values)).
-     - DQN (default)
-   * - PerWorkerEpsilonGreedy
-     - Same as EpsilonGreedy, BUT with fixed/static epsilon for each worker
-       according to: eps = 0.4 ^ (1 + [worker-index] / ([num-workers]-1) * 7)
-       eps=0.0 (for local worker)
-     - Greedy action (argmax over categorical distribution’s logits (q-values)).
-     - APEX-DQN (default)
-   * - StochasticSampling
-     - Stochastic sampling over any action distribution, parameterized via the
-       model’s output (e.g. mean + log(stddev)).
-     - Deterministic “sampling” over any action distribution (parameterized
-       via the model’s output).
-     - (A)(DD)PPO/IMPALA/PG/A2C/A3C/SAC (all by default)
-   * - SoftQ (subclass of StochasticSampling)
-     - Stochastic sampling over categorical distribution w/ temperature <br/>
-       (q-values are divided by temperature (default 1.0) before parameterizing the distribution).
-     - Greedy action (argmax over categorical distribution’s logits (q-values))
-     - DQN/APEX; any algo that handles discrete actions can use this
-   * - GaussianNoise
-     - Sample from a N(mu=1.0, sigma>0.0) distribution and add the result to
-       the (usually deterministic) action output from the model.
-       An optional purely random phase at the beginning can be set up.
-     - Use the (usually deterministic) action from the model directly.
-     - TD3 (by default)
-   * - OrnsteinUhlenbeckNoise
-     - DDPG (by default)
-     - Use an Ornstein-Uhlenbeck process to determine the noise to be added to
-       the result to the (usually deterministic) action output from the model.
-       An optional purely random phase at the beginning can be set up.
-     - Use the (usually deterministic) action from the model directly.
-   * - Random
-     - Random action via action_space.sample()
-     - Deterministic action via action_distribution.deterministic_sample()
-     - Not used by any Agent by default
+.. image:: images/rllib-exploration-api-table.png
 
 .. _CustomEvaluation:
 
