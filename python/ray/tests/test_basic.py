@@ -1685,6 +1685,64 @@ def test_wait(ray_start_regular):
         ray.wait([1])
 
 
+def test_wait_actor_handle(ray_start_regular):
+    @ray.remote
+    def f(signal):
+        ray.get(signal.wait.remote())
+
+    @ray.remote
+    class Actor:
+        def __init__(self, signal):
+            ray.get(signal.wait.remote())
+
+    signal1 = ray.test_utils.SignalActor.remote()
+    actor1 = Actor.remote(signal1)
+    signal2 = ray.test_utils.SignalActor.remote()
+    actor2 = Actor.remote(signal2)
+    signal3 = ray.test_utils.SignalActor.remote()
+    object_id = f.remote(signal3)
+
+    with pytest.raises(TypeError):
+        ray.wait(None)
+    with pytest.raises(TypeError):
+        ray.wait([None])
+    with pytest.raises(TypeError):
+        ray.wait(actor1)
+
+    ready, unready = ray.wait([actor1, actor2], timeout=0.1)
+    assert len(ready) == 0
+    assert len(unready) == 2
+
+    ray.get(signal1.send.remote())
+
+    ready, unready = ray.wait([actor1, actor2], timeout=10)
+    assert ready == [actor1]
+    assert unready == [actor2]
+
+    # num_returns=1 should only return 1 even if both are ready.
+    ray.get(signal2.send.remote())
+    ready, unready = ray.wait([actor1, actor2], timeout=10)
+    assert len(ready) == 1
+    assert len(unready) == 1
+
+    # num_returns=2 should return both.
+    ready, unready = ray.wait([actor1, actor2], num_returns=2, timeout=10)
+    assert len(ready) == 2
+    assert len(unready) == 0
+
+    # Check that mixing object IDs and actor handles works.
+    ready, unready = ray.wait(
+        [actor1, object_id, actor2], num_returns=2, timeout=10)
+    assert set(ready) == set([actor1, actor2])
+    assert unready == [object_id]
+
+    ray.get(signal3.send.remote())
+    ready, unready = ray.wait(
+        [actor1, object_id, actor2], num_returns=3, timeout=10)
+    assert set(ready) == set([actor1, object_id, actor2])
+    assert len(unready) == 0
+
+
 def test_duplicate_args(ray_start_regular):
     @ray.remote
     def f(arg1,

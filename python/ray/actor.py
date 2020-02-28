@@ -718,7 +718,10 @@ class ActorHandle:
         if not self._ray_is_cross_language:
             raise AttributeError("'{}' object has no attribute '{}'".format(
                 type(self).__name__, item))
-        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+        if item in [
+                "__ray_terminate__", "__ray_ready_check__",
+                "__ray_checkpoint__"
+        ]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
@@ -885,6 +888,9 @@ def modify_class(cls):
             worker = ray.worker.get_global_worker()
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
+
+        def __ray_ready_check__(self):
+            pass
 
         def __ray_checkpoint__(self):
             """Save a checkpoint.

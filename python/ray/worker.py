@@ -309,6 +309,39 @@ class Worker:
             object_ids, self.current_task_id, timeout_ms)
         return self.deserialize_objects(data_metadata_pairs, object_ids)
 
+    def wait(self, object_ids, num_returns=1, timeout=None):
+        """The same as the wait() API, but only accepts ObjectIDs."""
+        self.check_connected()
+        # When Ray is run in LOCAL_MODE, all functions are run immediately,
+        # so all objects in object_id are ready.
+        if self.mode == LOCAL_MODE:
+            return object_ids[:num_returns], object_ids[num_returns:]
+
+        # TODO(rkn): This is a temporary workaround for
+        # https://github.com/ray-project/ray/issues/997. However, it should be
+        # fixed in Arrow instead of here.
+        if len(object_ids) == 0:
+            return [], []
+
+        if len(object_ids) != len(set(object_ids)):
+            raise Exception("Wait requires a list of unique object IDs.")
+        if num_returns <= 0:
+            raise Exception(
+                "Invalid number of objects to return %d." % num_returns)
+        if num_returns > len(object_ids):
+            raise Exception("num_returns cannot be greater than the number "
+                            "of objects provided to ray.wait.")
+
+        timeout = timeout if timeout is not None else 10**6
+        timeout_milliseconds = int(timeout * 1000)
+        ready_ids, remaining_ids = self.core_worker.wait(
+            object_ids,
+            num_returns,
+            timeout_milliseconds,
+            self.current_task_id,
+        )
+        return ready_ids, remaining_ids
+
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
         """Run arbitrary code on all of the workers.
@@ -1547,40 +1580,39 @@ def put(value, weakref=False):
         return object_id
 
 
-def wait(object_ids, num_returns=1, timeout=None):
-    """Return a list of IDs that are ready and a list of IDs that are not.
+def wait(ids_and_handles, num_returns=1, timeout=None):
+    """Waits for a list of ray.ObjectIDs and ray.ActorHandles to be ready.
+
+    Given a list of ray.ObjectIDs and ray.ActorHandles, returns a list
+    that is "ready" and a list that is not. ObjectIDs are considered "ready"
+    when their underlying value is available and ActorHandles are considered
+    "ready" when they have finished being constructed.
 
     If timeout is set, the function returns either when the requested number of
-    IDs are ready or when the timeout is reached, whichever occurs first. If it
-    is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object IDs.
+    objects are ready or the timeout is reached, whichever occurs first. If it
+    is not set, the function waits until the given number of objects is ready
+    and returns exactly that many objects. Note that because it always returns
+    the exact number of objects, some of the objects in the "remaining" list
+    may actually be ready.
 
-    This method returns two lists. The first list consists of object IDs that
-    correspond to objects that are available in the object store. The second
-    list corresponds to the rest of the object IDs (which may or may not be
-    ready).
-
-    Ordering of the input list of object IDs is preserved. That is, if A
-    precedes B in the input list, and both are in the ready list, then A will
-    precede B in the ready list. This also holds true if A and B are both in
-    the remaining list.
+    Ordering of the input list of objects is preserved in both the "ready" and
+    "remaining" output lists.
 
     This method will error if it's running inside an async context. Instead of
     ``ray.wait(object_ids)``, you can use ``await asyncio.wait(object_ids)``.
+    Note that this currently does not work for ActorHandles.
 
     Args:
-        object_ids (List[ObjectID]): List of object IDs for objects that may or
-            may not be ready. Note that these IDs must be unique.
-        num_returns (int): The number of object IDs that should be returned.
+        objects (List[ObjectID or ActorHandle]): List of objects that may or
+            may not be ready. Note that these must be unique.
+        num_returns (int): The number of objects that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
 
     Returns:
-        A list of object IDs that are ready and a list of the remaining object
-        IDs.
+        A list of objects that are ready and a list of the remaining objects.
     """
-    worker = global_worker
-
+    worker = get_global_worker()
     if hasattr(worker,
                "core_worker") and worker.core_worker.current_actor_is_asyncio(
                ) and timeout != 0:
@@ -1588,57 +1620,54 @@ def wait(object_ids, num_returns=1, timeout=None):
                        "This blocks the event loop. Please use `await` "
                        "on object id with asyncio.wait. ")
 
-    if isinstance(object_ids, ObjectID):
-        raise TypeError(
-            "wait() expected a list of ray.ObjectID, got a single ray.ObjectID"
-        )
-
-    if not isinstance(object_ids, list):
-        raise TypeError(
-            "wait() expected a list of ray.ObjectID, got {}".format(
-                type(object_ids)))
-
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
-                         "Received {}".format(timeout))
+                         "Got {}".format(timeout))
 
-    for object_id in object_ids:
-        if not isinstance(object_id, ObjectID):
-            raise TypeError("wait() expected a list of ray.ObjectID, "
-                            "got list containing {}".format(type(object_id)))
+    if isinstance(ids_and_handles, ObjectID):
+        raise TypeError(
+            "wait() expects a list of ray.ObjectID or ray.ActorHandle, "
+            "got a single ray.ObjectID.")
+    if isinstance(ids_and_handles, ray.actor.ActorHandle):
+        raise TypeError(
+            "wait() expects a list of ray.ObjectID or ray.ActorHandle, "
+            "got a single ray.ActorHandle.")
+    if not isinstance(ids_and_handles, list):
+        raise TypeError(
+            "wait() expects a list of ray.ObjectID or ray.ActorHandle, "
+            "got {}.".format(ids_and_handles))
 
-    worker.check_connected()
-    # TODO(swang): Check main thread.
+    if len(ids_and_handles) == 0:
+        return [], []
+
+    id_to_handle = {}
+    object_ids = []
+    for id_or_handle in ids_and_handles:
+        if isinstance(id_or_handle, ObjectID):
+            object_ids.append(id_or_handle)
+        elif isinstance(id_or_handle, ray.actor.ActorHandle):
+            actor_handle = id_or_handle
+            if not hasattr(actor_handle, "ready_check_id"):
+                actor_handle.ready_check_id = (
+                    actor_handle.__ray_ready_check__.remote())
+            object_ids.append(actor_handle.ready_check_id)
+            id_to_handle[actor_handle.ready_check_id] = actor_handle
+        else:
+            raise TypeError(
+                "wait() expected a list of ray.ObjectID and ray.ActorHandle, "
+                "got list containing {}".format(type(id_or_handle)))
+
     with profiling.profile("ray.wait"):
-        # When Ray is run in LOCAL_MODE, all functions are run immediately,
-        # so all objects in object_id are ready.
-        if worker.mode == LOCAL_MODE:
-            return object_ids[:num_returns], object_ids[num_returns:]
+        ready, unready = worker.wait(
+            object_ids, num_returns=num_returns, timeout=timeout)
+    for i in range(len(ready)):
+        if ready[i] in id_to_handle:
+            ready[i] = id_to_handle[ready[i]]
+    for i in range(len(unready)):
+        if unready[i] in id_to_handle:
+            unready[i] = id_to_handle[unready[i]]
 
-        # TODO(rkn): This is a temporary workaround for
-        # https://github.com/ray-project/ray/issues/997. However, it should be
-        # fixed in Arrow instead of here.
-        if len(object_ids) == 0:
-            return [], []
-
-        if len(object_ids) != len(set(object_ids)):
-            raise Exception("Wait requires a list of unique object IDs.")
-        if num_returns <= 0:
-            raise Exception(
-                "Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_ids):
-            raise Exception("num_returns cannot be greater than the number "
-                            "of objects provided to ray.wait.")
-
-        timeout = timeout if timeout is not None else 10**6
-        timeout_milliseconds = int(timeout * 1000)
-        ready_ids, remaining_ids = worker.core_worker.wait(
-            object_ids,
-            num_returns,
-            timeout_milliseconds,
-            worker.current_task_id,
-        )
-        return ready_ids, remaining_ids
+    return ready, unready
 
 
 def kill(actor):
