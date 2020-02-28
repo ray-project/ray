@@ -176,6 +176,7 @@ def ray_deps_setup():
             "//thirdparty/patches:arrow-windows-poll.patch",
             "//thirdparty/patches:arrow-windows-sigpipe.patch",
             "//thirdparty/patches:arrow-windows-socket.patch",
+            "//thirdparty/patches:arrow-windows-dlmalloc.patch",
         ],
     )
 
