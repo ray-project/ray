@@ -1,19 +1,18 @@
+from collections import defaultdict
 import copy
 import hashlib
 import json
+import jsonschema
 import logging
 import math
+import numpy as np
 import os
 import subprocess
 import threading
 import time
-from collections import defaultdict
-
-import numpy as np
-import ray.services as services
 import yaml
-import jsonschema
-from ray.worker import global_worker
+
+import ray
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
@@ -26,6 +25,8 @@ from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, MEMORY_RESOURCE_UNIT_BYTES
+import ray.services as services
+from ray.worker import global_worker
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -769,7 +770,7 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    with open(os.path.join(ray.autoscaler.__file__, "ray-schema.json")) as f:
+    with open(os.path.join(os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")) as f:
         schema = f.read() 
     jsonschema.validate(config, json.loads(schema))
 
