@@ -5,12 +5,13 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
+from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
 from ray.rllib.utils.experimental_dsl import (
     ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
-    StandardMetricsReporting, UpdateTargetIfNeeded)
+    TrainOneStep, StandardMetricsReporting, UpdateTargetNetwork)
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +313,7 @@ def update_target_if_needed(trainer, fetches):
 
 
 def training_pipeline(workers, config):
-    local_replay_buffer = ReplayBuffer()
+    local_replay_buffer = ReplayBuffer(config["buffer_size"])
     rollouts = ParallelRollouts(workers)
 
     # (1) Store experiences into the local replay buffer.
@@ -322,7 +323,7 @@ def training_pipeline(workers, config):
     replay_op = (
         LocalReplay(local_replay_buffer, config["train_batch_size"]) \
             .for_each(TrainOneStep(workers)) \
-            .for_each(UpdateTargetIfNeeded(workers)))
+            .for_each(UpdateTargetNetwork(workers, config["target_network_update_freq"])))
 
     # Alternate between (1) and (2). We set deterministic=True so that we
     # always execute one train step per replay buffer update.

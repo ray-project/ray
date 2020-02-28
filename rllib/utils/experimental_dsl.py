@@ -4,16 +4,20 @@ TODO(ekl): describe the concepts."""
 
 import logging
 from typing import List, Any, Tuple, Union
+import numpy as np
 import time
 
 import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import MetricsContext
+from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.evaluation.metrics import collect_episodes, \
     summarize_episodes, get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
+    DEFAULT_POLICY_ID
+from ray.rllib.utils.compression import pack_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +280,7 @@ class CollectMetrics:
     def __call__(self, _):
         metrics = LocalIterator.get_metrics()
         if metrics.parent_metrics:
-            raise ValueError("TODO: support nested metrics")
+            print("TODO: support nested metrics")
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             self.workers.remote_workers(),
@@ -437,20 +441,83 @@ class AverageGradients:
 
 
 class StoreToReplayBuffer:
-    pass
+    def __init__(self, replay_buffer):
+        self.replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
+
+    def __call__(self, batch: SampleBatchType):
+        # Handle everything as if multiagent
+        if isinstance(batch, SampleBatch):
+            batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
+
+        for policy_id, s in batch.policy_batches.items():
+            for row in s.rows():
+                self.replay_buffers[policy_id].add(
+                    pack_if_needed(row["obs"]),
+                    row["actions"],
+                    row["rewards"],
+                    pack_if_needed(row["new_obs"]),
+                    row["dones"],
+                    weight=None)
 
 
-class LocalReplay:
-    pass
+def LocalReplay(replay_buffer, train_batch_size):
+    replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
+    synchronize_sampling = False
+
+    def gen_replay(timeout):
+        while True:
+            samples = {}
+            idxes = None
+            for policy_id, replay_buffer in replay_buffers.items():
+                if synchronize_sampling:
+                    if idxes is None:
+                        idxes = replay_buffer.sample_idxes(train_batch_size)
+                else:
+                    idxes = replay_buffer.sample_idxes(train_batch_size)
+
+                if isinstance(replay_buffer, PrioritizedReplayBuffer):
+                    (obses_t, actions, rewards, obses_tp1, dones, weights,
+                     batch_indexes) = replay_buffer.sample_with_idxes(
+                         idxes,
+                         beta=self.prioritized_replay_beta.value(
+                             self.num_steps_trained))
+                else:
+                    (obses_t, actions, rewards, obses_tp1,
+                     dones) = replay_buffer.sample_with_idxes(idxes)
+                    weights = np.ones_like(rewards)
+                    batch_indexes = -np.ones_like(rewards)
+                samples[policy_id] = SampleBatch({
+                    "obs": obses_t,
+                    "actions": actions,
+                    "rewards": rewards,
+                    "new_obs": obses_tp1,
+                    "dones": dones,
+                    "weights": weights,
+                    "batch_indexes": batch_indexes
+                })
+            yield MultiAgentBatch(samples, train_batch_size)
+
+    return LocalIterator(gen_replay, MetricsContext())
 
 
-def Concurrently(ops: List[LocalIterator], deterministic = False):
+def Concurrently(ops: List[LocalIterator], deterministic=False):
+    """Operator that run the given parent iterators concurrently.
+
+    Arguments:
+        deterministic (bool): If True, we will alternate execution between
+            the operators round robin. Otherwise, each operator will be
+            executed as fast as possible without synchronizing on the other.
+        >>> sim_op = ParallelRollouts(...).for_each(...)
+        >>> replay_op = LocalReplay(...).for_each(...)
+        >>> combined_op = Concurrently([sim_op, replay_op])
+    """
+
     if len(ops) < 2:
         raise ValueError("Should specify at least 2 ops.")
     return ops[0].union(*ops[1:], deterministic=deterministic)
 
 
-class UpdateTargetIfNeeded:
+class UpdateTargetNetwork:
     """Periodically call policy.update_target() on all trainable policies.
     
     This should be used with the .for_each() operator after training step
@@ -474,7 +541,7 @@ class UpdateTargetIfNeeded:
 
     def __call__(self, _):
         metrics = LocalIterator.get_metrics()
-        cur_ts = metrics.counters[NUM_STEPS_SAMPLED]
+        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
             trainer.workers.local_worker().foreach_trainable_policy(
