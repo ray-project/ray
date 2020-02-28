@@ -129,6 +129,7 @@ public class ActorTest extends BaseTest {
 
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
+    // The UnreconstructableException is created by raylet.
     // TODO (kfstorm): This should be supported by direct actor call.
     TestUtils.skipTestIfDirectActorCallEnabled();
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
