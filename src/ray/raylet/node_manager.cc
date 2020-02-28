@@ -94,7 +94,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           io_service, config.num_initial_workers, config.maximum_startup_concurrency,
           gcs_client_, config.worker_commands,
           /*starting_worker_timeout_callback=*/
-          [this]() {this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
+          [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
