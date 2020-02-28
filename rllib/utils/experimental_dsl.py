@@ -486,8 +486,7 @@ def LocalReplay(replay_buffer, train_batch_size):
                     (obses_t, actions, rewards, obses_tp1, dones, weights,
                      batch_indexes) = replay_buffer.sample_with_idxes(
                          idxes,
-                         beta=self.prioritized_replay_beta.value(
-                             self.num_steps_trained))
+                         beta=prioritized_replay_beta.value(num_steps_trained))
                 else:
                     (obses_t, actions, rewards, obses_tp1,
                      dones) = replay_buffer.sample_with_idxes(idxes)
@@ -526,7 +525,7 @@ def Concurrently(ops: List[LocalIterator], deterministic=False):
 
 class UpdateTargetNetwork:
     """Periodically call policy.update_target() on all trainable policies.
-    
+
     This should be used with the .for_each() operator after training step
     has been taken.
 

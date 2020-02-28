@@ -320,10 +320,10 @@ def training_pipeline(workers, config):
     store_op = rollouts.for_each(StoreToReplayBuffer(local_replay_buffer))
 
     # (2) Replay and train on selected experiences.
-    replay_op = (
-        LocalReplay(local_replay_buffer, config["train_batch_size"]) \
-            .for_each(TrainOneStep(workers)) \
-            .for_each(UpdateTargetNetwork(workers, config["target_network_update_freq"])))
+    replay_op = LocalReplay(local_replay_buffer, config["train_batch_size"]) \
+        .for_each(TrainOneStep(workers)) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
 
     # Alternate between (1) and (2). We set deterministic=True so that we
     # always execute one train step per replay buffer update.
