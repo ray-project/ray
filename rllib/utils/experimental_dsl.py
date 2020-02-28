@@ -17,15 +17,23 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 logger = logging.getLogger(__name__)
 
-# Metrics context key definitions.
+# Counters for training progress (keys for metrics.counters).
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 STEPS_TRAINED_COUNTER = "num_steps_trained"
+
+# Counters to track target network updates.
+LAST_TARGET_UPDATE_TS = "last_target_update_ts"
+NUM_TARGET_UPDATES = "num_target_updates"
+
+# Performance timers (keys for metrics.timers).
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 WORKER_UPDATE_TIMER = "update"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
+
+# Instant metrics (keys for metrics.info).
 LEARNER_INFO = "learner"
 
 # Type aliases.
@@ -426,3 +434,50 @@ class AverageGradients:
         logger.info("Computing average of {} microbatch gradients "
                     "({} samples total)".format(len(gradients), sum_count))
         return acc, sum_count
+
+
+class StoreToReplayBuffer:
+    pass
+
+
+class LocalReplay:
+    pass
+
+
+def Concurrently(ops: List[LocalIterator], deterministic = False):
+    if len(ops) < 2:
+        raise ValueError("Should specify at least 2 ops.")
+    return ops[0].union(*ops[1:], deterministic=deterministic)
+
+
+class UpdateTargetIfNeeded:
+    """Periodically call policy.update_target() on all trainable policies.
+    
+    This should be used with the .for_each() operator after training step
+    has been taken.
+
+    Examples:
+        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
+        >>> update_op = train_op.for_each(
+        ...     UpdateTargetIfNeeded(workers, target_update_freq=500))
+        >>> print(next(update_op))
+        None
+
+    Updates the LAST_TARGET_UPDATE_TS and NUM_TARGET_UPDATES counters in the
+    local iterator context. The value of the last update counter is used to
+    track when we should update the target next.
+    """
+
+    def __init__(self, workers, target_update_freq):
+        self.workers = workers
+        self.target_update_freq = target_update_freq
+
+    def __call__(self, _):
+        metrics = LocalIterator.get_metrics()
+        cur_ts = metrics.counters[NUM_STEPS_SAMPLED]
+        last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update > self.target_update_freq:
+            trainer.workers.local_worker().foreach_trainable_policy(
+                lambda p, _: p.update_target())
+            metric.counters[NUM_TARGET_UPDATES] += 1
+            metric.counters[LAST_TARGET_UPDATE_TS] = cur_ts

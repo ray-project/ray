@@ -8,6 +8,9 @@ from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
+from ray.rllib.utils.experimental_dsl import (
+    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
+    StandardMetricsReporting, UpdateTargetIfNeeded)
 
 logger = logging.getLogger(__name__)
 
@@ -308,6 +311,26 @@ def update_target_if_needed(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
+def training_pipeline(workers, config):
+    local_replay_buffer = ReplayBuffer()
+    rollouts = ParallelRollouts(workers)
+
+    # (1) Store experiences into the local replay buffer.
+    store_op = rollouts.for_each(StoreToReplayBuffer(local_replay_buffer))
+
+    # (2) Replay and train on selected experiences.
+    replay_op = (
+        LocalReplay(local_replay_buffer, config["train_batch_size"]) \
+            .for_each(TrainOneStep(workers)) \
+            .for_each(UpdateTargetIfNeeded(workers)))
+
+    # Alternate between (1) and (2). We set deterministic=True so that we
+    # always execute one train step per replay buffer update.
+    train_op = Concurrently([store_op, replay_op], deterministic=True)
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
@@ -317,7 +340,8 @@ GenericOffPolicyTrainer = build_trainer(
     make_policy_optimizer=make_policy_optimizer,
     before_train_step=update_worker_exploration,
     after_optimizer_step=update_target_if_needed,
-    after_train_result=after_train_result)
+    after_train_result=after_train_result,
+    training_pipeline=training_pipeline)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
