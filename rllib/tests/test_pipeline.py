@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.a3c import a2c_pipeline
+from ray.rllib.agents.a3c import A2CTrainer
 
 
 class TestPipeline(unittest.TestCase):
@@ -14,8 +14,12 @@ class TestPipeline(unittest.TestCase):
         ray.shutdown()
 
     def test_pipeline_stats(ray_start_regular):
-        trainer = a2c_pipeline.A2CPipeline(
-            env="CartPole-v0", config={"min_iter_time_s": 0})
+        trainer = A2CTrainer(
+            env="CartPole-v0",
+            config={
+                "min_iter_time_s": 0,
+                "use_pipeline_impl": True
+            })
         result = trainer.train()
         assert isinstance(result, dict)
         assert "info" in result
@@ -30,8 +34,12 @@ class TestPipeline(unittest.TestCase):
         assert "update_time_ms" in result["timers"]
 
     def test_pipeline_save_restore(ray_start_regular):
-        trainer = a2c_pipeline.A2CPipeline(
-            env="CartPole-v0", config={"min_iter_time_s": 0})
+        trainer = A2CTrainer(
+            env="CartPole-v0",
+            config={
+                "min_iter_time_s": 0,
+                "use_pipeline_impl": True
+            })
         res1 = trainer.train()
         checkpoint = trainer.save()
         res2 = trainer.train()
