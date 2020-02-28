@@ -47,14 +47,14 @@ class TuneReporterBase(ProgressReporter):
     """Abstract base class for the default Tune reporters."""
 
     # Truncated representations of column names (to accommodate small screens).
-    DEFAULT_COLUMNS = {
-        EPISODE_REWARD_MEAN: "reward",
+    DEFAULT_COLUMNS = collections.OrderedDict({
         MEAN_ACCURACY: "acc",
         MEAN_LOSS: "loss",
+        TRAINING_ITERATION: "iter",
         TIME_TOTAL_S: "total time (s)",
         TIMESTEPS_TOTAL: "ts",
-        TRAINING_ITERATION: "iter",
-    }
+        EPISODE_REWARD_MEAN: "reward",
+    })
 
     def __init__(self,
                  metric_columns=None,
@@ -301,7 +301,6 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
         k for k in keys if any(
             t.last_result.get(k) is not None for t in trials)
     ]
-    keys = sorted(keys)
     # Build trial rows.
     params = sorted(set().union(*[t.evaluated_params for t in trials]))
     trial_table = [_get_trial_info(trial, params, keys) for trial in trials]
