@@ -44,7 +44,8 @@ class WorkerPool {
   /// language.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
-             const WorkerCommandMap &worker_commands);
+             const WorkerCommandMap &worker_commands,
+             std::function<void()> dispatch_tasks_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -235,7 +236,8 @@ class WorkerPool {
   int maximum_startup_concurrency_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-
+  /// The dispatch callback used for trigger dispatch tasks.
+  std::function<void()> dispatch_tasks_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 };
 

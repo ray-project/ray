@@ -45,10 +45,12 @@ namespace raylet {
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands)
+                       const WorkerCommandMap &worker_commands,
+                       std::function<void()> dispatch_tasks_callback)
     : io_service_(&io_service),
       maximum_startup_concurrency_(maximum_startup_concurrency),
-      gcs_client_(std::move(gcs_client)) {
+      gcs_client_(std::move(gcs_client)),
+      dispatch_tasks_callback_(dispatch_tasks_callback) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -211,6 +213,9 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc, const Languag
       RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
                     << ") have not been registering to raylet.";
       state.starting_worker_processes.erase(it);
+      if (dispatch_tasks_callback_ != nullptr) {
+        dispatch_tasks_callback_();
+      }
     }
   });
 }
