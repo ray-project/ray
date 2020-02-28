@@ -612,6 +612,7 @@ def set_kill_on_parent_death_linux():
     Linux-only. Must be called in preexec_fn (i.e. by the child).
     """
     if detect_fate_sharing_support_linux():
+        import signal
         PR_SET_PDEATHSIG = 1
         if linux_prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
             import ctypes
