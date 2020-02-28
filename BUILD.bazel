@@ -1201,6 +1201,16 @@ filegroup(
 
 genrule(
     name = "redis",
+    srcs = [
+    ] + select({
+        # Windows is not supported yet, so make stubs for it
+        "@bazel_tools//src/conditions:windows": [
+            "@win-redis-bin//file",
+        ],
+        "//conditions:default": [
+            "@redis-src//file",
+        ],
+    }),
     outs = [
         "redis-server",
         "redis-cli",
@@ -1208,18 +1218,13 @@ genrule(
     cmd = select({
         # Windows is not supported yet, so make stubs for it
         "@bazel_tools//src/conditions:windows": """
-            set -eu
-            for f in $(OUTS); do
-                {
-                    echo '#!/usr/bin/env bash'
-                    echo 'echo "$${0##*/} is unsupported on this platform" 1>&2 && false'
-                } > "$$f"
-                chmod +x "$$f"
-            done
+            unzip -q -o -- $(location @win-redis-bin//file) redis-server.exe redis-cli.exe &&
+            mv -f -- redis-server.exe $(location redis-server) &&
+            mv -f -- redis-cli.exe    $(location redis-cli)
         """,
         "//conditions:default": """
             set -x &&
-            curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
+            tar -xzf $(location @redis-src//file) --strip-components=1 -C . &&
             make &&
             mv ./src/redis-server $(location redis-server) &&
             chmod +x $(location redis-server) &&
