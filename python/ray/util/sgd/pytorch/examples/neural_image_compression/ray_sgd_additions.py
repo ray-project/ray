@@ -14,11 +14,8 @@ class Namespace:
 _default_interval_names = ["log", "checkpoint", "backup"]
 class _TrainingOperator(TrainingOperator):
     def setup(self, config):
-        # https://docs.wandb.com/library/advanced/environment-variables
-        import wandb
-        wandb.init(project="ray-sgd-neural-image-compression")
-
-        wandb.watch(self.model)
+        sysconfig = config._system_config
+        self.logger = sysconfig.logging_cls()
 
     def train_epoch(self, iterator, info):
         myinfo = info["_system_info"]
@@ -44,8 +41,6 @@ class _TrainingOperator(TrainingOperator):
         return loss
 
     def train_batch(self, batch, batch_info):
-        import wandb
-
         myinfo = batch_info["_system_info"]
 
         # todo: still support user-defined training ops
@@ -85,6 +80,7 @@ class _TrainingOperator(TrainingOperator):
 
         # logs.update(dict(_system_info=myinfo)) # return things if needed
         return logs
+
 class System():
     def __init__(self):
         # custom config, can be modified by user to pass info to
@@ -214,7 +210,12 @@ class System():
             optimizer_creator,
             loss_creator,
             **kwargs):
-        self._trainer_params["config"] = self.config
+        from logging import WandbLogger
+        system_config.logging_cls = WandbLogger
+
+        self._trainer_params["config"] = dict(
+            user_config=self.config,
+            system_config=system_config)
         self._trainer_params["training_operator_cls"] = _TrainingOperator
 
         params = self._trainer_params.copy()
@@ -228,27 +229,11 @@ class System():
             return res
 
         self.trainer = PyTorchTrainer(
-            model_creator,
-            lambda c: possibly_truncated_data_creator(c),
-            optimizer_creator,
-            loss_creator,
+            lambda c: model_creator(c.user_config),
+            lambda c: possibly_truncated_data_creator(c.user_config),
+            lambda model, c: optimizer_creator(model, c.user_config),
+            lambda c: loss_creator(c.user_config), # fixme: this is not correct if user passes in a torch.nn loss class!!!! # see runner for details
             **params)
-        self.trainer.config.paramerter_jashdjashd = 28
-
-        # this is needed if we ever decide to pass our own stuff in config
-        # right now we don't since we want to pretend that config can be
-        # updated between train calls without braking everything
-        #
-        # todo: (we support that but the default training operator doesn't,
-        # when we add support for custom training ops we will have to deal with
-        # this)
-        #
-        # self.trainer = PyTorchTrainer(
-        #     lambda c: model_creator(c.user_config),
-        #     lambda c: data_creator(c.user_config),
-        #     lambda model, c: optimizer_creator(model, c.user_config),
-        #     lambda c: loss_creator(c.user_config), # fixme: this is not correct if user passes in a torch.nn loss!!!! # see runner for details
-        #     **params)
         return self.trainer
 
     def parse_args(self):
@@ -346,6 +331,7 @@ class System():
         self._arg_train_subparser = self._arg_subparsers.add_parser("train", help="Train the model.")
         p = self._arg_train_subparser
         self._add_default_args(p)
+        # todo: support tune
         # p.add_argument(
         #     "--tune",
         #     action="store_true",
