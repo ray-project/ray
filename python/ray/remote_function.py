@@ -3,6 +3,7 @@ from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
+from ray.function_manager import SerializedFunction, LocalSerializedFunction
 from ray import cross_language, Language
 import ray.signature
 
@@ -96,6 +97,8 @@ class RemoteFunction:
 
         self.remote = _remote_proxy
 
+        self._serialized_function_id = None
+
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
                         "of running '{}()', try '{}.remote()'.".format(
@@ -153,27 +156,15 @@ class RemoteFunction:
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        # If this function was not exported in this session and job, we need to
-        # export this function again, because the current GCS doesn't have it.
-        if not self._is_cross_language and \
-                self._last_export_session_and_job != \
-                worker.current_session_and_job:
-            # There is an interesting question here. If the remote function is
-            # used by a subsequent driver (in the same script), should the
-            # second driver pickle the function again? If yes, then the remote
-            # function definition can differ in the second driver (e.g., if
-            # variables in its closure have changed). We probably want the
-            # behavior of the remote function in the second driver to be
-            # independent of whether or not the function was invoked by the
-            # first driver. This is an argument for repickling the function,
-            # which we do here.
-            self._pickled_function = pickle.dumps(self._function)
-
-            self._function_descriptor = PythonFunctionDescriptor.from_function(
-                self._function, self._pickled_function)
-
-            self._last_export_session_and_job = worker.current_session_and_job
-            worker.function_actor_manager.export(self)
+        # TODO: avoid spurious redefinition?
+        if self._serialized_function_id is None:
+            if self._is_cross_language:
+                serialized_function = self._function_descriptor.serialize()
+            elif worker.load_code_from_local:
+                serialized_function = LocalSerializedFunction(self._function.__name__, self._function.__module__, self._max_calls)
+            else:
+                serialized_function = SerializedFunction(self._function, self._max_calls)
+            self._serialized_function_id = ray.put(serialized_function)
 
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
@@ -191,12 +182,11 @@ class RemoteFunction:
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
+            list_args = [self._serialized_function_id]
             if self._is_cross_language:
-                list_args = cross_language.format_args(worker, args, kwargs)
-            elif not args and not kwargs and not self._function_signature:
-                list_args = []
-            else:
-                list_args = ray.signature.flatten_args(
+                list_args += cross_language.format_args(worker, args, kwargs)
+            elif args or kwargs or self._function_signature:
+                list_args += ray.signature.flatten_args(
                     self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
@@ -204,11 +194,11 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
                 object_ids = worker.local_mode_manager.execute(
-                    self._function, self._function_descriptor, args, kwargs,
+                    self._function, [], args, kwargs,
                     num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
-                    self._language, self._function_descriptor, list_args,
+                    self._language, PythonFunctionDescriptor("", "", ""), list_args,
                     num_return_vals, resources, max_retries)
 
             if len(object_ids) == 1:
@@ -218,5 +208,6 @@ class RemoteFunction:
 
         if self._decorator is not None:
             invocation = self._decorator(invocation)
+
 
         return invocation(args, kwargs)

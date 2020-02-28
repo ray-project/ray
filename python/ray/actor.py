@@ -12,6 +12,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorID, ActorClassID, Language
+from ray.function_manager import SerializedActorClass, LocalSerializedActorClass
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
@@ -349,6 +350,8 @@ class ActorClass:
             actor_creation_function_descriptor, class_id, max_reconstructions,
             num_cpus, num_gpus, memory, object_store_memory, resources)
 
+        self._serialized_actor_class_id = None
+
         return self
 
     @classmethod
@@ -362,6 +365,8 @@ class ActorClass:
             language, None, actor_creation_function_descriptor, None,
             max_reconstructions, num_cpus, num_gpus, memory,
             object_store_memory, resources)
+
+        self._serialized_actor_class_id = None
 
         return self
 
@@ -514,23 +519,17 @@ class ActorClass:
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
-            # Export the actor.
-            if not meta.is_cross_language and (meta.last_export_session_and_job
-                                               !=
-                                               worker.current_session_and_job):
-                # If this actor class was not exported in this session and job,
-                # we need to export this function again, because current GCS
-                # doesn't have it.
-                meta.last_export_session_and_job = (
-                    worker.current_session_and_job)
-                # After serialize / deserialize modified class, the __module__
-                # of modified class will be ray.cloudpickle.cloudpickle.
-                # So, here pass actor_creation_function_descriptor to make
-                # sure export actor class correct.
-                worker.function_actor_manager.export_actor_class(
-                    meta.modified_class,
-                    meta.actor_creation_function_descriptor,
-                    meta.method_meta.methods.keys())
+            # TODO: avoid spurious redefinition?
+            if self._serialized_actor_class_id is None:
+                if meta.is_cross_language:
+                    serialized_actor_class = meta.actor_creation_function_descriptor.serialize()
+                elif worker.load_code_from_local:
+                    # TODO: class name
+                    #serialized_actor_class = SerializedActorClass(meta.modified_class.__name__, meta.modified_class.__module__)
+                    serialized_actor_class = LocalSerializedActorClass("name", "module")
+                else:
+                    serialized_actor_class = SerializedActorClass(meta.modified_class)
+                self._serialized_actor_class_id = ray.put(serialized_actor_class)
 
             resources = ray.utils.resources_from_resource_arguments(
                 cpus_to_use, meta.num_gpus, meta.memory,
@@ -545,16 +544,18 @@ class ActorClass:
             if actor_method_cpu == 1:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
+            creation_args = [self._serialized_actor_class_id]
             if meta.is_cross_language:
-                creation_args = cross_language.format_args(
+                # XXX
+                creation_args += cross_language.format_args(
                     worker, args, kwargs)
             else:
                 function_signature = meta.method_meta.signatures["__init__"]
-                creation_args = signature.flatten_args(function_signature,
+                creation_args += signature.flatten_args(function_signature,
                                                        args, kwargs)
             actor_id = worker.core_worker.create_actor(
                 meta.language,
-                meta.actor_creation_function_descriptor,
+                PythonFunctionDescriptor("", "", ""),
                 creation_args,
                 meta.max_reconstructions,
                 resources,
@@ -687,11 +688,10 @@ class ActorHandle:
         else:
             function_signature = self._ray_method_signatures[method_name]
 
-            if not args and not kwargs and not function_signature:
-                list_args = []
-            else:
-                list_args = signature.flatten_args(function_signature, args,
-                                                   kwargs)
+            list_args = [method_name]
+            if args or kwargs or function_signature:
+                list_args += signature.flatten_args(function_signature, args,
+                                                    kwargs)
             function_descriptor = self._ray_function_descriptor[method_name]
 
         if worker.mode == ray.LOCAL_MODE:
@@ -704,7 +704,7 @@ class ActorHandle:
         else:
             object_ids = worker.core_worker.submit_actor_task(
                 self._ray_actor_language, self._ray_actor_id,
-                function_descriptor, list_args, num_return_vals,
+                PythonFunctionDescriptor("", "", ""), list_args, num_return_vals,
                 self._ray_actor_method_cpus)
 
         if len(object_ids) == 1:

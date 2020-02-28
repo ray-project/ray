@@ -33,6 +33,9 @@ cdef class FunctionDescriptor:
         if type(self) == FunctionDescriptor:
             raise Exception("type {} is abstract".format(type(self).__name__))
 
+    def serialize(self):
+        return self.descriptor.get().Serialize()
+
     def __hash__(self):
         return hash(self.descriptor.get().ToString())
 

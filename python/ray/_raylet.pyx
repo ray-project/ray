@@ -92,7 +92,11 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
-from ray.utils import decode
+from ray.utils import (
+    decode,
+    is_class_method,
+    is_static_method,
+)
 
 cimport cpython
 
@@ -303,18 +307,22 @@ cdef void prepare_args(
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &arg_reference_ids):
-    if c_args.empty():
-        return [], {}
 
+    # Expect the first argument to be the execution info.
+    assert not c_args.empty()
     args = ray.worker.global_worker.deserialize_objects(
              RayObjectsToDataMetadataPairs(c_args),
              VectorToObjectIDs(arg_reference_ids))
 
-    for arg in args:
+    execution_info = args[0]
+
+    for arg in args[1:]:
         if isinstance(arg, RayError):
             raise arg
 
-    return ray.signature.recover_args(args)
+    function_id = ray.ObjectID(arg_reference_ids[0].Binary())
+    args, kwargs = ray.signature.recover_args(args[1:])
+    return execution_info, function_id, args, kwargs
 
 
 cdef execute_task(
@@ -330,7 +338,6 @@ cdef execute_task(
     manager = worker.function_actor_manager
 
     cdef:
-        dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
@@ -339,12 +346,15 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-    function_descriptor = CFunctionDescriptorToPython(
-        ray_function.GetFunctionDescriptor())
+    try:
+        with core_worker.profile_event(b"task:deserialize_arguments"):
+            execution_info, function_id, args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
+    except Exception as e:
+        pass # XXX
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
+        actor_class = execution_info.recover_actor_class()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
         worker.actor_checkpoint_info[actor_id] = (
             ray.worker.ActorCheckpointInfo(
@@ -352,26 +362,27 @@ cdef execute_task(
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
 
-    execution_info = execution_infos.get(function_descriptor)
-    if not execution_info:
-        execution_info = manager.get_execution_info(
-            job_id, function_descriptor)
-        execution_infos[function_descriptor] = execution_info
-
-    function_name = execution_info.function_name
-    extra_data = (b'{"name": ' + function_name.encode("ascii") +
-                  b' "task_id": ' + task_id.Hex() + b'}')
-
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
+        function = execution_info.recover_function()
+        function_name = "{}.{}".format(function.__name__, function.__module__)
         title = "ray::{}()".format(function_name)
         next_title = "ray::IDLE"
-        function_executor = execution_info.function
+        def function_executor():
+            return function(*args, **kwargs)
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
+        worker_name = "ray_{}_{}".format(class_name, os.getpid())
+        if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+            function_name = "__init__"
+            actor_title = "{}({}, {})".format(
+                class_name, repr(args), repr(kwargs))
+            core_worker.set_actor_title(actor_title.encode("utf-8"))
+        else:
+            function_name = execution_info
         title = "ray::{}.{}()".format(class_name, function_name)
         next_title = "ray::{}".format(class_name)
-        worker_name = "ray_{}_{}".format(class_name, os.getpid())
+
         if c_resources.find(b"memory") != c_resources.end():
             worker.memory_monitor.set_heap_limit(
                 worker_name,
@@ -384,8 +395,8 @@ cdef execute_task(
                         dereference(
                             c_resources.find(b"object_store_memory")).second)))
 
-        def function_executor(*arguments, **kwarguments):
-            function = execution_info.function
+        def function_executor():
+            function = getattr(actor, function_name)
 
             if core_worker.current_actor_is_asyncio():
                 # Increase recursion limit if necessary. In asyncio mode,
@@ -402,10 +413,10 @@ cdef execute_task(
                 else:
                     # Just execute the method if it's ray internal method.
                     if function.name.startswith("__ray"):
-                        return function(actor, *arguments, **kwarguments)
+                        return function(actor, *args, **kwargs)
                     async_function = sync_to_async(function)
 
-                coroutine = async_function(actor, *arguments, **kwarguments)
+                coroutine = async_function(actor, *args, **kwargs)
                 loop = core_worker.create_or_get_event_loop()
                 monitor_state = loop.monitor_state
                 monitor_state.register_coroutine(coroutine,
@@ -423,8 +434,15 @@ cdef execute_task(
 
                 return future.result()
 
-            return function(actor, *arguments, **kwarguments)
+            if (is_class_method(function)
+                        or is_static_method(type(actor), function_name)):
+                function_returns = function(*args, **kwargs)
+            else:
+                function_returns = function(actor, *args, **kwargs)
+            return function_returns
 
+    extra_data = (b'{"name": ' + function_name.encode("ascii") +
+                  b' "task_id": ' + task_id.Hex() + b'}')
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
             task_exception = False
@@ -433,19 +451,11 @@ cdef execute_task(
                 worker.reraise_actor_init_error()
                 worker.memory_monitor.raise_if_low_memory()
 
-            with core_worker.profile_event(b"task:deserialize_arguments"):
-                args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
-            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor = worker.actors[core_worker.get_actor_id()]
-                class_name = actor.__class__.__name__
-                actor_title = "{}({}, {})".format(
-                    class_name, repr(args), repr(kwargs))
-                core_worker.set_actor_title(actor_title.encode("utf-8"))
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
-                    outputs = function_executor(*args, **kwargs)
+                    outputs = function_executor()
                     task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
@@ -481,25 +491,22 @@ cdef execute_task(
             # Send signal with the error.
             ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
-    # Don't need to reset `current_job_id` if the worker is an
-    # actor. Because the following tasks should all have the
-    # same driver id.
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         # Reset signal counters so that the next task can get
         # all past signals.
         ray_signal.reset()
 
-    if execution_info.max_calls != 0:
-        # Reset the state of the worker for the next task to execute.
-        # Increase the task execution counter.
-        manager.increase_task_counter(job_id, function_descriptor)
+        if execution_info.max_calls() != 0:
+            # Reset the state of the worker for the next task to execute.
+            # Increase the task execution counter.
+            manager.increase_task_counter(job_id, function_id)
 
-        # If we've reached the max number of executions for this worker, exit.
-        task_counter = manager.get_task_counter(job_id, function_descriptor)
-        if task_counter == execution_info.max_calls:
-            exit = SystemExit(0)
-            exit.is_ray_terminate = True
-            raise exit
+            # If we've reached the max number of executions for this worker, exit.
+            task_counter = manager.get_task_counter(job_id, function_id)
+            if task_counter == execution_info.max_calls:
+                exit = SystemExit(0)
+                exit.is_ray_terminate = True
+                raise exit
 
 
 cdef CRayStatus task_execution_handler(

@@ -281,6 +281,7 @@ def get_node_ip_address(address="8.8.8.8:53"):
     """
     ip_address, port = address.split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return "127.0.0.1"
     try:
         # This command will raise an exception if there is no internet
         # connection.

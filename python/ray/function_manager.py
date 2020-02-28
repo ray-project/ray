@@ -35,6 +35,71 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 
 logger = logging.getLogger(__name__)
 
+class SerializedFunction:
+    def __init__(self, function, max_calls):
+        self.function = function
+        self.module_name = self.function.__module__
+        self.max_calls
+
+    def recover_function(self):
+        # The below line is necessary. Because in the driver process,
+        # if the function is defined in the file where the python
+        # script was started from, its module is `__main__`.
+        # However in the worker process, the `__main__` module is a
+        # different module, which is `default_worker.py`
+        self.function.__module__ = self.module_name
+        return self.function
+
+    def max_calls(self):
+        return self.max_calls
+
+class LocalSerializedFunction:
+    def __init__(self, function_name, module_name, max_calls):
+        self.function_name = function_name
+        self.module_name = module_name
+        self.max_calls = max_calls
+
+    def recover_function(self):
+        try:
+            module = importlib.import_module(self.module_name)
+            return getattr(self.module, self.function_name)._function
+        except Exception as e:
+            logger.exception("Failed to load function {}.{} from local code.".format(self.module_name, self.function_name))
+            raise e
+
+    def max_calls(self):
+        return self.max_calls
+
+class SerializedActorClass:
+    def __init__(self, actor_class):
+        self.actor_class = actor_class
+        self.module_name = actor_class.__module__
+
+    def recover_actor_class(self):
+        # The below line is necessary. Because in the driver process,
+        # if the function is defined in the file where the python script
+        # was started from, its module is `__main__`.
+        # However in the worker process, the `__main__` module is a
+        # different module, which is `default_worker.py`
+        self.actor_class.__module__ = self.module_name
+        return self.actor_class
+
+class LocalSerializedActorClass:
+    def __init__(self, actor_class, module_name):
+        self.actor_class = actor_class
+        self.module_name = module_name
+
+    def recover_actor_class(self):
+        try:
+            module = importlib.import_module(module_name)
+            actor_class = getattr(module, class_name)
+            if isinstance(actor_class, ray.actor.ActorClass):
+                return actor_class.__ray_metadata__.modified_class
+            else:
+                return actor_class
+        except Exception as e:
+            logger.exception("Failed to load actor class {}.{} from local code.".format(self.module_name, self.class_name))
+            raise e
 
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
@@ -80,16 +145,22 @@ class FunctionActorManager:
         self.execution_infos = {}
 
     def increase_task_counter(self, job_id, function_descriptor):
-        function_id = function_descriptor.function_id
+        function_id = function_descriptor
         if self._worker.load_code_from_local:
             job_id = ray.JobID.nil()
-        self._num_task_executions[job_id][function_id] += 1
+        try:
+            self._num_task_executions[job_id][function_id] += 1
+        except KeyError:
+            self._num_task_executions[job_id][function_id] = 1
 
     def get_task_counter(self, job_id, function_descriptor):
-        function_id = function_descriptor.function_id
+        function_id = function_descriptor
         if self._worker.load_code_from_local:
             job_id = ray.JobID.nil()
-        return self._num_task_executions[job_id][function_id]
+        try:
+            return self._num_task_executions[job_id][function_id]
+        except KeyError:
+            return 0
 
     def compute_collision_identifier(self, function_or_class):
         """The identifier is used to detect excessive duplicate exports.
