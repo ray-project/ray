@@ -42,8 +42,8 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  /// \param starting_worker_timeout_callback The callback will be triggered once it's
-  /// timeout to start a worker.
+  /// \param starting_worker_timeout_callback The callback that will be triggered once
+  /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
