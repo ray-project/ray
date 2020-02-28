@@ -24,12 +24,12 @@ class WorkerPoolMock : public WorkerPool {
               {"dummy_py_worker_command", "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}},
              {Language::JAVA,
               {"dummy_java_worker_command",
-               "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}},
-               nullptr) {}
+               "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}}) {}
 
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
+      : WorkerPool(io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands,
+                   nullptr),
         last_worker_process_() {
     for (auto &entry : states_by_lang_) {
       entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;

@@ -42,10 +42,12 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
+  /// \param starting_worker_timeout_callback The callback will be triggered once it's
+  /// timeout to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             std::function<void()> dispatch_tasks_callback);
+             std::function<void()> starting_worker_timeout_callback);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -236,8 +238,8 @@ class WorkerPool {
   int maximum_startup_concurrency_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The dispatch callback used for trigger dispatch tasks.
-  std::function<void()> dispatch_tasks_callback_;
+  /// The callback will be triggered once it's timeout to start a worker.
+  std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 };
 
