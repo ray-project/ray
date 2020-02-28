@@ -43,6 +43,9 @@ class _Timer:
         if len(self._units_processed) > self._window_size:
             self._units_processed.pop(0)
 
+    def has_units_processed(self):
+        return len(self._units_processed) > 0
+
     @property
     def mean(self):
         return np.mean(self._samples)

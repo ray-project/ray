@@ -1,6 +1,5 @@
 import collections
 import random
-import time
 import threading
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
@@ -549,16 +548,16 @@ class LocalIterator(Generic[T]):
     tasks and actors. However, it should be read from at most one process at
     a time."""
 
-    # If a function passed to LocalIterator.for_each() has this attribute set,
-    # we will automatically create a perf timer with the given name. This
-    # allows for_each operators to automatically add certain metrics.
-    AUTO_TIMER_ATTR = "_auto_timer_name"
+    # If a function passed to LocalIterator.for_each() has this method,
+    # we will call it at the beginning of each data fetch call. This can be
+    # used to measure the underlying wait latency for measurement purposes.
+    ON_FETCH_START_HOOK_NAME = "_on_fetch_start"
 
     thread_local = threading.local()
 
     def __init__(self,
                  base_iterator: Callable[[], Iterable[T]],
-                 context: MetricsContext,
+                 metrics: MetricsContext,
                  local_transforms: List[Callable[[Iterable], Any]] = None,
                  timeout: int = None,
                  name=None):
@@ -568,7 +567,7 @@ class LocalIterator(Generic[T]):
             base_iterator (func): A function that produces the base iterator.
                 This is a function so that we can ensure LocalIterator is
                 serializable.
-            context (MetricsContext): Existing metrics context or a new
+            metrics (MetricsContext): Existing metrics context or a new
                 context. Should be the same for each chained iterator.
             local_transforms (list): A list of transformation functions to be
                 applied on top of the base iterator. When iteration begins, we
@@ -583,13 +582,13 @@ class LocalIterator(Generic[T]):
         self.base_iterator = base_iterator
         self.built_iterator = None
         self.local_transforms = local_transforms or []
-        self.context = context
+        self.metrics = metrics
         self.timeout = timeout
         self.name = name or "unknown"
 
     @staticmethod
     def get_metrics() -> MetricsContext:
-        """Return the current iterator context.
+        """Return the current metrics context.
 
         This can only be called within an iterator function."""
         if (not hasattr(LocalIterator.thread_local, "metrics")
@@ -606,14 +605,18 @@ class LocalIterator(Generic[T]):
             # This sets the iterator context during iterator execution, and
             # clears it after so that multiple iterators can be used at a time.
             def set_restore_context(it):
-                self.thread_local.metrics = self.context
+                if hasattr(self.thread_local, "metrics"):
+                    prev_metrics = self.thread_local.metrics
+                else:
+                    prev_metrics = None
+                self.thread_local.metrics = self.metrics
                 try:
                     for item in it:
-                        self.thread_local.metrics = None
+                        self.thread_local.metrics = prev_metrics
                         yield item
-                        self.thread_local.metrics = self.context
+                        self.thread_local.metrics = self.metrics
                 finally:
-                    self.thread_local.metrics = None
+                    self.thread_local.metrics = prev_metrics
 
             it = set_restore_context(it)
             self.built_iterator = it
@@ -640,25 +643,28 @@ class LocalIterator(Generic[T]):
                 else:
                     yield fn(item)
 
-        if hasattr(fn, LocalIterator.AUTO_TIMER_ATTR):
-            timer = self.context.timers[getattr(fn,
-                                                LocalIterator.AUTO_TIMER_ATTR)]
+        if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
 
-            def wrap_timer(it):
+            def add_wait_hooks(it):
                 it = unwrapped(it)
+                new_item = True
                 while True:
-                    start = time.perf_counter()
+                    # Avoids calling on_fetch_start repeatedly if we are
+                    # yielding _NextValueNotReady.
+                    if new_item:
+                        fn._on_fetch_start()
+                        new_item = False
                     item = next(it)
                     if not isinstance(item, _NextValueNotReady):
-                        timer.push(time.perf_counter() - start)
+                        new_item = True
                     yield item
 
-            apply_foreach = wrap_timer
+            apply_foreach = add_wait_hooks
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_foreach],
             name=self.name + ".for_each()")
 
@@ -670,7 +676,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_filter],
             name=self.name + ".filter()")
 
@@ -690,7 +696,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_batch],
             name=self.name + ".batch({})".format(n))
 
@@ -705,7 +711,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
 
@@ -743,7 +749,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.context,
+            self.metrics,
             self.local_transforms + [apply_shuffle],
             name=self.name +
             ".shuffle(shuffle_buffer_size={}, seed={})".format(
@@ -773,7 +779,8 @@ class LocalIterator(Generic[T]):
             if i >= n:
                 break
 
-    def union(self, other: "LocalIterator[T]", deterministic: bool = False) -> "LocalIterator[T]":
+    def union(self, other: "LocalIterator[T]",
+              deterministic: bool = False) -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the other.
 
         If deterministic=True, we alternate between reading from one iterator
@@ -792,10 +799,13 @@ class LocalIterator(Generic[T]):
             timeout = 0
 
         it1 = LocalIterator(
-            self.base_iterator, self.context, self.local_transforms, timeout=timeout)
+            self.base_iterator,
+            self.metrics,
+            self.local_transforms,
+            timeout=timeout)
         it2 = LocalIterator(
             other.base_iterator,
-            self.context,
+            other.metrics,
             other.local_transforms,
             timeout=timeout)
         active = [it1, it2]
@@ -820,11 +830,13 @@ class LocalIterator(Generic[T]):
                     break
 
         # TODO(ekl) is this the best way to represent union() of metrics?
-        self.context.union_contexts.append(other.context)
+        new_ctx = MetricsContext()
+        new_ctx.parent_metrics.append(self.metrics)
+        new_ctx.parent_metrics.append(other.metrics)
 
         return LocalIterator(
             build_union,
-            self.context, [],
+            new_ctx, [],
             name="LocalUnion[{}, {}]".format(self, other))
 
 

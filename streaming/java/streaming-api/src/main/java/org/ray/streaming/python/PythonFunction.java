@@ -20,16 +20,19 @@ import org.ray.streaming.api.function.Function;
  */
 public class PythonFunction implements Function {
   public enum FunctionInterface {
-    SOURCE_FUNCTION("ray.streaming.function.SourceFunction"),
-    MAP_FUNCTION("ray.streaming.function.MapFunction"),
-    FLAT_MAP_FUNCTION("ray.streaming.function.FlatMapFunction"),
-    FILTER_FUNCTION("ray.streaming.function.FilterFunction"),
-    KEY_FUNCTION("ray.streaming.function.KeyFunction"),
-    REDUCE_FUNCTION("ray.streaming.function.ReduceFunction"),
-    SINK_FUNCTION("ray.streaming.function.SinkFunction");
+    SOURCE_FUNCTION("SourceFunction"),
+    MAP_FUNCTION("MapFunction"),
+    FLAT_MAP_FUNCTION("FlatMapFunction"),
+    FILTER_FUNCTION("FilterFunction"),
+    KEY_FUNCTION("KeyFunction"),
+    REDUCE_FUNCTION("ReduceFunction"),
+    SINK_FUNCTION("SinkFunction");
 
     private String functionInterface;
 
+    /**
+     * @param functionInterface function class name in `ray.streaming.function` module.
+     */
     FunctionInterface(String functionInterface) {
       this.functionInterface = functionInterface;
     }
@@ -57,6 +60,26 @@ public class PythonFunction implements Function {
 
   public void setFunctionInterface(FunctionInterface functionInterface) {
     this.functionInterface = functionInterface.functionInterface;
+  }
+
+  public byte[] getFunction() {
+    return function;
+  }
+
+  public String getModuleName() {
+    return moduleName;
+  }
+
+  public String getClassName() {
+    return className;
+  }
+
+  public String getFunctionName() {
+    return functionName;
+  }
+
+  public String getFunctionInterface() {
+    return functionInterface;
   }
 
   /**

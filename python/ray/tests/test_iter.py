@@ -46,10 +46,23 @@ def test_metrics_union(ray_start_regular_shared):
         metrics.counters["bar"] += 100
         return metrics.counters["bar"]
 
-    it1 = it1.gather_sync().for_each(foo_metrics)
-    it2 = it2.gather_sync().for_each(bar_metrics)
+    def verify_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["n"] += 1
+        # Check the unioned iterator gets a new metric context.
+        assert "foo" not in metrics.counters
+        assert "bar" not in metrics.counters
+        # Check parent metrics are accessible.
+        if metrics.counters["n"] > 2:
+            assert "foo" in metrics.parent_metrics[0].counters
+            assert "bar" in metrics.parent_metrics[1].counters
+        return x
+
+    it1 = it1.gather_async().for_each(foo_metrics)
+    it2 = it2.gather_async().for_each(bar_metrics)
     it3 = it1.union(it2, deterministic=True)
-    print(it3.take(10))
+    it3 = it3.for_each(verify_metrics)
+    assert it3.take(10) == [1, 100, 3, 200, 6, 300, 10, 400]
 
 
 def test_from_items(ray_start_regular_shared):
