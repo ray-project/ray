@@ -74,10 +74,8 @@ class Repeater(SearchAlgorithm):
 
         Stores the metric of a trial as nan if any of the following conditions
         are met:
-
-            1. use_clipped_trials is False but the trial was clipped.
-            2. ``result`` is empty or not provided.
-            3. ``result`` is provided but no metric was provided.
+            1. ``result`` is empty or not provided.
+            2. ``result`` is provided but no metric was provided.
         """
         if trial_id not in self._trial_id_to_group:
             logger.error("Trial {} not seen before; cannot report score".format(trial_id))
