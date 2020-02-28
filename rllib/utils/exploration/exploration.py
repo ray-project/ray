@@ -2,7 +2,7 @@ from gym.spaces import Space
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
 from ray.rllib.models.modelv2 import ModelV2
-from typing import List, Union
+from typing import Union
 
 tf = try_import_tf()
 
@@ -92,35 +92,3 @@ class Exploration:
                 This may include tf.ops as values in graph mode.
         """
         return {}
-
-    def get_state(self):
-        """Returns the current exploration state.
-
-        Returns:
-            dict: The current state.
-        """
-        return []
-
-    def set_state(self, state: dict):
-        """Sets the current state of the Exploration to the given value.
-
-        Args:
-            state (dict): The new state to set.
-        """
-        pass
-
-    def reset_state(self):
-        """Resets the exploration's state."""
-        pass
-
-    @classmethod
-    def merge_states(cls, exploration_states: List[dict]):
-        """Returns the merged states of all exploration_states as a value.
-
-        Args:
-            exploration_states (List[dict]): All Exploration states to merge.
-
-        Returns:
-            dict: The merged exploration state.
-        """
-        pass

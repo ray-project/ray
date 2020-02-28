@@ -350,9 +350,9 @@ def build_eager_tf_policy(name,
                         model_out,
                         self.dist_class,
                         self.model,
-                        explore=explore,
                         timestep=timestep
-                        if timestep is not None else self.global_timestep)
+                        if timestep is not None else self.global_timestep,
+                        explore=explore)
 
             extra_fetches = {}
             if logp is not None:
