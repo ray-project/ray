@@ -15,7 +15,6 @@ namespace {
 
 // Duration between internal book-keeping heartbeats.
 constexpr int64_t kInternalHeartbeatMillis = 1000;
-constexpr int64_t kActorRestartDeadlineMillis = 3000;
 constexpr int64_t kTaskRetryDelayMillis = 5000;
 
 void BuildCommonTaskSpec(
@@ -209,14 +208,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        << spec.DebugString();
         const auto now = current_time_ms();
         absl::MutexLock lock(&mutex_);
-        if (spec.IsActorTask()) {
-          const auto actor_id = spec.ActorId();
-          // Schedule a kill task unless we already have one in flight.
-          if (!pending_kill_for_actor_.contains(actor_id)) {
-            pending_actor_kills_.emplace_back(now + kActorRestartDeadlineMillis, spec.ActorId());
-            pending_kill_for_actor_[actor_id] = std::prev(pending_actor_kills_.end());
-          }
-        }
         to_resubmit_.push_back(std::make_pair(now + kTaskRetryDelayMillis, spec));
       }));
 
@@ -350,14 +341,6 @@ void CoreWorker::CheckForRayletFailure() {
 
 void CoreWorker::InternalHeartbeat() {
   absl::MutexLock lock(&mutex_);
-  // Send any pending actor kills
-  while (!pending_actor_kills_.empty() && current_time_ms() > pending_actor_kills_.front().first) {
-    auto actor_id = pending_actor_kills_.front().second;
-    RAY_LOG(WARNING) << "Actor " << actor_id << " hasn't been reconstructed within "
-                     << kActorRestartDeadlineMillis << "ms of task submission failure. Killing it.";
-    RAY_CHECK_OK(KillActor(actor_id));
-  }
-  // Resubmit all tasks that are ready again
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto& spec = to_resubmit_.front().second;
     if (spec.IsActorTask()) {
@@ -915,13 +898,6 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                                               const gcs::ActorTableData &actor_data) {
       ActorHandle *actor_handle = nullptr;
       RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
-      const auto cancel_kill_task = [this, actor_id] {
-        absl::MutexLock lock(&mutex_);
-        auto task_it = pending_kill_for_actor_.find(actor_id);
-        if (task_it != pending_kill_for_actor_.end()) {
-          pending_actor_kills_.erase(task_it->second);
-        }
-      };
       if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
         {
           absl::MutexLock lock(&actor_handles_mutex_);
@@ -933,11 +909,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
           }
           direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/false);
         }
-        cancel_kill_task();
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/true);
         actor_handle->MarkDead();
-        cancel_kill_task();
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
