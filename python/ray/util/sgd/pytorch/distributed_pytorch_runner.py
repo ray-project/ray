@@ -100,6 +100,9 @@ class DistributedPyTorchRunner(PyTorchRunner):
             models=self.models,
             optimizers=self.optimizers,
             criterion=self.criterion,
+            train_loader=self.train_loader,
+            validation_loader=self.validation_loader,
+            world_rank=self.world_rank,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
 

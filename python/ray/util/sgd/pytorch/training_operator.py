@@ -62,6 +62,25 @@ class TrainingOperator:
         return self._optimizers
 
     @property
+    def train_loader(self):
+        """
+        Data loader for the validation dataset created by the data_creator.
+        """
+        return self._train_loader
+
+    @property
+    def validation_loader(self):
+        """
+        Data loader for the train dataset created by the data_creator.
+        """
+        return self._validation_loader
+
+    @property
+    def world_rank(self):
+        """The rank of the parent runner. Always 0 if not distributed."""
+        return self._world_rank
+
+    @property
     def criterion(self):
         """Criterion created by the provided loss_creator."""
         return self._criterion
@@ -87,6 +106,9 @@ class TrainingOperator:
                  models,
                  optimizers,
                  criterion,
+                 train_loader,
+                 validation_loader,
+                 world_rank,
                  schedulers=None,
                  use_fp16=False):
         # You are not expected to override this method.
@@ -99,6 +121,9 @@ class TrainingOperator:
         assert isinstance(models, list), "Components need to be in a list."
         self._optimizers = optimizers  # List of optimizers
         assert isinstance(optimizers, list), "Components need to be in a list."
+        self._train_loader = train_loader
+        self._validation_loader = validation_loader
+        self._world_rank = world_rank
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
@@ -166,6 +191,10 @@ class TrainingOperator:
         })
         return stats
 
+    def forward(self, features, target):
+        output = self.model(features)
+        loss = self.criterion(output, target)
+
     def train_batch(self, batch, batch_info):
         features, target = batch
         # Create non_blocking tensors for distributed training
@@ -175,8 +204,7 @@ class TrainingOperator:
 
         # Compute output.
         with self.timers["fwd"]:
-            output = self.model(features)
-            loss = self.criterion(output, target)
+            loss = self.forward(features, target)
 
         # Compute gradients in a backward pass.
         with self.timers["grad"]:

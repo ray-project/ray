@@ -164,6 +164,9 @@ class PyTorchRunner:
             models=self.models,
             optimizers=self.optimizers,
             criterion=self.criterion,
+            train_loader=self.train_loader,
+            validation_loader=self.validation_loader,
+            world_rank=0,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
 
@@ -180,6 +183,7 @@ class PyTorchRunner:
         logger.debug("Begin Training Step {}".format(self.steps + 1))
         info = info or {}
         info.update({
+            "train_steps": self.steps,
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
         })

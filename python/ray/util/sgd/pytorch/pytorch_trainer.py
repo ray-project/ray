@@ -317,7 +317,7 @@ class PyTorchTrainer:
                 train_stats[stat_key] = np.nanmean(
                     [s.get(stat_key, np.nan) for s in worker_stats])
             else:
-                train_stats[stat_key] = worker_stats[0][stat_key]
+                train_stats[stat_key] = [s[stat_key] for s in worker_stats]
         return train_stats
 
     def _train_epoch(self, info=None):
