@@ -76,6 +76,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
+             std::function<void()> gc_collect = nullptr,
              bool ref_counting_enabled = false);
 
   virtual ~CoreWorker();
@@ -169,14 +170,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
-  /// Add metadata about the object IDs contained within another object ID.
-  /// This should be called during deserialization of the outer object ID.
-  ///
-  /// \param[in] object_id The object containing IDs.
-  /// \param[in] contained_object_ids The IDs contained in the object.
-  void AddContainedObjectIDs(const ObjectID &object_id,
-                             const std::vector<ObjectID> &contained_object_ids);
-
   ///
   /// Public methods related to storing and retrieving objects.
   ///
@@ -202,9 +195,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object The ray object.
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
+  /// \param[in] pin_object Whether or not to tell the raylet to pin this object.
   /// \return Status.
   Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
-             const ObjectID &object_id);
+             const ObjectID &object_id, bool pin_object = false);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -239,8 +233,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] owner_address Address of the owner of the object who will be contacted by
+  /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
-  Status Seal(const ObjectID &object_id, bool pin_object);
+  Status Seal(const ObjectID &object_id, bool pin_object,
+              const absl::optional<rpc::Address> &owner_address = absl::nullopt);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -283,6 +280,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
+
+  /// Trigger garbage collection on each worker in the cluster.
+  void TriggerGlobalGC();
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -486,6 +486,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::GetCoreWorkerStatsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Trigger local GC on this worker.
+  void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
+                     rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -631,6 +635,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
   std::function<Status()> check_signals_;
+
+  /// Application-language callback to trigger garbage collection in the language
+  /// runtime. This is required to free distributed references that may otherwise
+  /// be held up in garbage objects.
+  std::function<void()> gc_collect_;
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make

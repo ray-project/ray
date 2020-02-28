@@ -1,11 +1,11 @@
 import collections
+import errno
 import json
 import logging
 import multiprocessing
 import os
 import random
 import re
-import resource
 import socket
 import subprocess
 import sys
@@ -17,6 +17,10 @@ import colorama
 import ray
 import ray.ray_constants as ray_constants
 import psutil
+
+resource = None
+if sys.platform != "win32":
+    import resource
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -282,10 +286,10 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # connection.
         s.connect((ip_address, int(port)))
         node_ip_address = s.getsockname()[0]
-    except Exception as e:
+    except OSError as e:
         node_ip_address = "127.0.0.1"
         # [Errno 101] Network is unreachable
-        if e.errno == 101:
+        if e.errno == errno.ENETUNREACH:
             try:
                 # try get node ip address from host name
                 host_name = socket.getfqdn(socket.gethostname())
@@ -582,11 +586,15 @@ def start_reaper():
     try:
         os.setpgrp()
     except OSError as e:
-        logger.warning("setpgrp failed, processes may not be "
-                       "cleaned up properly: {}.".format(e))
-        # Don't start the reaper in this case as it could result in killing
-        # other user processes.
-        return None
+        if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
+            # Nothing to do; we're already a session leader.
+            pass
+        else:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+            # Don't start the reaper in this case as it could result in killing
+            # other user processes.
+            return None
 
     reaper_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
@@ -898,7 +906,7 @@ def _start_redis_instance(executable,
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
-    else:
+    elif resource is not None:
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
         # clients.

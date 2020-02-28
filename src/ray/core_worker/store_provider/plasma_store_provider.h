@@ -21,7 +21,8 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 const std::shared_ptr<raylet::RayletClient> raylet_client,
-                                std::function<Status()> check_signals);
+                                std::function<Status()> check_signals,
+                                std::function<void()> on_store_full = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -29,18 +30,42 @@ class CoreWorkerPlasmaStoreProvider {
 
   /// Create and seal an object.
   ///
+  /// NOTE: The caller must subsequently call Release() to release the first reference to
+  /// the created object. Until then, the object is pinned and cannot be evicted.
+  ///
   /// \param[in] object The object to create.
-  /// \param[in] object_id The ID of the object. This can be used as an
-  /// argument to Get to retrieve the object data.
+  /// \param[in] object_id The ID of the object.
   /// \param[out] object_exists Optional. Returns whether an object with the
   /// same ID already exists. If this is true, then the Put does not write any
   /// object data.
   Status Put(const RayObject &object, const ObjectID &object_id, bool *object_exists);
 
+  /// Create an object in plasma and return a mutable buffer to it. The buffer should be
+  /// subsequently written to and then sealed using Seal().
+  ///
+  /// \param[in] metadata The metadata of the object.
+  /// \param[in] data_size The size of the object.
+  /// \param[in] object_id The ID of the object.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
+  /// Seal an object buffer created with Create().
+  ///
+  /// NOTE: The caller must subsequently call Release() to release the first reference to
+  /// the created object. Until then, the object is pinned and cannot be evicted.
+  ///
+  /// \param[in] object_id The ID of the object. This can be used as an
+  /// argument to Get to retrieve the object data.
   Status Seal(const ObjectID &object_id);
+
+  /// Release the first reference to the object created by Put() or Create(). This should
+  /// be called exactly once per object and until it is called, the object is pinned and
+  /// cannot be evicted.
+  ///
+  /// \param[in] object_id The ID of the object. This can be used as an
+  /// argument to Get to retrieve the object data.
+  Status Release(const ObjectID &object_id);
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const WorkerContext &ctx,
@@ -95,6 +120,7 @@ class CoreWorkerPlasmaStoreProvider {
   plasma::PlasmaClient store_client_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
+  std::function<void()> on_store_full_;
 };
 
 }  // namespace ray

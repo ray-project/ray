@@ -34,7 +34,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
-  reference_counter_->AddSubmittedTaskReferences(task_deps);
+  reference_counter_->UpdateSubmittedTaskReferences(task_deps);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
@@ -110,7 +110,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
       RAY_CHECK_OK(in_memory_store_->Put(
           RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.inlined_ids())),
+                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
           object_id));
     }
   }
@@ -186,20 +186,14 @@ void TaskManager::ShutdownIfNeeded() {
   }
 }
 
-void TaskManager::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID> &object_ids, const rpc::Address &worker_addr,
-    const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
-  std::vector<ObjectID> deleted;
-  reference_counter_->UpdateSubmittedTaskReferences(object_ids, worker_addr,
-                                                    borrowed_refs, &deleted);
-  in_memory_store_->Delete(deleted);
-}
-
 void TaskManager::OnTaskDependenciesInlined(
     const std::vector<ObjectID> &inlined_dependency_ids,
     const std::vector<ObjectID> &contained_ids) {
-  reference_counter_->AddSubmittedTaskReferences(contained_ids);
-  RemoveSubmittedTaskReferences(inlined_dependency_ids);
+  std::vector<ObjectID> deleted;
+  reference_counter_->UpdateSubmittedTaskReferences(
+      /*argument_ids_to_add=*/contained_ids,
+      /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
+  in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::RemoveFinishedTaskReferences(
@@ -217,7 +211,11 @@ void TaskManager::RemoveFinishedTaskReferences(
                                  inlined_ids.end());
     }
   }
-  RemoveSubmittedTaskReferences(plasma_dependencies, borrower_addr, borrowed_refs);
+
+  std::vector<ObjectID> deleted;
+  reference_counter_->UpdateFinishedTaskReferences(plasma_dependencies, borrower_addr,
+                                                   borrowed_refs, &deleted);
+  in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,

@@ -62,8 +62,16 @@ py_test(
 py_test(
     name = "test_dqn",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/dqn/tests/test_dqn.py"]
+)
+
+# A2CTrainer
+py_test(
+    name = "test_a2c",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/a3c/tests/test_a2c.py"]
 )
 
 # PGTrainer
@@ -78,7 +86,7 @@ py_test(
 py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ppo/tests/test_ppo.py",
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
@@ -90,7 +98,6 @@ py_test(
     size = "small",
     srcs = ["agents/impala/tests/test_vtrace.py"]
 )
-
 
 # --------------------------------------------------------------------
 # contrib Agents
@@ -789,7 +796,6 @@ py_test(
         ]
 )
 
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -805,6 +811,20 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Policies
+# rllib/policy/
+#
+# Tag: policy
+# --------------------------------------------------------------------
+
+py_test(
+    name = "policy/tests/test_compute_log_likelihoods",
+    tags = ["policy"],
+    size = "small",
+    srcs = ["policy/tests/test_compute_log_likelihoods.py"]
+)
+
+# --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
 #
@@ -815,6 +835,7 @@ py_test(
     name = "test_framework_agnostic_components",
     tags = ["utils"],
     size = "small",
+    data = glob(["utils/tests/**"]),
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
@@ -872,14 +893,6 @@ py_test(
     srcs = ["tests/test_dependency.py"]
 )
 
-# PR 7086
-#py_test(
-#    name = "tests/test_deterministic_support",
-#    tags = ["tests_dir", "tests_dir_D"],
-#    size = "small",
-#    srcs = ["tests/test_deterministic_support.py"]
-#)
-
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
@@ -902,12 +915,12 @@ py_test(
     srcs = ["tests/test_evaluators.py"]
 )
 
-#py_test(
-#    name = "tests/test_explorations",
-#    tags = ["tests_dir", "tests_dir_E"],
-#    size = "medium",
-#    srcs = ["tests/test_explorations.py"]
-#)
+py_test(
+    name = "tests/test_explorations",
+    tags = ["tests_dir", "tests_dir_E", "explorations"],
+    size = "large",
+    srcs = ["tests/test_explorations.py"]
+)
 
 py_test(
     name = "tests/test_external_env",
@@ -1019,7 +1032,7 @@ py_test(
 
 
 py_test(
-    name = "autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    name = "examples/autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
@@ -1168,7 +1181,7 @@ py_test(
 py_test(
     name = "examples/custom_tf_policy",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_tf_policy.py"],
     args = ["--iters=2", "--num-cpus=4"]
 )
@@ -1190,18 +1203,25 @@ py_test(
 )
 
 py_test(
-    name = "examples/multiagent_cartpole",
+    name = "examples/multi_agent_cartpole",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_cartpole.py"],
+    srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--num-iters=2", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multiagent_two_trainers",
+    name = "examples/multi_agent_custom_policy",
+    tags = ["examples", "examples_M_xxx"],
+    size = "medium",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+)
+
+py_test(
+    name = "examples/multi_agent_two_trainers",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_two_trainers.py"],
+    srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--num-iters=2"]
 )
 
@@ -1242,6 +1262,14 @@ py_test(
     size = "small",
     srcs = ["examples/rollout_worker_custom_workflow.py"],
     args = ["--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rock_paper_scissors_multiagent.py"],
+    args = ["--stop=200"],
 )
 
 py_test(

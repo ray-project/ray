@@ -83,6 +83,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
+      free_objects_period_(config.free_objects_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
@@ -214,6 +215,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
   last_debug_dump_at_ms_ = current_time_ms();
+  last_free_objects_at_ms_ = current_time_ms();
   Heartbeat();
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
@@ -302,6 +304,19 @@ void NodeManager::Heartbeat() {
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
   }
 
+  // Set the global gc bit on the outgoing heartbeat message.
+  if (should_global_gc_) {
+    heartbeat_data->set_should_global_gc(true);
+    should_global_gc_ = false;
+  }
+
+  // Trigger local GC if needed. This throttles the frequency of local GC calls
+  // to at most once per heartbeat interval.
+  if (should_local_gc_) {
+    DoLocalGC();
+    should_local_gc_ = false;
+  }
+
   ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
                                                                  /*done*/ nullptr);
   RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
@@ -314,12 +329,38 @@ void NodeManager::Heartbeat() {
     last_debug_dump_at_ms_ = now_ms;
   }
 
+  // Evict all copies of freed objects from the cluster.
+  if (free_objects_period_ > 0 &&
+      static_cast<int64_t>(now_ms - last_free_objects_at_ms_) > free_objects_period_) {
+    FlushObjectsToFree();
+  }
+
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
     Heartbeat();
   });
+}
+
+void NodeManager::DoLocalGC() {
+  auto all_workers = worker_pool_.GetAllWorkers();
+  for (const auto &driver : worker_pool_.GetAllDrivers()) {
+    all_workers.push_back(driver);
+  }
+  RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size() << " workers.";
+  for (const auto &worker : all_workers) {
+    rpc::LocalGCRequest request;
+    auto status = worker->rpc_client()->LocalGC(
+        request, [](const ray::Status &status, const rpc::LocalGCReply &r) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send local GC request: " << status.ToString();
+          }
+        });
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to send local GC request: " << status.ToString();
+    }
+  }
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -642,6 +683,12 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
                   << client_id;
     return;
   }
+
+  // Trigger local GC at the next heartbeat interval.
+  if (heartbeat_data.should_global_gc()) {
+    should_local_gc_ = true;
+  }
+
   SchedulingResources &remote_resources = it->second;
 
   ResourceSet remote_total(VectorFromProtobuf(heartbeat_data.resources_total_label()),
@@ -3135,6 +3182,14 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
           RAY_LOG(DEBUG) << "Unpinning object " << object_id;
           pinned_objects_.erase(object_id);
 
+          // Try to evict all copies of the object from the cluster.
+          objects_to_free_.push_back(object_id);
+          if (objects_to_free_.size() ==
+                  RayConfig::instance().free_objects_batch_size() ||
+              free_objects_period_ == 0) {
+            FlushObjectsToFree();
+          }
+
           // Remove the cached worker client if there are no more pending requests.
           if (--worker_rpc_clients_[worker_id].second == 0) {
             worker_rpc_clients_.erase(worker_id);
@@ -3142,6 +3197,19 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
         }));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::FlushObjectsToFree() {
+  if (free_objects_period_ < 0) {
+    return;
+  }
+
+  if (!objects_to_free_.empty()) {
+    RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
+    object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);
+    objects_to_free_.clear();
+  }
+  last_free_objects_at_ms_ = current_time_ms();
 }
 
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
@@ -3241,6 +3309,15 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                        << status.ToString();
     }
   }
+}
+
+void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
+                                 rpc::GlobalGCReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(WARNING) << "Broadcasting global GC request to all raylets.";
+  should_global_gc_ = true;
+  // We won't see our own request, so trigger local GC in the next heartbeat.
+  should_local_gc_ = true;
 }
 
 void NodeManager::RecordMetrics() {
