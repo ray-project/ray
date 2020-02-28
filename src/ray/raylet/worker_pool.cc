@@ -211,7 +211,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc, const Languag
     auto it = state.starting_worker_processes.find(proc);
     if (it != state.starting_worker_processes.end()) {
       RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
-                    << ") have not been registering to raylet.";
+                    << ") have not registered to raylet within timeout.";
       state.starting_worker_processes.erase(it);
       if (starting_worker_timeout_callback_ != nullptr) {
         starting_worker_timeout_callback_();
