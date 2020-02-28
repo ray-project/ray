@@ -12,9 +12,9 @@ OPTIMIZER_SHARED_CONFIGS = [
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    "twin_q": True,
+    "twin_q": False,
     "use_state_preprocessor": False,
-    "policy": "GaussianLatentSpacePolicy",
+    #"policy": "GaussianLatentSpacePolicy",
     # RLlib model options for the Q function
     "Q_model": {
         "hidden_activation": "relu",
@@ -41,9 +41,9 @@ DEFAULT_CONFIG = with_common_config({
     "no_done_at_end": True,
     # N-step target updates
     "n_step": 1,
-    # The GumbelSoftmax temperature parameter to use, iff action space is
-    # discrete and SAC uses GumbelSoftmax to sample.
-    "gumbel_softmax_temperature": 1.0,
+    ## The GumbelSoftmax temperature parameter to use, iff action space is
+    ## discrete and SAC uses GumbelSoftmax to sample.
+    #"gumbel_softmax_temperature": 1.0,
     # === Evaluation ===
     # The evaluation stats will be reported under the "evaluation" metric key.
     "evaluation_interval": 1,
@@ -80,7 +80,7 @@ DEFAULT_CONFIG = with_common_config({
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": None,
     # How many steps of the model to sample before learning starts.
-    "learning_starts": 0,
+    "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "sample_batch_size": 1,
