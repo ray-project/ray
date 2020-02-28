@@ -513,8 +513,6 @@ def detect_fate_sharing_support_win32():
         try:
             from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
             kernel32 = ctypes.WinDLL("kernel32")
-            kernel32.GetCurrentProcess.restype = HANDLE
-            kernel32.GetCurrentProcess.argtypes = ()
             kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
             kernel32.CreateJobObjectW.restype = HANDLE
             sijo_argtypes = (HANDLE, ctypes.c_int, LPVOID, DWORD)
@@ -573,7 +571,6 @@ def detect_fate_sharing_support_win32():
                 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
                 | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
             infoclass = JobObjectExtendedLimitInformation
-            current_proc = kernel32.GetCurrentProcess()
             if not kernel32.SetInformationJobObject(
                     job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)):
                 job = None
@@ -625,7 +622,7 @@ def set_kill_child_on_death_win32(child_proc):
     """Ensures the child process dies if this process dies (fate-sharing).
 
     Windows-only. Must be called by the parent, after spawning the child.
-    
+
     Args:
         child_proc: The subprocess.Popen or subprocess.Handle object.
     """
@@ -636,6 +633,7 @@ def set_kill_child_on_death_win32(child_proc):
 
     if detect_fate_sharing_support_win32():
         if not win32_AssignProcessToJobObject(win32_job, int(child_proc)):
+            import ctypes
             raise OSError(ctypes.get_last_error(),
                           "AssignProcessToJobObject() failed")
     else:
