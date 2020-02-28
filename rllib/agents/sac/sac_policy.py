@@ -12,8 +12,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import DiagGaussian, GumbelSoftmax, \
-    SquashedGaussian
+from ray.rllib.models.tf.tf_action_dist import DiagGaussian, Categorical, \
+    SquashedGaussian  # GumbelSoftmax
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.annotations import override
@@ -23,9 +23,6 @@ tf = try_import_tf()
 tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
-
-# Flattened (approx one-hot) actions for discrete action spaces.
-#ACTIONS_FLAT = "actions_flat"
 
 
 def build_sac_model(policy, obs_space, action_space, config):
@@ -92,14 +89,7 @@ def postprocess_trajectory(policy,
                            sample_batch,
                            other_agent_batches=None,
                            episode=None):
-    sample_batch = postprocess_nstep_and_prio(policy, sample_batch)
-    # We have to argmax actions for the env. Keep flattened (pseudo one-hot)
-    # actions as ACTIONS_FLAT for the loss.
-    #sample_batch[ACTIONS_FLAT] = sample_batch[SampleBatch.ACTIONS]
-    #if policy.action_space_env is not None:
-    #    sample_batch[SampleBatch.ACTIONS] = \
-    #        np.argmax(sample_batch[SampleBatch.ACTIONS], -1)
-    return sample_batch
+    return postprocess_nstep_and_prio(policy, sample_batch)
 
 
 def get_dist_class(config, action_space):
@@ -109,7 +99,7 @@ def get_dist_class(config, action_space):
             config["normalize_actions"] is True else DiagGaussian
     # Discrete actions.
     else:
-        action_dist_class = GumbelSoftmax
+        action_dist_class = Categorical
     return action_dist_class
 
 
@@ -415,14 +405,14 @@ def before_init(policy, obs_space, action_space, config):
 
     # Setup action spaces (for the env and flattened/one-hot) in case of
     # discrete actions.
-    policy.action_space_env = None
-    if isinstance(action_space, Discrete):
-        policy.action_space = Box(
-            0.0, 1.0, shape=(action_space.n,), dtype=np.float32)
-        policy.action_space_env = action_space
-        # Set the argmax action option to True to translate all actions before
-        # going out to the Env.
-        config["argmax_actions"] = True
+    #policy.action_space_env = None
+    #if isinstance(action_space, Discrete):
+    #    policy.action_space = Box(
+    #        0.0, 1.0, shape=(action_space.n,), dtype=np.float32)
+    #    policy.action_space_env = action_space
+    #    # Set the argmax action option to True to translate all actions before
+    #    # going out to the Env.
+    #    config["argmax_actions"] = True
 
 
 def setup_mid_mixins(policy, obs_space, action_space, config):

@@ -106,7 +106,6 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
-                              argmax_actions=False,
                               explore=None,
                               timestep=None,
                               **kwargs):
@@ -122,8 +121,6 @@ class Policy(metaclass=ABCMeta):
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): Should actions be clipped?
-            argmax_actions (bool): Should actions be argmax'd
-                (from Box to Discrete)?
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
@@ -160,9 +157,9 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
-        if argmax_actions:
-            action = argmax_action(action, self.action_space)
-        elif clip_actions:
+        #if argmax_actions:
+        #    action = argmax_action(action, self.action_space)
+        if clip_actions:
             action = clip_action(action, self.action_space)
 
         # Return action, internal state(s), infos.
@@ -426,17 +423,17 @@ def clip_action(action, space):
         return action
 
 
-def argmax_action(action, space):
-    if isinstance(space, gym.spaces.Box):
-        return np.argmax(action, axis=-1)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
-        out = []
-        for a, s in zip(action, space.spaces):
-            out.append(argmax_action(a, s))
-        return out
+#def argmax_action(action, space):
+#    if isinstance(space, gym.spaces.Box):
+#        return np.argmax(action, axis=-1)
+#    elif isinstance(space, gym.spaces.Tuple):
+#        if type(action) not in (tuple, list):
+#            raise ValueError("Expected tuple space for actions {}: {}".format(
+#                action, space))
+#        out = []
+#        for a, s in zip(action, space.spaces):
+#            out.append(argmax_action(a, s))
+#        return out
 
-    raise ValueError(
-        "Expected Box or Tuple space to argmax_action, not {}".format(space))
+#    raise ValueError(
+#        "Expected Box or Tuple space to argmax_action, not {}".format(space))

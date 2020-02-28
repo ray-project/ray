@@ -10,7 +10,7 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.policy.policy import clip_action, argmax_action
+from ray.rllib.policy.policy import clip_action
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
@@ -72,7 +72,6 @@ class SyncSampler(SamplerInput):
                  pack=False,
                  tf_sess=None,
                  clip_actions=True,
-                 #argmax_actions=True,
                  soft_horizon=False,
                  no_done_at_end=False):
         self.base_env = BaseEnv.to_base_env(env)
@@ -88,8 +87,8 @@ class SyncSampler(SamplerInput):
             self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
-            pack, callbacks, tf_sess, self.perf_stats,
-            soft_horizon, no_done_at_end)
+            pack, callbacks, tf_sess, self.perf_stats, soft_horizon,
+            no_done_at_end)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -134,7 +133,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  pack=False,
                  tf_sess=None,
                  clip_actions=True,
-                 #argmax_actions=False,
                  blackhole_outputs=False,
                  soft_horizon=False,
                  no_done_at_end=False):
@@ -158,7 +156,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
-        #self.argmax_actions = argmax_actions
         self.blackhole_outputs = blackhole_outputs
         self.soft_horizon = soft_horizon
         self.no_done_at_end = no_done_at_end
@@ -184,8 +181,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.unroll_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.pack, self.callbacks,
-            self.tf_sess, self.perf_stats, self.soft_horizon, self.no_done_at_end)
+            self.clip_actions, self.pack, self.callbacks, self.tf_sess,
+            self.perf_stats, self.soft_horizon, self.no_done_at_end)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -229,8 +226,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
 
 def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
                 unroll_length, horizon, preprocessors, obs_filters,
-                clip_rewards, clip_actions, pack, callbacks,
-                tf_sess, perf_stats, soft_horizon, no_done_at_end):
+                clip_rewards, clip_actions, pack, callbacks, tf_sess,
+                perf_stats, soft_horizon, no_done_at_end):
     """This implements the common experience collection logic.
 
     Args:
@@ -251,7 +248,6 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         pack (bool): Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `unroll_length` in size.
         clip_actions (bool): Whether to clip actions to the space range.
-        #argmax_actions (bool): Whether to argmax actions (Box to Discrete).
         callbacks (dict): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
             TF policy evaluations.
@@ -604,10 +600,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
         for i, action in enumerate(actions):
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
-            if policy.config["argmax_actions"]:
-                actions_to_send[env_id][agent_id] = argmax_action(
-                    action, policy.action_space)
-            elif clip_actions:
+            if clip_actions:
                 actions_to_send[env_id][agent_id] = clip_action(
                     action, policy.action_space)
             else:

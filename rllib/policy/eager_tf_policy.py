@@ -217,15 +217,15 @@ def build_eager_tf_policy(name,
                                      "`action_sampler_fn` is given")
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-                    self.action_space, self.config["model"])
+                    action_space, self.config["model"])
 
             if make_model:
-                self.model = make_model(
-                    self, observation_space, self.action_space, config)
+                self.model = make_model(self, observation_space, action_space,
+                                        config)
             else:
                 self.model = ModelCatalog.get_model_v2(
                     observation_space,
-                    self.action_space,
+                    action_space,
                     logit_dim,
                     config["model"],
                     framework="tf",
@@ -240,14 +240,13 @@ def build_eager_tf_policy(name,
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
                 SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    [_flatten_action(self.action_space.sample())]),
+                    [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
             self.model(input_dict, self._state_in, tf.convert_to_tensor([1]))
 
             if before_loss_init:
-                before_loss_init(
-                    self, observation_space, self.action_space, config)
+                before_loss_init(self, observation_space, action_space, config)
 
             self._initialize_loss_with_dummy_batch()
             self._loss_initialized = True
@@ -258,7 +257,7 @@ def build_eager_tf_policy(name,
                 self._optimizer = tf.train.AdamOptimizer(config["lr"])
 
             if after_init:
-                after_init(self, observation_space, self.action_space, config)
+                after_init(self, observation_space, action_space, config)
 
         @override(Policy)
         def postprocess_trajectory(self,

@@ -90,9 +90,9 @@ class DynamicTFPolicy(TFPolicy):
                 previous action and reward in the model input
         """
         self.config = config
-        # `before_init` may have already manipulated the action space.
-        action_space = self.action_space if \
-            hasattr(self, "action_space") else action_space
+        ## `before_init` may have already manipulated the action space.
+        #action_space = self.action_space if \
+        #    hasattr(self, "action_space") else action_space
         self.framework = "tf"
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn

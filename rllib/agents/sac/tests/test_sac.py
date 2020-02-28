@@ -14,29 +14,16 @@ class TestSAC(unittest.TestCase):
         num_iterations = 2
 
         # eager (discrete and cont. actions).
-        config["eager"] = True
-        trainer = sac.SACTrainer(config=config, env="CartPole-v0")
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-
-        trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-
-        # tf (discrete and cont. actions).
-        config["eager"] = False
-        trainer = sac.SACTrainer(config=config, env="CartPole-v0")
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-
-        trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-
+        for fw in ["eager", "tf", "torch"]:
+            if fw == "torch":
+                continue
+            config["eager"] = fw == "eager"
+            config["use_pytorch"] = fw == "torch"
+            for env in ["Pendulum-v0", "CartPole-v0"]:
+                trainer = sac.SACTrainer(config=config, env=env)
+                for i in range(num_iterations):
+                    results = trainer.train()
+                    print(results)
 
 if __name__ == "__main__":
     import unittest

@@ -1,3 +1,4 @@
+from gym.spaces import Discrete
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -39,7 +40,9 @@ class SACModel(TFModelV2):
             actor_hiddens (list): hidden layers sizes for actor network
             critic_hidden_activation (str): activation for critic network
             critic_hiddens (list): hidden layers sizes for critic network
-            twin_q (bool): build twin Q networks
+            twin_q (bool): build twin Q networks.
+            initial_alpha (float): The initial value for the to-be-optimized
+                alpha parameter (default: 1.0).
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the output heads. Those layers for
@@ -47,7 +50,16 @@ class SACModel(TFModelV2):
         """
         super(SACModel, self).__init__(obs_space, action_space, num_outputs,
                                        model_config, name)
-        self.action_dim = np.product(action_space.shape)
+        self.discrete = False
+        if isinstance(action_space, Discrete):
+            self.action_dim = action_space.n
+            self.discrete = True
+            action_outs = q_outs = self.action_dim
+        else:
+            self.action_dim = np.product(action_space.shape)
+            action_outs = 2 * self.action_dim
+            q_outs = 1
+
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
         self.action_model = tf.keras.Sequential([
@@ -58,7 +70,7 @@ class SACModel(TFModelV2):
             for i, hidden in enumerate(actor_hiddens)
         ] + [
             tf.keras.layers.Dense(
-                units=2 * self.action_dim, activation=None, name="action_out")
+                units=action_outs, activation=None, name="action_out")
         ])
         self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
@@ -68,9 +80,9 @@ class SACModel(TFModelV2):
             shape=(self.action_dim, ), name="actions")
 
         def build_q_net(name, observations, actions):
-            q_net = tf.keras.Sequential([
+            q_net = tf.keras.Sequential(([
                 tf.keras.layers.Concatenate(axis=1),
-            ] + [
+            ] if not self.discrete else []) + [
                 tf.keras.layers.Dense(
                     units=units,
                     activation=getattr(tf.nn, critic_hidden_activation, None),
@@ -78,12 +90,15 @@ class SACModel(TFModelV2):
                 for i, units in enumerate(critic_hiddens)
             ] + [
                 tf.keras.layers.Dense(
-                    units=1, activation=None, name="{}_out".format(name))
+                    units=q_outs, activation=None, name="{}_out".format(name))
             ])
 
             # TODO(hartikainen): Remove the unnecessary Model call here
-            q_net = tf.keras.Model([observations, actions],
-                                   q_net([observations, actions]))
+            if self.discrete:
+                q_net = tf.keras.Model(observations, q_net(observations))
+            else:
+                q_net = tf.keras.Model([observations, actions],
+                                       q_net([observations, actions]))
             return q_net
 
         self.q_net = build_q_net("q", self.model_out, self.actions_input)

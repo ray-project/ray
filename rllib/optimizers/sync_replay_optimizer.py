@@ -159,7 +159,6 @@ class SyncReplayOptimizer(PolicyOptimizer):
 
         with self.grad_timer:
             if self.before_learn_on_batch:
-                print("before before_learn_on_batch: samples={}".format(samples))
                 samples = self.before_learn_on_batch(
                     samples,
                     self.workers.local_worker().policy_map,

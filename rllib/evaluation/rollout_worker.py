@@ -129,7 +129,6 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  observation_filter="NoFilter",
                  clip_rewards=None,
                  clip_actions=True,
-                 #argmax_actions=False,
                  env_config=None,
                  model_config=None,
                  policy_config=None,
@@ -198,8 +197,6 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 only.
             clip_actions (bool): Whether to clip action values to the range
                 specified by the policy action space.
-            #argmax_actions (bool): Whether to argmax action values (from Box to
-            #    Discrete action spaces).
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy. In the
@@ -444,7 +441,6 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
-                #argmax_actions=argmax_actions,
                 blackhole_outputs="simulation" in input_evaluation,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end)
@@ -463,7 +459,6 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 pack=pack_episodes,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
-                #argmax_actions=argmax_actions,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end)
 
