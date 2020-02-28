@@ -2,8 +2,6 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
-
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
@@ -27,7 +25,7 @@ public class PlasmaFreeTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
     final boolean result = TestUtils.waitForCondition(() ->
-      !TestUtils.getRuntime().getObjectStore()
+        !TestUtils.getRuntime().getObjectStore()
           .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0), 50);
     if (TestUtils.isDirectActorCallEnabled()) {
       // Direct call will not delete object from im-memory store.
