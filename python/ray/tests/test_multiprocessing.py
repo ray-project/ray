@@ -8,6 +8,7 @@ from collections import defaultdict
 import queue
 
 import ray
+from ray.test_utils import SignalActor
 from ray.util.multiprocessing import Pool, TimeoutError
 
 
@@ -137,17 +138,18 @@ def test_initializer(shutdown_only):
 
 
 def test_close(pool_4_processes):
-    def f(object_id):
-        return ray.get(object_id)
+    def f(signal):
+        ray.get(signal.wait.remote())
+        return "hello"
 
-    object_id = ray.ObjectID.from_random()
-    result = pool_4_processes.map_async(f, [object_id for _ in range(4)])
+    signal = SignalActor.remote()
+    result = pool_4_processes.map_async(f, [signal for _ in range(4)])
     assert not result.ready()
     pool_4_processes.close()
     assert not result.ready()
 
-    # Fulfill the object_id, causing the head of line tasks to finish.
-    ray.worker.global_worker.put_object("hello", object_id=object_id)
+    # Signal the head of line tasks to finish.
+    ray.get(signal.send.remote())
     pool_4_processes.join()
 
     # close() shouldn't interrupt pending tasks, so check that they succeeded.
@@ -158,11 +160,11 @@ def test_close(pool_4_processes):
 
 
 def test_terminate(pool_4_processes):
-    def f(object_id):
-        return ray.get(object_id)
+    def f(signal):
+        return ray.get(signal.wait.remote())
 
-    object_id = ray.ObjectID.from_random()
-    result = pool_4_processes.map_async(f, [object_id for _ in range(4)])
+    signal = SignalActor.remote()
+    result = pool_4_processes.map_async(f, [signal for _ in range(4)])
     assert not result.ready()
     pool_4_processes.terminate()
 
@@ -218,32 +220,32 @@ def test_apply_async(pool):
         pool.apply_async(f, (1, 2), {"kwarg1": 3}).get()
 
     # Won't return until the input ObjectID is fulfilled.
-    def ten_over(input):
-        return 10 / ray.get(input[0])
+    def ten_over(args):
+        signal, val = args
+        ray.get(signal.wait.remote())
+        return 10 / val
 
-    # Generate a random ObjectID that will be fulfilled later.
-    object_id = ray.ObjectID.from_random()
-    result = pool.apply_async(ten_over, ([object_id], ))
+    signal = SignalActor.remote()
+    result = pool.apply_async(ten_over, ([signal, 10], ))
     result.wait(timeout=0.01)
     assert not result.ready()
     with pytest.raises(TimeoutError):
         result.get(timeout=0.01)
 
     # Fulfill the ObjectID.
-    ray.worker.global_worker.put_object(10, object_id=object_id)
+    ray.get(signal.send.remote())
     result.wait(timeout=10)
     assert result.ready()
     assert result.successful()
     assert result.get() == 1
 
-    # Generate a random ObjectID that will be fulfilled later.
-    object_id = ray.ObjectID.from_random()
-    result = pool.apply_async(ten_over, ([object_id], ))
+    signal = SignalActor.remote()
+    result = pool.apply_async(ten_over, ([signal, 0], ))
     with pytest.raises(ValueError, match="not ready"):
         result.successful()
 
     # Fulfill the ObjectID with 0, causing the task to fail (divide by zero).
-    ray.worker.global_worker.put_object(0, object_id=object_id)
+    ray.get(signal.send.remote())
     result.wait(timeout=10)
     assert result.ready()
     assert not result.successful()
@@ -276,21 +278,20 @@ def test_map(pool_4_processes):
 
 def test_map_async(pool_4_processes):
     def f(args):
-        index = args[0]
-        ray.get(args[1])
+        index, signal = args
+        ray.get(signal.wait.remote())
         return index, os.getpid()
 
-    # Generate a random ObjectID that will be fulfilled later.
-    object_id = ray.ObjectID.from_random()
+    signal = SignalActor.remote()
     async_result = pool_4_processes.map_async(
-        f, [(i, object_id) for i in range(1000)])
+        f, [(i, signal) for i in range(1000)])
     assert not async_result.ready()
     with pytest.raises(TimeoutError):
         async_result.get(timeout=0.01)
     async_result.wait(timeout=0.01)
 
-    # Fulfill the object ID, finishing the tasks.
-    ray.worker.global_worker.put_object(0, object_id=object_id)
+    # Send the signal to finish the tasks.
+    ray.get(signal.send.remote())
     async_result.wait(timeout=10)
     assert async_result.ready()
     assert async_result.successful()
@@ -440,23 +441,21 @@ def test_imap_unordered(pool_4_processes):
 
 def test_imap_timeout(pool_4_processes):
     def f(args):
+        index, wait_index, signal = args
         time.sleep(0.1 * random.random())
-        index = args[0]
-        wait_index = args[1]
-        object_id = args[2]
         if index == wait_index:
-            ray.get(object_id)
+            ray.get(signal.wait.remote())
         return index
 
     wait_index = 23
-    object_id = ray.ObjectID.from_random()
+    signal = SignalActor.remote()
     result_iter = pool_4_processes.imap(
-        f, [(index, wait_index, object_id) for index in range(100)])
+        f, [(index, wait_index, signal) for index in range(100)])
     for i in range(100):
         if i == wait_index:
             with pytest.raises(TimeoutError):
                 result = result_iter.next(timeout=0.1)
-            ray.worker.global_worker.put_object(None, object_id=object_id)
+            ray.get(signal.send.remote())
 
         result = result_iter.next()
         assert result == i
@@ -465,16 +464,15 @@ def test_imap_timeout(pool_4_processes):
         result_iter.next()
 
     wait_index = 23
-    object_id = ray.ObjectID.from_random()
+    signal = SignalActor.remote()
     result_iter = pool_4_processes.imap_unordered(
-        f, [(index, wait_index, object_id) for index in range(100)],
-        chunksize=11)
+        f, [(index, wait_index, signal) for index in range(100)], chunksize=11)
     in_order = []
     for i in range(100):
         try:
             result = result_iter.next(timeout=1)
         except TimeoutError:
-            ray.worker.global_worker.put_object(None, object_id=object_id)
+            ray.get(signal.send.remote())
             result = result_iter.next()
 
         in_order.append(result == i)
