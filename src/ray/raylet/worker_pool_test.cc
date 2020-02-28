@@ -24,7 +24,8 @@ class WorkerPoolMock : public WorkerPool {
               {"dummy_py_worker_command", "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}},
              {Language::JAVA,
               {"dummy_java_worker_command",
-               "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}}) {}
+               "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}},
+               nullptr) {}
 
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
