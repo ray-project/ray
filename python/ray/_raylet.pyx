@@ -329,10 +329,10 @@ cdef execute_task(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns):
-
+    print("PLSa")
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
-
+    print("PLSb")
     cdef:
         dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
@@ -341,11 +341,11 @@ cdef execute_task(
         CFiberEvent fiber_event
 
     # Automatically restrict the GPUs available to this task.
-    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
-
+    # ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    # Why the fuck does this matter for LOCAL_MODE
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
-
+    print("SOMEWHERE 32b")
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
@@ -361,7 +361,7 @@ cdef execute_task(
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
         execution_infos[function_descriptor] = execution_info
-
+    print("SOMEWHERE 31")
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.Hex() + b'}')
@@ -387,7 +387,7 @@ cdef execute_task(
                 int(ray_constants.from_memory_units(
                         dereference(
                             c_resources.find(b"object_store_memory")).second)))
-
+        print("somewhere b")
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
@@ -428,7 +428,7 @@ cdef execute_task(
                 return future.result()
 
             return function(actor, *arguments, **kwarguments)
-
+    print("somewhere a")
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
             task_exception = False
@@ -517,16 +517,20 @@ cdef CRayStatus task_execution_handler(
         const CWorkerID &c_worker_id) nogil:
 
     with gil:
+        print("IN THE CALLBACK")
         try:
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, ray_function, c_resources, c_args,
                              c_arg_reference_ids, c_return_ids, returns)
-            except Exception:
+            except Exception as e:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
                     "was executing a task.")
+                print("EXCEPTION:", e)
+                print(traceback_str)
+                print(ray.worker)
                 ray.utils.push_error_to_driver(
                     ray.worker.global_worker,
                     "worker_crash",
@@ -599,16 +603,16 @@ cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address, node_manager_port):
-
+                  node_ip_address, node_manager_port, local_mode):
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, True))
-
+            task_execution_handler, check_signals, True and not local_mode, local_mode ))
+            # TODO(ilr) Fix ref-counting
+        self.local_mode = local_mode
     def run_task_loop(self):
         with nogil:
             self.core_worker.get().StartExecutingTasks()
@@ -645,7 +649,6 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Get(
                 c_object_ids, timeout_ms, &results))
-
         return RayObjectsToDataMetadataPairs(results)
 
     def object_exists(self, ObjectID object_id):
@@ -716,15 +719,19 @@ cdef class CoreWorker:
             metadata, total_bytes, object_id,
             ObjectIDsToVector(serialized_object.contained_object_ids),
             &c_object_id, &data)
-
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
                 # Using custom object IDs is not supported because we can't
                 # track their lifecycle, so don't pin the object in that case.
-                check_status(
-                    self.core_worker.get().Seal(
-                        c_object_id, pin_object and object_id is None))
+                if self.local_mode:
+                    check_status(self.core_worker.get().Seal(c_object_id, pin_object and object_id is None,
+                                                data, metadata))
+
+                else:
+                    check_status(
+                        self.core_worker.get().Seal(
+                            c_object_id, pin_object and object_id is None))
 
         return c_object_id.Binary()
 

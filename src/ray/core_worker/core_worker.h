@@ -76,7 +76,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
-             bool ref_counting_enabled = false);
+             bool ref_counting_enabled = false, bool local_mode = false);
 
   virtual ~CoreWorker();
 
@@ -245,6 +245,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Seal(const ObjectID &object_id, bool pin_object,
               const absl::optional<rpc::Address> &owner_address = absl::nullopt);
+
+  Status Seal(const ObjectID &object_id, bool pin_object,
+              const std::shared_ptr<Buffer> &data,
+              const std::shared_ptr<Buffer> &metadata);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -630,6 +634,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Whether local reference counting is enabled.
   const bool ref_counting_enabled_;
+
+  /// Is local mode being used.
+  const bool local_mode_enabled_;
 
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every

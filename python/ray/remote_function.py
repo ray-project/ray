@@ -140,6 +140,7 @@ class RemoteFunction:
 
         return FuncWrapper()
 
+    # TODO (ILR) <-- Handle this shit
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -201,17 +202,17 @@ class RemoteFunction:
                 list_args = ray.signature.flatten_args(
                     self._function_signature, args, kwargs)
 
-            if worker.mode == ray.worker.LOCAL_MODE:
-                assert not self._is_cross_language, \
-                    "Cross language remote function " \
-                    "cannot be executed locally."
-                object_ids = worker.local_mode_manager.execute(
-                    self._function, self._function_descriptor, args, kwargs,
-                    num_return_vals)
-            else:
-                object_ids = worker.core_worker.submit_task(
-                    self._language, self._function_descriptor, list_args,
-                    num_return_vals, is_direct_call, resources, max_retries)
+            # if worker.mode == ray.worker.LOCAL_MODE:
+            #     assert not self._is_cross_language, \
+            #         "Cross language remote function " \
+            #         "cannot be executed locally."
+            #     object_ids = worker.local_mode_manager.execute(
+            #         self._function, self._function_descriptor, args, kwargs,
+            #         num_return_vals)
+            # else:
+            object_ids = worker.core_worker.submit_task(
+                self._language, self._function_descriptor, list_args,
+                num_return_vals, is_direct_call, resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

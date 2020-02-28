@@ -910,6 +910,19 @@ class Node:
 class LocalNode:
     """Imitate the node that manages the processes in local mode."""
 
+    def __init__(self, use_pickle=True):
+        self.plasma_store_socket_name = ""
+        self.raylet_socket_name = ""
+        self.redis_address = "0.0.0.0:0"
+        self.redis_password = ""
+        self.node_ip_address = "127.0.0.1"
+        self.node_manager_port = 0
+        self.use_pickle = use_pickle
+        self.load_code_from_local = False
+
+    def get_logs_dir_path(self):
+        return ""
+
     def kill_all_processes(self, *args, **kwargs):
         """Kill all of the processes."""
         pass  # Keep this function empty because it will be used in worker.py
@@ -918,3 +931,11 @@ class LocalNode:
     def address_info(self):
         """Get a dictionary of addresses."""
         return {}  # Return a null dict.
+
+        # node.plasma_store_socket_name,
+        # node.raylet_socket_name,
+        # job_id,
+        # gcs_options,
+        # node.get_logs_dir_path(),
+        # node.node_ip_address,
+        # node.node_manager_port,

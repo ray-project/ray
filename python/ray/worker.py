@@ -279,6 +279,10 @@ class Worker:
         if should_warn_of_slow_puts:
             start = time.perf_counter()
 
+        if self.mode == LOCAL_MODE and object_id != None:
+            # TODO(ilr): Figure out how to make this work
+            assert object_id is None, "Local Mode does not support inserting with an objectID"
+
         serialized_value = self.get_serialization_context().serialize(value)
         result = self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
@@ -318,9 +322,6 @@ class Worker:
                 raise TypeError(
                     "Attempting to call `get` on the value {}, "
                     "which is not an ray.ObjectID.".format(object_id))
-
-        if self.mode == LOCAL_MODE:
-            return self.local_mode_manager.get_objects(object_ids)
 
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
@@ -712,7 +713,7 @@ def init(address=None,
     global _global_node
     if driver_mode == LOCAL_MODE:
         # If starting Ray in LOCAL_MODE, don't start any other processes.
-        _global_node = ray.node.LocalNode()
+        _global_node = ray.node.LocalNode(use_pickle=use_pickle)
     elif redis_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
@@ -811,7 +812,6 @@ def init(address=None,
             shutdown_at_exit=False,
             spawn_reaper=False,
             connect_only=True)
-
     connect(
         _global_node,
         mode=driver_mode,
@@ -1142,17 +1142,15 @@ def connect(node,
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray::IDLE")
-    elif mode is LOCAL_MODE:
-        if job_id is None:
-            job_id = JobID.from_int(random.randint(1, 65535))
-        worker.worker_id = ray.utils.compute_driver_id_from_job(
-            job_id).binary()
     else:
         # This is the code path of driver mode.
         if job_id is None:
             # TODO(qwang): use `GcsClient::GenerateJobId()` here.
-            job_id = JobID.from_int(
-                int(worker.redis_client.incr("JobCounter")))
+            if mode is LOCAL_MODE:
+                job_id = JobID.from_int(random.randint(1, 65535))
+            else:
+                job_id = JobID.from_int(
+                    int(worker.redis_client.incr("JobCounter")))
         # When tasks are executed on remote workers in the context of multiple
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
@@ -1170,9 +1168,9 @@ def connect(node,
 
     # If running Ray in LOCAL_MODE, there is no need to create call
     # create_worker or to start the worker service.
-    if mode == LOCAL_MODE:
-        worker.local_mode_manager = LocalModeManager()
-        return
+    # if mode == LOCAL_MODE:
+    #     worker.local_mode_manager = LocalModeManager()
+    #     return
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1192,9 +1190,9 @@ def connect(node,
     worker.lock = threading.RLock()
 
     # Create an object for interfacing with the global state.
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
-
+    if mode != LOCAL_MODE:
+        ray.state.state._initialize_global_state(
+            node.redis_address, redis_password=node.redis_password)
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
         # The concept of a driver is the same as the concept of a "job".
@@ -1246,25 +1244,22 @@ def connect(node,
             worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
+    elif LOCAL_MODE:
+        pass
     else:
         raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
-
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
         int(redis_port),
         node.redis_password,
     )
+    ## A choice to choose driver mode for raylet
     worker.core_worker = ray._raylet.CoreWorker(
-        (mode == SCRIPT_MODE),
-        node.plasma_store_socket_name,
-        node.raylet_socket_name,
-        job_id,
-        gcs_options,
-        node.get_logs_dir_path(),
-        node.node_ip_address,
-        node.node_manager_port,
-    )
+        (mode == SCRIPT_MODE or mode == LOCAL_MODE),
+        node.plasma_store_socket_name, node.raylet_socket_name, job_id,
+        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
+        node.node_manager_port, mode == LOCAL_MODE)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1273,14 +1268,15 @@ def connect(node,
     # Put something in the plasma store so that subsequent plasma store
     # accesses will be faster. Currently the first access is always slow, and
     # we don't want the user to experience this.
-    temporary_object_id = ray.ObjectID.from_random()
-    worker.put_object(1, object_id=temporary_object_id)
-    ray.internal.free([temporary_object_id])
+    if mode != LOCAL_MODE:
+        temporary_object_id = ray.ObjectID.from_random()
+        worker.put_object(1, object_id=temporary_object_id)
+        ray.internal.free([temporary_object_id])
 
-    # Start the import thread
-    worker.import_thread = import_thread.ImportThread(worker, mode,
-                                                      worker.threads_stopped)
-    worker.import_thread.start()
+        # Start the import thread
+        worker.import_thread = import_thread.ImportThread(
+            worker, mode, worker.threads_stopped)
+        worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -1532,6 +1528,7 @@ def get(object_ids, timeout=None):
         return values
 
 
+# TODONE (ILR) <-- Handle this shit
 def put(value, weakref=False):
     """Store an object in the object store.
 
@@ -1549,19 +1546,16 @@ def put(value, weakref=False):
     worker = global_worker
     worker.check_connected()
     with profiling.profile("ray.put"):
-        if worker.mode == LOCAL_MODE:
-            object_id = worker.local_mode_manager.put_object(value)
-        else:
-            try:
-                object_id = worker.put_object(value, pin_object=not weakref)
-            except ObjectStoreFullError:
-                logger.info(
-                    "Put failed since the value was either too large or the "
-                    "store was full of pinned objects. If you are putting "
-                    "and holding references to a lot of object ids, consider "
-                    "ray.put(value, weakref=True) to allow object data to "
-                    "be evicted early.")
-                raise
+        try:
+            object_id = worker.put_object(value, pin_object=not weakref)
+        except ObjectStoreFullError:
+            logger.info(
+                "Put failed since the value was either too large or the "
+                "store was full of pinned objects. If you are putting "
+                "and holding references to a lot of object ids, consider "
+                "ray.put(value, weakref=True) to allow object data to "
+                "be evicted early.")
+            raise
         return object_id
 
 

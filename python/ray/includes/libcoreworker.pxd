@@ -97,7 +97,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_vector[shared_ptr[CRayObject]] *returns,
                         const CWorkerID &worker_id) nogil,
                     CRayStatus() nogil,
-                    c_bool ref_counting_enabled)
+                    c_bool ref_counting_enabled,
+                    c_bool local_worker)
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
 
@@ -169,6 +170,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                           const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object,
+                        const shared_ptr[CBuffer] &data, 
+                        const shared_ptr[CBuffer] &metadata)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
