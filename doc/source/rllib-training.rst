@@ -631,6 +631,7 @@ The following are example excerpts from different Trainers' configs
        "final_epsilon": 0.02,
        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
     },
+
     # b) DQN Soft-Q: In order to switch to Soft-Q exploration, do instead:
     "explore": True,
     "exploration_config": {
