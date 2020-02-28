@@ -1,6 +1,6 @@
 import numpy as np
 
-from sac.rllib_proxy import SampleBatch
+from ray.rllib.evaluation.sample_batch import SampleBatch
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"

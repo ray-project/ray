@@ -2,8 +2,8 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from sac.rllib_proxy import override
-from sac.rllib_proxy import TFModelV2
+from ray.rllib.utils.annotations import override
+from ray.rllib.agents.sac.sac.rllib_proxy._tf_model_v2 import TFModelV2
 
 
 SCALE_DIAG_MIN_MAX = (-20, 2)

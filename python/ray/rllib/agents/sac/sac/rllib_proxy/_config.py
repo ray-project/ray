@@ -1,4 +1,4 @@
-from sac.rllib_proxy._todo import MODEL_DEFAULTS
+from ray.rllib.agents.sac.sac.rllib_proxy._todo import MODEL_DEFAULTS
 
 # yapf: disable
 # __sphinx_doc_begin__

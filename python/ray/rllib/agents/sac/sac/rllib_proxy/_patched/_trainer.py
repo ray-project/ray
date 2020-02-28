@@ -18,11 +18,11 @@ from ray.tune.trainable import Trainable
 
 from ray.rllib.agents import Trainer as UnpatchedTrainer
 
-from sac.rllib_proxy._added import NormalizeActionWrapper, WorkerSet, ray_get_and_free
-from sac.rllib_proxy._constants import DEFAULT_POLICY_ID
-from sac.rllib_proxy._moved import Resources
-from sac.rllib_proxy._unchanged import MAX_WORKER_FAILURE_RETRIES, DEFAULT_RESULTS_DIR
-from sac.dev_utils import using_ray_8, ray_8_only
+from ray.rllib.agents.sac.sac.rllib_proxy._added._envs import NormalizeActionWrapper
+from ray.rllib.agents.sac.sac.rllib_proxy._constants import DEFAULT_POLICY_ID
+from ray.rllib.agents.sac.sac.rllib_proxy._moved import Resources
+from ray.rllib.agents.sac.sac.rllib_proxy._unchanged import MAX_WORKER_FAILURE_RETRIES, DEFAULT_RESULTS_DIR
+from ray.rllib.agents.sac.sac.dev_utils import using_ray_8, ray_8_only
 
 logger = logging.getLogger(__name__)
 
@@ -177,25 +177,14 @@ class Trainer(UnpatchedTrainer):
         if result is None:
             raise RuntimeError("Failed to recover from worker crash")
 
-        if using_ray_8():
-            if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "workers")
-                and isinstance(self.workers, WorkerSet)):
-                FilterManager.synchronize(
-                    self.workers.local_worker().filters,
-                    self.workers.remote_workers(),
-                    update_remote=self.config["synchronize_filters"])
-                logger.debug("synchronized filters: {}".format(
-                    self.workers.local_worker().filters))
-        else:
-            if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "local_evaluator")):
-                FilterManager.synchronize(
-                    self.local_evaluator.filters,
-                    self.remote_evaluators,
-                    update_remote=self.config["synchronize_filters"])
-                logger.debug("synchronized filters: {}".format(
-                    self.local_evaluator.filters))
+        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
+            and hasattr(self, "local_evaluator")):
+            FilterManager.synchronize(
+                self.local_evaluator.filters,
+                self.remote_evaluators,
+                update_remote=self.config["synchronize_filters"])
+            logger.debug("synchronized filters: {}".format(
+                self.local_evaluator.filters))
 
         if using_ray_8():
             if self._has_policy_optimizer():
@@ -300,26 +289,18 @@ class Trainer(UnpatchedTrainer):
 
     @DeveloperAPI
     def _make_workers(self, env_creator, policy, config, num_workers):
-        if using_ray_8():
-            return WorkerSet(
-                env_creator,
-                policy,
-                config,
-                num_workers=num_workers,
-                logdir=self.logdir)
-        else:
-            config.setdefault(
-                "local_evaluator_tf_session_args",
-                config.get("local_tf_session_args")
-            )
-            self.config["multiagent"].setdefault(
-                # PolicyGraph has been renamed to Policy in v 0.8.1
-                "policy_graphs",
-                self.config["multiagent"].get("policies")
-            )
-            self.local_evaluator = self.make_local_evaluator(env_creator, policy, config)
-            self.remote_evaluators = self.make_remote_evaluators(env_creator, policy, num_workers)
-            return self.local_evaluator, self.remote_evaluators
+        config.setdefault(
+            "local_evaluator_tf_session_args",
+            config.get("local_tf_session_args")
+        )
+        self.config["multiagent"].setdefault(
+            # PolicyGraph has been renamed to Policy in v 0.8.1
+            "policy_graphs",
+            self.config["multiagent"].get("policies")
+        )
+        self.local_evaluator = self.make_local_evaluator(env_creator, policy, config)
+        self.remote_evaluators = self.make_remote_evaluators(env_creator, policy, num_workers)
+        return self.local_evaluator, self.remote_evaluators
 
     @ray_8_only
     @DeveloperAPI
@@ -595,7 +576,7 @@ class Trainer(UnpatchedTrainer):
                 ev = self.optimizer.remote_evaluators[i]
                 w = ev
             try:
-                ray_get_and_free(obj_id)
+                ray.get(obj_id)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
@@ -653,7 +634,7 @@ class Trainer(UnpatchedTrainer):
                              policy_graph,
                              extra_config=None):
         """Convenience method to return configured local evaluator."""
-        from sac.rllib_proxy._patched._policy_evaluator import PolicyEvaluator
+        from ray.rllib.agents.sac.sac.rllib_proxy._patched._policy_evaluator import PolicyEvaluator
 
         return self._make_evaluator(
             PolicyEvaluator,
@@ -672,7 +653,7 @@ class Trainer(UnpatchedTrainer):
     @DeveloperAPI
     def make_remote_evaluators(self, env_creator, policy_graph, count):
         """Convenience method to return a number of remote evaluators."""
-        from sac.rllib_proxy._patched._policy_evaluator import PolicyEvaluator
+        from ray.rllib.agents.sac.sac.rllib_proxy._patched._policy_evaluator import PolicyEvaluator
 
         remote_args = {
             "num_cpus": self.config["num_cpus_per_worker"],
@@ -692,7 +673,7 @@ class Trainer(UnpatchedTrainer):
         from types import FunctionType
         from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
             ShuffledInput
-        from sac.rllib_proxy._patched._policy_evaluator import _validate_multiagent_config
+        from ray.rllib.agents.sac.sac.rllib_proxy._patched._policy_evaluator import _validate_multiagent_config
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

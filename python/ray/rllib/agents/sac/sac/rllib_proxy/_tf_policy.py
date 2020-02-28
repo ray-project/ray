@@ -7,17 +7,19 @@ import numpy as np
 import tensorflow as tf
 
 
-from sac.rllib_proxy._todo import (
+from ray.rllib.agents.sac.sac.rllib_proxy._todo import (
     log_once,
     Policy,
     summarize,
     SampleBatch,
     override,
 )
-from sac.rllib_proxy._utils import (
+from ray.rllib.agents.sac.sac.rllib_proxy._utils import (
     UsageTrackingDict,
 )
-from sac.rllib_proxy._needs_patches import TFPolicy, ModelCatalog
+from ray.rllib.agents.sac.sac.rllib_proxy._needs_patches import (
+    TFPolicy, ModelCatalog
+)
 
 
 logger = logging.getLogger(__name__)

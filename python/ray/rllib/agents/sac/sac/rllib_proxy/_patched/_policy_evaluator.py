@@ -24,7 +24,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import (
     disable_log_once_globally, enable_periodic_logging)
 from ray.rllib.utils.filter import get_filter
-from sac.rllib_proxy._patched._sampler import AsyncSampler, SyncSampler
+from ray.rllib.agents.sac.sac.rllib_proxy._patched._sampler import AsyncSampler, SyncSampler
 
 
 logger = logging.getLogger(__name__)

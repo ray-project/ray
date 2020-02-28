@@ -6,8 +6,8 @@ import tensorflow as tf
 from ray.rllib import models
 from ray.rllib.evaluation import TFPolicyGraph
 
-from sac.dev_utils import using_ray_8
-from sac.rllib_proxy._todo import (
+from ray.rllib.agents.sac.sac.dev_utils import using_ray_8
+from ray.rllib.agents.sac.sac.rllib_proxy._todo import (
     log_once,
     summarize,
     TensorFlowVariables,
@@ -15,9 +15,9 @@ from sac.rllib_proxy._todo import (
     RLLIB_MODEL,
     _global_registry
 )
-from sac.rllib_proxy._utils import executing_eagerly
-from sac.rllib_proxy._tf_model_v2 import ModelV2
-from sac.rllib_proxy._modelv1_compat import make_v1_wrapper
+from ray.rllib.agents.sac.sac.rllib_proxy._utils import executing_eagerly
+from ray.rllib.agents.sac.sac.rllib_proxy._tf_model_v2 import ModelV2
+from ray.rllib.agents.sac.sac.rllib_proxy._modelv1_compat import make_v1_wrapper
 
 logger = logging.getLogger(__name__)
 

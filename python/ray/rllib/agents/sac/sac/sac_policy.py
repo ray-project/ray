@@ -4,20 +4,18 @@ from gym.spaces import Box
 import numpy as np
 import tensorflow as tf
 
-from sac.rllib_proxy import (
-    build_tf_policy,
-    minimize_and_clip,
-    make_tf_callable,
-    ModelCatalog,
-    override,
-    SampleBatch,
-    TFPolicy,
-    UnsupportedSpaceException,
-)
+import ray.rllib.agents.sac.sac as sac
+from ray.rllib.agents.sac.sac.dqn_policy_graph import PRIO_WEIGHTS, _postprocess_dqn
+from ray.rllib.agents.sac.sac.rllib_proxy._tf_policy_template import build_tf_policy
+from ray.rllib.agents.sac.sac.rllib_proxy._needs_patches import ModelCatalog
+from ray.rllib.agents.sac.sac.rllib_proxy._tf_policy import TFPolicy
+from ray.rllib.agents.sac.sac.rllib_proxy._utils import (
+    minimize_and_clip, make_tf_callable)
+from ray.rllib.agents.sac.sac.sac_model import SACModel, NoopModel
+from ray.rllib.evaluation.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.error import UnsupportedSpaceException
 
-import sac
-from .dqn_policy_graph import PRIO_WEIGHTS, _postprocess_dqn
-from .sac_model import SACModel, NoopModel
 
 logger = logging.getLogger(__name__)
 

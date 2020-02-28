@@ -1,13 +1,13 @@
 import time
 
-from sac.rllib_proxy._config import COMMON_CONFIG
-from sac.rllib_proxy._utils import add_mixins
-from sac.rllib_proxy._patched import Trainer
-from sac.rllib_proxy._todo import (
+from ray.rllib.agents.sac.sac.rllib_proxy._config import COMMON_CONFIG
+from ray.rllib.agents.sac.sac.rllib_proxy._patched._trainer import Trainer
+from ray.rllib.agents.sac.sac.rllib_proxy._todo import (
     DeveloperAPI,
     override,
     SyncSamplesOptimizer,
 )
+from ray.rllib.agents.sac.sac.rllib_proxy._utils import add_mixins
 
 
 @DeveloperAPI

@@ -1,5 +1,5 @@
-
-from sac.rllib_proxy import COMMON_CONFIG, with_base_config
+from ray.rllib.agents.sac.sac.rllib_proxy._config import COMMON_CONFIG
+from ray.rllib.agents.trainer import with_base_config
 
 DEFAULT_CONFIG = with_base_config(COMMON_CONFIG, {
     # === Model ===

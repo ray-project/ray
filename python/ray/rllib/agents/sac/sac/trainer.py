@@ -1,12 +1,13 @@
 import logging
 
+from ray.rllib.agents.sac.sac.config import DEFAULT_CONFIG
+from ray.rllib.agents.sac.sac.dev_utils import using_ray_8
+from ray.rllib.agents.sac.sac.sac_policy import SACTFPolicy
+from ray.rllib.agents.sac.sac.rllib_proxy._trainer_template import build_trainer
+from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.optimizers import SyncReplayOptimizer
+from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
 
-from sac.config import DEFAULT_CONFIG
-from sac.dev_utils import using_ray_8
-from sac.sac_policy import SACTFPolicy
-from sac.rllib_proxy import build_trainer, DEFAULT_POLICY_ID
-from sac.rllib_proxy import SyncReplayOptimizer
-from sac.rllib_proxy import ConstantSchedule, LinearSchedule
 
 logger = logging.getLogger(__name__)
 

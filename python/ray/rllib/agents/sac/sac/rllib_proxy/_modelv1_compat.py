@@ -4,14 +4,14 @@ import numpy as np
 import tensorflow as tf
 
 
-from sac.rllib_proxy._todo import (
+from ray.rllib.agents.sac.sac.rllib_proxy._todo import (
     log_once, override,
 )
-from sac.rllib_proxy._tf_utils import (
+from ray.rllib.agents.sac.sac.rllib_proxy._tf_utils import (
     linear, normc_initializer,
     scope_vars,
 )
-from sac.rllib_proxy._tf_model_v2 import ModelV2, TFModelV2
+from ray.rllib.agents.sac.sac.rllib_proxy._tf_model_v2 import ModelV2, TFModelV2
 
 
 logger = logging.getLogger(__name__)

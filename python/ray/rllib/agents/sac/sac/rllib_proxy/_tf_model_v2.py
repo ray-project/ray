@@ -1,7 +1,7 @@
 import tensorflow as tf
 
-from sac.rllib_proxy._utils import executing_eagerly
-from sac.rllib_proxy._todo import (
+from ray.rllib.agents.sac.sac.rllib_proxy._utils import executing_eagerly
+from ray.rllib.agents.sac.sac.rllib_proxy._todo import (
     flatten,
     SampleBatch,
     PublicAPI,

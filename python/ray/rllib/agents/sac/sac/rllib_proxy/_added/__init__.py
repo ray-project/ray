@@ -1,5 +1,5 @@
-from sac.dev_utils import using_ray_8
-from sac.rllib_proxy._added._utils import *
+from ray.rllib.agents.sac.sac.dev_utils import using_ray_8
+from ray.rllib.agents.sac.sac.rllib_proxy._added._utils import *
 
 if using_ray_8():
     from ray.rllib.evaluation import worker_set
@@ -9,4 +9,4 @@ else:
 
 # The following code was copied from ray v 0.8.1, so it's fine to include it for both
 # versions
-from sac.rllib_proxy._added._envs import NormalizeActionWrapper
+from ray.rllib.agents.sac.sac.rllib_proxy._added._envs import NormalizeActionWrapper
