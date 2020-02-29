@@ -135,7 +135,7 @@ to manage state (like a classifier neural network for calculating inception scor
 
 Providing a custom operator is necessary if creator functions return multiple models, optimizers, or schedulers.
 
-Below is a partial example of overriding ``train_batch``.
+Below is a partial example of a custom ``TrainingOperator`` that provides a ``train_batch`` implementation for a Deep Convolutional GAN.
 
 .. code-block:: python
 
