@@ -1,129 +1,76 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
-def auto_http_archive(*, name=None, url=None, urls=None,
-                      build_file=None, build_file_content=None, strip_prefix=True, **kwargs):
+def urlsplit(url):
+    """ Splits a URL like "https://example.com/a/b?c=d&e#f" into a tuple:
+        ("https", ["example", "com"], ["a", "b"], ["c=d", "e"], "f")
+    A trailing slash will result in a correspondingly empty final path component.
     """
-    Allows intelligent choice of mirrors based on the given URL for the download.
+    split_on_anchor = url.split("#", 1)
+    split_on_query = split_on_anchor[0].split("?", 1)
+    split_on_scheme = split_on_query[0].split("://", 1)
+    if len(split_on_scheme) <= 1:  # Scheme is optional
+        split_on_scheme = [None] + split_on_scheme[:1]
+    split_on_path = split_on_scheme[1].split("/")
+    return (split_on_scheme[0],
+            split_on_path[0].split("."),
+            split_on_path[1:],
+            split_on_query[1].split("&") if len(split_on_query) > 1 else None,
+            split_on_anchor[1] if len(split_on_anchor) > 1 else None)
 
-    name and url must be provided.
+def auto_http_archive(*, name=None, url=None, urls=True,
+                      build_file=None, build_file_content=None,
+                      strip_prefix=True, **kwargs):
+    """ Intelligently choose mirrors based on the given URL for the download.
 
-    If urls         == None , mirrors are automatically chosen.
-    If build_file   == True , it is auto-deduced.
-    If strip_prefix == True , it is auto-deduced.
-    """
-    mirror_prefixes = [
-        "https://mirror.bazel.build/",
-    ]
-    hosts_preferred_before_mirrors = [
-        "github.com",
-    ]
-
-    if name != None and build_file == True:
-        build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
-
-    if url != None:
-        if urls == None:
-            delim = "://"
-            (i, j) = (url.find(delim), 0)
-            if i < 0:
-                i = 0
-            else:
-                if not url[:i].isalpha(): fail("invalid url scheme")
-                j = i + len(delim)
-            url_except_scheme = url[j:]
-            urls = [(mirror_prefix + url[j:] if len(mirror_prefix) > 0 else url)
-                    for mirror_prefix in mirror_prefixes
-                    if len(mirror_prefix) == 0 or not url[j:].startswith(mirror_prefix)]
-            url_host = url_except_scheme.split("/")[0]
-            if url_host in hosts_preferred_before_mirrors:
-                urls.insert(0, url)
-            else:
-                urls.append(url)
-        else:
-            print("No implicit mirrors used because urls were explicitly provided")
-
-    if strip_prefix == True:
-        i = url.rfind("/")
-        strip_prefix = url[i + 1:] if i >= 0 else ""
-        i = strip_prefix.rfind(".")
-        if i >= 0:
-            strip_prefix = strip_prefix[:i]  # Handle single suffixes
-        i = strip_prefix.rfind(".")
-        if i >= 0 and strip_prefix.endswith(".tar"):
-            strip_prefix = strip_prefix[:i]  # Handle double-suffixes (like .tar.*)
-
-    return http_archive(name=name, url=url, urls=urls, build_file=build_file,
-                        build_file_content=build_file_content, strip_prefix=strip_prefix, **kwargs)
-
-def github_repository(*, name=None, build_file=None, build_file_content=None,
-                      sha256=None, shallow_since=None, strip_prefix=True,
-                      url=None, urls=None, path=None, patches=None, **kwargs):
-    """
-    Conveniently chooses between archive, git, etc. GitHub repositories.
-    Prefer archives, as they're smaller and faster due to the lack of history.
-
-    url must be of the form: https://github.com/{username}/{project}/archive/...
+    Either url or urls is required.
 
     If name         == None , it is auto-deduced, but this is NOT recommended.
+    If urls         == True , mirrors are automatically chosen.
     If build_file   == True , it is auto-deduced.
     If strip_prefix == True , it is auto-deduced.
-    If sha256       != False, uses archive download (recommended; fast).
-    If sha256       == False, uses git clone (NOT recommended; slow).
-    If path         != None , local repository is assumed at the given path.
     """
-    GITHUB_URL_PREFIX = "https://github.com/"
-    if not url.startswith(GITHUB_URL_PREFIX):
-        fail("URL passed to github_repository() is not a GitHub URL: " + url)
+    DOUBLE_SUFFIXES_LOWERCASE = [("tar", "bz2"), ("tar", "gz"), ("tar", "xz")]
+    mirror_prefixes = ["https://mirror.bazel.build/"]
 
-    (username, project, archive, filename) = url[len(GITHUB_URL_PREFIX):].split("/", 3)
-    if archive != "archive": fail("Expected GitHub archive URL: " + url)
+    canonical_url = url if url != None else urls[0]
+    url_parts = urlsplit(canonical_url)
+    url_except_scheme = (canonical_url.replace(url_parts[0] + "://", "")
+                         if url_parts[0] != None else canonical_url)
+    url_path_parts = url_parts[2]
+    url_filename = url_path_parts[-1]
+    url_filename_parts = (url_filename.rsplit(".", 2)
+                          if (tuple(url_filename.lower().rsplit(".", 2)[-2:])
+                              in DOUBLE_SUFFIXES_LOWERCASE)
+                          else url_filename.rsplit(".", 1))
+    is_github = url_parts[1] == ["github", "com"]
 
-    remote = username + "/" + project
-    tag = None
-    for suffix in (".tar.gz", ".zip"):
-        if filename.endswith(suffix):
-            tag = filename[:len(filename) - len(suffix)]
-    if tag == None: fail("Could not extract ref from GitHub URL: " + url)
+    if name == None:  # Deduce "com_github_user_project_name" from "https://github.com/user/project-name/..."
+        name = "_".join(url_parts[1][::-1] + url_path_parts[:2]).replace("-", "_")
 
-    commit = None
-    if len(tag) in (40, 64): (commit, tag) = (tag, commit)  # Looks like a commit SHA, not a tag
-
-    if project != None and name == None:
-        name = ["com", "github", username, project.replace("-", "_")].join("_")
-    if project != None and strip_prefix == True:
-        strip_prefix = "%s-%s" % (project, commit or tag)
-    if name != None and build_file == True:
+    if build_file == True:
         build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
 
-    if path != None:
-        if patches != None and len(patches) > 0:
-            print("patches ignored for local repository: " + path)
-        if build_file or build_file_content:
-            native.new_local_repository(name=name, path=path,
-                                        build_file=build_file,
-                                        build_file_content=build_file_content,
-                                        **kwargs)
-        else:
-            native.local_repository(name=name, path=path, **kwargs)
-    elif sha256 == False:
-        if build_file or build_file_content:
-            new_git_repository(name=name, remote=remote, build_file=build_file,
-                               commit=commit, tag=tag, shallow_since=shallow_since,
-                               build_file_content=build_file_content,
-                               patches=patches, strip_prefix=strip_prefix, **kwargs)
-        else:
-            git_repository(name=name, remote=remote, strip_prefix=strip_prefix,
-                           commit=commit, tag=tag, shallow_since=shallow_since,
-                           patches=patches, **kwargs)
+    if urls == True:
+        prefer_url_over_mirrors = is_github
+        urls = [mirror_prefix + url_except_scheme
+                for mirror_prefix in mirror_prefixes
+                if not canonical_url.startswith(mirror_prefix)]
+        urls.insert(0 if prefer_url_over_mirrors else len(urls), canonical_url)
     else:
-        auto_http_archive(name=name, url=url, urls=urls, sha256=sha256,
-                          build_file=build_file, strip_prefix=strip_prefix,
-                          build_file_content=build_file_content,
-                          patches=patches, **kwargs)
+        print("No implicit mirrors used because urls were explicitly provided")
+
+    if strip_prefix == True:
+        strip_prefix = (url_path_parts[1] + "-" + url_filename_parts[0]
+                        if is_github and url_path_parts[2:3] == ["archive"]
+                        else url_filename_parts[0])
+
+    return http_archive(name=name, url=url, urls=urls, build_file=build_file,
+                        build_file_content=build_file_content,
+                        strip_prefix=strip_prefix, **kwargs)
 
 def ray_deps_setup():
-    github_repository(
+    auto_http_archive(
         name = "redis",
         build_file = True,
         url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
@@ -152,19 +99,19 @@ def ray_deps_setup():
         urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.bz2"],
     )
 
-    github_repository(
+    auto_http_archive(
         name = "rules_jvm_external",
         url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",
         sha256 = "5c1b22eab26807d5286ada7392d796cbc8425d3ef9a57d114b79c5f8ef8aca7c",
     )
 
-    github_repository(
+    auto_http_archive(
         name = "bazel_common",
         url = "https://github.com/google/bazel-common/archive/f1115e0f777f08c3cdb115526c4e663005bec69b.tar.gz",
         sha256 = "50dea89af2e1334e18742f18c91c860446de8d1596947fe87e3cdb0d27b6f8f3",
     )
 
-    github_repository(
+    auto_http_archive(
         name = "com_github_checkstyle_java",
         url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
         sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
@@ -182,7 +129,7 @@ def ray_deps_setup():
         ],
     )
 
-    github_repository(
+    auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/5b53112431ef916381d6969f114727cc4f83960b.tar.gz",
@@ -193,25 +140,25 @@ def ray_deps_setup():
         ],
     )
 
-    github_repository(
+    auto_http_archive(
         name = "com_github_google_flatbuffers",
         url = "https://github.com/google/flatbuffers/archive/63d51afd1196336a7d1f56a988091ef05deb1c62.tar.gz",
         sha256 = "3f469032571d324eabea88d7014c05fec8565a5877dbe49b2a52d8d1a0f18e63",
     )
 
-    github_repository(
+    auto_http_archive(
         name = "com_google_googletest",
         url = "https://github.com/google/googletest/archive/3306848f697568aacf4bcca330f6bdd5ce671899.tar.gz",
         sha256 = "79ae337dab8e9ee6bd97a9f7134929bb1ddc7f83be9a564295b895865efe7dba",
     )
 
-    github_repository(
+    auto_http_archive(
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
     )
 
-    github_repository(
+    auto_http_archive(
         name = "com_github_google_glog",
         url = "https://github.com/google/glog/archive/925858d9969d8ee22aabc3635af00a37891f4e25.tar.gz",
         sha256 = "fb86eca661497ac6f9ce2a106782a30215801bb8a7c8724c6ec38af05a90acf3",
@@ -220,7 +167,7 @@ def ray_deps_setup():
         ],
     )
 
-    github_repository(
+    auto_http_archive(
         name = "plasma",
         build_file = True,
         url = "https://github.com/apache/arrow/archive/86f34aa07e611787d9cc98c6a33b0a0a536dce57.tar.gz",
@@ -235,14 +182,14 @@ def ray_deps_setup():
         ],
     )
 
-    github_repository(
+    auto_http_archive(
         name = "cython",
         build_file = True,
         url = "https://github.com/cython/cython/archive/49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e.tar.gz",
         sha256 = "0b697ac90d1e46842c7cbbf5f4a1bde5b7b41037c611167417115337e3756eaa",
     )
 
-    github_repository(
+    auto_http_archive(
         name = "io_opencensus_cpp",
         url = "https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.tar.gz",
         sha256 = "a0b4e2d3c4479cc343c003f0c31f48e9e05461cb232815e348fc0358bfa8bb79",
@@ -250,14 +197,14 @@ def ray_deps_setup():
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
-    github_repository(
+    auto_http_archive(
         name = "com_google_absl",
         url = "https://github.com/abseil/abseil-cpp/archive/aa844899c937bde5d2b24f276b59997e5b668bde.tar.gz",
         sha256 = "327a3883d24cf5d81954b8b8713867ecf2289092c7a39a9dc25a9947cf5b8b78",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
-    github_repository(
+    auto_http_archive(
         name = "com_github_jupp0r_prometheus_cpp",
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
@@ -268,7 +215,7 @@ def ray_deps_setup():
         ]
     )
 
-    github_repository(
+    auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
         url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
@@ -279,7 +226,7 @@ def ray_deps_setup():
         ],
     )
 
-    github_repository(
+    auto_http_archive(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
         # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
@@ -289,7 +236,7 @@ def ray_deps_setup():
         sha256 = "781fa39693ec2984c71213cd633e9f6589eaaed75e3a9ac413237edec96fd3b9",
     )
 
-    github_repository(
+    auto_http_archive(
         name = "rules_proto_grpc",
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
