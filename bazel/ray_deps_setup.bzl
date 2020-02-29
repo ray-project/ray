@@ -1,10 +1,65 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
+def auto_http_archive(*, name=None, url=None, urls=None,
+                      build_file=None, build_file_content=None, strip_prefix=True, **kwargs):
+    """
+    Allows intelligent choice of mirrors based on the given URL for the download.
+
+    name and url must be provided.
+
+    If urls         == None , mirrors are automatically chosen.
+    If build_file   == True , it is auto-deduced.
+    If strip_prefix == True , it is auto-deduced.
+    """
+    mirror_prefixes = [
+        "https://mirror.bazel.build/",
+    ]
+    hosts_preferred_before_mirrors = [
+        "github.com",
+    ]
+
+    if name != None and build_file == True:
+        build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
+
+    if url != None:
+        if urls == None:
+            delim = "://"
+            (i, j) = (url.find(delim), 0)
+            if i < 0:
+                i = 0
+            else:
+                if not url[:i].isalpha(): fail("invalid url scheme")
+                j = i + len(delim)
+            url_except_scheme = url[j:]
+            urls = [(mirror_prefix + url[j:] if len(mirror_prefix) > 0 else url)
+                    for mirror_prefix in mirror_prefixes
+                    if len(mirror_prefix) == 0 or not url[j:].startswith(mirror_prefix)]
+            url_host = url_except_scheme.split("/")[0]
+            if url_host in hosts_preferred_before_mirrors:
+                urls.insert(0, url)
+            else:
+                urls.append(url)
+        else:
+            print("No implicit mirrors used because urls were explicitly provided")
+
+    if strip_prefix == True:
+        i = url.rfind("/")
+        strip_prefix = url[i + 1:] if i >= 0 else ""
+        i = strip_prefix.rfind(".")
+        if i >= 0:
+            strip_prefix = strip_prefix[:i]  # Handle single suffixes
+        i = strip_prefix.rfind(".")
+        if i >= 0 and strip_prefix.endswith(".tar"):
+            strip_prefix = strip_prefix[:i]  # Handle double-suffixes (like .tar.*)
+
+    return http_archive(name=name, url=url, urls=urls, build_file=build_file,
+                        build_file_content=build_file_content, strip_prefix=strip_prefix, **kwargs)
+
 def github_repository(*, name=None, remote=None, commit=None, tag=None,
                       branch=None, build_file=None, build_file_content=None,
                       sha256=None, archive_suffix=".zip", shallow_since=None,
-                      strip_prefix=True, url=None, path=None, **kwargs):
+                      strip_prefix=True, url=None, urls=None, path=None, **kwargs):
     """
     Conveniently chooses between archive, git, etc. GitHub repositories.
     Prefer archives, as they're smaller and faster due to the lack of history.
@@ -18,7 +73,7 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
     If name         == None , it is auto-deduced, but this is NOT recommended.
     If build_file   == True , it is auto-deduced.
     If strip_prefix == True , it is auto-deduced.
-    If url          == None , it is auto-deduced.
+    If url          == None , it is auto-deduced, unless urls is provided.
     If sha256       != False, uses archive download (recommended; fast).
     If sha256       == False, uses git clone (NOT recommended; slow).
     If path         != None , local repository is assumed at the given path.
@@ -39,7 +94,7 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
         name = project.replace("-", "_")
     if project != None and strip_prefix == True:
         strip_prefix = "%s-%s" % (project, treeish)
-    if url == None:
+    if url == None and urls == None:
         url = "%s/archive/%s%s" % (remote_no_suffix, treeish, archive_suffix)
     if name != None and build_file == True:
         build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
@@ -64,9 +119,9 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
                            commit=commit, tag=tag, branch=branch,
                            shallow_since=shallow_since, **kwargs)
     else:
-        http_archive(name=name, url=url, sha256=sha256, build_file=build_file,
-                     strip_prefix=strip_prefix,
-                     build_file_content=build_file_content, **kwargs)
+        auto_http_archive(name=name, url=url, urls=urls, sha256=sha256,
+                          build_file=build_file, strip_prefix=strip_prefix,
+                          build_file_content=build_file_content, **kwargs)
 
 def ray_deps_setup():
     github_repository(
@@ -96,7 +151,7 @@ def ray_deps_setup():
     http_file(
         name = "redis-src",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
-        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.gz"],
+        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.bz2"],
     )
 
     github_repository(
@@ -120,14 +175,13 @@ def ray_deps_setup():
         sha256 = "2fc33ec804011a03106e76ae77d7f1b09091b0f830f8e2a0408f079a032ed716",
     )
 
-    http_archive(
+    auto_http_archive(
         # This rule is used by @com_github_nelhage_rules_boost and
         # declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
-        sha256 = "96b34f7468f26a141f6020efb813f1a2f3dfb9797ecf76a7d7cbd843cc95f5bd",
-        strip_prefix = "boost_1_71_0",
-        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.gz",
+        sha256 = "d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee",
+        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.bz2",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
         ],
