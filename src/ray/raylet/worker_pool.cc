@@ -198,24 +198,26 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   return proc;
 }
 
-void WorkerPool::MonitorStartingWorkerProcess(const Process &proc, const Language &language) {
+void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
+                                              const Language &language) {
   constexpr static size_t worker_register_timeout_seconds = 30;
   auto timer = std::make_shared<boost::asio::deadline_timer>(
       *io_service_, boost::posix_time::seconds(worker_register_timeout_seconds));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
-  timer->async_wait([timer, language, proc, this] (const boost::system::error_code e) -> void {
-    // check the error code.
-    auto &state = this->GetStateForLanguage(language);
-    // Since this process times out to start, remove it from starting_worker_processes
-    // to avoid the zombie worker.
-    auto it = state.starting_worker_processes.find(proc);
-    if (it != state.starting_worker_processes.end()) {
-      RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
-                    << ") have not registered to raylet within timeout.";
-      state.starting_worker_processes.erase(it);
-      starting_worker_timeout_callback_();
-    }
-  });
+  timer->async_wait(
+      [timer, language, proc, this](const boost::system::error_code e) -> void {
+        // check the error code.
+        auto &state = this->GetStateForLanguage(language);
+        // Since this process times out to start, remove it from starting_worker_processes
+        // to avoid the zombie worker.
+        auto it = state.starting_worker_processes.find(proc);
+        if (it != state.starting_worker_processes.end()) {
+          RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
+                        << ") have not registered to raylet within timeout.";
+          state.starting_worker_processes.erase(it);
+          starting_worker_timeout_callback_();
+        }
+      });
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
