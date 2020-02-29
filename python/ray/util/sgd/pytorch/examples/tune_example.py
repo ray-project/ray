@@ -47,13 +47,13 @@ def data_creator(config):
     return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
 
-def tune_example(num_replicas=1, use_gpu=False):
+def tune_example(num_workers=1, use_gpu=False):
     config = {
         "model_creator": tune.function(model_creator),
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
         "loss_creator": tune.function(nn.MSELoss),
-        "num_replicas": num_replicas,
+        "num_workers": num_workers,
         "use_gpu": use_gpu,
         "batch_size": 512,
         "backend": "gloo"
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Ray")
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=1,
@@ -93,4 +93,4 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     ray.init(address=args.address)
-    tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    tune_example(num_workers=args.num_workers, use_gpu=args.use_gpu)

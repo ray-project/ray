@@ -4,7 +4,6 @@ import logging
 import os
 import torch.nn as nn
 import torch.distributed as dist
-import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel
 
 from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
@@ -79,21 +78,10 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
         logger.debug("Creating dataset.")
         with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            datasets = self.data_creator(self.config)
-            train_set, val_set = self._validate_datasets(datasets)
+            loaders = self.data_creator(self.config)
+            train_loader, val_loader = self._validate_loaders(loaders)
 
-        train_loader_config = self.dataloader_config.copy()
-        train_loader_config.update(
-            sampler=torch.utils.data.distributed.DistributedSampler(train_set),
-            shuffle=False)
-
-        self.train_loader = torch.utils.data.DataLoader(
-            train_set, batch_size=self.batch_size, **train_loader_config)
-
-        self.validation_loader = None
-        if val_set:
-            self.validation_loader = torch.utils.data.DataLoader(
-                val_set, batch_size=self.batch_size, **self.dataloader_config)
+        self.train_loader, self.validation_loader = train_loader, val_loader
 
         self.training_operator = self.training_operator_cls(
             self.config,

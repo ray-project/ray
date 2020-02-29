@@ -5,8 +5,6 @@ import inspect
 import itertools
 import os
 import torch
-import torch.utils.data
-from torch.utils.data import Dataset
 
 import ray
 from ray.util.sgd.pytorch.constants import USE_FP16, SCHEDULER_STEP
@@ -28,14 +26,13 @@ class PyTorchRunner:
 
     Args:
         model_creator (dict -> *): see pytorch_trainer.py
-        data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
+        data_creator (dict -> Iterable(s)): see pytorch_trainer.py.
         optimizer_creator (models, dict -> optimizers): see pytorch_trainer.py.
         loss_creator (dict -> loss | Loss class): see pytorch_trainer.py.
         scheduler_creator (optimizers, dict -> schedulers): see
             pytorch_trainer.py.
         training_operator_cls: see pytorch_trainer.py
         config (dict): see pytorch_trainer.py.
-        dataloader_config (dict): See pytorch_trainer.py.
         batch_size (int): see pytorch_trainer.py.
         use_fp16 (bool): see pytorch_trainer.py.
         apex_args (dict|None): see pytorch_trainer.py.
@@ -50,7 +47,6 @@ class PyTorchRunner:
                  scheduler_creator=None,
                  training_operator_cls=None,
                  config=None,
-                 dataloader_config=None,
                  batch_size=16,
                  use_fp16=False,
                  apex_args=None,
@@ -62,9 +58,6 @@ class PyTorchRunner:
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls or TrainingOperator
         self.config = {} if config is None else config
-        self.dataloader_config = {
-            "num_workers": 2
-        } if dataloader_config is None else dataloader_config
         self.batch_size = batch_size
         self.verbose = True
 
@@ -90,14 +83,18 @@ class PyTorchRunner:
                 "https://www.github.com/nvidia/apex to use fp16 training.")
         self.scheduler_step_freq = scheduler_step_freq
 
-    def _validate_datasets(self, dataset):
-        assert dataset, "Datasets need to be returned in data_creator."
-        if issubclass(type(dataset), Dataset):
-            return dataset, None
-        elif len(dataset) == 2 and issubclass(type(dataset[0]), Dataset):
-            return dataset
-        else:
-            raise ValueError("Datasets must be <= 2. Got {}".format(dataset))
+    def _validate_loaders(self, loaders):
+        assert loaders, "Loaders need to be returned in data_creator."
+        if isinstance(loaders, (tuple, list)):
+            if len(loaders) == 1:
+                return loaders, None
+            elif len(loaders) == 2:
+                return loaders
+            else:
+                raise ValueError(
+                    "loaders must be <= 2. Got {}".format(loaders))
+        # No great way of checking type otherwise
+        return loaders, None
 
     def _create_loss(self):
         if inspect.isclass(self.loss_creator) and issubclass(
@@ -106,7 +103,7 @@ class PyTorchRunner:
         else:
             self.criterion = self.loss_creator(self.config)
 
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and hasattr("cuda", self.criterion):
             self.criterion = self.criterion.cuda()
 
     def _create_schedulers_if_available(self):
@@ -144,19 +141,12 @@ class PyTorchRunner:
         self._create_loss()
 
         logger.debug("Creating dataset")
-        # When creating datasets, a filelock will be used to ensure no
+        # When creating loaders, a filelock will be used to ensure no
         # race conditions in data downloading among different workers.
         with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            datasets = self.data_creator(self.config)
-            train_set, val_set = self._validate_datasets(datasets)
-
-        self.train_loader = torch.utils.data.DataLoader(
-            train_set, batch_size=self.batch_size, **self.dataloader_config)
-
-        self.validation_loader = None
-        if val_set:
-            self.validation_loader = torch.utils.data.DataLoader(
-                val_set, batch_size=self.batch_size, **self.dataloader_config)
+            loaders = self.data_creator(self.config)
+            train_loader, val_loader = self._validate_loaders(loaders)
+        self.train_loader, self.validation_loader = train_loader, val_loader
 
         self.training_operator = self.training_operator_cls(
             self.config,

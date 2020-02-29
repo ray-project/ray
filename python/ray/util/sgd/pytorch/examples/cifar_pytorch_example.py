@@ -57,7 +57,7 @@ def scheduler_creator(optimizer, config):
         optimizer, milestones=[150, 250, 350], gamma=0.1)
 
 
-def train_example(num_replicas=1,
+def train_example(num_workers=1,
                   num_epochs=5,
                   use_gpu=False,
                   use_fp16=False,
@@ -69,7 +69,7 @@ def train_example(num_replicas=1,
         nn.CrossEntropyLoss,
         scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
-        num_replicas=num_replicas,
+        num_workers=num_workers,
         config={
             "lr": 0.01,
             "test_mode": test_mode
@@ -89,13 +89,13 @@ def train_example(num_replicas=1,
     print("success!")
 
 
-def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
+def tune_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "model_creator": ResNet18,
         "data_creator": cifar_creator,
         "optimizer_creator": optimizer_creator,
         "loss_creator": nn.CrossEntropyLoss,
-        "num_replicas": num_replicas,
+        "num_workers": num_workers,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
         "batch_size": 16 if test_mode else 512,
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Redis")
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=1,
@@ -155,12 +155,12 @@ if __name__ == "__main__":
 
     if args.tune:
         tune_example(
-            num_replicas=args.num_replicas,
+            num_workers=args.num_workers,
             use_gpu=args.use_gpu,
             test_mode=args.smoke_test)
     else:
         train_example(
-            num_replicas=args.num_replicas,
+            num_workers=args.num_workers,
             num_epochs=args.num_epochs,
             use_gpu=args.use_gpu,
             use_fp16=args.fp16,

@@ -213,7 +213,7 @@ class GANOperator(TrainingOperator):
         }
 
 
-def train_example(num_replicas=1, use_gpu=False, test_mode=False):
+def train_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "test_mode": test_mode,
         "classification_model_path": os.path.join(
@@ -226,7 +226,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         optimizer_creator,
         nn.BCELoss,
         training_operator_cls=GANOperator,
-        num_replicas=num_replicas,
+        num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
@@ -248,7 +248,7 @@ if __name__ == "__main__":
         type=str,
         help="the address to use to connect to a cluster.")
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=1,
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     ray.init(address=args.address)
 
     trainer = train_example(
-        num_replicas=args.num_replicas,
+        num_workers=args.num_workers,
         use_gpu=args.use_gpu,
         test_mode=args.smoke_test)
     models = trainer.get_model()

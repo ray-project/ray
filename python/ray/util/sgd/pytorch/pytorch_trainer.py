@@ -69,10 +69,9 @@ class PyTorchTrainer:
             the hood.
         data_creator (dict -> Dataset(s)): Constructor function
             that takes in the passed config and returns one or
-            two ``torch.utils.data.Dataset`` objects.
-            Note that even though two Dataset objects can be returned,
-            only one dataset will be used for training. RaySGD
-            will automatically wrap the objects with a ``DataLoader``.
+            two Iterable objects.
+            Note that even though two Iterable objects can be returned,
+            only one will be used for training.
         optimizer_creator ((models, dict) -> optimizers): Constructor
             function that takes in the return values from
             ``model_creator`` and the passed config and returns One or
@@ -96,15 +95,9 @@ class PyTorchTrainer:
             TrainingOperator.
         config (dict): Custom configuration value to be passed to
             all creator and operator constructors.
-        dataloader_config (dict): Configuration values to be passed into
-            the ``torch.utils.data.DataLoader`` object that wraps
-            the dataset on each parallel worker for both training
-            and validation. Note that if ``num_replicas``
-            is greater than 1, ``shuffle`` and ``sampler`` will be
-            automatically set. See the available arguments
-            here https://pytorch.org/docs/stable/data.html.
-        num_replicas (int): the number of workers used in distributed
-            training.
+        num_workers (int): the number of workers used in distributed
+            training. If 1, the worker will not be wrapped with
+            DistributedDataParallel.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true, and automatically moves both the model and optimizer
             to the available CUDA device.
@@ -138,18 +131,17 @@ class PyTorchTrainer:
                  training_operator_cls=None,
                  initialization_hook=None,
                  config=None,
-                 dataloader_config=None,
-                 num_replicas=1,
+                 num_workers=1,
                  use_gpu=False,
                  batch_size=16,
                  backend="auto",
                  use_fp16=False,
                  apex_args=None,
                  scheduler_step_freq="batch"):
-        if num_replicas > 1 and not dist.is_available():
+        if num_workers > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
-                 "To run without distributed PyTorch, set 'num_replicas=1'. "
+                 "To run without distributed PyTorch, set 'num_workers=1'. "
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
@@ -161,7 +153,6 @@ class PyTorchTrainer:
         self.training_operator_cls = training_operator_cls
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
-        self.dataloader_config = dataloader_config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
         if backend == "auto":
@@ -173,7 +164,7 @@ class PyTorchTrainer:
         # TODO: Have an auto "use_gpu" option to detect and use GPUs.
         self.use_gpu = use_gpu
         self.batch_size = batch_size
-        self.max_replicas = num_replicas
+        self.max_replicas = num_workers
 
         self.use_fp16 = use_fp16
 
@@ -190,9 +181,9 @@ class PyTorchTrainer:
 
         self._start_workers(self.max_replicas)
 
-    def _start_workers(self, num_replicas):
-        logger.info(f"start_workers: Setting %d replicas." % num_replicas)
-        if num_replicas == 1:
+    def _start_workers(self, num_workers):
+        logger.info(f"start_workers: Setting %d workers." % num_workers)
+        if num_workers == 1:
             # Generate actor class
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(self.use_gpu))(PyTorchRunner)
@@ -206,7 +197,6 @@ class PyTorchTrainer:
                     self.scheduler_creator,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,
-                    dataloader_config=self.dataloader_config,
                     batch_size=self.batch_size,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
@@ -223,16 +213,16 @@ class PyTorchTrainer:
                 num_cpus=1,
                 num_gpus=int(self.use_gpu))(DistributedPyTorchRunner)
             # Compute batch size per replica
-            batch_size_per_replica = self.batch_size // num_replicas
-            if self.batch_size % num_replicas > 0:
-                new_batch_size = batch_size_per_replica * num_replicas
+            batch_size_per_replica = self.batch_size // num_workers
+            if self.batch_size % num_workers > 0:
+                new_batch_size = batch_size_per_replica * num_workers
                 logger.warning(
                     ("Changing batch size from {old_batch_size} to "
                      "{new_batch_size} to evenly distribute batches across "
-                     "{num_replicas} replicas.").format(
+                     "{num_workers} replicas.").format(
                          old_batch_size=self.batch_size,
                          new_batch_size=new_batch_size,
-                         num_replicas=num_replicas))
+                         num_workers=num_workers))
             # Start workers
             self.workers = [
                 Runner.remote(
@@ -244,12 +234,11 @@ class PyTorchTrainer:
                     backend=self.backend,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,
-                    dataloader_config=self.dataloader_config,
                     batch_size=batch_size_per_replica,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
                     scheduler_step_freq=self.scheduler_step_freq)
-                for i in range(num_replicas)
+                for i in range(num_workers)
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
@@ -493,8 +482,8 @@ class PyTorchTrainable(Trainable):
         return Resources(
             cpu=0,
             gpu=0,
-            extra_cpu=config["num_replicas"],
-            extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
+            extra_cpu=config["num_workers"],
+            extra_gpu=int(config["use_gpu"]) * config["num_workers"])
 
     def _setup(self, config):
         self._trainer = PyTorchTrainer(**config)

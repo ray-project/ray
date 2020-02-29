@@ -55,20 +55,23 @@ def scheduler_creator(optimizer, config):
 
 def data_creator(config):
     """Returns training dataloader, validation dataloader."""
-    return LinearDataset(2, 5),  LinearDataset(2, 5, size=400)
+    train_loader = torch.utils.data.DataLoader(
+        LinearDataset(2, 5), config.get("batch_size", 64))
+    validation_loader = torch.utils.data.DataLoader(
+        LinearDataset(2, 5, size=400), config.get("batch_size", 64))
+    return train_loader, validation_loader
 
 
-def train_example(num_replicas=1, use_gpu=False):
+def train_example(num_workers=1, use_gpu=False):
     trainer1 = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
         loss_creator=nn.MSELoss,
         scheduler_creator=scheduler_creator,
-        num_replicas=num_replicas,
+        num_workers=num_workers,
         use_gpu=use_gpu,
-        batch_size=num_replicas * 4,
-        config={"lr": 1e-2, "hidden_size": 1},
+        config={"lr": 1e-2, "hidden_size": 1, "batch_size": num_workers * 4},
         backend="gloo",
         scheduler_step_freq="epoch")
     for i in range(5):
@@ -91,7 +94,7 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Ray")
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=1,
@@ -109,4 +112,4 @@ if __name__ == "__main__":
     import ray
 
     ray.init(address=args.address)
-    train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    train_example(num_workers=args.num_workers, use_gpu=args.use_gpu)
