@@ -58,7 +58,7 @@ def auto_http_archive(*, name=None, url=None, urls=None,
 
 def github_repository(*, name=None, build_file=None, build_file_content=None,
                       sha256=None, shallow_since=None, strip_prefix=True,
-                      url=None, urls=None, path=None, **kwargs):
+                      url=None, urls=None, path=None, patches=None, **kwargs):
     """
     Conveniently chooses between archive, git, etc. GitHub repositories.
     Prefer archives, as they're smaller and faster due to the lack of history.
@@ -97,6 +97,8 @@ def github_repository(*, name=None, build_file=None, build_file_content=None,
         build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
 
     if path != None:
+        if patches != None and len(patches) > 0:
+            print("patches ignored for local repository: " + path)
         if build_file or build_file_content:
             native.new_local_repository(name=name, path=path,
                                         build_file=build_file,
@@ -109,14 +111,16 @@ def github_repository(*, name=None, build_file=None, build_file_content=None,
             new_git_repository(name=name, remote=remote, build_file=build_file,
                                commit=commit, tag=tag, shallow_since=shallow_since,
                                build_file_content=build_file_content,
-                               strip_prefix=strip_prefix, **kwargs)
+                               patches=patches, strip_prefix=strip_prefix, **kwargs)
         else:
             git_repository(name=name, remote=remote, strip_prefix=strip_prefix,
-                           commit=commit, tag=tag, shallow_since=shallow_since, **kwargs)
+                           commit=commit, tag=tag, shallow_since=shallow_since,
+                           patches=patches, **kwargs)
     else:
         auto_http_archive(name=name, url=url, urls=urls, sha256=sha256,
                           build_file=build_file, strip_prefix=strip_prefix,
-                          build_file_content=build_file_content, **kwargs)
+                          build_file_content=build_file_content,
+                          patches=patches, **kwargs)
 
 def ray_deps_setup():
     github_repository(
