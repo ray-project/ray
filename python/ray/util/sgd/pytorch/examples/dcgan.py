@@ -143,6 +143,7 @@ class GANOperator(TrainingOperator):
             x = self.classifier(x)
             return F.softmax(x).data.cpu().numpy()
 
+        # Obtain predictions for the fake provided images
         preds = np.zeros((N, 10))
         for i, batch in enumerate(dataloader, 0):
             batch = batch.type(torch.FloatTensor)
