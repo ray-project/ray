@@ -413,7 +413,11 @@ class Node:
         This must be the first process spawned and should only be called when
         ray processes should be cleaned up if this process dies.
         """
-        process_info = ray.services.start_reaper()
+        if ray.utils.detect_fate_sharing_support():
+            # No need for a reaper; OS-level fate-sharing supported
+            process_info = None
+        else:
+            process_info = ray.services.start_reaper()
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [

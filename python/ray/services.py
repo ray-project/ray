@@ -584,9 +584,6 @@ def start_reaper():
     Returns:
         ProcessInfo for the process that was started.
     """
-    if ray.utils.detect_fate_sharing_support():
-        # No need for a reaper; OS-level fate-sharing supported
-        return None
     # Make ourselves a process group leader so that the reaper can clean
     # up other ray processes without killing the process group of the
     # process that started us.
