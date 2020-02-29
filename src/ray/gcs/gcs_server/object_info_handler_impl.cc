@@ -66,7 +66,7 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
 
   auto on_done = [object_id, node_id, send_reply_callback](Status status) {
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
+      RAY_LOG(ERROR) << "Failed to remove object location: " << status.ToString()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
     send_reply_callback(status, nullptr, nullptr);

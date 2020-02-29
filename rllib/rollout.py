@@ -15,6 +15,7 @@ from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.tune.utils import merge_dicts
 
 EXAMPLE_USAGE = """
@@ -182,26 +183,34 @@ def create_parser(parser_creator=None):
         default=False,
         action="store_const",
         const=True,
-        help="Surpress rendering of the environment.")
+        help="Suppress rendering of the environment.")
     parser.add_argument(
         "--monitor",
         default=False,
-        action="store_const",
-        const=True,
-        help="Wrap environment in gym Monitor to record video.")
+        action="store_true",
+        help="Wrap environment in gym Monitor to record video. NOTE: This "
+        "option is deprecated: Use `--video-dir [some dir]` instead.")
     parser.add_argument(
-        "--steps", default=10000, help="Number of steps to roll out.")
+        "--video-dir",
+        type=str,
+        default=None,
+        help="Specifies the directory into which videos of all episode "
+        "rollouts will be stored.")
+    parser.add_argument(
+        "--steps",
+        default=10000,
+        help="Number of timesteps to roll out (overwritten by --episodes).")
+    parser.add_argument(
+        "--episodes",
+        default=0,
+        help="Number of complete episodes to roll out (overrides --steps).")
     parser.add_argument("--out", default=None, help="Output filename.")
     parser.add_argument(
         "--config",
         default="{}",
         type=json.loads,
         help="Algorithm-specific configuration (e.g. env, hyperparams). "
-        "Surpresses loading of configuration from checkpoint.")
-    parser.add_argument(
-        "--episodes",
-        default=0,
-        help="Number of complete episodes to roll out. (Overrides --steps)")
+        "Gets merged with loaded configuration from checkpoint file.")
     parser.add_argument(
         "--save-info",
         default=False,
@@ -226,21 +235,30 @@ def create_parser(parser_creator=None):
 
 def run(args, parser):
     config = {}
-    # Load configuration from file
+    # Load configuration from checkpoint file.
     config_dir = os.path.dirname(args.checkpoint)
     config_path = os.path.join(config_dir, "params.pkl")
+    # Try parent directory.
     if not os.path.exists(config_path):
         config_path = os.path.join(config_dir, "../params.pkl")
+
+    # If no pkl file found, require command line `--config`.
     if not os.path.exists(config_path):
         if not args.config:
             raise ValueError(
                 "Could not find params.pkl in either the checkpoint dir or "
-                "its parent directory.")
+                "its parent directory AND no config given on command line!")
+
+    # Load the config from pickled.
     else:
         with open(config_path, "rb") as f:
             config = pickle.load(f)
+
+    # Set num_workers to be at least 2.
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
+
+    # Merge with command line `--config` settings.
     config = merge_dicts(config, args.config)
     if not args.env:
         if not config.get("env"):
@@ -249,11 +267,26 @@ def run(args, parser):
 
     ray.init()
 
+    # Create the Trainer from config.
     cls = get_agent_class(args.run)
     agent = cls(env=args.env, config=config)
+    # Load state from checkpoint.
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
     num_episodes = int(args.episodes)
+
+    # Determine the video output directory.
+    # Deprecated way: Use (--out|~/ray_results) + "/monitor" as dir.
+    video_dir = None
+    if args.monitor:
+        video_dir = os.path.join(
+            os.path.dirname(args.out or "")
+            or os.path.expanduser("~/ray_results/"), "monitor")
+    # New way: Allow user to specify a video output path.
+    elif args.video_dir:
+        video_dir = os.path.expanduser(args.video_dir)
+
+    # Do the actual rollout.
     with RolloutSaver(
             args.out,
             args.use_shelve,
@@ -262,7 +295,7 @@ def run(args, parser):
             target_episodes=num_episodes,
             save_info=args.save_info) as saver:
         rollout(agent, args.env, num_steps, num_episodes, saver,
-                args.no_render, args.monitor)
+                args.no_render, video_dir)
 
 
 class DefaultMapping(collections.defaultdict):
@@ -295,7 +328,7 @@ def rollout(agent,
             num_episodes=0,
             saver=None,
             no_render=True,
-            monitor=False):
+            video_dir=None):
     policy_agent_mapping = default_policy_agent_mapping
 
     if saver is None:
@@ -320,13 +353,14 @@ def rollout(agent,
         multiagent = False
         use_lstm = {DEFAULT_POLICY_ID: False}
 
-    if monitor and not no_render and saver and saver.outfile is not None:
-        # If monitoring has been requested,
-        # manually wrap our environment with a gym monitor
-        # which is set to record every episode.
+    # If monitoring has been requested, manually wrap our environment with a
+    # gym monitor, which is set to record every episode.
+    if video_dir:
         env = gym.wrappers.Monitor(
-            env, os.path.join(os.path.dirname(saver.outfile), "monitor"),
-            lambda x: True)
+            env=env,
+            directory=video_dir,
+            video_callable=lambda x: True,
+            force=True)
 
     steps = 0
     episodes = 0
@@ -396,4 +430,25 @@ def rollout(agent,
 if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
+
+    # Old option: monitor, use video-dir instead.
+    if args.monitor:
+        deprecation_warning("--monitor", "--video-dir=[some dir]")
+    # User tries to record videos, but no-render is set: Error.
+    if (args.monitor or args.video_dir) and args.no_render:
+        raise ValueError(
+            "You have --no-render set, but are trying to record rollout videos"
+            " (via options --video-dir/--monitor)! "
+            "Either unset --no-render or do not use --video-dir/--monitor.")
+    # --use_shelve w/o --out option.
+    if args.use_shelve and not args.out:
+        raise ValueError(
+            "If you set --use-shelve, you must provide an output file via "
+            "--out as well!")
+    # --track-progress w/o --out option.
+    if args.track_progress and not args.out:
+        raise ValueError(
+            "If you set --track-progress, you must provide an output file via "
+            "--out as well!")
+
     run(args, parser)

@@ -144,7 +144,7 @@ matrix:
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the `$MOUNT_BAZEL_CACHE` part.
 
-        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:ARROW-5631 /ray/python/build-wheel-manylinux1.sh
+        - ./ci/suppress_output docker run -e TRAVIS_COMMIT=$TRAVIS_COMMIT --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:ARROW-5631 /ray/python/build-wheel-manylinux1.sh
 
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
@@ -327,12 +327,12 @@ script:
 
   # ray operator tests
   - cd ./deploy/ray-operator/
-  - go build
-  - go test ./...
+  - ../../ci/suppress_output go build
+  - ../../ci/suppress_output go test ./...
   - cd ../..
 
   # random python tests TODO(ekl): these should be moved to bazel
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
+  # - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...; fi
