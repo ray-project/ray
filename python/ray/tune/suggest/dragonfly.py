@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import pickle
 
 try:  # Python 3 only -- needed for lint test.
     import dragonfly
@@ -43,18 +44,29 @@ class DragonflySearch(SuggestionAlgorithm):
         >>> from dragonfly.opt.gp_bandit import EuclideanGPBandit
         >>> from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
         >>> from dragonfly import load_config
-        >>> domain_vars = [{'name': 'x', 'type': 'float', 'min': 0, 'max': 1, 'dim': 3}]
-        >>> domain_constraints = [
-                {'name': 'quadrant', 'constraint': 'np.linalg.norm(x[0:2]) <= 0.5'},
-        >>> ]
-        >>> config_params = {'domain': domain_vars, 'domain_constraints': domain_constraints}
-        >>> config = load_config(config_params)
-        >>> func_caller = EuclideanFunctionCaller(None, config.domain)
+        >>> domain_vars = [{
+                "name": "LiNO3_vol",
+                "type": "float",
+                "min": 0,
+                "max": 7
+            }, {
+                "name": "Li2SO4_vol",
+                "type": "float",
+                "min": 0,
+                "max": 7
+            }, {
+                "name": "NaClO4_vol",
+                "type": "float",
+                "min": 0,
+                "max": 7
+            }]
+
+        >>> domain_config = load_config({"domain": domain_vars})
+        >>> func_caller = EuclideanFunctionCaller(None,
+                domain_config.domain.list_of_domains[0])
         >>> optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-        >>> algo = DragonflySearch(optimizer,
-        >>>     max_concurrent=4,
-        >>>     metric="mean_loss",
-        >>>     mode="min")
+        >>> algo = DragonflySearch(optimizer, max_concurrent=4,
+                metric="objective", mode="max")
     """
 
     def __init__(self,
@@ -119,7 +131,8 @@ class DragonflySearch(SuggestionAlgorithm):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._opt.tell([(trial_info, self._metric_op * result[self._metric])])
+            self._opt.tell([(trial_info,
+                             self._metric_op * result[self._metric])])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
