@@ -408,7 +408,7 @@ def exec_cluster(config_file,
                     shutdown_cmd = wrap_docker(shutdown_cmd)
                 cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
 
-        _exec(updater, cmd, screen, tmux, port_forward=port_forward)
+        result = _exec(updater, cmd, screen, tmux, port_forward=port_forward)
 
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
@@ -424,6 +424,9 @@ def exec_cluster(config_file,
             attach_info = "Use `{}` to check on command status.".format(
                 attach_command)
             logger.info(attach_info)
+
+        return result
+
     finally:
         provider.cleanup()
 
@@ -443,7 +446,8 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-    updater.cmd_runner.run(
+
+    return updater.cmd_runner.run(
         cmd, allocate_tty=True, exit_on_fail=True, port_forward=port_forward)
 
 
