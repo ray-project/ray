@@ -71,7 +71,7 @@ def train_example(num_workers=1, use_gpu=False):
         scheduler_creator=scheduler_creator,
         num_workers=num_workers,
         use_gpu=use_gpu,
-        config={"lr": 1e-2, "hidden_size": 1, "batch_size": num_workers * 4},
+        config={"lr": 1e-2, "hidden_size": 1, "batch_size": 4},
         backend="gloo",
         scheduler_step_freq="epoch")
     for i in range(5):
