@@ -82,7 +82,8 @@ class KubernetesCommandRunner:
                 "--",
             ] + with_interactive(cmd)
             try:
-                return self.process_runner.check_output(" ".join(final_cmd), shell=True)
+                return self.process_runner.check_output(
+                    " ".join(final_cmd), shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
                     quoted_cmd = " ".join(final_cmd[:-1] +
