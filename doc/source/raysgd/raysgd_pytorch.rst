@@ -118,6 +118,26 @@ You can also set the number of workers and whether the workers will use GPUs:
         num_replicas=100,
         use_gpu=True)
 
+
+Now that the trainer is constructed, here's how to train the model.
+
+.. code-block:: python
+
+    for i in range(10):
+        metrics = trainer.train()
+        val_metrics = trainer.validate()
+
+
+Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``. Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
+
+After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the Trainer:
+
+.. code-block:: python
+
+    trainer.shutdown()
+
+.. note:: Be sure to call ``trainer.save()`` or ``trainer.get_model()`` before shutting down.
+
 See the documentation on the PyTorchTrainer here: :ref:`ref-pytorch-trainer`.
 
 
@@ -139,6 +159,7 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
 
 .. code-block:: python
 
+    import torch
     from ray.util.sgd.pytorch import TrainingOperator
 
     class GANOperator(TrainingOperator):
@@ -154,6 +175,10 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
         def train_batch(self, batch, batch_info):
             """Trains on one batch of data from the data creator.
 
+            Example taken from:
+                https://github.com/eriklindernoren/PyTorch-GAN/blob/
+                a163b82beff3d01688d8315a3fd39080400e7c01/implementations/dcgan/dcgan.py
+
             Args:
                 batch: One item of the validation iterator.
                 batch_info (dict): Information dict passed in from ``train_epoch``.
@@ -162,43 +187,54 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
                 A dict of metrics. Defaults to "loss" and "num_samples",
                     corresponding to the total number of datapoints in the batch.
             """
-            real_label = 1
-            fake_label = 0
+            Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
             discriminator, generator = self.models
-            optimD, optimG = self.optimizers
+            optimizer_D, optimizer_G = self.optimizers
 
-            discriminator.zero_grad()
-            real_cpu = batch[0].to(self.device)
-            batch_size = real_cpu.size(0)
-            label = torch.full((batch_size, ), real_label, device=self.device)
-            output = discriminator(real_cpu).view(-1)
-            errD_real = self.criterion(output, label)
-            errD_real.backward()
+            # Adversarial ground truths
+            valid = Variable(Tensor(batch.shape[0], 1).fill_(1.0), requires_grad=False)
+            fake = Variable(Tensor(batch.shape[0], 1).fill_(0.0), requires_grad=False)
 
-            noise = torch.randn(
-                batch_size, generator.latent_vector_size, 1, 1, device=self.device)
-            fake = generator(noise)
-            label.fill_(fake_label)
-            output = discriminator(fake.detach()).view(-1)
-            errD_fake = self.criterion(output, label)
-            errD_fake.backward()
-            errD = errD_real + errD_fake
-            optimD.step()
+            # Configure input
+            real_imgs = Variable(batch.type(Tensor))
 
-            generator.zero_grad()
-            label.fill_(real_label)
-            output = discriminator(fake).view(-1)
-            errG = self.criterion(output, label)
-            errG.backward()
-            optimG.step()
+            # -----------------
+            #  Train Generator
+            # -----------------
 
-            is_score, is_std = self.inception_score(fake)
+            optimizer_G.zero_grad()
+
+            # Sample noise as generator input
+            z = Variable(Tensor(np.random.normal(0, 1, (
+                    batch.shape[0], self.config["latent_dim"]))))
+
+            # Generate a batch of images
+            gen_imgs = generator(z)
+
+            # Loss measures generator's ability to fool the discriminator
+            g_loss = adversarial_loss(discriminator(gen_imgs), valid)
+
+            g_loss.backward()
+            optimizer_G.step()
+
+            # ---------------------
+            #  Train Discriminator
+            # ---------------------
+
+            optimizer_D.zero_grad()
+
+            # Measure discriminator's ability to classify real from generated samples
+            real_loss = adversarial_loss(discriminator(real_imgs), valid)
+            fake_loss = adversarial_loss(discriminator(gen_imgs.detach()), fake)
+            d_loss = (real_loss + fake_loss) / 2
+
+            d_loss.backward()
+            optimizer_D.step()
 
             return {
-                "loss_g": errG.item(),
-                "loss_d": errD.item(),
-                "inception": is_score,
-                "num_samples": batch_size
+                "loss_g": g_loss.item(),
+                "loss_d": d_loss.item(),
+                "num_samples": imgs.shape[0]
             }
 
     trainer = PyTorchTrainer(
@@ -219,32 +255,10 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
 See the `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/pytorch/examples/dcgan.py>`__ for an end to end example. It constructs two models and two optimizers and uses a custom training operator to provide a non-standard training loop.
 
 
-Training/Validation
--------------------
-
-Now that the trainer is constructed, here's how to train the model.
-
-.. code-block:: python
-
-    for i in range(10):
-        metrics = trainer.train()
-        val_metrics = trainer.validate()
-
-
-Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``. Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
-
-After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the Trainer:
-
-.. code-block:: python
-
-    trainer.shutdown()
-
-.. note:: Be sure to call ``trainer.save()`` or ``trainer.get_model()`` before shutting down.
-
 Initialization Functions
 ------------------------
 
-Use the ``initialization_hook`` parameter to initialize state on each worker process when they are started. This is useful when setting an environment variable or downloading data:
+Use the ``initialization_hook`` parameter to initialize state on each worker process when they are started. This is useful when setting an environment variable:
 
 .. code-block:: python
 
@@ -340,13 +354,15 @@ Note that if using a custom training operator (:ref:`raysgd-custom-training`), y
 Distributed Multi-node Training
 -------------------------------
 
-You can scale out your training onto multiple nodes without making any modifications to your training code. To train across a cluster, simply make sure that the Ray cluster is started. You can start a Ray cluster `via the Ray cluster launcher <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
+You can scale your training to multiple nodes without making any modifications to your training code.
 
-In your program, you'll need to connect to this cluster via ``ray.init``:
+To train across a cluster, first make sure that the Ray cluster is started. You can start a Ray cluster `via the Ray cluster launcher <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
+
+Then, in your program, you'll need to connect to this cluster via ``ray.init``:
 
 .. code-block:: python
 
-    ray.init(address="auto")  # or a specific redis address.
+    ray.init(address="auto")  # or a specific redis address of the form "ip-address:port"
 
 After connecting, you can scale up the number of workers seamlessly across multiple nodes:
 
