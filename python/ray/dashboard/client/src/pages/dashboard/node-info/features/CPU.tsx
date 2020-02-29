@@ -1,5 +1,6 @@
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
+import SpanButton from "../../../../common/SpanButton";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
@@ -39,10 +40,14 @@ export const ClusterCPU: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeCPU: NodeFeatureComponent = ({ node }) => (
-  <div style={{ minWidth: 60 }}>
-    <UsageBar percent={node.cpu} text={`${node.cpu.toFixed(1)}%`} />
-  </div>
+export const NodeCPU = (
+  setIframeDialog: (pid: number | "All", metric: "cpu" | "memory") => void
+): NodeFeatureComponent => ({ node }) => (
+  <SpanButton onClick={() => setIframeDialog("All", "cpu")}>
+    <div style={{ minWidth: 60 }}>
+      <UsageBar percent={node.cpu} text={`${node.cpu.toFixed(1)}%`} />
+    </div>
+  </SpanButton>
 );
 
 export const WorkerCPU: WorkerFeatureComponent = ({ worker }) => (

@@ -431,6 +431,17 @@ class Dashboard(object):
             dashboard_url = self.start_exporter()
             raise aiohttp.web.HTTPFound(dashboard_url)
 
+        async def grafana_iframe(req) -> aiohttp.web.Response:
+            if not self.dashboard_controller.is_hosted:
+                return get_forbidden(req)
+
+            iframe_div = self.dashboard_controller.get_grafana_iframe({
+                "pid": req.query.get("pid"),
+                "metric": req.query.get("metric")
+            })
+            return await json_response({"frame_html": iframe_div})
+
+
         self.app.router.add_get("/", get_index)
         self.app.router.add_get("/favicon.ico", get_favicon)
 
@@ -468,6 +479,7 @@ class Dashboard(object):
         self.app.router.add_get('/api/is_hosted', is_hosted)
         self.app.router.add_get("/to_hosted", to_hosted)
         self.app.router.add_get("/to_hosted_agreed", to_hosted_redirect)
+        self.app.router.add_get("/api/grafana_iframe", grafana_iframe)
 
         self.app.router.add_get("/{_}", get_forbidden)
 
