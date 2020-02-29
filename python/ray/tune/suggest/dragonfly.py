@@ -93,6 +93,7 @@ class DragonflySearch(SuggestionAlgorithm):
         elif mode == "max":
             self._metric_op = 1.
         self._opt = optimizer
+        self._opt.initialise()
         self._live_trial_mapping = {}
         super(DragonflySearch, self).__init__(**kwargs)
 
@@ -105,7 +106,7 @@ class DragonflySearch(SuggestionAlgorithm):
         else:
             suggested_config = self._opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
-        return dict(zip(self._parameters, suggested_config))
+        return {"point": suggested_config}
 
     def on_trial_result(self, trial_id, result):
         pass
@@ -118,8 +119,18 @@ class DragonflySearch(SuggestionAlgorithm):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._opt.tell(trial_info,
-                                 self._metric_op * result[self._metric])
+            self._opt.tell([(trial_info, self._metric_op * result[self._metric])])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = (self._initial_points, self._opt)
+        with open(checkpoint_dir, "wb") as outputFile:
+            pickle.dump(trials_object, outputFile)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as inputFile:
+            trials_object = pickle.load(inputFile)
+        self._initial_points = trials_object[0]
+        self._opt = trials_object[1]
