@@ -56,46 +56,43 @@ def auto_http_archive(*, name=None, url=None, urls=None,
     return http_archive(name=name, url=url, urls=urls, build_file=build_file,
                         build_file_content=build_file_content, strip_prefix=strip_prefix, **kwargs)
 
-def github_repository(*, name=None, remote=None, commit=None, tag=None,
-                      branch=None, build_file=None, build_file_content=None,
-                      sha256=None, archive_suffix=".tar.gz", shallow_since=None,
-                      strip_prefix=True, url=None, urls=None, path=None, **kwargs):
+def github_repository(*, name=None, build_file=None, build_file_content=None,
+                      sha256=None, shallow_since=None, strip_prefix=True,
+                      url=None, urls=None, path=None, **kwargs):
     """
     Conveniently chooses between archive, git, etc. GitHub repositories.
     Prefer archives, as they're smaller and faster due to the lack of history.
 
-    One of {commit, tag, branch} must also be provided (as usual).
+    url must be of the form: https://github.com/{username}/{project}/archive/...
 
-    sha256 should be omitted (or None) when the archive hash is unknown, then
-    updated ASAP to allow caching & avoid repeated downloads on every build.
-
-    If remote       == None , it is an error.
     If name         == None , it is auto-deduced, but this is NOT recommended.
     If build_file   == True , it is auto-deduced.
     If strip_prefix == True , it is auto-deduced.
-    If url          == None , it is auto-deduced, unless urls is provided.
     If sha256       != False, uses archive download (recommended; fast).
     If sha256       == False, uses git clone (NOT recommended; slow).
     If path         != None , local repository is assumed at the given path.
     """
-    GIT_SUFFIX = ".git"
+    GITHUB_URL_PREFIX = "https://github.com/"
+    if not url.startswith(GITHUB_URL_PREFIX):
+        fail("URL passed to github_repository() is not a GitHub URL: " + url)
 
-    treeish = commit or tag or branch
-    if path == None and not treeish: fail("Missing commit, tag, or branch argument")
-    if path == None and remote == None: fail("Missing remote argument")
+    (username, project, archive, filename) = url[len(GITHUB_URL_PREFIX):].split("/", 3)
+    if archive != "archive": fail("Expected GitHub archive URL: " + url)
 
-    if path == None and remote.endswith(GIT_SUFFIX):
-        remote_no_suffix = remote[:len(remote) - len(GIT_SUFFIX)]
-    else:
-        remote_no_suffix = remote
-    project = remote_no_suffix.split("//", 1)[1].split("/")[2] if remote_no_suffix else None
+    remote = username + "/" + project
+    tag = None
+    for suffix in (".tar.gz", ".zip"):
+        if filename.endswith(suffix):
+            tag = filename[:len(filename) - len(suffix)]
+    if tag == None: fail("Could not extract ref from GitHub URL: " + url)
+
+    commit = None
+    if len(tag) in (40, 64): (commit, tag) = (tag, commit)  # Looks like a commit SHA, not a tag
 
     if project != None and name == None:
-        name = project.replace("-", "_")
+        name = ["com", "github", username, project.replace("-", "_")].join("_")
     if project != None and strip_prefix == True:
-        strip_prefix = "%s-%s" % (project, treeish)
-    if url == None and urls == None:
-        url = "%s/archive/%s%s" % (remote_no_suffix, treeish, archive_suffix)
+        strip_prefix = "%s-%s" % (project, commit or tag)
     if name != None and build_file == True:
         build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
 
@@ -110,14 +107,12 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
     elif sha256 == False:
         if build_file or build_file_content:
             new_git_repository(name=name, remote=remote, build_file=build_file,
-                               commit=commit, tag=tag, branch=branch,
-                               shallow_since=shallow_since,
+                               commit=commit, tag=tag, shallow_since=shallow_since,
                                build_file_content=build_file_content,
                                strip_prefix=strip_prefix, **kwargs)
         else:
             git_repository(name=name, remote=remote, strip_prefix=strip_prefix,
-                           commit=commit, tag=tag, branch=branch,
-                           shallow_since=shallow_since, **kwargs)
+                           commit=commit, tag=tag, shallow_since=shallow_since, **kwargs)
     else:
         auto_http_archive(name=name, url=url, urls=urls, sha256=sha256,
                           build_file=build_file, strip_prefix=strip_prefix,
@@ -127,8 +122,7 @@ def ray_deps_setup():
     github_repository(
         name = "redis",
         build_file = True,
-        tag = "5.0.3",
-        remote = "https://github.com/antirez/redis",
+        url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
         patches = [
             "//thirdparty/patches:hiredis-async-include-dict.patch",
@@ -156,22 +150,19 @@ def ray_deps_setup():
 
     github_repository(
         name = "rules_jvm_external",
-        tag = "2.10",
-        remote = "https://github.com/bazelbuild/rules_jvm_external",
+        url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",
         sha256 = "5c1b22eab26807d5286ada7392d796cbc8425d3ef9a57d114b79c5f8ef8aca7c",
     )
 
     github_repository(
         name = "bazel_common",
-        commit = "f1115e0f777f08c3cdb115526c4e663005bec69b",
-        remote = "https://github.com/google/bazel-common",
+        url = "https://github.com/google/bazel-common/archive/f1115e0f777f08c3cdb115526c4e663005bec69b.tar.gz",
         sha256 = "50dea89af2e1334e18742f18c91c860446de8d1596947fe87e3cdb0d27b6f8f3",
     )
 
     github_repository(
         name = "com_github_checkstyle_java",
-        commit = "ef367030d1433877a3360bbfceca18a5d0791bdd",
-        remote = "https://github.com/ray-project/checkstyle_java",
+        url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
         sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
     )
 
@@ -190,8 +181,7 @@ def ray_deps_setup():
     github_repository(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        commit = "5b53112431ef916381d6969f114727cc4f83960b",
-        remote = "https://github.com/nelhage/rules_boost",
+        url = "https://github.com/nelhage/rules_boost/archive/5b53112431ef916381d6969f114727cc4f83960b.tar.gz",
         sha256 = "32080749fdb8e4015815694a5c7d009f479e5f6a4da443d262bd7f28b8bd1b55",
         patches = [
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
@@ -201,29 +191,25 @@ def ray_deps_setup():
 
     github_repository(
         name = "com_github_google_flatbuffers",
-        commit = "63d51afd1196336a7d1f56a988091ef05deb1c62",
-        remote = "https://github.com/google/flatbuffers",
+        url = "https://github.com/google/flatbuffers/archive/63d51afd1196336a7d1f56a988091ef05deb1c62.tar.gz",
         sha256 = "3f469032571d324eabea88d7014c05fec8565a5877dbe49b2a52d8d1a0f18e63",
     )
 
     github_repository(
         name = "com_google_googletest",
-        commit = "3306848f697568aacf4bcca330f6bdd5ce671899",
-        remote = "https://github.com/google/googletest",
+        url = "https://github.com/google/googletest/archive/3306848f697568aacf4bcca330f6bdd5ce671899.tar.gz",
         sha256 = "79ae337dab8e9ee6bd97a9f7134929bb1ddc7f83be9a564295b895865efe7dba",
     )
 
     github_repository(
         name = "com_github_gflags_gflags",
-        commit = "e171aa2d15ed9eb17054558e0b3a6a413bb01067",
-        remote = "https://github.com/gflags/gflags",
+        url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
     )
 
     github_repository(
         name = "com_github_google_glog",
-        commit = "925858d9969d8ee22aabc3635af00a37891f4e25",
-        remote = "https://github.com/google/glog",
+        url = "https://github.com/google/glog/archive/925858d9969d8ee22aabc3635af00a37891f4e25.tar.gz",
         sha256 = "fb86eca661497ac6f9ce2a106782a30215801bb8a7c8724c6ec38af05a90acf3",
         patches = [
             "//thirdparty/patches:glog-stack-trace.patch",
@@ -233,8 +219,7 @@ def ray_deps_setup():
     github_repository(
         name = "plasma",
         build_file = True,
-        commit = "86f34aa07e611787d9cc98c6a33b0a0a536dce57",
-        remote = "https://github.com/apache/arrow",
+        url = "https://github.com/apache/arrow/archive/86f34aa07e611787d9cc98c6a33b0a0a536dce57.tar.gz",
         sha256 = "6b5f55d10681a3938bbf8f07eee52c4eb6e761da6ba27490f55ccb89ce645ac8",
         patches = [
             "//thirdparty/patches:arrow-headers-unused.patch",
@@ -249,15 +234,13 @@ def ray_deps_setup():
     github_repository(
         name = "cython",
         build_file = True,
-        commit = "49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e",
-        remote = "https://github.com/cython/cython",
+        url = "https://github.com/cython/cython/archive/49414dbc7ddc2ca2979d6dbe1e44714b10d72e7e.tar.gz",
         sha256 = "0b697ac90d1e46842c7cbbf5f4a1bde5b7b41037c611167417115337e3756eaa",
     )
 
     github_repository(
         name = "io_opencensus_cpp",
-        commit = "3aa11f20dd610cb8d2f7c62e58d1e69196aadf11",
-        remote = "https://github.com/census-instrumentation/opencensus-cpp",
+        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.tar.gz",
         sha256 = "a0b4e2d3c4479cc343c003f0c31f48e9e05461cb232815e348fc0358bfa8bb79",
     )
 
@@ -265,16 +248,14 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     github_repository(
         name = "com_google_absl",
-        commit = "aa844899c937bde5d2b24f276b59997e5b668bde",
-        remote = "https://github.com/abseil/abseil-cpp",
+        url = "https://github.com/abseil/abseil-cpp/archive/aa844899c937bde5d2b24f276b59997e5b668bde.tar.gz",
         sha256 = "327a3883d24cf5d81954b8b8713867ecf2289092c7a39a9dc25a9947cf5b8b78",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
     github_repository(
         name = "com_github_jupp0r_prometheus_cpp",
-        commit = "60eaa4ea47b16751a8e8740b05fe70914c68a480",
-        remote = "https://github.com/jupp0r/prometheus-cpp",
+        url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
         patches = [
             # https://github.com/jupp0r/prometheus-cpp/pull/225
@@ -286,8 +267,7 @@ def ray_deps_setup():
     github_repository(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        commit = "4790ab6d97e634a1ede983be393f3bb3c132b2f7",
-        remote = "https://github.com/grpc/grpc",
+        url = "https://github.com/grpc/grpc/archive/4790ab6d97e634a1ede983be393f3bb3c132b2f7.tar.gz",
         sha256 = "df83bd8a08975870b8b254c34afbecc94c51a55198e6e3a5aab61d62f40b7274",
         patches = [
             "//thirdparty/patches:grpc-command-quoting.patch",
@@ -301,14 +281,12 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
         name = "boringssl",
         # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
-        commit = "83da28a68f32023fd3b95a8ae94991a07b1f6c62",
-        remote = "https://github.com/google/boringssl",
+        url = "https://github.com/google/boringssl/archive/83da28a68f32023fd3b95a8ae94991a07b1f6c62.tar.gz",
         sha256 = "781fa39693ec2984c71213cd633e9f6589eaaed75e3a9ac413237edec96fd3b9",
     )
 
     github_repository(
         name = "rules_proto_grpc",
-        commit = "a74fef39c5fe636580083545f76d1eab74f6450d",
-        remote = "https://github.com/rules-proto-grpc/rules_proto_grpc",
+        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
     )
