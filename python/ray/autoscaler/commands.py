@@ -424,9 +424,7 @@ def exec_cluster(config_file,
             attach_info = "Use `{}` to check on command status.".format(
                 attach_command)
             logger.info(attach_info)
-
         return result
-
     finally:
         provider.cleanup()
 
@@ -446,7 +444,6 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-
     return updater.cmd_runner.run(
         cmd, allocate_tty=True, exit_on_fail=True, port_forward=port_forward)
 

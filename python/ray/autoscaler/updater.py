@@ -49,7 +49,6 @@ class KubernetesCommandRunner:
             allocate_tty=False,
             exit_on_fail=False,
             port_forward=None):
-
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -83,8 +82,8 @@ class KubernetesCommandRunner:
                 "--",
             ] + with_interactive(cmd)
             try:
-                return self.process_runner.check_output(" ".join(final_cmd), shell=True)
-
+                return self.process_runner.check_output(
+                    " ".join(final_cmd), shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
                     quoted_cmd = " ".join(final_cmd[:-1] +
@@ -263,7 +262,6 @@ class SSHCommandRunner:
             final_cmd.append("while true; do sleep 86400; done")
         try:
             return self.process_runner.check_output(final_cmd)
-
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
