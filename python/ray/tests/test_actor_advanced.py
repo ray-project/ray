@@ -686,7 +686,8 @@ ray.get(actor.ping.remote())
     assert ray.get(detached_actor.ping.remote()) == "pong"
 
 
-def test_kill(ray_start_regular):
+@pytest.mark.parametrize("deprecated_codepath", [False, True])
+def test_kill(ray_start_regular, deprecated_codepath):
     @ray.remote
     class Actor:
         def hang(self):
@@ -697,9 +698,17 @@ def test_kill(ray_start_regular):
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
-    actor.__ray_kill__()
+    if deprecated_codepath:
+        actor.__ray_kill__()
+    else:
+        ray.kill(actor)
+
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result)
+
+    if not deprecated_codepath:
+        with pytest.raises(ValueError):
+            ray.kill("not_an_actor_handle")
 
 
 # This test verifies actor creation task failure will not
