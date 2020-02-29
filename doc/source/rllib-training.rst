@@ -533,10 +533,10 @@ Besides using built-in classes, one can sub-class any of
 these built-ins, add custom behavior to it, and use that new class in
 the config instead.
 
-Every policy has-an instantiation of one of the Exploration (sub-)classes
-(described below). This Exploration object is created from the Trainer’s
+Every policy has-an instantiation of one of the Exploration (sub-)classes.
+This Exploration object is created from the Trainer’s
 ``config[“exploration_config”]`` dict, which specifies the class to use via the
-special “type” key, as well as all constructor arguments (via all other keys),
+special “type” key, as well as constructor arguments via all other keys,
 e.g.:
 
 .. code-block:: python
@@ -549,7 +549,18 @@ e.g.:
     }
     # ...
 
-Every Exploration class implements the ``get_exploration_action`` method:
+The following table lists all built-in Exploration sub-classes and the agents
+that currently used these by default:
+
+.. View table below at: https://docs.google.com/drawings/d/1dEMhosbu7HVgHEwGBuMlEDyPiwjqp_g6bZ0DzCMaoUM/edit?usp=sharing
+.. image:: images/rllib-exploration-api-table.svg
+
+An Exploration class implements the ``get_exploration_action`` method,
+in which the exact exploratory behavior is defined.
+It takes the model’s output, the action distribution class, the model itself,
+a timestep (the global env-sampling steps already taken),
+and an ``explore`` switch and outputs a tuple of 1) action and
+2) log-likelihood:
 
 .. code-block:: python
 
@@ -587,9 +598,6 @@ Every Exploration class implements the ``get_exploration_action`` method:
         """
         pass
 
-It takes the model’s output, the action distribution class, the model itself,
-a timestep, and an ``explore`` switch and outputs a tuple of 1) action and
-2) log-likelihood.
 
 On the highest level, the ``Trainer.compute_action`` and ``Policy.compute_action(s)``
 methods have a boolean ``explore`` switch, which is passed into
@@ -649,10 +657,6 @@ The following are example excerpts from different Trainers' configs
        "type": "StochasticSampling",
     },
 
-The following table lists all existing Exploration sub-classes and where they
-are currently used (by default):
-
-.. image:: images/rllib-exploration-api-table.png
 
 .. _CustomEvaluation:
 
