@@ -1,9 +1,68 @@
 import time
 from collections import Counter
+import pytest
 
 import ray
 from ray.util.iter import from_items, from_iterators, from_range, \
-    from_actors, ParallelIteratorWorker
+    from_actors, ParallelIteratorWorker, LocalIterator
+
+
+def test_metrics(ray_start_regular_shared):
+    it = from_items([1, 2, 3, 4], num_shards=1)
+    it2 = from_items([1, 2, 3, 4], num_shards=1)
+
+    def f(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["foo"] += x
+        return metrics.counters["foo"]
+
+    it = it.gather_sync().for_each(f)
+    it2 = it2.gather_sync().for_each(f)
+
+    # Context cannot be accessed outside the iterator.
+    with pytest.raises(ValueError):
+        LocalIterator.get_metrics()
+
+    # Tests iterators have isolated contexts.
+    assert it.take(4) == [1, 3, 6, 10]
+    assert it2.take(4) == [1, 3, 6, 10]
+
+    # Context cannot be accessed outside the iterator.
+    with pytest.raises(ValueError):
+        LocalIterator.get_metrics()
+
+
+def test_metrics_union(ray_start_regular_shared):
+    it1 = from_items([1, 2, 3, 4], num_shards=1)
+    it2 = from_items([1, 2, 3, 4], num_shards=1)
+
+    def foo_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["foo"] += x
+        return metrics.counters["foo"]
+
+    def bar_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["bar"] += 100
+        return metrics.counters["bar"]
+
+    def verify_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["n"] += 1
+        # Check the unioned iterator gets a new metric context.
+        assert "foo" not in metrics.counters
+        assert "bar" not in metrics.counters
+        # Check parent metrics are accessible.
+        if metrics.counters["n"] > 2:
+            assert "foo" in metrics.parent_metrics[0].counters
+            assert "bar" in metrics.parent_metrics[1].counters
+        return x
+
+    it1 = it1.gather_async().for_each(foo_metrics)
+    it2 = it2.gather_async().for_each(bar_metrics)
+    it3 = it1.union(it2, deterministic=True)
+    it3 = it3.for_each(verify_metrics)
+    assert it3.take(10) == [1, 100, 3, 200, 6, 300, 10, 400]
 
 
 def test_from_items(ray_start_regular_shared):
@@ -271,6 +330,5 @@ def test_serialization(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

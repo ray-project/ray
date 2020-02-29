@@ -1000,6 +1000,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_pipeline",
+    tags = ["tests_dir", "tests_dir_P"],
+    size = "small",
+    srcs = ["tests/test_pipeline.py"]
+)
+
+py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
