@@ -239,7 +239,7 @@ if __name__ == "__main__":
         "--address",
         required=False,
         type=str,
-        help="the address to use for connecting to a cluster.")
+        help="the address to use to connect to a cluster.")
     parser.add_argument(
         "--num-replicas",
         "-n",

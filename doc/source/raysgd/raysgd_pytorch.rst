@@ -126,11 +126,11 @@ See the documentation on the PyTorchTrainer here: :ref:`ref-pytorch-trainer`.
 Custom Training and Validation (Operators)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``PyTorchTrainer`` allows you to run a custom training and validation loops in parallel on each worker, providing a flexibility similar to using PyTorch natively.
+``PyTorchTrainer`` allows you to run a custom training and validation loops in parallel on each worker, providing a flexible interface similar to using PyTorch natively.
 This is done via the :ref:`ref-pytorch-operator` interface.
 
-For both training and validation, there are two granularities that you can provide customization - per epoch or per batch. These correspond to ``train_batch``,
-``train_epoch``, ``validate``, and ``validate_batch``. Other useful methods to override include ``setup``, ``save`` and ``restore``. You can use this class
+For both training and validation, there are two granularities that you can provide customization - per epoch and per batch. These correspond to ``train_batch``,
+``train_epoch``, ``validate``, and ``validate_batch``. Other useful methods to override include ``setup``, ``save`` and ``restore``. You can use these
 to manage state (like a classifier neural network for calculating inception score, or a heavy tokenizer).
 
 Providing a custom operator is necessary if creator functions return multiple models, optimizers, or schedulers.
@@ -222,7 +222,7 @@ See the `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ra
 Training/Validation
 -------------------
 
-Now that the trainer is constructed, you'll naturally want to train the model.
+Now that the trainer is constructed, here's how to train the model.
 
 .. code-block:: python
 
@@ -231,7 +231,7 @@ Now that the trainer is constructed, you'll naturally want to train the model.
         val_metrics = trainer.validate()
 
 
-Each ``train`` takes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``. Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
+Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``. Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
 
 After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the Trainer:
 
@@ -404,7 +404,7 @@ Advanced: Hyperparameter Tuning
 Simultaneous Multi-model Training
 ---------------------------------
 
-In certain scenarios such as training GANs, you may want to use multiple models in the training loop. You can do this in the ``PyTorchTrainer`` by allowing the ``model_creator``, ``optimizer_creator``, and ``scheduler_creator`` to return multiple values. Provide a custom TrainingOperator (:ref:`raysgd-custom-training`) to train across multiple models.
+In certain scenarios, such as training GANs, you may want to use multiple models in the training loop. You can do this in the ``PyTorchTrainer`` by allowing the ``model_creator``, ``optimizer_creator``, and ``scheduler_creator`` to return multiple values. Provide a custom TrainingOperator (:ref:`raysgd-custom-training`) to train across multiple models.
 
 You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/pytorch/examples/dcgan.py>`_ for an end-to-end example.
 
