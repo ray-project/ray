@@ -132,6 +132,7 @@ class GANOperator(TrainingOperator):
         self.classifier.eval()
 
     def inception_score(self, imgs, batch_size=32, splits=1):
+        """Calculate the inception score of the generated images."""
         N = len(imgs)
         dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
         up = nn.Upsample(
@@ -171,6 +172,7 @@ class GANOperator(TrainingOperator):
         discriminator, generator = self.models
         optimD, optimG = self.optimizers
 
+        # Compute a discriminator update for real images
         discriminator.zero_grad()
         real_cpu = batch[0].to(self.device)
         batch_size = real_cpu.size(0)
@@ -179,6 +181,7 @@ class GANOperator(TrainingOperator):
         errD_real = self.criterion(output, label)
         errD_real.backward()
 
+        # Compute a discriminator update for fake images
         noise = torch.randn(
             batch_size, generator.latent_vector_size, 1, 1, device=self.device)
         fake = generator(noise)
@@ -187,8 +190,11 @@ class GANOperator(TrainingOperator):
         errD_fake = self.criterion(output, label)
         errD_fake.backward()
         errD = errD_real + errD_fake
+
+        # Update the discriminator
         optimD.step()
 
+        # Update the generator
         generator.zero_grad()
         label.fill_(real_label)
         output = discriminator(fake).view(-1)
