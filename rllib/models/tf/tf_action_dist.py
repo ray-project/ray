@@ -46,6 +46,7 @@ class Categorical(TFActionDistribution):
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
         temperature = max(0.0001, temperature)  # clamp for stability reasons
+        self.n = inputs.shape[-1]
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)
@@ -56,6 +57,7 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def logp(self, x):
+        #x = tf.minimum(x, self.n - 1)
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=self.inputs, labels=tf.cast(x, tf.int32))
 

@@ -63,7 +63,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
         critic_hidden_activation=config["Q_model"]["hidden_activation"],
         critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
-        twin_q=config["twin_q"])
+        twin_q=config["twin_q"],
+        initial_alpha=config["initial_alpha"])
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -78,7 +79,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
         critic_hidden_activation=config["Q_model"]["hidden_activation"],
         critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
-        twin_q=config["twin_q"])
+        twin_q=config["twin_q"],
+        initial_alpha=config["initial_alpha"])
 
     return policy.model
 
@@ -144,41 +146,71 @@ def actor_critic_loss(policy, model, _, train_batch):
 
     # Discrete case: Get action probs directly from pi and form their logp.
     policy_t = model.action_model(model_out_t)
+    policy.raw_policy_out = policy_t
+
+    policy_t = tf.nn.softmax(policy_t)
     log_pis_t = tf.log(policy_t)
-    policy_tp1 = model.action_model(model_out_tp1)
+
+    policy_tp1 = tf.nn.softmax(model.action_model(model_out_tp1), -1)
     log_pis_tp1 = tf.log(policy_tp1)
     # Q-values for current policy in given current state.
     q_t = model.get_q_values(model_out_t)
+    policy.q_t = q_t
 
     # Target Q-network evaluation.
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1) - \
             model.alpha * log_pis_tp1
+    policy.q_tp1 = q_tp1
 
     assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
 
-    q_t_selected = tf.stop_gradient(policy_t) * q_t
-    q_tp1_best = tf.stop_gradient(policy_tp1) * q_tp1
+    #q_t_selected = tf.reduce_sum(tf.multiply(tf.stop_gradient(policy_t), q_t), axis=-1)
+    one_hot = tf.one_hot(train_batch[SampleBatch.ACTIONS], depth=q_t.shape.as_list()[-1])
+    q_t_selected = tf.reduce_sum(q_t * one_hot, axis=-1)
+    policy.q_t_selected = q_t_selected
+    #q_t_selected = q_t
+
+    q_tp1_best = tf.reduce_sum(tf.multiply(policy_tp1, q_tp1), axis=-1)
+    policy.q_tp1_best = q_tp1_best
+    #q_tp1_best = q_tp1
+    #q_tp1_best_masked = \
+    #    tf.expand_dims(
+    #        1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32),
+    #        axis=-1) * q_tp1_best
     q_tp1_best_masked = \
-        tf.expand_dims(
-            1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32),
-            axis=-1) * q_tp1_best
+        (1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)) * \
+        q_tp1_best
 
     # compute RHS of bellman equation
-    q_t_selected_target = tf.stop_gradient(tf.expand_dims(
-        train_batch[SampleBatch.REWARDS] + policy.config["gamma"], axis=-1) *
-                                           q_tp1_best_masked)
+    #q_t_selected_target = tf.stop_gradient(
+    #    tf.expand_dims(train_batch[SampleBatch.REWARDS], axis=-1) +
+    #    (tf.expand_dims(policy.config["gamma"], axis=-1) * q_tp1_best_masked))
+    q_t_selected_target = tf.stop_gradient(
+        train_batch[SampleBatch.REWARDS] +
+        (policy.config["gamma"] * q_tp1_best_masked))
+    policy.q_t_selected_target = q_t_selected_target
 
-    td_error = tf.square(q_t_selected - q_t_selected_target)
+    # TODO(sven): Should TD-errors not just be the abs of the difference
+    #  (w/o the square)?
+    #td_error = tf.reduce_sum(tf.multiply(tf.stop_gradient(policy_t), tf.abs(q_t_selected - q_t_selected_target)), axis=-1)
+    td_error = tf.abs(q_t_selected_target - q_t_selected)
 
     critic_loss = [
+        #0.5 * tf.reduce_mean(tf.square(td_error))
         tf.losses.mean_squared_error(
             labels=q_t_selected_target, predictions=q_t_selected, weights=0.5)
     ]
+    #critic_loss[0] = tf.Print(critic_loss[0], [critic_loss[0]], "CriticLoss")
 
     # Calculate the alpha-loss.
-    target_entropy = (-np.prod(policy.action_space.shape)
-                      if policy.config["target_entropy"] == "auto" else
-                      policy.config["target_entropy"])
+    if policy.config["target_entropy"] == "auto":
+        if isinstance(policy.action_space, Discrete):
+            target_entropy = np.array(-policy.action_space.n, dtype=np.float32)
+        else:
+            target_entropy = -np.prod(policy.action_space.shape)
+    else:
+        target_entropy = policy.config["target_entropy"]
+    policy.target_entropy = target_entropy
     # Note: In the papers, alpha is used directly, here we take the log.
     # Discrete case: Multiply the action probs as weights with the original
     # loss terms (no expectations needed).
@@ -186,18 +218,20 @@ def actor_critic_loss(policy, model, _, train_batch):
         tf.stop_gradient(policy_t),
         -model.log_alpha * tf.stop_gradient(log_pis_t + target_entropy)),
         axis=-1))
+    #alpha_loss = tf.Print(alpha_loss, [alpha_loss], "AlphaLoss")
     actor_loss = tf.reduce_mean(tf.reduce_sum(tf.multiply(
-        tf.stop_gradient(policy_t),
-        model.alpha * log_pis_t - q_t), axis=-1))
-
+        policy_t,
+        model.alpha * log_pis_t - tf.stop_gradient(q_t)), axis=-1))
+    #actor_loss = tf.Print(actor_loss, [actor_loss], "ActorLoss")
     # save for stats function
     policy.q_t = q_t
     policy.td_error = td_error
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
+    policy.alpha_value = model.alpha
 
-    p1 = tf.Print(alpha_loss, [q_t, td_error, actor_loss, critic_loss, alpha_loss], "Q_t|TDErr|AcL|CrL|AlL")
+    #p1 = tf.Print(alpha_loss, [q_t, td_error, actor_loss, critic_loss, alpha_loss], "Q_t|TDErr|AcL|CrL|AlL")
     #print("q_t={}".format(q_t))
     #print("td_error={}".format(td_error))
     #print("actor_loss={}".format(actor_loss))
@@ -206,32 +240,17 @@ def actor_critic_loss(policy, model, _, train_batch):
 
     # in a custom apply op we handle the losses separately, but return them
     # combined in one loss for now
-    with tf.control_dependencies([p1]):
-        return actor_loss + tf.add_n(critic_loss) + alpha_loss
+    #with tf.control_dependencies([p1]):
+    return actor_loss + tf.add_n(critic_loss) + alpha_loss
 
 
 def gradients(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
+    if policy.config["grad_norm_clipping"]:
         actor_grads_and_vars = minimize_and_clip(
             optimizer,
             policy.actor_loss,
             var_list=policy.model.policy_variables(),
             clip_val=policy.config["grad_norm_clipping"])
-        #if policy.config["twin_q"]:
-        #    q_variables = policy.model.q_variables()
-        #    half_cutoff = len(q_variables) // 2
-        #    critic_grads_and_vars = []
-        #    critic_grads_and_vars += minimize_and_clip(
-        #        optimizer,
-        #        policy.critic_loss[0],
-        #        var_list=q_variables[:half_cutoff],
-        #        clip_val=policy.config["grad_norm_clipping"])
-        #    critic_grads_and_vars += minimize_and_clip(
-        #        optimizer,
-        #        policy.critic_loss[1],
-        #        var_list=q_variables[half_cutoff:],
-        #        clip_val=policy.config["grad_norm_clipping"])
-        #else:
         critic_grads_and_vars = minimize_and_clip(
             optimizer,
             policy.critic_loss[0],
@@ -245,18 +264,10 @@ def gradients(policy, optimizer, loss):
     else:
         actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
             policy.actor_loss, var_list=policy.model.policy_variables())
-        #if policy.config["twin_q"]:
-        #    q_variables = policy.model.q_variables()
-        #    half_cutoff = len(q_variables) // 2
-        #    base_q_optimizer, twin_q_optimizer = policy._critic_optimizer
-        #    critic_grads_and_vars = base_q_optimizer.compute_gradients(
-        #        policy.critic_loss[0], var_list=q_variables[:half_cutoff]
-        #    ) + twin_q_optimizer.compute_gradients(
-        #        policy.critic_loss[1], var_list=q_variables[half_cutoff:])
-        #else:
         critic_grads_and_vars = policy._critic_optimizer[
             0].compute_gradients(
                 policy.critic_loss[0], var_list=policy.model.q_variables())
+        #print("alpha-loss={}".format(policy.alpha_loss))
         alpha_grads_and_vars = policy._alpha_optimizer.compute_gradients(
             policy.alpha_loss, var_list=[policy.model.log_alpha])
 
@@ -267,6 +278,7 @@ def gradients(policy, optimizer, loss):
                                      if g is not None]
     policy._alpha_grads_and_vars = [(g, v) for (g, v) in alpha_grads_and_vars
                                     if g is not None]
+    #print("alpha_grads_and_vars={}".format(policy._alpha_grads_and_vars))
     grads_and_vars = (
         policy._actor_grads_and_vars + policy._critic_grads_and_vars +
         policy._alpha_grads_and_vars)
@@ -278,16 +290,10 @@ def apply_gradients(policy, optimizer, grads_and_vars):
         policy._actor_grads_and_vars)
 
     cgrads = policy._critic_grads_and_vars
-    half_cutoff = len(cgrads) // 2
-    if policy.config["twin_q"]:
-        critic_apply_ops = [
-            policy._critic_optimizer[0].apply_gradients(cgrads[:half_cutoff]),
-            policy._critic_optimizer[1].apply_gradients(cgrads[half_cutoff:])
-        ]
-    else:
-        critic_apply_ops = [
-            policy._critic_optimizer[0].apply_gradients(cgrads)
-        ]
+
+    critic_apply_ops = [
+        policy._critic_optimizer[0].apply_gradients(cgrads)
+    ]
 
     alpha_apply_ops = policy._alpha_optimizer.apply_gradients(
         policy._alpha_grads_and_vars,
@@ -300,7 +306,16 @@ def stats(policy, train_batch):
         "td_error": tf.reduce_mean(policy.td_error),
         "actor_loss": tf.reduce_mean(policy.actor_loss),
         "critic_loss": tf.reduce_mean(policy.critic_loss),
+        "alpha_loss": tf.reduce_mean(policy.alpha_loss),
+        "alpha_value": tf.reduce_mean(policy.alpha_value),
+        "target_entropy_value": tf.constant(policy.target_entropy),
+        "policy_out": policy.raw_policy_out,
+        #"q_t": policy.q_t,
+        #"q_tp1": policy.q_tp1,
+        "mean_q_t_selected": tf.reduce_mean(policy.q_t_selected),
+        "mean_q_t_selected_target": tf.reduce_mean(policy.q_t_selected_target),
         "mean_q": tf.reduce_mean(policy.q_t),
+        "mean_q_tp1": tf.reduce_mean(policy.q_tp1),
         "max_q": tf.reduce_max(policy.q_t),
         "min_q": tf.reduce_min(policy.q_t),
     }
@@ -331,7 +346,8 @@ class ComputeTDErrorMixin:
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            # Do forward pass on loss to update td error attribute
+            # Do forward pass on loss to update td errors attribute
+            # (one TD-error value per item in batch to update PR weights).
             actor_critic_loss(
                 self, self.model, None, {
                     SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_t),

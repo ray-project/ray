@@ -62,8 +62,6 @@ class SACModel(TFModelV2):
 
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
-        # For discrete case: Add Softmax at end to make sure the NN outputs
-        # valid action probs.
         self.action_model = tf.keras.Sequential([
             tf.keras.layers.Dense(
                 units=hidden,
@@ -73,7 +71,7 @@ class SACModel(TFModelV2):
         ] + [
             tf.keras.layers.Dense(
                 units=action_outs, activation=None, name="action_out")
-        ] + ([tf.keras.layers.Softmax()] if self.discrete else []))
+        ])
         self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
         self.register_variables(self.action_model.variables)

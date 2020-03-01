@@ -26,43 +26,46 @@ DEFAULT_CONFIG = with_common_config({
         "hidden_layer_sizes": (256, 256),
     },
     # Unsquash actions to the upper and lower bounds of env's action space.
+    # Ignored for discrete action spaces.
     "normalize_actions": True,
 
     # === Learning ===
-    # Update the target by \tau * policy + (1-\tau) * target_policy
-    "tau": 5e-3,
+    # Update the target by \tau * policy + (1-\tau) * target_policy.
+    "tau": 1.0,  # 5e-3,
     # Initial value to use for the entropy weight alpha.
-    "initial_alpha": 1.0,
+    "initial_alpha": 10.0,
     # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
     # Discrete(2), -3.0 for Box(shape=(3,))).
     # This is the inverse of reward scale, and will be optimized automatically.
     "target_entropy": "auto",
     # Disable setting done=True at end of episode.
-    "no_done_at_end": True,
-    # N-step target updates
+    "no_done_at_end": False,
+    # N-step target updates.
     "n_step": 1,
+
     ## The GumbelSoftmax temperature parameter to use, iff action space is
     ## discrete and SAC uses GumbelSoftmax to sample.
     #"gumbel_softmax_temperature": 1.0,
+
     # === Evaluation ===
     # The evaluation stats will be reported under the "evaluation" metric key.
-    "evaluation_interval": 1,
+    #"evaluation_interval": 1,
     # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 1,
+    #"evaluation_num_episodes": 1,
     # Extra configuration that disables exploration.
-    "evaluation_config": {
-        "explore": False,
-    },
+    #"evaluation_config": {
+    #    "explore": False,
+    #},
 
-    # Number of env steps to optimize for before returning
+    # Number of env steps to optimize for before returning.
     "timesteps_per_iteration": 100,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": int(1e6),
+    "buffer_size": 1000000,
     # If True prioritized replay buffer will be used.
-    "prioritized_replay": False,
+    "prioritized_replay": True,
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
     "prioritized_replay_eps": 1e-6,
@@ -73,12 +76,12 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Optimization ===
     "optimization": {
-        "actor_learning_rate": 3e-4,
-        "critic_learning_rate": 3e-4,
-        "entropy_learning_rate": 3e-4,
+        "actor_learning_rate": 5e-4,
+        "critic_learning_rate": 5e-4,
+        "entropy_learning_rate": 5e-5,
     },
-    # If not None, clip gradients during optimization at this value
-    "grad_norm_clipping": None,
+    # If not None, clip gradients during optimization at this value.
+    "grad_norm_clipping": 2.0,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
@@ -87,9 +90,9 @@ DEFAULT_CONFIG = with_common_config({
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
-    "train_batch_size": 256,
+    "train_batch_size": 128,
     # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 0,
+    "target_network_update_freq": 1000,
 
     # === Parallelism ===
     # Whether to use a GPU for local optimization.
