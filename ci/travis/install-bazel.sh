@@ -54,7 +54,9 @@ build --progress_report_interval=60
 # Use ray google cloud cache
 build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build --show_progress_rate_limit=15
+build --show_task_finish
 build --ui_actions_shown=1024
+build --verbose_failures
 EOF
   # If we are in master build, we can write to the cache as well.
   upload=0

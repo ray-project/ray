@@ -47,9 +47,6 @@ jobs:
           --compilation_mode=fastbuild \
           --config=iwyu \
           --keep_going \
-          --show_progress_rate_limit=5 \
-          --show_task_finish \
-          --verbose_failures \
           "//:*"
   build:
     name: ${{ matrix.name }}
@@ -92,7 +89,4 @@ jobs:
         . ./ci/travis/build-helper.sh prep_build_env
         bazel --batch build \
           --keep_going \
-          --show_progress_rate_limit=5 \
-          --show_task_finish \
-          --verbose_failures \
           "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
