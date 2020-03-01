@@ -3,8 +3,8 @@ from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
 from ray.rllib.utils.deprecation import deprecation_warning, \
     DEPRECATED_VALUE
-from ray.rllib.utils.exploration.per_worker_gaussian_noise import \
-    PerWorkerGaussianNoise
+from ray.rllib.utils.exploration.per_worker_ornstein_uhlenbeck_noise import \
+    PerWorkerOrnsteinUhlenbeckNoise
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -178,10 +178,12 @@ def validate_config(config):
                 "exploration_fraction") * schedule_max_timesteps
     if config.get("per_worker_exploration", DEPRECATED_VALUE) != \
             DEPRECATED_VALUE:
-        deprecation_warning("per_worker_exploration",
-                            "exploration_config.type=PerWorkerGaussianNoise")
+        deprecation_warning(
+            "per_worker_exploration",
+            "exploration_config.type=PerWorkerOrnsteinUhlenbeckNoise")
         if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["type"] = PerWorkerGaussianNoise
+            config["exploration_config"]["type"] = \
+                PerWorkerOrnsteinUhlenbeckNoise
 
 
 DDPGTrainer = GenericOffPolicyTrainer.with_updates(
