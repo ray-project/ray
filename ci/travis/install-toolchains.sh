@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -euxo pipefail
 
 LLVM_VERSION_WINDOWS="9.0.0"
 
