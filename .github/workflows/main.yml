@@ -49,7 +49,6 @@ jobs:
           --keep_going \
           --show_progress_rate_limit=5 \
           --show_task_finish \
-          --show_timestamps \
           --verbose_failures \
           "//:*"
   build:
@@ -95,6 +94,5 @@ jobs:
           --keep_going \
           --show_progress_rate_limit=5 \
           --show_task_finish \
-          --show_timestamps \
           --verbose_failures \
           "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
