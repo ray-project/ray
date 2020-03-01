@@ -333,3 +333,11 @@ class TrainingOperator:
     def use_fp16(self):
         """Whether the model and optimizer have been FP16 enabled."""
         return self._use_fp16
+
+
+class _TestingOperator(TrainingOperator):
+    def train_epoch(self, iterator, info):
+        func = self.config.get("custom_func")
+        if callable(func):
+            return func(self, iterator, info)
+        return {"done": 1}
