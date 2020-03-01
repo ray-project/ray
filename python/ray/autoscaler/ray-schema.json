@@ -17,6 +17,7 @@
         "cluster_name",
         "provider"
     ],
+    "additionalProperties": false,
 	"properties": {
         "cluster_name": {
             "description": "An unique identifier for the head node and workers of this cluster.",
@@ -57,6 +58,7 @@
             "type": "object",
             "description": "Cloud-provider specific configuration.",
             "required": [ "type" ],
+            "additionalProperties": false,
             "properties": {
                 "type": {
                     "type": "string",
@@ -139,6 +141,7 @@
         "auth": {
             "type": "object",
             "description": "How Ray will authenticate with newly launched nodes.",
+            "additionalProperties": false,
             "properties": {
                 "ssh_user": {
                     "type": "string",
@@ -152,6 +155,7 @@
         "docker": {
             "type": "object",
             "description": "Docker configuration. If this is specified, all setup and start commands will be executed in the container.",
+            "additionalProperties": false,
             "properties": {
                 "image": {
                     "type": "string",
