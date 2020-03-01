@@ -1,6 +1,7 @@
 name: CI
 
 env:
+  GITHUB: true
   DEBIAN_FRONTEND: noninteractive
 
 on: [push, pull_request]

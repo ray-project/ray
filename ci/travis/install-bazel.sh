@@ -45,7 +45,7 @@ if [ "${TRAVIS-}" = true ]; then
 build --disk_cache="${HOME}/ray-bazel-cache"
 EOF
 fi
-if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
+if [ "${TRAVIS-}" = true ] || [ "${GITHUB-}" = true ]; then
   cat <<EOF >> "${HOME}/.bazelrc"
 # CI output doesn't scroll, so don't use curses
 build --curses=no
