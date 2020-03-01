@@ -6,6 +6,7 @@ import {
   NodeFeatureComponent,
   WorkerFeatureComponent
 } from "./types";
+import SpanButton from "../../../../common/SpanButton";
 
 export const ClusterRAM: ClusterFeatureComponent = ({ nodes }) => {
   let used = 0;
@@ -22,16 +23,29 @@ export const ClusterRAM: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeRAM: NodeFeatureComponent = ({ node }) => (
-  <UsageBar
-    percent={(100 * (node.mem[0] - node.mem[1])) / node.mem[0]}
-    text={formatUsage(node.mem[0] - node.mem[1], node.mem[0], "gibibyte")}
-  />
+type setIframeDialogType = (
+  pid: number | "All",
+  metric: "cpu" | "memory"
+) => void;
+
+export const makeNodeRAM = (
+  setIframeDialog: setIframeDialogType
+): NodeFeatureComponent => ({ node }) => (
+  <SpanButton onClick={() => setIframeDialog("All", "memory")}>
+    <UsageBar
+      percent={(100 * (node.mem[0] - node.mem[1])) / node.mem[0]}
+      text={formatUsage(node.mem[0] - node.mem[1], node.mem[0], "gibibyte")}
+    />
+  </SpanButton>
 );
 
-export const WorkerRAM: WorkerFeatureComponent = ({ node, worker }) => (
-  <UsageBar
-    percent={(100 * worker.memory_info.rss) / node.mem[0]}
-    text={formatByteAmount(worker.memory_info.rss, "mebibyte")}
-  />
+export const makeWorkerRAM = (
+  setIframeDialog: setIframeDialogType
+): WorkerFeatureComponent => ({ node, worker }) => (
+  <SpanButton onClick={() => setIframeDialog(worker.pid, "memory")}>
+    <UsageBar
+      percent={(100 * worker.memory_info.rss) / node.mem[0]}
+      text={formatByteAmount(worker.memory_info.rss, "mebibyte")}
+    />
+  </SpanButton>
 );
