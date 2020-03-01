@@ -96,7 +96,7 @@ def ray_deps_setup():
     http_file(
         name = "redis-src",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
-        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.bz2"],
+        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.gz"],
     )
 
     auto_http_archive(
