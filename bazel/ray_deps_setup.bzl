@@ -1,5 +1,5 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 def github_repository(*, name=None, remote=None, commit=None, tag=None,
                       branch=None, build_file=None, build_file_content=None,
@@ -87,6 +87,18 @@ def ray_deps_setup():
         ],
     )
 
+    http_file(
+        name = "win-redis-bin",
+        sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
+        urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
+    )
+
+    http_file(
+        name = "redis-src",
+        sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
+        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.gz"],
+    )
+
     github_repository(
         name = "rules_jvm_external",
         tag = "2.10",
@@ -113,25 +125,20 @@ def ray_deps_setup():
         # declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
-        sha256 = "da3411ea45622579d419bfda66f45cd0f8c32a181d84adfa936f5688388995cf",
-        strip_prefix = "boost_1_68_0",
-        url = "https://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz",
+        sha256 = "96b34f7468f26a141f6020efb813f1a2f3dfb9797ecf76a7d7cbd843cc95f5bd",
+        strip_prefix = "boost_1_71_0",
+        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.gz",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
-            # Prefer compiler intrinsics; they're faster & avoid linker issues
-            "//thirdparty/patches:boost-interlocked-prefer-intrinsics.patch",
-            # Backport Clang-Cl patch on Boost 1.69 to Boost <= 1.68:
-            #   https://lists.boost.org/Archives/boost/2018/09/243420.php
-            "//thirdparty/patches:boost-type_traits-trivial_move.patch",
         ],
     )
 
     github_repository(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        commit = "df908358c605a7d5b8bbacde07afbaede5ac12cf",
+        commit = "5b53112431ef916381d6969f114727cc4f83960b",
         remote = "https://github.com/nelhage/rules_boost",
-        sha256 = "3775c5ab217e0c9cc380f56e243a4d75fe6fee8eaee1447899eaa04c5d582cf1",
+        sha256 = "4481db75d1d25b4f043f17a6c2d5f963782e659ad5049e027146b5248d37bf6b",
         patches = [
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
             "//thirdparty/patches:rules_boost-windows-linkopts.patch",
@@ -181,6 +188,7 @@ def ray_deps_setup():
             "//thirdparty/patches:arrow-windows-poll.patch",
             "//thirdparty/patches:arrow-windows-sigpipe.patch",
             "//thirdparty/patches:arrow-windows-socket.patch",
+            "//thirdparty/patches:arrow-windows-dlmalloc.patch",
         ],
     )
 

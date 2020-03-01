@@ -1028,6 +1028,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_pipeline",
+    tags = ["tests_dir", "tests_dir_P"],
+    size = "small",
+    srcs = ["tests/test_pipeline.py"]
+)
+
+py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
@@ -1290,6 +1297,14 @@ py_test(
     size = "small",
     srcs = ["examples/rollout_worker_custom_workflow.py"],
     args = ["--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rock_paper_scissors_multiagent.py"],
+    args = ["--stop=200"],
 )
 
 py_test(

@@ -260,11 +260,11 @@ COMMON_CONFIG = {
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
     "remote_env_batch_wait_ms": 0,
-    # Minimum time per train iteration
+    # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,
+    "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
@@ -610,7 +610,7 @@ class Trainer(Trainable):
     def _stop(self):
         if hasattr(self, "workers"):
             self.workers.stop()
-        if hasattr(self, "optimizer"):
+        if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
