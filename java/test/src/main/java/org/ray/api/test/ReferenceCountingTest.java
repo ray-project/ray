@@ -2,14 +2,21 @@ package org.ray.api.test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import com.google.common.collect.ImmutableMap;
 import org.ray.api.Ray;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.TestUtils.TestLock;
+import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ObjectId;
+import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.runtime.object.NativeObjectStore;
 import org.ray.runtime.object.RayObjectImpl;
 import org.testng.Assert;
@@ -136,4 +143,120 @@ public class ReferenceCountingTest extends BaseTest {
     ((RayObjectImpl<?>) result).removeLocalReference();
     checkRefCounts(ImmutableMap.of());
   }
+
+  public static long fBasicPinning(List<Byte> array) {
+    long result = 0;
+    for (byte x : array) {
+      result += x;
+    }
+    return result;
+  }
+
+  @RayRemote
+  public static class ActorBasicPinning {
+    private RayObject<List<Byte>> largeObject;
+    public ActorBasicPinning() {
+      largeObject = Ray.put(Stream.generate(() -> (byte) 0)
+              .limit(25 * 1024 * 1024)
+              .collect(Collectors.toList()));
+    }
+
+    public List<Byte> getLargeObject() {
+      return largeObject.get();
+    }
+  }
+
+  public void testBasicPinning() {
+    RayActor<ReferenceCountingTest.ActorBasicPinning> actor =
+            Ray.createActor(ReferenceCountingTest.ActorBasicPinning::new);
+    //    # Fill up the object store with short-lived objects. These should be
+    //    # evicted before the long-lived object whose reference is held by
+    //    # the actor.
+    for (int i = 0; i < 10; i++) {
+      RayObject<Long> intermediateResult = Ray.call(ReferenceCountingTest::fBasicPinning,
+              Stream.generate(() -> (byte) 0)
+                      .limit(25 * 1024 * 1024)
+                      .collect(Collectors.toList()));
+      intermediateResult.get();
+    }
+    //    # The ray.get below would fail with only LRU eviction, as the object
+    //    # that was ray.put by the actor would have been evicted.
+    Ray.call(ActorBasicPinning::getLargeObject, actor).get();
+  }
+
+  public static Object pending(List<Byte> input1, Object input2) {
+    return null;
+  }
+
+  @Test(enabled = false)
+  public void testPendingTaskDependencyPinning() {
+    //    # The object that is ray.put here will go out of scope immediately, so if
+    //    # pending task dependencies aren't considered, it will be evicted before
+    //    # the ray.get below due to the subsequent ray.puts that fill up the object
+    //    # store.
+    List<Byte> array = Stream.generate(() -> (byte) 0)
+            .limit(25 * 1024 * 1024)
+            .collect(Collectors.toList());
+    ObjectId randomId = ObjectId.fromRandom();
+    RayObject<Object> result = Ray.call(ReferenceCountingTest::pending, array, randomId);
+
+    for (int i = 0; i < 2; i++) {
+      Ray.put(Stream.generate(() -> (byte) 0)
+              .limit(25 * 1024 * 1024)
+              .collect(Collectors.toList()));
+    }
+    //
+    //    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    //    ray.get(oid)
+  }
+
+  @Test(enabled = false)
+  public void testFeatureFlag() {
+  }
+
+  @Test(enabled = false)
+  public void testBasicSerializedReference() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_recursive_serialized_reference() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_actor_holding_serialized_reference() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_worker_holding_serialized_reference() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_basic_nested_ids() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_recursively_nest_ids() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_return_object_id() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_pass_returned_object_id() {
+
+  }
+
+  @Test(enabled = false)
+  public void test_recursively_pass_returned_object_id() {
+
+  }
+
 }
