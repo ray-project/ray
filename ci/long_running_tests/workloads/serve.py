@@ -57,15 +57,17 @@ for _ in range(5):
     time.sleep(0.5)
 
 connections = int(config.num_replicas * config.max_batch_size * 0.75)
-proc = subprocess.Popen(
-    [
-        "./hey_linux_amd64", "-c",
-        str(connections), "-z", "360m", "http://127.0.0.1:8000/echo"
-    ],
-    stdout=PIPE,
-    stderr=PIPE)
-print("started load testing")
-proc.wait()
-out, err = proc.communicate()
-print(out.decode())
-print(err.decode())
+
+while True:
+    proc = subprocess.Popen(
+        [
+            "./hey_linux_amd64", "-c",
+            str(connections), "-z", "60m", "http://127.0.0.1:8000/echo"
+        ],
+        stdout=PIPE,
+        stderr=PIPE)
+    print("started load testing")
+    proc.wait()
+    out, err = proc.communicate()
+    print(out.decode())
+    print(err.decode())

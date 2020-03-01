@@ -66,6 +66,7 @@ void GcsServer::Start() {
 
   // Store gcs rpc server address in redis
   StoreGcsServerAddressInRedis();
+  is_started_ = true;
 
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when

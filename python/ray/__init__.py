@@ -32,7 +32,8 @@ sys.path.insert(0, thirdparty_files)
 
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
-so_path = os.path.join(dirname(__file__), "_raylet.so")
+python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
+so_path = os.path.join(dirname(__file__), "_raylet" + python_shared_lib_suffix)
 if os.path.exists(so_path):
     import ctypes
     from ctypes import CDLL
@@ -82,6 +83,7 @@ from ray.worker import (
     init,
     is_initialized,
     put,
+    kill,
     register_custom_serializer,
     remote,
     shutdown,
@@ -98,7 +100,8 @@ from ray.runtime_context import _get_runtime_context  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray import util  # noqa: E402
 
-# Ray version string.
+# Replaced with the current commit when building the wheels.
+__commit__ = "{{RAY_COMMIT_SHA}}"
 __version__ = "0.9.0.dev0"
 
 __all__ = [
@@ -133,6 +136,7 @@ __all__ = [
     "profile",
     "projects",
     "put",
+    "kill",
     "register_custom_serializer",
     "remote",
     "shutdown",

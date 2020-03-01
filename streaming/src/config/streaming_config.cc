@@ -28,8 +28,8 @@ void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
   if (!config.op_name().empty()) {
     SetOpName(config.op_name());
   }
-  if (config.role() != proto::OperatorType::UNKNOWN) {
-    SetOperatorType(config.role());
+  if (config.role() != proto::NodeType::UNKNOWN) {
+    SetNodeType(config.role());
   }
   if (config.ring_buffer_capacity() != 0) {
     SetRingBufferCapacity(config.ring_buffer_capacity());

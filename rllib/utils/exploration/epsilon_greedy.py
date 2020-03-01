@@ -23,10 +23,9 @@ class EpsilonGreedy(Exploration):
                  initial_epsilon=1.0,
                  final_epsilon=0.05,
                  epsilon_timesteps=int(1e5),
-                 num_workers=None,
-                 worker_index=None,
                  epsilon_schedule=None,
-                 framework="tf"):
+                 framework="tf",
+                 **kwargs):
         """
 
         Args:
@@ -35,21 +34,13 @@ class EpsilonGreedy(Exploration):
             final_epsilon (float): The final epsilon value to use.
             epsilon_timesteps (int): The time step after which epsilon should
                 always be `final_epsilon`.
-            num_workers (Optional[int]): The overall number of workers used.
-            worker_index (Optional[int]): The index of the Worker using this
-                Exploration.
             epsilon_schedule (Optional[Schedule]): An optional Schedule object
                 to use (instead of constructing one from the given parameters).
             framework (Optional[str]): One of None, "tf", "torch".
         """
-        # For now, require Discrete action space (may loosen this restriction
-        # in the future).
         assert framework is not None
         super().__init__(
-            action_space=action_space,
-            num_workers=num_workers,
-            worker_index=worker_index,
-            framework=framework)
+            action_space=action_space, framework=framework, **kwargs)
 
         self.epsilon_schedule = epsilon_schedule or PiecewiseSchedule(
             endpoints=[(0, initial_epsilon),
@@ -85,16 +76,15 @@ class EpsilonGreedy(Exploration):
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
-        epsilon = tf.convert_to_tensor(
-            self.epsilon_schedule(timestep if timestep is not None else
-                                  self.last_timestep))
+        epsilon = self.epsilon_schedule(timestep if timestep is not None else
+                                        self.last_timestep)
 
         # Get the exploit action as the one with the highest logit value.
         exploit_action = tf.argmax(q_values, axis=1)
 
         batch_size = tf.shape(q_values)[0]
-        # Mask out actions with q-value=-inf so that we don't
-        # even consider them for exploration.
+        # Mask out actions with q-value=-inf so that we don't even consider
+        # them for exploration.
         random_valid_action_logits = tf.where(
             tf.equal(q_values, tf.float32.min),
             tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
@@ -130,7 +120,7 @@ class EpsilonGreedy(Exploration):
         Returns:
             torch.Tensor: The exploration-action.
         """
-        # Set last time step or (if not given) increase by one.
+        # Set last timestep or (if not given) increase by one.
         self.last_timestep = timestep if timestep is not None else \
             self.last_timestep + 1
 
