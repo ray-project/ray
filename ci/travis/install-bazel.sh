@@ -46,6 +46,11 @@ build --disk_cache="${HOME}/ray-bazel-cache"
 build --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
 EOF
 fi
+if [ "${GITHUB-}" = true ]; then
+  cat <<EOF >> "${HOME}/.bazelrc"
+--output_base=".bazel-out"  # On GitHub Actions, staying on the same volume seems to be faster
+EOF
+fi
 if [ "${TRAVIS-}" = true ] || [ "${GITHUB-}" = true ]; then
   cat <<EOF >> "${HOME}/.bazelrc"
 # CI output doesn't scroll, so don't use curses
