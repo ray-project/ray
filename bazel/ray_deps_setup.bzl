@@ -12,11 +12,13 @@ def urlsplit(url):
     if len(split_on_scheme) <= 1:  # Scheme is optional
         split_on_scheme = [None] + split_on_scheme[:1]
     split_on_path = split_on_scheme[1].split("/")
-    return (split_on_scheme[0],
-            split_on_path[0].split("."),
-            split_on_path[1:],
-            split_on_query[1].split("&") if len(split_on_query) > 1 else None,
-            split_on_anchor[1] if len(split_on_anchor) > 1 else None)
+    return {
+        "scheme": split_on_scheme[0],
+        "netloc": split_on_path[0].split("."),
+        "path": split_on_path[1:],
+        "query": split_on_query[1].split("&") if len(split_on_query) > 1 else None,
+        "fragment": split_on_anchor[1] if len(split_on_anchor) > 1 else None,
+    }
 
 def auto_http_archive(*, name=None, url=None, urls=True,
                       build_file=None, build_file_content=None,
@@ -35,18 +37,18 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
     canonical_url = url if url != None else urls[0]
     url_parts = urlsplit(canonical_url)
-    url_except_scheme = (canonical_url.replace(url_parts[0] + "://", "")
-                         if url_parts[0] != None else canonical_url)
-    url_path_parts = url_parts[2]
+    url_except_scheme = (canonical_url.replace(url_parts["scheme"] + "://", "")
+                         if url_parts["scheme"] != None else canonical_url)
+    url_path_parts = url_parts["path"]
     url_filename = url_path_parts[-1]
     url_filename_parts = (url_filename.rsplit(".", 2)
                           if (tuple(url_filename.lower().rsplit(".", 2)[-2:])
                               in DOUBLE_SUFFIXES_LOWERCASE)
                           else url_filename.rsplit(".", 1))
-    is_github = url_parts[1] == ["github", "com"]
+    is_github = url_parts["netloc"] == ["github", "com"]
 
     if name == None:  # Deduce "com_github_user_project_name" from "https://github.com/user/project-name/..."
-        name = "_".join(url_parts[1][::-1] + url_path_parts[:2]).replace("-", "_")
+        name = "_".join(url_parts["netloc"][::-1] + url_path_parts[:2]).replace("-", "_")
 
     if build_file == True:
         build_file = "@//%s:%s" % ("bazel", "BUILD." + name)

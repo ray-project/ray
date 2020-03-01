@@ -22,7 +22,7 @@ install_clang() {
         curl -s -L -R -o "${target}" "http://releases.llvm.org/${version}/${target##*/}"
         chmod +x "${target}"
       fi
-      if [ "${TRAVIS-}" = true ] || [ "${GITHUB-}" = true ]; then
+      if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
         7z x "${target}" -o"${target_dir}"  # 7-zip is faster than the self-extracting installer; good for CI
       else
         "${target}" /S  # for normal users we should install properly
