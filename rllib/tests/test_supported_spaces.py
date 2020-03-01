@@ -176,7 +176,9 @@ class ModelSupportedSpaces(unittest.TestCase):
     def test_ddpg(self):
         check_support(
             "DDPG", {
-                "exploration_ou_noise_scale": 100.0,
+                "exploration_config": {
+                    "ou_base_scale": 100.0
+                },
                 "timesteps_per_iteration": 1,
                 "use_state_preprocessor": True,
             },

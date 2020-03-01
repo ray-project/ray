@@ -13,6 +13,7 @@ class Exploration:
 
     def __init__(self,
                  action_space=None,
+                 *,
                  num_workers=None,
                  worker_index=None,
                  framework="tf"):
