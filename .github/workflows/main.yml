@@ -66,6 +66,28 @@ jobs:
         aws-access-key-id: ${{ secrets.GHA_AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.GHA_AWS_SECRET_ACCESS_KEY }}
         aws-region: us-west-2
+    - name: Prepare caching
+      id: info
+      shell: bash
+      run: |
+        case "${OSTYPE}" in linux*) pip_cache=~/.cache/pip;; darwin*) pip_cache=~/Library/Caches/pip;; msys) pip_cache="${LOCALAPPDATA}\pip\Cache";; esac
+        cat <<-EOF
+        ::set-output name=git_tree_hash::$(git cat-file -p HEAD | sed -n "s/^tree //p")
+        ::set-output name=pip_cache::${pip_cache}
+        EOF
+    - name: Cache (pip)
+      uses: actions/cache@v1.1.2
+      continue-on-error: true
+      if: steps.info.outputs.pip_cache
+      with:
+        path: ${{ steps.info.outputs.pip_cache }}
+        key: |
+          pip-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}-${{ hashFiles('**/setup.py') }}-${{ github.workflow }}-${{ github.job }}-${{ steps.info.outputs.git_tree_hash }}
+        restore-keys: |
+          pip-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}-${{ hashFiles('**/setup.py') }}-${{ github.workflow }}-${{ github.job }}
+          pip-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}-${{ hashFiles('**/setup.py') }}-
+          pip-${{ runner.os }}-
+          pip-
     - name: Run Jenkins tests
       shell: bash -e -o pipefail -l {0}
       if: matrix.jenkins-test != ''
