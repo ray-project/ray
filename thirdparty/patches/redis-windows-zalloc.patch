@@ -1,0 +1,151 @@
+diff --git src/zmalloc.c src/zmalloc.c
+--- src/zmalloc.c
++++ src/zmalloc.c
+@@ -45,1 +45,1 @@
+-void zlibc_free(void *ptr) {
++void redis_zlibc_free(void *ptr) {
+@@ -108,1 +108,1 @@
+-void *zmalloc(size_t size) {
++void *redis_zmalloc(size_t size) {
+@@ -126,1 +126,1 @@
+-void *zmalloc_no_tcache(size_t size) {
++void *redis_zmalloc_no_tcache(size_t size) {
+@@ -133,1 +133,1 @@
+-void zfree_no_tcache(void *ptr) {
++void redis_zfree_no_tcache(void *ptr) {
+@@ -140,1 +140,1 @@
+-void *zcalloc(size_t size) {
++void *redis_zcalloc(size_t size) {
+@@ -154,1 +154,1 @@
+-void *zrealloc(void *ptr, size_t size) {
++void *redis_zrealloc(void *ptr, size_t size) {
+@@ -187,1 +187,1 @@
+-size_t zmalloc_size(void *ptr) {
++size_t redis_zmalloc_size(void *ptr) {
+@@ -197,1 +197,1 @@
+-void zfree(void *ptr) {
++void redis_zfree(void *ptr) {
+@@ -215,1 +215,1 @@
+-char *zstrdup(const char *s) {
++char *redis_zstrdup(const char *s) {
+@@ -223,1 +223,1 @@
+-size_t zmalloc_used_memory(void) {
++size_t redis_zmalloc_used_memory(void) {
+@@ -229,1 +229,1 @@
+-void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
++void redis_zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
+@@ -249,1 +249,1 @@
+-size_t zmalloc_get_rss(void) {
++size_t redis_zmalloc_get_rss(void) {
+@@ -289,1 +289,1 @@
+-size_t zmalloc_get_rss(void) {
++size_t redis_zmalloc_get_rss(void) {
+@@ -301,1 +301,1 @@
+-size_t zmalloc_get_rss(void) {
++size_t redis_zmalloc_get_rss(void) {
+@@ -312,1 +312,1 @@
+-float zmalloc_get_fragmentation_ratio(size_t rss) {
++float redis_zmalloc_get_fragmentation_ratio(size_t rss) {
+@@ -327,1 +327,1 @@
+-size_t zmalloc_get_smap_bytes_by_field(char *field, long pid) {
++size_t redis_zmalloc_get_smap_bytes_by_field(char *field, long pid) {
+@@ -355,1 +355,1 @@
+-size_t zmalloc_get_smap_bytes_by_field(char *field, PORT_LONG pid) {
++size_t redis_zmalloc_get_smap_bytes_by_field(char *field, PORT_LONG pid) {
+@@ -362,1 +362,1 @@
+-size_t zmalloc_get_private_dirty(PORT_LONG pid) {
++size_t redis_zmalloc_get_private_dirty(PORT_LONG pid) {
+@@ -379,1 +379,1 @@
+-size_t zmalloc_get_memory_size(void) {
++size_t redis_zmalloc_get_memory_size(void) {
+diff --git src/zmalloc.h src/zmalloc.h
+--- src/zmalloc.h
++++ src/zmalloc.h
+@@ -73,1 +73,7 @@
++
++#else
++#include <stdlib.h>
++#define ZMALLOC_LIB ("malloc")
++#define HAVE_MALLOC_SIZE 1
++#define zmalloc_size(p)  _msize(p)
+ #endif
+@@ -86,13 +92,65 @@
+-void *zmalloc(size_t size);
++void *redis_zmalloc(size_t size);
++static void *zmalloc(size_t size) {
++    return redis_zmalloc(size);
++}
++
+-void *zcalloc(size_t size);
++void *redis_zcalloc(size_t size);
++static void *zcalloc(size_t size) {
++    return redis_zcalloc(size);
++}
++
+-void *zrealloc(void *ptr, size_t size);
++void *redis_zrealloc(void *ptr, size_t size);
++static void *zrealloc(void *ptr, size_t size) {
++    return redis_zrealloc(ptr, size);
++}
++
+-void zfree(void *ptr);
++void redis_zfree(void *ptr);
++static void zfree(void *ptr) {
++    return redis_zfree(ptr);
++}
++
+-char *zstrdup(const char *s);
++char *redis_zstrdup(const char *s);
++static char *zstrdup(const char *s) {
++    return redis_zstrdup(s);
++}
++
+-size_t zmalloc_used_memory(void);
++size_t redis_zmalloc_used_memory(void);
++static size_t zmalloc_used_memory(void) {
++    return redis_zmalloc_used_memory();
++}
++
+-void zmalloc_set_oom_handler(void (*oom_handler)(size_t));
++void redis_zmalloc_set_oom_handler(void  (*oom_handler) (size_t));
++static void zmalloc_set_oom_handler(void  (*oom_handler) (size_t)) {
++    return redis_zmalloc_set_oom_handler(oom_handler);
++}
++
+-float zmalloc_get_fragmentation_ratio(size_t rss);
++float redis_zmalloc_get_fragmentation_ratio(size_t rss);
++static float zmalloc_get_fragmentation_ratio(size_t rss) {
++    return redis_zmalloc_get_fragmentation_ratio(rss);
++}
++
++
+-size_t zmalloc_get_rss(void);
++size_t redis_zmalloc_get_rss(void);
++static size_t zmalloc_get_rss(void) {
++    return redis_zmalloc_get_rss();
++}
++
+-size_t zmalloc_get_private_dirty(PORT_LONG pid);
++size_t redis_zmalloc_get_private_dirty(PORT_LONG pid);
++static size_t zmalloc_get_private_dirty(PORT_LONG pid) {
++    return redis_zmalloc_get_private_dirty(pid);
++}
+-size_t zmalloc_get_smap_bytes_by_field(char *field, PORT_LONG pid);
++size_t redis_zmalloc_get_smap_bytes_by_field(char *field, PORT_LONG pid);
++static size_t zmalloc_get_smap_bytes_by_field(char *field, PORT_LONG pid) {
++    return redis_zmalloc_get_smap_bytes_by_field(field, pid);
++}
++
+-size_t zmalloc_get_memory_size(void);
++size_t redis_zmalloc_get_memory_size(void);
++static size_t zmalloc_get_memory_size(void) {
++    return redis_zmalloc_get_memory_size();
++}
++
+-void zlibc_free(void *ptr);
++void redis_zlibc_free(void *ptr);
++static void zlibc_free(void *ptr) {
++    return redis_zlibc_free(ptr);
++}
++
+-- 

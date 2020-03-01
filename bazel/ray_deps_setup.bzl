@@ -73,32 +73,32 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
 def ray_deps_setup():
     auto_http_archive(
-        name = "redis",
-        build_file = True,
+        name = "com_github_antirez_redis",
+        build_file = "//bazel:BUILD.redis",
         url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
         patches = [
-            "//thirdparty/patches:hiredis-async-include-dict.patch",
-            "//thirdparty/patches:hiredis-casts.patch",
-            "//thirdparty/patches:hiredis-connect-rename.patch",
-            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
-            "//thirdparty/patches:hiredis-windows-sockets.patch",
-            "//thirdparty/patches:hiredis-windows-strerror.patch",
-            "//thirdparty/patches:hiredis-windows-poll.patch",
-            "//thirdparty/patches:redis-windows-poll.patch",
+        ],
+    )
+
+    auto_http_archive(
+        name = "com_github_tporadowski_redis",
+        build_file = "//bazel:BUILD.redis",
+        url = "https://github.com/tporadowski/redis/archive/v4.0.14.2.tar.gz",
+        sha256 = "a7630e62c1491d452319e92f6001ace5e4c761c975b2a89298ef7aa8c3de9b09",
+        patches = [
+            "//thirdparty/patches:redis-windows-allocator.patch",
+            "//thirdparty/patches:redis-windows-fdapi.patch",
+            "//thirdparty/patches:redis-windows-for-each.patch",
+            "//thirdparty/patches:redis-windows-time.patch",
+            "//thirdparty/patches:redis-windows-zalloc.patch",
         ],
     )
 
     http_file(
-        name = "win-redis-bin",
+        name = "com_github_tporadowski_redis_bin",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
         urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
-    )
-
-    http_file(
-        name = "redis-src",
-        sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
-        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.gz"],
     )
 
     auto_http_archive(

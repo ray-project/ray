@@ -1,0 +1,13 @@
+diff --git src/Win32_Interop/Win32_service.cpp src/Win32_Interop/Win32_service.cpp
+--- src/Win32_Interop/Win32_service.cpp
++++ src/Win32_Interop/Win32_service.cpp
+@@ -457,1 +457,1 @@
+-        for each(string arg in serviceRunArguments) {
++        for (string arg : serviceRunArguments) {
+diff --git src/Win32_Interop/Win32_variadicFunctor.cpp src/Win32_Interop/Win32_variadicFunctor.cpp
+--- src/Win32_Interop/Win32_variadicFunctor.cpp
++++ src/Win32_Interop/Win32_variadicFunctor.cpp
+@@ -61,1 +61,1 @@
+-	for each(auto modPair in (*this))
++	for (auto modPair : (*this))
+-- 
