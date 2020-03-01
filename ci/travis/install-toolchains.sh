@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+LLVM_VERSION_WINDOWS="9.0.0"
+
 install_clang() {
   if [ "${OSTYPE}" = "msys" ]; then
     export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths

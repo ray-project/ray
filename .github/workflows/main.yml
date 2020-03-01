@@ -1,7 +1,6 @@
 name: CI
 
 env:
-  LLVM_VERSION_WINDOWS: 9.0.0
   DEBIAN_FRONTEND: noninteractive
 
 on: [push, pull_request]
