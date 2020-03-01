@@ -65,7 +65,7 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": 1000000,
     # If True prioritized replay buffer will be used.
-    "prioritized_replay": True,
+    "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
     "prioritized_replay_eps": 1e-6,
@@ -76,9 +76,9 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Optimization ===
     "optimization": {
-        "actor_learning_rate": 5e-4,
+        "actor_learning_rate": 3e-4,
         "critic_learning_rate": 5e-4,
-        "entropy_learning_rate": 5e-5,
+        "entropy_learning_rate": 1e-4,
     },
     # If not None, clip gradients during optimization at this value.
     "grad_norm_clipping": 2.0,
