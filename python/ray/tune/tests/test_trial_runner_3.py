@@ -495,9 +495,8 @@ class SearchAlgorithmTest(unittest.TestCase):
             def on_trial_complete(self, *args, **kwargs):
                 self.count += 1
 
-        alg = TestSuggestion()
-        repeat = 4
-        repeat_alg = Repeater(alg, repeat=repeat)
+        alg = TestSuggestion(metric="episode_reward_mean")
+        repeat_alg = Repeater(alg, repeat=repeat, set_index=False)
         experiment_spec = {
             "run": "__fake",
             "num_samples": 1,

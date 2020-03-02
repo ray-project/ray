@@ -50,7 +50,9 @@ class SuggestionAlgorithm(SearchAlgorithm):
         for experiment in experiment_list:
             self._trial_generator = itertools.chain(
                 self._trial_generator,
-                self._generate_trials(experiment.spec, experiment.name))
+                self._generate_trials(
+                    experiment.spec.get("num_samples", 1), experiment.spec,
+                    experiment.name))
 
     def next_trials(self):
         """Provides a batch of Trial objects to be queued into the TrialRunner.
@@ -70,7 +72,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
         self._finished = True
         return trials
 
-    def _generate_trials(self, experiment_spec, output_path=""):
+    def _generate_trials(self, num_samples, experiment_spec, output_path=""):
         """Generates trials with configurations from `suggest`.
 
         Creates a trial_id that is passed into `suggest`.
@@ -80,7 +82,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
         """
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
-        for _ in range(experiment_spec.get("num_samples", 1)):
+        for _ in range(num_samples):
             trial_id = Trial.generate_id()
             while True:
                 suggested_config = self.suggest(trial_id)
