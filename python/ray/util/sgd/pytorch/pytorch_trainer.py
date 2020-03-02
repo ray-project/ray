@@ -15,10 +15,18 @@ from ray.util.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
 from ray.util.sgd import utils
 from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
-from ray.util.sgd.pytorch import utils as pytorch_utils
+from ray.util.sgd.pytorch.constants import VALID_SCHEDULER_STEP
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
+
+
+def _validate_scheduler_step_freq(scheduler_step_freq):
+    if scheduler_step_freq:
+        if scheduler_step_freq not in VALID_SCHEDULER_STEP:
+            raise ValueError(
+                "Scheduler step freq must be in {}. Got {}".format(
+                    VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
 class PyTorchTrainer:
@@ -48,14 +56,15 @@ class PyTorchTrainer:
             loss_creator=nn.MSELoss,
             use_gpu=True
         )
-        trainer.train()
+        for i in range(4):
+            trainer.train()
 
 
     Args:
         model_creator (dict -> Model(s)): Constructor function that takes in
             config and returns the model(s) to be optimized. These must be
             ``torch.nn.Module`` objects. If multiple models are returned,
-            a ``train_function`` must be specified. You do not need to
+            a ``training_operator_cls`` must be specified. You do not need to
             handle GPU/devices in this function; RaySGD will do that under
             the hood.
         data_creator (dict -> Dataset(s)): Constructor function
@@ -75,22 +84,18 @@ class PyTorchTrainer:
             of ``torch.nn.modules.loss._Loss``, which is most Pytorch
             loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
         scheduler_creator (optimizers, dict -> loss):
-            A constructor function for the scheduler loss. This is
+            A constructor function for the torch scheduler. This is
             a function that takes in the generated optimizers (from
             ``optimizer_creator``) provided config for customization.
             Be sure to set ``scheduler_step_freq`` to increment the
             scheduler correctly.
-        train_function: Custom function for training. This function
-            will be executed in parallel across all workers at once. The
-            function needs to take in (models, train_dataloader, criterion,
-            optimizers, config), and return a dict of training stats.
-        validation_function: Custom function for validation. This function
-            will be executed in parallel across all workers at once.
-            This takes in (model, val_dataloader, criterion, config)
-            and returns a dict of validation stats.
+        training_operator_cls (type): Custom training operator class
+            that subclasses the TrainingOperator class. This class
+            will be copied onto all remote workers and used to specify
+            custom training and validation operations. Defaults to
+            TrainingOperator.
         config (dict): Custom configuration value to be passed to
-            "model_creator", "data_creator", "optimizer_creator", and
-            "loss_creator".
+            all creator and operator constructors.
         dataloader_config (dict): Configuration values to be passed into
             the ``torch.utils.data.DataLoader`` object that wraps
             the dataset on each parallel worker for both training
@@ -130,8 +135,7 @@ class PyTorchTrainer:
                  optimizer_creator,
                  loss_creator,
                  scheduler_creator=None,
-                 train_function=None,
-                 validation_function=None,
+                 training_operator_cls=None,
                  initialization_hook=None,
                  config=None,
                  dataloader_config=None,
@@ -151,11 +155,10 @@ class PyTorchTrainer:
 
         self.model_creator = model_creator
         self.data_creator = data_creator
-        self.train_function = train_function
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.scheduler_creator = scheduler_creator
-        self.validation_function = validation_function
+        self.training_operator_cls = training_operator_cls
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
         self.dataloader_config = dataloader_config
@@ -166,6 +169,8 @@ class PyTorchTrainer:
 
         logger.info("Using {} as backend.".format(backend))
         self.backend = backend
+
+        # TODO: Have an auto "use_gpu" option to detect and use GPUs.
         self.use_gpu = use_gpu
         self.batch_size = batch_size
         self.max_replicas = num_replicas
@@ -180,12 +185,7 @@ class PyTorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
-        if scheduler_step_freq and (
-                scheduler_step_freq not in pytorch_utils.VALID_SCHEDULER_STEP):
-            raise ValueError(
-                "Scheduler step freq must be in {}. Got {}".format(
-                    pytorch_utils.VALID_SCHEDULER_STEP, scheduler_step_freq))
-
+        _validate_scheduler_step_freq(scheduler_step_freq)
         self.scheduler_step_freq = scheduler_step_freq
 
         self._start_workers(self.max_replicas)
@@ -204,8 +204,7 @@ class PyTorchTrainer:
                     self.optimizer_creator,
                     self.loss_creator,
                     self.scheduler_creator,
-                    train_function=self.train_function,
-                    validation_function=self.validation_function,
+                    training_operator_cls=self.training_operator_cls,
                     config=self.config,
                     dataloader_config=self.dataloader_config,
                     batch_size=self.batch_size,
@@ -243,8 +242,7 @@ class PyTorchTrainer:
                     self.loss_creator,
                     self.scheduler_creator,
                     backend=self.backend,
-                    train_function=self.train_function,
-                    validation_function=self.validation_function,
+                    training_operator_cls=self.training_operator_cls,
                     config=self.config,
                     dataloader_config=self.dataloader_config,
                     batch_size=batch_size_per_replica,
@@ -266,21 +264,35 @@ class PyTorchTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, max_retries=0, checkpoint="auto"):
+    def train(self,
+              num_steps=None,
+              max_retries=0,
+              checkpoint="auto",
+              info=None):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
         `max_retries` to enable fault handling in case of instance preemption.
 
         Args:
+            num_steps (int): Number of batches to compute update steps on.
+                This corresponds also to the number of times
+                ``TrainingOperator.train_batch`` is called.
             max_retries (int): Must be non-negative. If set to N, will
                 kill all current workers, query the Ray global state for
                 total available resources, and re-launch up to the
                 available resources. Behavior is not well-defined
                 in case of shared cluster usage.
             checkpoint (str): Path to checkpoint to restore from if retrying.
-                If max_retries is set and checkpoint == "auto", PyTorchTrainer
-                will save a checkpoint before starting to train.
+                If max_retries is set and ``checkpoint == "auto"``,
+                PyTorchTrainer will save a checkpoint before starting to train.
+            info (dict): Optional dictionary passed to the training
+                operator for ``train_epoch`` and ``train_batch``.
+
+        Returns:
+            A dictionary of metrics for training.
+                You can provide custom metrics by passing in a custom
+                ``training_operator_cls``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
         if max_retries:
@@ -296,7 +308,8 @@ class PyTorchTrainer:
             self._resize_workers(checkpoint=checkpoint)
 
         with self.optimizer_timer:
-            success, worker_stats = self._train_step()
+            success, worker_stats = self._train_epoch(
+                num_steps=num_steps, info=info)
             # Fault handling
             for i in range(max_retries):
                 if success:
@@ -306,7 +319,8 @@ class PyTorchTrainer:
                 self._resize_workers(checkpoint=checkpoint)
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
-                success, worker_stats = self._train_step()
+                success, worker_stats = self._train_epoch(
+                    num_steps=num_steps, info=info)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -321,19 +335,58 @@ class PyTorchTrainer:
                 train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
 
-    def _train_step(self):
-        worker_stats = [w.step.remote() for w in self.workers]
+    def _train_epoch(self, num_steps=None, info=None):
+        worker_stats = [
+            w.train_epoch.remote(num_steps=num_steps, info=info)
+            for w in self.workers
+        ]
         success = utils.check_for_failure(worker_stats)
         return success, worker_stats
 
     def apply_all_workers(self, fn):
-        return ray.get([w.apply_fn.remote(fn) for w in self.workers])
+        """Run a function on all operators on the workers.
 
-    def validate(self):
-        """Evaluates the model on the validation data set."""
-        if self.validation_function is False:
-            return {}
-        worker_stats = ray.get([w.validate.remote() for w in self.workers])
+        Args:
+            fn (Callable): A function that takes in no arguments.
+
+        Returns:
+            A list of objects returned by ``fn`` on each worker.
+
+        """
+        return ray.get([w.apply.remote(fn) for w in self.workers])
+
+    def apply_all_operators(self, fn):
+        """Run a function on all operators on the workers.
+
+        Args:
+            fn (Callable[TrainingOperator]): A function that takes in a
+                TrainingOperator.
+
+        Returns:
+            A list of objects returned by ``fn`` on each operator.
+
+        """
+        return ray.get([w.apply_operator.remote(fn) for w in self.workers])
+
+    def validate(self, num_steps=None, info=None):
+        """Evaluates the model on the validation data set.
+
+        Args:
+            num_steps (int): Number of batches to compute update steps on.
+                This corresponds also to the number of times
+                ``TrainingOperator.validate_batch`` is called.
+            info (dict): Optional dictionary passed to the training
+                operator for `validate` and `validate_batch`.
+
+        Returns:
+            A dictionary of metrics for validation.
+                You can provide custom metrics by passing in a custom
+                ``training_operator_cls``.
+        """
+        worker_stats = ray.get([
+            w.validate.remote(num_steps=num_steps, info=info)
+            for w in self.workers
+        ])
 
         validation_stats = {}
         for stat_key in worker_stats[0]:
@@ -346,8 +399,8 @@ class PyTorchTrainer:
 
         This is useful for lr_schedulers such as ``ReduceLROnPlateau``.
         """
-        self.apply_all_workers(
-            lambda runner: [sched.step(metric) for sched in runner.schedulers])
+        self.apply_all_operators(
+            lambda op: [sched.step(metric) for sched in op.schedulers])
 
     def get_model(self):
         """Returns the learned model(s)."""
@@ -366,17 +419,18 @@ class PyTorchTrainer:
         Args:
             checkpoint (str): Path to target checkpoint file.
 
+        Returns:
+            checkpoint (str): Path to target checkpoint file.
         """
         state = ray.get(self.workers[0].get_state.remote())
         torch.save(state, checkpoint)
         return checkpoint
 
     def restore(self, checkpoint):
-        """Restores the model from the provided checkpoint.
+        """Restores the Trainer and all workers from the provided checkpoint.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
-
         """
         state = torch.load(checkpoint)
         state_id = ray.put(state)
@@ -450,7 +504,6 @@ class PyTorchTrainable(Trainable):
         validation_stats = self._trainer.validate()
 
         train_stats.update(validation_stats)
-
         # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
         return train_stats
 

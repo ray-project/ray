@@ -541,8 +541,8 @@ class CloudPickler(Pickler):
         # This is a patch for python3.5
         if isinstance(obj, numpy.ndarray):
             if (self.proto < 5 or
-                    (not obj.flags.c_contiguous and
-                     not obj.flags.f_contiguous) or
+                    (not obj.flags.c_contiguous and not obj.flags.f_contiguous) or
+                    (issubclass(type(obj), numpy.ndarray) and type(obj) is not numpy.ndarray) or
                     obj.dtype == "O" or obj.itemsize == 0):
                 return NotImplemented
             return _numpy_ndarray_reduce(obj)

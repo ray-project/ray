@@ -211,7 +211,7 @@ def validate_config_and_setup_param_noise(config):
     if config.get("soft_q", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning(
             "soft_q", "exploration_config={"
-            "type=StochasticSampling, temperature=[float]"
+            "type=SoftQ, temperature=[float]"
             "}")
         config["exploration_config"] = {
             "type": "SoftQ",

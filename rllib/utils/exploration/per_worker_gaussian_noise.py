@@ -1,11 +1,11 @@
-from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
+from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.schedules import ConstantSchedule
 
 
-class PerWorkerEpsilonGreedy(EpsilonGreedy):
-    """A per-worker epsilon-greedy class for distributed algorithms.
+class PerWorkerGaussianNoise(GaussianNoise):
+    """A per-worker Gaussian noise class for distributed algorithms.
 
-    Sets the epsilon schedules of individual workers to a constant:
+    Sets the `scale` schedules of individual workers to a constant:
     0.4 ^ (1 + [worker-index] / float([num-workers] - 1) * 7)
     See Ape-X paper.
     """
@@ -25,19 +25,19 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
                 Exploration.
             framework (Optional[str]): One of None, "tf", "torch".
         """
-        epsilon_schedule = None
+        scale_schedule = None
         # Use a fixed, different epsilon per worker. See: Ape-X paper.
         if num_workers > 0:
             if worker_index >= 0:
                 exponent = (1 + worker_index / float(num_workers - 1) * 7)
-                epsilon_schedule = ConstantSchedule(0.4**exponent)
+                scale_schedule = ConstantSchedule(0.4**exponent)
             # Local worker should have zero exploration so that eval
             # rollouts run properly.
             else:
-                epsilon_schedule = ConstantSchedule(0.0)
+                scale_schedule = ConstantSchedule(0.0)
 
         super().__init__(
             action_space,
-            epsilon_schedule=epsilon_schedule,
+            scale_schedule=scale_schedule,
             framework=framework,
             **kwargs)
