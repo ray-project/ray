@@ -1,0 +1,21 @@
+cartpole-sac:
+    env: CartPole-v0
+    run: SAC
+    stop:
+        episode_reward_mean: 150
+    config:
+        #evaluation_interval: 1  # logged under evaluation/* metric keys
+        #gumbel_softmax_temperature: 0.5
+        no_done_at_end: false
+        prioritized_replay: false
+        prioritized_replay_alpha: 0.5
+        initial_alpha: 1.0
+        train_batch_size: 128
+        optimization:
+            actor_learning_rate: 0.0003
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0003
+        evaluation_config:
+            explore: true
+        target_network_update_freq: 1000
+        grad_norm_clipping: 10.0
