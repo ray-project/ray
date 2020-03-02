@@ -33,6 +33,10 @@ public class TestUtils {
     }
   }
 
+  public static boolean isDirectActorCallEnabled() {
+    return ActorCreationOptions.DEFAULT_USE_DIRECT_CALL;
+  }
+
   public static void skipTestIfDirectActorCallEnabled() {
     skipTestIfDirectActorCallEnabled(true);
   }

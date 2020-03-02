@@ -767,6 +767,61 @@ def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put):
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
 
+def test_out_of_band_serialized_object_id(one_worker_100MiB):
+    assert len(
+        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
+    oid = ray.put("hello")
+    _check_refcounts({oid: (1, 0)})
+    oid_str = ray.cloudpickle.dumps(oid)
+    _check_refcounts({oid: (2, 0)})
+    del oid
+    assert len(
+        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
+    assert ray.get(ray.cloudpickle.loads(oid_str)) == "hello"
+
+
+def test_captured_object_id(one_worker_100MiB):
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.wait.remote())
+        ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    oid = f.remote(signal)
+
+    # Delete local references.
+    del f
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(oid)
+
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    class Actor:
+        def get(self, signal):
+            ray.get(signal.wait.remote())
+            ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    actor = Actor.remote()
+    oid = actor.get.remote(signal)
+
+    # Delete local references.
+    del Actor
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(oid)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

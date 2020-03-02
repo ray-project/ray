@@ -15,7 +15,7 @@ def _complete_future(event_handler, ray_object_id):
     # waiting_dict and as_future appending to the waiting_dict's list.
     logger.debug(
         "Completing plasma futures for object id {}".format(ray_object_id))
-    obj = ray.get(ray_object_id, timeout=0)
+    obj = ray.worker.global_worker.get_objects([ray_object_id], timeout=0)[0]
     futures = event_handler._waiting_dict.pop(ray_object_id)
     for fut in futures:
         try:
