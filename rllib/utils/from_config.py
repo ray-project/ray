@@ -128,10 +128,10 @@ def from_config(cls, config=None, **kwargs):
             constructor = type_
         # A string: Filename or a python module+class or a json/yaml str.
         elif isinstance(type_, str):
-            if re.search("\.(yaml|yml|json)$", type_):
+            if re.search("\\.(yaml|yml|json)$", type_):
                 return from_file(cls, type_, *ctor_args, **ctor_kwargs)
             # Try un-json/un-yaml'ing the string into a dict.
-            obj = yaml.load(type_)
+            obj = yaml.safe_load(type_)
             if isinstance(obj, dict):
                 return from_config(cls, obj)
             try:
@@ -208,7 +208,7 @@ def from_file(cls, filename, *args, **kwargs):
 
     with open(path, "rt") as fp:
         if path.endswith(".yaml") or path.endswith(".yml"):
-            config = yaml.load(fp)
+            config = yaml.safe_load(fp)
         else:
             config = json.load(fp)
 
@@ -226,6 +226,6 @@ def lookup_type(cls, type_):
         available_class_for_type = cls.__type_registry__.get(type_)
         if available_class_for_type is None:
             available_class_for_type = \
-                cls.__type_registry__[re.sub("[\W_]", "", type_.lower())]
+                cls.__type_registry__[re.sub("[\\W_]", "", type_.lower())]
         return available_class_for_type
     return None

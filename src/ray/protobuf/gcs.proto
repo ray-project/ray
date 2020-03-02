@@ -211,6 +211,8 @@ message HeartbeatTableData {
   repeated double resource_load_capacity = 7;
   // Object IDs that are in use by workers on this node manager's node.
   repeated bytes active_object_id = 8;
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 9;
 }
 
 message HeartbeatBatchTableData {

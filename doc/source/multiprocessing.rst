@@ -1,12 +1,5 @@
-multiprocessing.Pool API
-========================
-
-.. warning::
-
-  Support for the multiprocessing.Pool API on Ray is an experimental feature,
-  so it may be changed at any time without warning. If you encounter any
-  bugs/shortcomings/incompatibilities, please file an `issue on GitHub`_.
-  Contributions are always welcome!
+Distributed multiprocessing.Pool
+================================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
@@ -14,6 +7,11 @@ Ray supports running distributed python programs with the `multiprocessing.Pool 
 using `Ray Actors <actors.html>`__ instead of local processes. This makes it easy
 to scale existing applications that use ``multiprocessing.Pool`` from a single node
 to a cluster.
+
+.. note::
+
+  This API is new and may be revised in future Ray releases. If you encounter
+  any bugs, please file an `issue on GitHub`_.
 
 .. _`multiprocessing.Pool API`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 

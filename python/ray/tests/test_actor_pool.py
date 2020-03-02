@@ -2,7 +2,7 @@ import time
 import pytest
 
 import ray
-from ray.experimental import ActorPool
+from ray.util import ActorPool
 
 
 @pytest.fixture

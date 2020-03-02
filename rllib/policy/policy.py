@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-from collections import namedtuple
 import gym
 import numpy as np
 
@@ -13,16 +12,6 @@ LEARNER_STATS_KEY = "learner_stats"
 
 ACTION_PROB = "action_prob"
 ACTION_LOGP = "action_logp"
-
-
-class TupleActions(namedtuple("TupleActions", ["batches"])):
-    """Used to return tuple actions as a list of batches per tuple element."""
-
-    def __new__(cls, batches):
-        return super(TupleActions, cls).__new__(cls, batches)
-
-    def numpy(self):
-        return TupleActions([b.numpy() for b in self.batches])
 
 
 @DeveloperAPI
@@ -56,26 +45,16 @@ class Policy(metaclass=ABCMeta):
             observation_space (gym.Space): Observation space of the policy.
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
+            exploration (Exploration): The exploration object to use for
+                computing actions.
         """
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
+        self.exploration = self._create_exploration(action_space, config)
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
-
-        # Create the Exploration object to use for this Policy.
-        self.exploration = from_config(
-            Exploration,
-            config.get("exploration"),
-            action_space=self.action_space,
-            num_workers=self.config.get("num_workers"),
-            worker_index=self.config.get("worker_index"),
-            framework="torch" if self.config.get("use_pytorch") else "tf")
-
-        # The default sampling behavior for actions if not explicitly given
-        # in calls to `compute_actions`.
-        self.deterministic = config.get("deterministic", False)
 
     @abstractmethod
     @DeveloperAPI
@@ -86,7 +65,7 @@ class Policy(metaclass=ABCMeta):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        explore=True,
+                        explore=None,
                         timestep=None,
                         **kwargs):
         """Computes actions for the current policy.
@@ -103,8 +82,8 @@ class Policy(metaclass=ABCMeta):
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
-            explore (bool): Whether we should use exploration
-                (e.g. when training) or not (for inference/evaluation).
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
@@ -127,7 +106,7 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
-                              explore=True,
+                              explore=None,
                               timestep=None,
                               **kwargs):
         """Unbatched version of compute_actions.
@@ -142,8 +121,8 @@ class Policy(metaclass=ABCMeta):
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): should the action be clipped
-            explore (bool): Whether we should use exploration (i.e. when
-                training) or not (e.g. for inference/evaluation).
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
@@ -184,6 +163,33 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
+
+    @DeveloperAPI
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
+        """Computes the log-prob/likelihood for a given action and observation.
+
+        Args:
+            actions (Union[List,np.ndarray]): Batch of actions, for which to
+                retrieve the log-probs/likelihoods (given all other inputs:
+                obs, states, ..).
+            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            state_batches (Optional[list]): List of RNN state input batches,
+                if any.
+            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+                action values.
+            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+                rewards.
+
+        Returns:
+            log-likelihoods (np.ndarray): Batch of log probs/likelihoods, with
+                shape: [BATCH_SIZE].
+        """
+        raise NotImplementedError
 
     @DeveloperAPI
     def postprocess_trajectory(self,
@@ -276,8 +282,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             any: Serializable information on the `self.exploration` object.
         """
-        if isinstance(self.exploration, Exploration):
-            return self.exploration.get_info()
+        return self.exploration.get_info()
 
     @DeveloperAPI
     def get_exploration_state(self):
@@ -288,8 +293,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             any: Serializable copy or view of the current exploration state.
         """
-        if isinstance(self.exploration, Exploration):
-            raise NotImplementedError
+        raise NotImplementedError
 
     @DeveloperAPI
     def set_exploration_state(self, exploration_state):
@@ -299,8 +303,7 @@ class Policy(metaclass=ABCMeta):
             exploration_state (any): Serializable copy or view of the new
                 exploration state.
         """
-        if isinstance(self.exploration, Exploration):
-            raise NotImplementedError
+        raise NotImplementedError
 
     @DeveloperAPI
     def is_recurrent(self):
@@ -371,6 +374,25 @@ class Policy(metaclass=ABCMeta):
             export_dir (str): Local writable directory.
         """
         raise NotImplementedError
+
+    def _create_exploration(self, action_space, config):
+        """Creates the Policy's Exploration object.
+
+        This method only exists b/c some Trainers do not use TfPolicy nor
+        TorchPolicy, but inherit directly from Policy. Others inherit from
+        TfPolicy w/o using DynamicTfPolicy.
+        TODO(sven): unify these cases."""
+        exploration = from_config(
+            Exploration,
+            config.get("exploration_config", {"type": "StochasticSampling"}),
+            action_space=action_space,
+            num_workers=config.get("num_workers"),
+            worker_index=config.get("worker_index"),
+            framework=getattr(self, "framework", "tf"))
+        # If config is further passed around, it'll contain an already
+        # instantiated object.
+        config["exploration_config"] = exploration
+        return exploration
 
 
 def clip_action(action, space):

@@ -84,10 +84,11 @@ Heap memory quota
 
 When Ray starts, it queries the available memory on a node / container not reserved for Redis and the object store or being used by other applications. This is considered "available memory" that actors and tasks can request memory out of. You can also set ``memory=<bytes>`` on Ray init to tell Ray explicitly how much memory is available.
 
-.. note::
+.. important::
 
-  Setting available memory for the node does not impose any limits on memory usage
-  of tasks. To set per-task limits, see the following sections.
+  Setting available memory for the node does NOT impose any limits on memory usage
+  unless you specify memory resource requirements in decorators. By default, tasks
+  and actors request no memory (and hence have no limit).
 
 To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the ``memory`` argument. The Ray scheduler will then reserve the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 

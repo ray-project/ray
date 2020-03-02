@@ -1,9 +1,7 @@
-RaySGD: Distributed Deep Learning
-=================================
+RaySGD: Distributed Training Wrappers
+=====================================
 
-.. image:: raysgdlogo.png
-    :scale: 20%
-    :align: center
+.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
 RaySGD is a lightweight library for distributed deep learning, providing thin wrappers around PyTorch and TensorFlow native modules for data parallel training.
 
@@ -13,7 +11,10 @@ The main features are:
   - **Composability**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
   - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-CPU, or multi-GPU clusters by changing 2 lines of code.
 
-.. tip:: We need your feedback! RaySGD is currently early in its development, and we're hoping to get feedback from people using or considering it. We'd love `to get in touch <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. note::
+
+  This API is new and may be revised in future Ray releases. If you encounter
+  any bugs, please file an `issue on GitHub`_.
 
 
 Getting Started
@@ -28,8 +29,8 @@ You can start a ``PyTorchTrainer`` with the following:
     import torch.nn as nn
     from torch import distributed
 
-    from ray.experimental.sgd import PyTorchTrainer
-    from ray.experimental.sgd.examples.train_example import LinearDataset
+    from ray.util.sgd import PyTorchTrainer
+    from ray.util.sgd.examples.train_example import LinearDataset
 
 
     def model_creator(config):
@@ -61,3 +62,5 @@ You can start a ``PyTorchTrainer`` with the following:
     print(stats)
     trainer1.shutdown()
     print("success!")
+
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!

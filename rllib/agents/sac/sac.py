@@ -25,7 +25,7 @@ DEFAULT_CONFIG = with_common_config({
         "hidden_activation": "relu",
         "hidden_layer_sizes": (256, 256),
     },
-    # Unsquash actions to the upper and lower bounds of env's action space
+    # Unsquash actions to the upper and lower bounds of env's action space.
     "normalize_actions": True,
 
     # === Learning ===
@@ -38,7 +38,6 @@ DEFAULT_CONFIG = with_common_config({
     "no_done_at_end": True,
     # N-step target updates
     "n_step": 1,
-
     # === Evaluation ===
     # The evaluation stats will be reported under the "evaluation" metric key.
     "evaluation_interval": 1,
@@ -46,13 +45,11 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_num_episodes": 1,
     # Extra configuration that disables exploration.
     "evaluation_config": {
-        "exploration_enabled": False,
+        "explore": False,
     },
 
-    # === Exploration ===
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 100,
-    "exploration_enabled": True,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -103,13 +100,6 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
-
-    # DEPRECATED:
-    "per_worker_exploration": -1,
-    "exploration_fraction": -1,
-    "schedule_max_timesteps": -1,
-    "exploration_initial_eps": -1,
-    "exploration_final_eps": -1,
 })
 # __sphinx_doc_end__
 # yapf: enable

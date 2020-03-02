@@ -54,7 +54,8 @@ ActorID CreateActorHelper(CoreWorker &worker,
   RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                               "actor creation task", "", "", ""));
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
+  args.emplace_back(TaskArg::PassByValue(
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   ActorCreationOptions actor_options{max_reconstructions,   is_direct_call,
                                      /*max_concurrency*/ 1, resources,      resources, {},
@@ -320,11 +321,12 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       auto buffer2 = GenerateRandomBuffer();
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr), {}, &object_id));
+      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr, std::vector<ObjectID>()), {},
+                              &object_id));
 
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
@@ -369,10 +371,10 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
@@ -410,13 +412,14 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
 
     ObjectID object_id;
-    RAY_CHECK_OK(driver.Put(RayObject(buffer1, nullptr), {}, &object_id));
+    RAY_CHECK_OK(
+        driver.Put(RayObject(buffer1, nullptr, std::vector<ObjectID>()), {}, &object_id));
 
     // Create arguments with PassByRef and PassByValue.
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByReference(object_id));
-    args.emplace_back(
-        TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
@@ -481,8 +484,8 @@ void CoreWorkerTest::TestActorReconstruction(
 
       // Create arguments with PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
@@ -527,8 +530,8 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
@@ -585,7 +588,8 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   ASSERT_EQ(by_ref.GetReference(), id);
   // Test by-value argument.
   auto buffer = GenerateRandomBuffer();
-  TaskArg by_value = TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr));
+  TaskArg by_value = TaskArg::PassByValue(
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>()));
   ASSERT_FALSE(by_value.IsPassedByReference());
   auto data = by_value.GetValue().GetData();
   ASSERT_TRUE(data != nullptr);
@@ -601,7 +605,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   RayFunction function(ray::Language::PYTHON,
                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
+  args.emplace_back(TaskArg::PassByValue(
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0,
@@ -678,7 +683,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     int64_t array[] = {SHOULD_CHECK_MESSAGE_ORDER, i};
     auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(array),
                                                       sizeof(array));
-    args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
@@ -753,9 +759,11 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
-                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
+                       std::vector<ObjectID>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
-                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
+                       std::vector<ObjectID>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -878,9 +886,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
-                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
+                       std::vector<ObjectID>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
-                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
+                       std::vector<ObjectID>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -904,8 +914,9 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   char error_buffer[error_string.size()];
   size_t len = error_string.copy(error_buffer, error_string.size(), 0);
   buffers_with_exception.emplace_back(
-      nullptr, std::make_shared<LocalMemoryBuffer>(
-                   reinterpret_cast<uint8_t *>(error_buffer), len));
+      nullptr,
+      std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(error_buffer), len),
+      std::vector<ObjectID>());
 
   RAY_CHECK_OK(
       core_worker.Put(buffers_with_exception.back(), {}, ids_with_exception.back()));
@@ -958,7 +969,8 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Put(RayObject(buffers[i], nullptr), {}, &ids[i]));
+    RAY_CHECK_OK(worker1.Put(RayObject(buffers[i], nullptr, std::vector<ObjectID>()), {},
+                             &ids[i]));
   }
 
   // Test Get() from remote node.

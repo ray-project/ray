@@ -329,21 +329,21 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> policy.model.base_model.summary()
     Model: "model"
     _____________________________________________________________________
-    Layer (type)               Output Shape  Param #  Connected to       
+    Layer (type)               Output Shape  Param #  Connected to
     =====================================================================
-    observations (InputLayer)  [(None, 4)]   0                           
+    observations (InputLayer)  [(None, 4)]   0
     _____________________________________________________________________
-    fc_1 (Dense)               (None, 256)   1280     observations[0][0] 
+    fc_1 (Dense)               (None, 256)   1280     observations[0][0]
     _____________________________________________________________________
-    fc_value_1 (Dense)         (None, 256)   1280     observations[0][0] 
+    fc_value_1 (Dense)         (None, 256)   1280     observations[0][0]
     _____________________________________________________________________
-    fc_2 (Dense)               (None, 256)   65792    fc_1[0][0]         
+    fc_2 (Dense)               (None, 256)   65792    fc_1[0][0]
     _____________________________________________________________________
-    fc_value_2 (Dense)         (None, 256)   65792    fc_value_1[0][0]   
+    fc_value_2 (Dense)         (None, 256)   65792    fc_value_1[0][0]
     _____________________________________________________________________
-    fc_out (Dense)             (None, 2)     514      fc_2[0][0]         
+    fc_out (Dense)             (None, 2)     514      fc_2[0][0]
     _____________________________________________________________________
-    value_out (Dense)          (None, 1)     257      fc_value_2[0][0]   
+    value_out (Dense)          (None, 1)     257      fc_value_2[0][0]
     =====================================================================
     Total params: 134,915
     Trainable params: 134,915
@@ -373,15 +373,15 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.base_model.summary()
     Model: "model"
     _______________________________________________________________________
-    Layer (type)                Output Shape    Param #  Connected to      
+    Layer (type)                Output Shape    Param #  Connected to
     =======================================================================
-    observations (InputLayer)   [(None, 4)]     0                          
+    observations (InputLayer)   [(None, 4)]     0
     _______________________________________________________________________
     fc_1 (Dense)                (None, 256)     1280     observations[0][0]
     _______________________________________________________________________
-    fc_out (Dense)              (None, 256)     65792    fc_1[0][0]        
+    fc_out (Dense)              (None, 256)     65792    fc_1[0][0]
     _______________________________________________________________________
-    value_out (Dense)           (None, 1)       257      fc_1[0][0]        
+    value_out (Dense)           (None, 1)       257      fc_1[0][0]
     =======================================================================
     Total params: 67,329
     Trainable params: 67,329
@@ -395,11 +395,11 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.q_value_head.summary()
     Model: "model_1"
     _________________________________________________________________
-    Layer (type)                 Output Shape              Param #   
+    Layer (type)                 Output Shape              Param #
     =================================================================
-    model_out (InputLayer)       [(None, 256)]             0         
+    model_out (InputLayer)       [(None, 256)]             0
     _________________________________________________________________
-    lambda (Lambda)              [(None, 2), (None, 2, 1), 66306     
+    lambda (Lambda)              [(None, 2), (None, 2, 1), 66306
     =================================================================
     Total params: 66,306
     Trainable params: 66,306
@@ -413,11 +413,11 @@ Similar to accessing policy state, you may want to get a reference to the underl
     >>> model.state_value_head.summary()
     Model: "model_2"
     _________________________________________________________________
-    Layer (type)                 Output Shape              Param #   
+    Layer (type)                 Output Shape              Param #
     =================================================================
-    model_out (InputLayer)       [(None, 256)]             0         
+    model_out (InputLayer)       [(None, 256)]             0
     _________________________________________________________________
-    lambda_1 (Lambda)            (None, 1)                 66049     
+    lambda_1 (Lambda)            (None, 1)                 66049
     =================================================================
     Total params: 66,049
     Trainable params: 66,049
@@ -442,7 +442,7 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
 
 .. code-block:: python
 
-    from ray.experimental import named_actors
+    from ray.util import named_actors
 
     @ray.remote
     class Counter:
@@ -520,6 +520,146 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
+Customized Exploration Behavior (Training and Evaluation)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib offers a unified top-level API to configure and customize an agent’s
+exploration behavior, including the decisions (how and whether) to sample
+actions from distributions (stochastically or deterministically).
+The setup can be done via using built-in Exploration classes
+(see `this package <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/>`__),
+which are specified (and further configured) inside ``Trainer.config["exploration_config"]``.
+Besides using built-in classes, one can sub-class any of
+these built-ins, add custom behavior to it, and use that new class in
+the config instead.
+
+Every policy has-an instantiation of one of the Exploration (sub-)classes.
+This Exploration object is created from the Trainer’s
+``config[“exploration_config”]`` dict, which specifies the class to use via the
+special “type” key, as well as constructor arguments via all other keys,
+e.g.:
+
+.. code-block:: python
+
+    # in Trainer.config:
+    "exploration_config": {
+        "type": "StochasticSampling",  # <- Special `type` key provides class information
+        "[c'tor arg]" : "[value]",  # <- Add any needed constructor args here.
+        # etc
+    }
+    # ...
+
+The following table lists all built-in Exploration sub-classes and the agents
+that currently used these by default:
+
+.. View table below at: https://docs.google.com/drawings/d/1dEMhosbu7HVgHEwGBuMlEDyPiwjqp_g6bZ0DzCMaoUM/edit?usp=sharing
+.. image:: images/rllib-exploration-api-table.svg
+
+An Exploration class implements the ``get_exploration_action`` method,
+in which the exact exploratory behavior is defined.
+It takes the model’s output, the action distribution class, the model itself,
+a timestep (the global env-sampling steps already taken),
+and an ``explore`` switch and outputs a tuple of 1) action and
+2) log-likelihood:
+
+.. code-block:: python
+
+    def get_exploration_action(self,
+                               distribution_inputs,
+                               action_dist_class,
+                               model=None,
+                               explore=True,
+                               timestep=None):
+        """Returns a (possibly) exploratory action and its log-likelihood.
+
+        Given the Model's logits outputs and action distribution, returns an
+        exploratory action.
+
+        Args:
+            distribution_inputs (any): The output coming from the model,
+                ready for parameterizing a distribution
+                (e.g. q-values or PG-logits).
+            action_dist_class (class): The action distribution class
+                to use.
+            model (ModelV2): The Model object.
+            explore (bool): True: "Normal" exploration behavior.
+                False: Suppress all exploratory behavior and return
+                    a deterministic action.
+            timestep (int): The current sampling time step. If None, the
+                component should try to use an internal counter, which it
+                then increments by 1. If provided, will set the internal
+                counter to the given value.
+
+        Returns:
+            Tuple:
+            - The chosen exploration action or a tf-op to fetch the exploration
+              action from the graph.
+            - The log-likelihood of the exploration action.
+        """
+        pass
+
+
+On the highest level, the ``Trainer.compute_action`` and ``Policy.compute_action(s)``
+methods have a boolean ``explore`` switch, which is passed into
+``Exploration.get_exploration_action``. If ``None``, the value of
+``Trainer.config[“explore”]`` is used.
+Hence ``config[“explore”]`` describes the default behavior of the policy and
+e.g. allows switching off any exploration easily for evaluation purposes
+(see :ref:`CustomEvaluation`).
+
+The following are example excerpts from different Trainers' configs
+(see rllib/agents/trainer.py) to setup different exploration behaviors:
+
+.. code-block:: python
+
+    # All of the following configs go into Trainer.config.
+
+    # 1) Switching *off* exploration by default.
+    # Behavior: Calling `compute_action(s)` without explicitly setting its `explore`
+    # param will result in no exploration.
+    # However, explicitly calling `compute_action(s)` with `explore=True` will
+    # still(!) result in exploration (per-call overrides default).
+    "explore": False,
+
+    # 2) Switching *on* exploration by default.
+    # Behavior: Calling `compute_action(s)` without explicitly setting its
+    # explore param will result in exploration.
+    # However, explicitly calling `compute_action(s)` with `explore=False`
+    # will result in no(!) exploration (per-call overrides default).
+    "explore": True,
+
+    # 3) Example exploration_config usages:
+    # a) DQN: see rllib/agents/dqn/dqn.py
+    "explore": True,
+    "exploration_config": {
+       "type": "EpsilonGreedy",  # <- Exploration sub-class by name or full path to module+class
+                                 # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       # Parameters for the Exploration class' constructor:
+       "initial_epsilon": 1.0,
+       "final_epsilon": 0.02,
+       "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+    },
+
+    # b) DQN Soft-Q: In order to switch to Soft-Q exploration, do instead:
+    "explore": True,
+    "exploration_config": {
+       "type": "SoftQ",
+       # Parameters for the Exploration class' constructor:
+       "temperature": 1.0,
+    },
+
+    # c) PPO: see rllib/agents/ppo/ppo.py
+    # Behavior: The algo samples stochastically by default from the
+    # model-parameterized distribution. This is the global Trainer default
+    # setting defined in trainer.py and used by all PG-type algos.
+    "explore": True,
+    "exploration_config": {
+       "type": "StochasticSampling",
+    },
+
+
+.. _CustomEvaluation:
+
 Customized Evaluation During Training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -529,6 +669,22 @@ of environment configurations). You can evaluate policies during training by set
 or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
 ``evaluation_num_workers``, and ``custom_eval_function`` configs
 (see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
+
+By default, exploration is left as-is within ``evaluation_config``.
+However, you can switch off any exploration behavior for the evaluation workers
+via:
+
+.. code-block:: python
+
+    # Switching off exploration behavior for evaluation workers
+    # (see rllib/agents/trainer.py)
+    "evaluation_config": {
+       "explore": False
+    }
+
+**IMPORTANT NOTE**: Policy gradient algorithms are able to find the optimal
+policy, even if this is a stochastic one. Setting "explore=False" above
+will result in the evaluation workers not using this optimal policy.
 
 There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
 

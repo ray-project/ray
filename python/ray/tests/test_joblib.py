@@ -16,7 +16,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import cross_val_score
 
-from ray.experimental.joblib import register_ray
+from ray.util.joblib import register_ray
 import ray
 
 
@@ -28,7 +28,7 @@ def test_register_ray():
 
 def test_ray_backend(shutdown_only):
     register_ray()
-    from ray.experimental.joblib.ray_backend import RayBackend
+    from ray.util.joblib.ray_backend import RayBackend
     with joblib.parallel_backend("ray"):
         assert type(joblib.parallel.get_active_backend()[0]) == RayBackend
 

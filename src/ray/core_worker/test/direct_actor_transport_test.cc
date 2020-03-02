@@ -13,6 +13,8 @@ using ::testing::_;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
+  const rpc::Address &Addr() const override { return addr; }
+
   ray::Status PushActorTask(
       std::unique_ptr<rpc::PushTaskRequest> request,
       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
@@ -32,6 +34,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
+  rpc::Address addr;
   std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   uint64_t counter = 0;
 };
@@ -41,11 +44,12 @@ class MockTaskFinisher : public TaskFinisherInterface {
   MockTaskFinisher() {}
 
   MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
-                                         const rpc::Address *addr));
+                                         const rpc::Address &addr));
   MOCK_METHOD3(PendingTaskFailed,
                void(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
 
-  MOCK_METHOD1(OnTaskDependenciesInlined, void(const std::vector<ObjectID> &object_ids));
+  MOCK_METHOD2(OnTaskDependenciesInlined,
+               void(const std::vector<ObjectID> &, const std::vector<ObjectID> &));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
@@ -63,9 +67,8 @@ class DirectActorTransportTest : public ::testing::Test {
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
-        submitter_(address_,
-                   [&](const std::string ip, int port) { return worker_client_; }, store_,
-                   task_finisher_) {}
+        submitter_(address_, [&](const rpc::Address &addr) { return worker_client_; },
+                   store_, task_finisher_) {}
 
   rpc::Address address_;
   std::shared_ptr<MockWorkerClient> worker_client_;

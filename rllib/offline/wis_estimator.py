@@ -9,7 +9,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
     Step-wise WIS estimator in https://arxiv.org/pdf/1511.03722.pdf"""
 
     def __init__(self, policy, gamma):
-        OffPolicyEstimator.__init__(self, policy, gamma)
+        super().__init__(policy, gamma)
         self.filter_values = []
         self.filter_counts = []
 

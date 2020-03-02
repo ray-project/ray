@@ -977,7 +977,7 @@ cli.add_command(project_cli)
 cli.add_command(session_cli)
 
 try:
-    from ray.experimental.serve.scripts import serve_cli
+    from ray.serve.scripts import serve_cli
     cli.add_command(serve_cli)
 except Exception as e:
     logger.debug(

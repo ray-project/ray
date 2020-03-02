@@ -1,11 +1,11 @@
 import collections
+import errno
 import json
 import logging
 import multiprocessing
 import os
 import random
 import re
-import resource
 import socket
 import subprocess
 import sys
@@ -13,11 +13,14 @@ import time
 import redis
 
 import colorama
-import pyarrow
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
 import psutil
+
+resource = None
+if sys.platform != "win32":
+    import resource
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -283,10 +286,10 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # connection.
         s.connect((ip_address, int(port)))
         node_ip_address = s.getsockname()[0]
-    except Exception as e:
+    except OSError as e:
         node_ip_address = "127.0.0.1"
         # [Errno 101] Network is unreachable
-        if e.errno == 101:
+        if e.errno == errno.ENETUNREACH:
             try:
                 # try get node ip address from host name
                 host_name = socket.getfqdn(socket.gethostname())
@@ -507,22 +510,21 @@ def wait_for_redis_to_start(redis_ip_address,
 
 
 def _compute_version_info():
-    """Compute the versions of Python, pyarrow, and Ray.
+    """Compute the versions of Python, and Ray.
 
     Returns:
         A tuple containing the version information.
     """
     ray_version = ray.__version__
     python_version = ".".join(map(str, sys.version_info[:3]))
-    pyarrow_version = pyarrow.__version__
-    return ray_version, python_version, pyarrow_version
+    return ray_version, python_version
 
 
 def _put_version_info_in_redis(redis_client):
     """Store version information in Redis.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, pyarrow, or Ray.
+    different versions of Python, or Ray.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -534,7 +536,7 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, pyarrow, or Ray. If the version
+    different versions of Python, or Ray. If the version
     information is not present in Redis, then no check is done.
 
     Args:
@@ -557,12 +559,10 @@ def check_version_info(redis_client):
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
                          "    Python: " + true_version_info[1] + "\n"
-                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
                          "This process on node " + node_ip_address +
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
-                         "    Python: " + version_info[1] + "\n"
-                         "    Pyarrow: " + str(version_info[2]))
+                         "    Python: " + version_info[1] + "\n")
         if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
@@ -586,11 +586,15 @@ def start_reaper():
     try:
         os.setpgrp()
     except OSError as e:
-        logger.warning("setpgrp failed, processes may not be "
-                       "cleaned up properly: {}.".format(e))
-        # Don't start the reaper in this case as it could result in killing
-        # other user processes.
-        return None
+        if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
+            # Nothing to do; we're already a session leader.
+            pass
+        else:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+            # Don't start the reaper in this case as it could result in killing
+            # other user processes.
+            return None
 
     reaper_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
@@ -902,7 +906,7 @@ def _start_redis_instance(executable,
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
-    else:
+    elif resource is not None:
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
         # clients.

@@ -29,8 +29,8 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
   auto it = client_cache_.find(addr);
   if (it == client_cache_.end()) {
-    client_cache_[addr] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
-        client_factory_(addr.ip_address, addr.port));
+    client_cache_[addr] =
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr.ToProto()));
     RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
   }
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
@@ -117,10 +117,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
-            rpc::WorkerAddress addr = {
-                reply.worker_address().ip_address(), reply.worker_address().port(),
-                WorkerID::FromBinary(reply.worker_address().worker_id()),
-                ClientID::FromBinary(reply.worker_address().raylet_id())};
+            rpc::WorkerAddress addr(reply.worker_address());
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
             OnWorkerIdle(addr, scheduling_key,
@@ -153,7 +150,7 @@ void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
     // A local request failed. This shouldn't happen if the raylet is still alive
     // and we don't currently handle raylet failures, so treat it as a fatal
     // error.
-    RAY_LOG(FATAL) << "Lost connection with local raylet. Error: " << status.ToString();
+    RAY_LOG(FATAL) << status.ToString();
   }
 }
 
@@ -199,8 +196,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status);
         } else {
-          rpc::Address proto = addr.ToProto();
-          task_finisher_->CompletePendingTask(task_id, reply, &proto);
+          task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
       });
   if (!status.ok()) {

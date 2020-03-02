@@ -58,12 +58,36 @@ py_test(
 # Tag: agents_dir
 # --------------------------------------------------------------------
 
+# A2CTrainer
+py_test(
+    name = "test_a2c",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/a3c/tests/test_a2c.py"]
+)
+
+# DDPGTrainer
+py_test(
+    name = "test_ddpg",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/ddpg/tests/test_ddpg.py"]
+)
+
 # DQNTrainer
 py_test(
     name = "test_dqn",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/dqn/tests/test_dqn.py"]
+)
+
+# IMPALA
+py_test(
+    name = "test_vtrace",
+    tags = ["agents_dir"],
+    size = "small",
+    srcs = ["agents/impala/tests/test_vtrace.py"]
 )
 
 # PGTrainer
@@ -78,19 +102,18 @@ py_test(
 py_test(
     name = "test_ppo",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/ppo/tests/test_ppo.py",
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
-# IMPALA
+# TD3Trainer
 py_test(
-    name = "test_vtrace",
+    name = "test_td3",
     tags = ["agents_dir"],
-    size = "small",
-    srcs = ["agents/impala/tests/test_vtrace.py"]
+    size = "medium",
+    srcs = ["agents/ddpg/tests/test_td3.py"]
 )
-
 
 # --------------------------------------------------------------------
 # contrib Agents
@@ -245,6 +268,390 @@ py_test(
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"num_workers\": 2}'",
         "--ray-num-cpus", "4"
+        ]
+)
+
+
+# DDPG/APEX-DDPG/TD3
+
+py_test(
+    name = "test_ddpg_pendulum_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "Pendulum-v0",
+        "--run", "DDPG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 1}'"
+        ]
+)
+
+py_test(
+    name = "test_ddpg_mountaincar_continuous_v0_num_workers_0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "MountainCarContinuous-v0",
+        "--run", "DDPG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 0}'"
+        ]
+)
+
+py_test(
+    name = "test_ddpg_mountaincar_continuous_v0_num_workers_1",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "MountainCarContinuous-v0",
+        "--run", "DDPG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 1}'"
+        ]
+)
+
+py_test(
+    name = "test_apex_ddpg_pendulum_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "Pendulum-v0",
+        "--run", "APEX_DDPG",
+        "--ray-num-cpus", "8",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "4"
+        ]
+)
+
+py_test(
+    name = "test_apex_ddpg_pendulum_v0_complete_episode_batches",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "Pendulum-v0",
+        "--run", "APEX_DDPG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'",
+        "--ray-num-cpus", "4",
+        ]
+)
+
+py_test(
+    name = "test_td3_pendulum_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "Pendulum-v0",
+        "--run", "TD3",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 1}'"
+        ]
+)
+
+# DQN/APEX
+
+py_test(
+    name = "test_dqn_frozenlake_v0",
+    main = "train.py", srcs = ["train.py"],
+    size = "small",
+    tags = ["quick_train"],
+    args = [
+        "--env", "FrozenLake-v0",
+        "--run", "DQN",
+        "--stop", "'{\"training_iteration\": 1}'"
+        ]
+)
+
+py_test(
+    name = "test_dqn_cartpole_v0_no_dueling",
+    main = "train.py", srcs = ["train.py"],
+    size = "small",
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "DQN",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"lr\": 1e-3, \"exploration_config\": {\"epsilon_timesteps\": 10000, \"final_epsilon\": 0.02}, \"dueling\": false, \"hiddens\": [], \"model\": {\"fcnet_hiddens\": [64], \"fcnet_activation\": \"relu\"}}'"
+        ]
+)
+
+py_test(
+    name = "test_dqn_cartpole_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "DQN",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
+        ]
+)
+
+py_test(
+    name = "test_dqn_cartpole_v0_with_offline_input_and_softq",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train", "external_files"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "DQN",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        ]
+)
+
+py_test(
+    name = "test_dqn_pong_deterministic_v4",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "PongDeterministic-v4",
+        "--run", "DQN",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"buffer_size\": 10000, \"sample_batch_size\": 4, \"learning_starts\": 10000, \"target_network_update_freq\": 1000, \"gamma\": 0.99, \"prioritized_replay\": true}'"
+        ]
+)
+
+py_test(
+    name = "test_apex_cartpole_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "APEX",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 2, \"timesteps_per_iteration\": 1000, \"num_gpus\": 0, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "4"
+        ]
+)
+
+# ES
+
+py_test(
+    name = "test_es_pendulum_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "Pendulum-v0",
+        "--run", "ES",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
+        ]
+)
+
+py_test(
+    name = "test_es_pong_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "Pong-v0",
+        "--run", "ES",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
+        ]
+)
+
+# IMPALA
+
+py_test(
+    name = "test_impala_cartpole_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "IMPALA",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "4",
+        ]
+)
+
+py_test(
+    name = "test_impala_cartpole_v0_num_aggregation_workers_2",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "IMPALA",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"num_aggregation_workers\": 2, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "5",
+        ]
+)
+
+py_test(
+    name = "test_impala_cartpole_v0_lstm",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "IMPALA",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4",
+        ]
+)
+
+py_test(
+    name = "test_impala_buffers_2",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "IMPALA",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
+        "--ray-num-cpus", "4",
+        ]
+)
+
+py_test(
+    name = "test_impala_cartpole_v0_buffers_2_lstm",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "IMPALA",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4",
+        ]
+)
+
+py_test(
+    name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "PongDeterministic-v4",
+        "--run", "IMPALA",
+        "--stop", "'{\"timesteps_total\": 40000}'",
+        "--ray-object-store-memory=1000000000",
+        "--config", "'{\"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"sample_batch_size\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
+        ]
+)
+
+# From test_rollout.sh (deprecated test file).
+py_test(
+    name = "test_impala_rollout",
+    main = "tests/test_rollout.py",
+    data = ["train.py", "rollout.py"],
+    tags = ["quick_train"],
+    srcs = ["tests/test_rollout.py"]
+)
+
+# MARWIL
+
+py_test(
+    name = "test_marwil_cartpole_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train", "external_files"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "MARWIL",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+        ]
+)
+
+# PG
+
+py_test(
+    name = "test_pg_tf_frozenlake_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "FrozenLake-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        ]
+)
+
+py_test(
+    name = "test_pg_torch_frozenlake_v0",
+    main = "train.py", srcs = ["train.py"],
+    size = "small",
+    tags = ["quick_train"],
+    args = [
+        "--torch",
+        "--env", "FrozenLake-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        ]
+)
+
+py_test(
+    name = "test_pg_tf_cartpole_v0",
+    main = "train.py", srcs = ["train.py"],
+    size = "small",
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        ]
+)
+
+py_test(
+    name = "test_pg_torch_cartpole_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--torch",
+        "--env", "CartPole-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500}'"
+        ]
+)
+
+py_test(
+    name = "test_pg_tf_cartpole_v0_lstm",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
+        ]
+)
+
+py_test(
+    name = "test_pg_tf_cartpole_v0_multi_envs_per_worker",
+    main = "train.py", srcs = ["train.py"],
+    size = "small",
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
+        ]
+)
+
+
+py_test(
+    name = "test_pg_tf_pong_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "Pong-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -417,379 +824,6 @@ py_test(
         ]
 )
 
-# ES
-
-py_test(
-    name = "test_es_pendulum_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pendulum-v0",
-        "--run", "ES",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-py_test(
-    name = "test_es_pong_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pong-v0",
-        "--run", "ES",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-# DQN/APEX
-
-py_test(
-    name = "test_dqn_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "DQN",
-        "--stop", "'{\"training_iteration\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_dqn_cartpole_v0_no_dueling",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "DQN",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"lr\": 1e-3, \"schedule_max_timesteps\": 100000, \"exploration_fraction\": 0.1, \"exploration_final_eps\": 0.02, \"dueling\": false, \"hiddens\": [], \"model\": {\"fcnet_hiddens\": [64], \"fcnet_activation\": \"relu\"}}'"
-        ]
-)
-
-py_test(
-    name = "test_dqn_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "DQN",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-py_test(
-    name = "test_dqn_cartpole_v0_with_offline_input_and_softq",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train", "external_files"],
-    size = "small",
-    # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "DQN",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"soft_q\": true}'"
-        ]
-)
-
-py_test(
-    name = "test_dqn_pong_deterministic_v4",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "PongDeterministic-v4",
-        "--run", "DQN",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"lr\": 1e-4, \"schedule_max_timesteps\": 2000000, \"buffer_size\": 10000, \"exploration_fraction\": 0.1, \"exploration_final_eps\": 0.01, \"sample_batch_size\": 4, \"learning_starts\": 10000, \"target_network_update_freq\": 1000, \"gamma\": 0.99, \"prioritized_replay\": true}'"
-        ]
-)
-
-py_test(
-    name = "test_apex_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "APEX",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"timesteps_per_iteration\": 1000, \"num_gpus\": 0, \"min_iter_time_s\": 1}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-# PG
-
-py_test(
-    name = "test_pg_tf_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_pg_torch_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--torch",
-        "--env", "FrozenLake-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_pg_tf_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_pg_torch_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--torch",
-        "--env", "CartPole-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500}'"
-        ]
-)
-
-py_test(
-    name = "test_pg_tf_cartpole_v0_lstm",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
-        ]
-)
-
-py_test(
-    name = "test_pg_tf_cartpole_v0_multi_envs_per_worker",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
-        ]
-)
-
-
-py_test(
-    name = "test_pg_tf_pong_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pong-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
-        ]
-)
-
-# DDPG/APEX-DDPG
-
-py_test(
-    name = "test_ddpg_pendulum_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pendulum-v0",
-        "--run", "DDPG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_ddpg_mountaincar_continuous_v0_num_workers_0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "MountainCarContinuous-v0",
-        "--run", "DDPG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 0}'"
-        ]
-)
-
-
-py_test(
-    name = "test_ddpg_mountaincar_continuous_v0_num_workers_1",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "MountainCarContinuous-v0",
-        "--run", "DDPG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_apex_ddpg_pendulum_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pendulum-v0",
-        "--run", "APEX_DDPG",
-        "--ray-num-cpus", "8",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-py_test(
-    name = "test_apex_ddpg_pendulum_v0_complete_episode_batches",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pendulum-v0",
-        "--run", "APEX_DDPG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'",
-        "--ray-num-cpus", "4",
-        ]
-)
-
-# IMPALA
-
-py_test(
-    name = "test_impala_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "IMPALA",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1}'",
-        "--ray-num-cpus", "4",
-        ]
-)
-
-py_test(
-    name = "test_impala_cartpole_v0_num_aggregation_workers_2",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "IMPALA",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"num_aggregation_workers\": 2, \"min_iter_time_s\": 1}'",
-        "--ray-num-cpus", "5",
-        ]
-)
-
-py_test(
-    name = "test_impala_cartpole_v0_lstm",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "IMPALA",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"model\": {\"use_lstm\": true}}'",
-        "--ray-num-cpus", "4",
-        ]
-)
-
-py_test(
-    name = "test_impala_buffers_2",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "IMPALA",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
-        "--ray-num-cpus", "4",
-        ]
-)
-
-py_test(
-    name = "test_impala_cartpole_v0_buffers_2_lstm",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "IMPALA",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
-        "--ray-num-cpus", "4",
-        ]
-)
-
-py_test(
-    name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "PongDeterministic-v4",
-        "--run", "IMPALA",
-        "--stop", "'{\"timesteps_total\": 40000}'",
-        "--ray-object-store-memory=1000000000",
-        "--config", "'{\"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"sample_batch_size\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
-        ]
-)
-
-# From test_rollout.sh (deprecated test file).
-py_test(
-    name = "test_impala_rollout",
-    main = "tests/test_rollout.py",
-    data = ["train.py", "rollout.py"],
-    tags = ["quick_train"],
-    srcs = ["tests/test_rollout.py"]
-)
-
-# MARWIL
-
-py_test(
-    name = "test_marwil_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train", "external_files"],
-    size = "small",
-    # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "MARWIL",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
-        ]
-)
-
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -805,6 +839,20 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Policies
+# rllib/policy/
+#
+# Tag: policy
+# --------------------------------------------------------------------
+
+py_test(
+    name = "policy/tests/test_compute_log_likelihoods",
+    tags = ["policy"],
+    size = "small",
+    srcs = ["policy/tests/test_compute_log_likelihoods.py"]
+)
+
+# --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
 #
@@ -815,6 +863,7 @@ py_test(
     name = "test_framework_agnostic_components",
     tags = ["utils"],
     size = "small",
+    data = glob(["utils/tests/**"]),
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
@@ -872,14 +921,6 @@ py_test(
     srcs = ["tests/test_dependency.py"]
 )
 
-# PR 7086
-#py_test(
-#    name = "tests/test_deterministic_support",
-#    tags = ["tests_dir", "tests_dir_D"],
-#    size = "small",
-#    srcs = ["tests/test_deterministic_support.py"]
-#)
-
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
@@ -902,12 +943,12 @@ py_test(
     srcs = ["tests/test_evaluators.py"]
 )
 
-#py_test(
-#    name = "tests/test_explorations",
-#    tags = ["tests_dir", "tests_dir_E"],
-#    size = "medium",
-#    srcs = ["tests/test_explorations.py"]
-#)
+py_test(
+    name = "tests/test_explorations",
+    tags = ["tests_dir", "tests_dir_E", "explorations"],
+    size = "large",
+    srcs = ["tests/test_explorations.py"]
+)
 
 py_test(
     name = "tests/test_external_env",
@@ -987,6 +1028,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_pipeline",
+    tags = ["tests_dir", "tests_dir_P"],
+    size = "small",
+    srcs = ["tests/test_pipeline.py"]
+)
+
+py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
@@ -1019,7 +1067,7 @@ py_test(
 
 
 py_test(
-    name = "autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    name = "examples/autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
     tags = ["examples", "examples_A"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
@@ -1168,7 +1216,7 @@ py_test(
 py_test(
     name = "examples/custom_tf_policy",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_tf_policy.py"],
     args = ["--iters=2", "--num-cpus=4"]
 )
@@ -1190,18 +1238,25 @@ py_test(
 )
 
 py_test(
-    name = "examples/multiagent_cartpole",
+    name = "examples/multi_agent_cartpole",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_cartpole.py"],
+    srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--num-iters=2", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multiagent_two_trainers",
+    name = "examples/multi_agent_custom_policy",
+    tags = ["examples", "examples_M_xxx"],
+    size = "medium",
+    srcs = ["examples/multi_agent_custom_policy.py"],
+)
+
+py_test(
+    name = "examples/multi_agent_two_trainers",
     tags = ["examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multiagent_two_trainers.py"],
+    srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--num-iters=2"]
 )
 
@@ -1242,6 +1297,14 @@ py_test(
     size = "small",
     srcs = ["examples/rollout_worker_custom_workflow.py"],
     args = ["--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rock_paper_scissors_multiagent.py"],
+    args = ["--stop=200"],
 )
 
 py_test(

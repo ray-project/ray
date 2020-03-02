@@ -62,7 +62,8 @@ class MockWorker {
         const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
     auto memory_buffer =
         std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
-    results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
+    results->push_back(
+        std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
     return Status::OK();
   }
 
@@ -90,7 +91,8 @@ class MockWorker {
 
     // Write the merged content to each of return ids.
     for (size_t i = 0; i < return_ids.size(); i++) {
-      results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
+      results->push_back(
+          std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
     }
 
     return Status::OK();

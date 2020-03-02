@@ -46,7 +46,7 @@ def optimizer_creator(model, config):
 
 
 # __torch_data_start__
-from ray.experimental.sgd.pytorch.examples.train_example import LinearDataset
+from ray.util.sgd.pytorch.examples.train_example import LinearDataset
 
 def data_creator(config):
     """Constructs torch.utils.data.Dataset objects.
@@ -108,7 +108,7 @@ ray.init()
 # __torch_ray_end__
 
 # __torch_trainer_start__
-from ray.experimental.sgd import PyTorchTrainer
+from ray.util.sgd import PyTorchTrainer
 
 trainer = PyTorchTrainer(
     model_creator,

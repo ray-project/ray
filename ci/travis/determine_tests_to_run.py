@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 import subprocess
 import sys
 from functools import partial
@@ -54,18 +55,18 @@ if __name__ == "__main__":
         ]
 
         for changed_file in files:
-            if changed_file.startswith("python/ray/tune/"):
+            if changed_file.startswith("python/ray/tune"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_FULL_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/rllib/"):
+            elif re.match("^(python/ray/)?rllib/", changed_file):
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_FULL_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/experimental/serve"):
+            elif changed_file.startswith("python/ray/serve"):
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1

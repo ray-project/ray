@@ -444,8 +444,8 @@ class ActorClass:
             args = []
         if kwargs is None:
             kwargs = {}
-        if is_direct_call is None:
-            is_direct_call = ray_constants.direct_call_enabled()
+        if is_direct_call is not None and not is_direct_call:
+            raise ValueError("Non-direct call actors are no longer supported.")
 
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
@@ -460,15 +460,8 @@ class ActorClass:
             else:
                 max_concurrency = 1
 
-        if max_concurrency > 1 and not is_direct_call:
-            raise ValueError(
-                "setting max_concurrency requires is_direct_call=True")
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
-
-        if is_asyncio and not is_direct_call:
-            raise ValueError(
-                "Setting is_asyncio requires is_direct_call=True.")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
@@ -483,14 +476,14 @@ class ActorClass:
         # Check whether the name is already taken.
         if name is not None:
             try:
-                ray.experimental.get_actor(name)
+                ray.util.get_actor(name)
             except ValueError:  # name is not taken, expected.
                 pass
             else:
                 raise ValueError(
                     "The name {name} is already taken. Please use "
                     "a different name or get existing actor using "
-                    "ray.experimental.get_actor('{name}')".format(name=name))
+                    "ray.util.get_actor('{name}')".format(name=name))
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -566,7 +559,6 @@ class ActorClass:
                 meta.max_reconstructions,
                 resources,
                 actor_placement_resources,
-                is_direct_call,
                 max_concurrency,
                 detached,
                 is_asyncio,
@@ -585,7 +577,7 @@ class ActorClass:
             original_handle=True)
 
         if name is not None:
-            ray.experimental.register_actor(name, actor_handle)
+            ray.util.register_actor(name, actor_handle)
 
         return actor_handle
 
@@ -791,18 +783,10 @@ class ActorHandle:
                 self.__ray_terminate__._actor_hard_ref = None
 
     def __ray_kill__(self):
-        """Kill the actor that this actor handle refers to immediately.
-
-        This will cause any outstanding tasks submitted to the actor to fail
-        and the actor to exit in the same way as if it crashed. In general,
-        you should prefer to just delete the actor handle and let it clean up
-        gracefull.
-
-        Returns:
-            None.
-        """
-        worker = ray.worker.get_global_worker()
-        worker.core_worker.kill_actor(self._ray_actor_id)
+        """Deprecated - use ray.kill() instead."""
+        logger.warning("actor.__ray_kill__() is deprecated and will be removed"
+                       " in the near future. Use ray.kill(actor) instead.")
+        ray.kill(self)
 
     @property
     def _actor_id(self):

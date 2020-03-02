@@ -1,5 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from gym.spaces import Discrete
+import numpy as np
+from pathlib import Path
 import unittest
 
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -23,6 +25,11 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         # Switch on eager for testing purposes.
         tf.enable_eager_execution()
 
+        # Bazel makes it hard to find files specified in `args` (and `data`).
+        # Use the true absolute path.
+        script_dir = Path(__file__).parent
+        abs_path = script_dir.absolute()
+
         # Try to create from an abstract class w/o default constructor.
         # Expect None.
         test = from_config({
@@ -37,16 +44,18 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         check(component.prop_d, "non_default")
 
         # Create a tf Component from json file.
-        component = from_config("dummy_config.json")
+        config_file = str(abs_path.joinpath("dummy_config.json"))
+        component = from_config(config_file)
         check(component.prop_c, "default")
         check(component.prop_d, 4)  # default
         check(component.add(3.3).numpy(), 5.3)  # prop_b == 2.0
 
         # Create a torch Component from yaml file.
-        component = from_config("dummy_config.yml")
+        config_file = str(abs_path.joinpath("dummy_config.yml"))
+        component = from_config(config_file)
         check(component.prop_a, "something else")
         check(component.prop_d, 3)
-        check(component.add(1.2), torch.Tensor([2.2]))  # prop_b == 1.0
+        check(component.add(1.2), np.array([2.2]))  # prop_b == 1.0
 
         # Create tf Component from json-string (e.g. on command line).
         component = from_config(
@@ -79,7 +88,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             "prop_a: B\nprop_b: -1.5\nprop_c: non-default\nframework: torch")
         check(component.prop_a, "B")
         check(component.prop_d, 4)  # default
-        check(component.add(-5.1), torch.Tensor([-6.6]))  # prop_b == -1.5
+        check(component.add(-5.1), np.array([-6.6]))  # prop_b == -1.5
 
 
 class DummyComponent:
@@ -122,3 +131,8 @@ class AbstractDummyComponent(DummyComponent, metaclass=ABCMeta):
     @abstractmethod
     def some_abstract_method(self):
         raise NotImplementedError
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main(verbosity=1)

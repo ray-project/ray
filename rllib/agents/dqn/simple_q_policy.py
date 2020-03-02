@@ -7,6 +7,7 @@ import ray
 from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -87,18 +88,32 @@ def build_q_models(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                 action_space, config):
+def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
+                       action_space, config):
+    # Action Q network.
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+    q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
+    action_dist = Categorical(q_vals, q_model)
+    return action_dist.logp(actions)
 
-    # Action Q network
-    q_values = _compute_q_values(policy, q_model,
-                                 input_dict[SampleBatch.CUR_OBS], obs_space,
-                                 action_space)
-    policy.q_values = q_values
+
+def simple_sample_action_from_q_network(policy, q_model, input_dict, obs_space,
+                                        action_space, explore, config,
+                                        timestep):
+    # Action Q network.
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
     policy.q_func_vars = q_model.variables()
 
-    # Action outputs.
-    return tf.argmax(q_values, axis=1), None
+    policy.output_actions, policy.sampled_action_logp = \
+        policy.exploration.get_exploration_action(
+            policy.q_values, Categorical, q_model, explore, timestep)
+
+    return policy.output_actions, policy.sampled_action_logp
 
 
 def build_q_losses(policy, model, dist_class, train_batch):
@@ -161,14 +176,12 @@ SimpleQPolicy = build_tf_policy(
     name="SimpleQPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
-    action_sampler_fn=sample_action_from_q_network,
+    action_sampler_fn=simple_sample_action_from_q_network,
+    log_likelihood_fn=get_log_likelihood,
     loss_fn=build_q_losses,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
-    mixins=[
-        ParameterNoiseMixin,
-        TargetNetworkMixin,
-    ])
+    mixins=[ParameterNoiseMixin, TargetNetworkMixin])

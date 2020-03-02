@@ -3,6 +3,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.pg as pg
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -11,8 +12,20 @@ from ray.rllib.utils import check, fc
 
 
 class TestPG(unittest.TestCase):
+    def setUp(self):
+        ray.init()
 
-    ray.init()
+    def tearDown(self):
+        ray.shutdown()
+
+    def test_pg_pipeline(ray_start_regular):
+        trainer = PGTrainer(
+            env="CartPole-v0",
+            config={
+                "min_iter_time_s": 0,
+                "use_pipeline_impl": True
+            })
+        assert isinstance(trainer.train(), dict)
 
     def test_pg_compilation(self):
         """Test whether a PGTrainer can be built with both frameworks."""
@@ -98,3 +111,9 @@ class TestPG(unittest.TestCase):
             expected_logp.detach().numpy() *
             train_batch[Postprocessing.ADVANTAGES].numpy())
         check(results.detach().numpy(), expected_loss, decimals=4)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

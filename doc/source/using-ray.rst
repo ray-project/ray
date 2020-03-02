@@ -12,6 +12,7 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
 
    starting-ray.rst
    actors.rst
+   async_api.rst
    using-ray-with-gpus.rst
    serialization.rst
    memory-management.rst

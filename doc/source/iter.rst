@@ -1,12 +1,18 @@
-Parallel Iterator API (Experimental)
-====================================
+Distributed Iterators
+=====================
 
-``ray.experimental.iter`` provides a parallel iterator API for simple data ingest
-and processing. It can be thought of as syntactic sugar around Ray actors and ``ray.wait`` loops.
+.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
+
+``ray.util.iter`` provides a parallel iterator API for simple data ingest and processing. It can be thought of as syntactic sugar around Ray actors and ``ray.wait`` loops.
 
 Parallel iterators are lazy and can operate over infinite sequences of items. Iterator
 transformations are only executed when the user calls ``next()`` to fetch the next output
 item from the iterator.
+
+.. note::
+
+  This API is new and may be revised in future Ray releases. If you encounter
+  any bugs, please file an `issue on GitHub`_.
 
 Concepts
 --------
@@ -18,20 +24,20 @@ create a worker actor that produces the data for each shard of the iterator:
 .. code-block:: python
 
     # Create an iterator with 2 worker actors over the list [1, 2, 3, 4].
-    >>> it = ray.experimental.iter.from_items([1, 2, 3, 4], num_shards=2)
+    >>> it = ray.util.iter.from_items([1, 2, 3, 4], num_shards=2)
     ParallelIterator[from_items[int, 4, shards=2]]
 
     # Create an iterator with 32 worker actors over range(1000000).
-    >>> it = ray.experimental.iter.from_range(1000000, num_shards=32)
+    >>> it = ray.util.iter.from_range(1000000, num_shards=32)
     ParallelIterator[from_range[1000000, shards=32]]
 
     # Create an iterator over two range(10) generators.
-    >>> it = ray.experimental.iter.from_iterators([range(10), range(10)])
+    >>> it = ray.util.iter.from_iterators([range(10), range(10)])
     ParallelIterator[from_iterators[shards=2]]
 
     # Create an iterator from existing worker actors. These actors must
     # implement the ParallelIteratorWorker interface.
-    >>> it = ray.experimental.iter.from_actors([a1, a2, a3, a4])
+    >>> it = ray.util.iter.from_actors([a1, a2, a3, a4])
     ParallelIterator[from_actors[shards=4]]
 
 Simple transformations can be chained on the iterator, such as mapping,
@@ -58,7 +64,7 @@ correspond to ``ray.get`` and ``ray.wait`` loops over the actors respectively:
 .. code-block:: python
 
     # Gather items synchronously (deterministic round robin across shards):
-    >>> it = ray.experimental.iter.from_range(1000000, 1)
+    >>> it = ray.util.iter.from_range(1000000, 1)
     >>> it = it.gather_sync()
     LocalIterator[ParallelIterator[from_range[1000000, shards=1]].gather_sync()]
 
@@ -72,7 +78,7 @@ correspond to ``ray.get`` and ``ray.wait`` loops over the actors respectively:
     [0, 2, 4, 6, 8]
 
     # Async gather can be used for better performance, but it is non-deterministic.
-    >>> it = ray.experimental.iter.from_range(1000, 4).gather_async()
+    >>> it = ray.util.iter.from_range(1000, 4).gather_async()
     >>> it.take(5)
     [0, 250, 500, 750, 1]
 
@@ -83,7 +89,7 @@ each shard should only be read by one process at a time:
 .. code-block:: python
 
     # Get local iterators representing the shards of this ParallelIterator:
-    >>> it = ray.experimental.iter.from_range(10000, 3)
+    >>> it = ray.util.iter.from_range(10000, 3)
     >>> [s0, s1, s2] = it.shards()
     [LocalIterator[from_range[10000, shards=3].shard[0]],
      LocalIterator[from_range[10000, shards=3].shard[1]],
@@ -122,7 +128,7 @@ This means that you can pass a stateful callable to ``.foreach()``:
             self.total += x
             return (self.total, x)
 
-    it = ray.experimental.iter.from_range(5, 1)
+    it = ray.util.iter.from_range(5, 1)
     for x in it.for_each(CumulativeSum()).gather_sync():
         print(x)
 
@@ -150,7 +156,7 @@ streaming grep:
 
     file_list = glob.glob("/var/log/syslog*.gz")
     it = (
-        ray.experimental.iter.from_items(file_list, num_shards=4)
+        ray.util.iter.from_items(file_list, num_shards=4)
            .for_each(lambda f: gzip.open(f).readlines())
            .flatten()
            .for_each(lambda line: line.decode("utf-8"))
@@ -184,7 +190,7 @@ distributed training:
             print("train on", batch)  # perform model update with batch
 
     it = (
-        ray.experimental.iter.from_range(1000000, num_shards=4, repeat=True)
+        ray.util.iter.from_range(1000000, num_shards=4, repeat=True)
             .batch(1024)
             .for_each(np.array)
     )
@@ -195,7 +201,7 @@ distributed training:
 API Reference
 -------------
 
-.. automodule:: ray.experimental.iter
+.. automodule:: ray.util.iter
     :members:
     :show-inheritance:
     :special-members:
