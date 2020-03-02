@@ -16,7 +16,6 @@ class Exploration:
     """
 
     def __init__(self,
-                 *,
                  action_space: Space,
                  num_workers: int,
                  worker_index: int,
