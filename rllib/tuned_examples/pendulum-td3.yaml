@@ -12,7 +12,8 @@ pendulum-ddpg:
 
         # === Exploration ===
         learning_starts: 5000
-        pure_exploration_steps: 5000
+        exploration_config:
+            random_timesteps: 5000
 
         # === Evaluation ===
         evaluation_interval: 1

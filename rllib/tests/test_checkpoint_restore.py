@@ -20,16 +20,22 @@ def get_mean_action(alg, obs):
 ray.init(num_cpus=10, object_store_memory=1e9)
 
 CONFIGS = {
-    "SAC": {},
+    "SAC": {
+        "explore": False,
+    },
     "ES": {
+        "explore": False,
         "episodes_per_batch": 10,
         "train_batch_size": 100,
         "num_workers": 2,
         "noise_size": 2500000,
         "observation_filter": "MeanStdFilter"
     },
-    "DQN": {},
+    "DQN": {
+        "explore": False
+    },
     "APEX_DDPG": {
+        "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
         "min_iter_time_s": 1,
@@ -38,19 +44,21 @@ CONFIGS = {
         },
     },
     "DDPG": {
-        "pure_exploration_steps": 0,
-        "exploration_ou_noise_scale": 0.0,
+        "explore": False,
         "timesteps_per_iteration": 100
     },
     "PPO": {
+        "explore": False,
         "num_sgd_iter": 5,
         "train_batch_size": 1000,
         "num_workers": 2
     },
     "A3C": {
+        "explore": False,
         "num_workers": 1
     },
     "ARS": {
+        "explore": False,
         "num_rollouts": 10,
         "num_workers": 2,
         "noise_size": 2500000,
@@ -70,7 +78,7 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
         alg2 = cls(config=CONFIGS[name], env="CartPole-v0")
         env = gym.make("CartPole-v0")
 
-    for _ in range(3):
+    for _ in range(2):
         res = alg1.train()
         print("current status: " + str(res))
 

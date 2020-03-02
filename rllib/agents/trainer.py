@@ -553,14 +553,11 @@ class Trainer(Trainable):
         else:
             self.env_creator = lambda env_config: None
 
-        # Merge the supplied config with the class default.
-        merged_config = copy.deepcopy(self._default_config)
-        merged_config = deep_update(merged_config, config,
-                                    self._allow_unknown_configs,
-                                    self._allow_unknown_subkeys,
-                                    self._override_all_subkeys_if_type_changes)
+        # Merge the supplied config with the class default, but store the
+        # user-provided one.
         self.raw_user_config = config
-        self.config = merged_config
+        self.config = Trainer.merge_trainer_configs(self._default_config,
+                                                    config)
 
         if self.config["normalize_actions"]:
             inner = self.env_creator
@@ -770,8 +767,7 @@ class Trainer(Trainable):
             preprocessed, update=False)
 
         # Figure out the current (sample) time step and pass it into Policy.
-        timestep = self.optimizer.num_steps_sampled \
-            if self._has_policy_optimizer() else None
+        self.global_vars["timestep"] += 1
 
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
@@ -781,7 +777,7 @@ class Trainer(Trainable):
             info,
             clip_actions=self.config["clip_actions"],
             explore=explore,
-            timestep=timestep)
+            timestep=self.global_vars["timestep"])
 
         if state or full_fetch:
             return result
@@ -880,6 +876,13 @@ class Trainer(Trainable):
                 "setting `num_workers`, `num_gpus`, and other configs. See "
                 "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
+
+    @classmethod
+    def merge_trainer_configs(cls, config1, config2):
+        config1 = copy.deepcopy(config1)
+        return deep_update(config1, config2, cls._allow_unknown_configs,
+                           cls._allow_unknown_subkeys,
+                           cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
     def _validate_config(config):
