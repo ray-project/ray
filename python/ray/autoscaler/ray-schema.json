@@ -135,6 +135,14 @@
                 "cache_stopped_nodes": {
                     "type": "boolean",
                     "description": " Whether to try to reuse previously stopped nodes instead of launching nodes. This will also cause the autoscaler to stop nodes instead of terminating them. Only implemented for AWS."
+                },
+                "availability_zone": {
+                    "type": "string",
+                    "description": "GCP availability zone"
+                },
+                "project_id": {
+                    "type": ["string", "null"],
+                    "description": "GCP globally unique project id"
                 }
             }
         },
