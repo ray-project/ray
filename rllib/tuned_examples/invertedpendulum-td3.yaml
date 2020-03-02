@@ -15,7 +15,8 @@ invertedpendulum-td3:
 
         # === Exploration ===
         learning_starts: 1000
-        pure_exploration_steps: 1000
+        exploration_config:
+            random_timesteps: 1000
 
         # === Evaluation ===
         evaluation_interval: 1

@@ -167,11 +167,15 @@ def build_trainer(name,
         def __getstate__(self):
             state = Trainer.__getstate__(self)
             state["trainer_state"] = self.state.copy()
+            if self.train_pipeline:
+                state["train_pipeline"] = self.train_pipeline.metrics.save()
             return state
 
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
             self.state = state["trainer_state"].copy()
+            if self.train_pipeline:
+                self.train_pipeline.metrics.restore(state["train_pipeline"])
 
     def with_updates(**overrides):
         """Build a copy of this trainer with the specified overrides.

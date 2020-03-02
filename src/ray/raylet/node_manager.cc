@@ -90,9 +90,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       object_manager_profile_timer_(io_service),
       initial_config_(config),
       local_available_resources_(config.resource_config),
-      worker_pool_(io_service, config.num_initial_workers,
-                   config.maximum_startup_concurrency, gcs_client_,
-                   config.worker_commands),
+      worker_pool_(
+          io_service, config.num_initial_workers, config.maximum_startup_concurrency,
+          gcs_client_, config.worker_commands,
+          /*starting_worker_timeout_callback=*/
+          [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,

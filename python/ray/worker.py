@@ -1641,6 +1641,29 @@ def wait(object_ids, num_returns=1, timeout=None):
         return ready_ids, remaining_ids
 
 
+def kill(actor):
+    """Kill an actor forcefully.
+
+    This will interrupt any running tasks on the actor, causing them to fail
+    immediately. Any atexit handlers installed in the actor will still be run.
+
+    If you want to kill the actor but let pending tasks finish,
+    you can call ``actor.__ray_terminate__.remote()`` instead to queue a
+    termination task.
+
+    If this actor is reconstructable, it will be attempted to be reconstructed.
+
+    Args:
+        actor (ActorHandle): Handle to the actor to kill.
+    """
+    if not isinstance(actor, ray.actor.ActorHandle):
+        raise ValueError("ray.kill() only supported for actors. "
+                         "Got: {}.".format(type(actor)))
+
+    worker = ray.worker.get_global_worker()
+    worker.core_worker.kill_actor(actor._ray_actor_id)
+
+
 def _mode(worker=global_worker):
     """This is a wrapper around worker.mode.
 
@@ -1775,7 +1798,7 @@ def remote(*args, **kwargs):
     Running remote actors will be terminated when the actor handle to them
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you want to kill them immediately, you can
-    also call ``actor_handle.__ray_kill__()``.
+    also call ``ray.kill(actor)``.
     """
     worker = get_global_worker()
 
