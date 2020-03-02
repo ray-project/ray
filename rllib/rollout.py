@@ -261,7 +261,7 @@ def run(args, parser):
         config["num_workers"] = min(2, config["num_workers"])
 
     # Merge with `evaluation_config`.
-    evaluation_config = copy.deepcopy(config["evaluation_config"])
+    evaluation_config = copy.deepcopy(config.get("evaluation_config", {}))
     config = merge_dicts(config, evaluation_config)
     # Merge with command line `--config` settings.
     config = merge_dicts(config, args.config)
