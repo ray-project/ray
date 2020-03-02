@@ -213,6 +213,9 @@ COMMON_CONFIG = {
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
+    # EXPERIMENTAL: use the pipeline based implementation of the algo. Can also
+    # be enabled by setting RLLIB_USE_PIPELINE_IMPL=1.
+    "use_pipeline_impl": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
