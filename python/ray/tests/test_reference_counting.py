@@ -1,8 +1,10 @@
 # coding: utf-8
 import copy
+import gc
 import json
 import logging
-import gc
+import os
+import signal
 import time
 import weakref
 
@@ -361,10 +363,13 @@ def test_feature_flag(shutdown_only):
 # Remote function takes serialized reference and doesn't hold onto it after
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
-def test_basic_serialized_reference(one_worker_100MiB):
-    @ray.remote
+@pytest.mark.parametrize("failure", [False, True])
+def test_basic_serialized_reference(one_worker_100MiB, failure):
+    @ray.remote(max_retries=0)
     def pending(ref, dep):
         ray.get(ref[0])
+        if failure:
+            os._exit(0)
 
     # TODO(edoakes): currently these tests don't work with ray.put() so we need
     # to return from a task like this instead. Once that is fixed, should have
@@ -386,7 +391,11 @@ def test_basic_serialized_reference(one_worker_100MiB):
 
     # Fulfill the dependency, causing the task to finish.
     ray.get(signal.send.remote())
-    ray.get(oid)
+    try:
+        ray.get(oid)
+        assert not failure
+    except ray.exceptions.RayWorkerError:
+        assert failure
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -395,12 +404,16 @@ def test_basic_serialized_reference(one_worker_100MiB):
 # Call a recursive chain of tasks that pass a serialized reference to the end
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
-def test_recursive_serialized_reference(one_worker_100MiB):
-    @ray.remote
+@pytest.mark.parametrize("failure", [False, True])
+def test_recursive_serialized_reference(one_worker_100MiB, failure):
+    @ray.remote(max_retries=0)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
-            return ray.get(signal.wait.remote())
+            ray.get(signal.wait.remote())
+            if failure:
+                os._exit(0)
+            return
         else:
             return recursive.remote(ref, signal, max_depth, depth + 1)
 
@@ -427,7 +440,12 @@ def test_recursive_serialized_reference(one_worker_100MiB):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    assert ray.get(tail_oid) is None
+    try:
+        assert ray.get(tail_oid) is None
+        assert not failure
+    # TODO(edoakes): this should raise WorkerError.
+    except ray.exceptions.UnreconstructableError:
+        assert failure
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -436,7 +454,8 @@ def test_recursive_serialized_reference(one_worker_100MiB):
 # Test that a passed reference held by an actor after the method finishes
 # is kept until the reference is removed from the actor. Also tests giving
 # the actor a duplicate reference to the same object ID.
-def test_actor_holding_serialized_reference(one_worker_100MiB):
+@pytest.mark.parametrize("failure", [False, True])
+def test_actor_holding_serialized_reference(one_worker_100MiB, failure):
     @ray.remote
     class GreedyActor(object):
         def __init__(self):
@@ -477,17 +496,27 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
     ray.get(actor.delete_ref1.remote())
     _fill_object_store_and_get(array_oid_bytes)
 
-    # Test that deleting the second reference stops it from being pinned.
-    ray.get(actor.delete_ref2.remote())
+    if failure:
+        # Test that the actor exiting stops the reference from being pinned.
+        ray.kill(actor)
+        # Wait for the actor to exit.
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(actor.delete_ref1.remote())
+    else:
+        # Test that deleting the second reference stops it from being pinned.
+        ray.get(actor.delete_ref2.remote())
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
-def test_worker_holding_serialized_reference(one_worker_100MiB):
-    @ray.remote
+@pytest.mark.parametrize("failure", [False, True])
+def test_worker_holding_serialized_reference(one_worker_100MiB, failure):
+    @ray.remote(max_retries=0)
     def child(dep1, dep2):
+        if failure:
+            os._exit(0)
         return
 
     @ray.remote
@@ -512,7 +541,11 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
     _fill_object_store_and_get(array_oid_bytes)
 
     ray.get(signal.send.remote())
-    ray.get(child_return_id)
+    try:
+        ray.get(child_return_id)
+        assert not failure
+    except ray.exceptions.RayWorkerError:
+        assert failure
     del child_return_id
 
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -537,12 +570,16 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
-def test_recursively_nest_ids(one_worker_100MiB):
-    @ray.remote
+@pytest.mark.parametrize("failure", [False, True])
+def test_recursively_nest_ids(one_worker_100MiB, failure):
+    @ray.remote(max_retries=0)
     def recursive(ref, signal, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
         if depth == max_depth:
-            return ray.get(signal.wait.remote())
+            ray.get(signal.wait.remote())
+            if failure:
+                os._exit(0)
+            return
         else:
             return recursive.remote(unwrapped, signal, max_depth, depth + 1)
 
@@ -572,7 +609,12 @@ def test_recursively_nest_ids(one_worker_100MiB):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    ray.get(tail_oid)
+    try:
+        ray.get(tail_oid)
+        assert not failure
+    # TODO(edoakes): this should raise WorkerError.
+    except ray.exceptions.UnreconstructableError:
+        assert failure
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -580,7 +622,8 @@ def test_recursively_nest_ids(one_worker_100MiB):
 
 # Test that serialized objectIDs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
-def test_return_object_id(one_worker_100MiB):
+@pytest.mark.parametrize("failure", [False, True])
+def test_return_object_id(one_worker_100MiB, failure):
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -588,6 +631,10 @@ def test_return_object_id(one_worker_100MiB):
     @ray.remote
     def return_an_id():
         return [put.remote()]
+
+    @ray.remote(max_retries=0)
+    def exit():
+        os._exit(0)
 
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
@@ -597,18 +644,26 @@ def test_return_object_id(one_worker_100MiB):
 
     # Check that taking a reference to the inner ID and removing the outer ID
     # doesn't unpin the object.
-    inner_oid = ray.get(outer_oid)[0]
+    inner_oid = ray.get(outer_oid)[0]  # noqa: F841
     del outer_oid
     _fill_object_store_and_get(inner_oid_binary)
 
-    # Check that removing the inner ID unpins the object.
-    del inner_oid
+    if failure:
+        # Check that the owner dying unpins the object. This should execute on
+        # the same worker because there is only one started and the other tasks
+        # have finished.
+        with pytest.raises(ray.exceptions.RayWorkerError):
+            ray.get(exit.remote())
+    else:
+        # Check that removing the inner ID unpins the object.
+        del inner_oid
     _fill_object_store_and_get(inner_oid_binary, succeed=False)
 
 
 # Test that serialized objectIDs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
-def test_pass_returned_object_id(one_worker_100MiB):
+@pytest.mark.parametrize("failure", [False, True])
+def test_pass_returned_object_id(one_worker_100MiB, failure):
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -617,10 +672,12 @@ def test_pass_returned_object_id(one_worker_100MiB):
     def return_an_id():
         return [put.remote()]
 
-    @ray.remote
+    @ray.remote(max_retries=0)
     def pending(ref, signal):
         ray.get(signal.wait.remote())
         ray.get(ref[0])
+        if failure:
+            os._exit(0)
 
     signal = SignalActor.remote()
     outer_oid = return_an_id.remote()
@@ -635,7 +692,11 @@ def test_pass_returned_object_id(one_worker_100MiB):
 
     # Check that the task finishing unpins the object.
     ray.get(signal.send.remote())
-    ray.get(pending_oid)
+    try:
+        ray.get(pending_oid)
+        assert not failure
+    except ray.exceptions.RayWorkerError:
+        assert failure
     _fill_object_store_and_get(inner_oid_binary, succeed=False)
 
 
@@ -643,7 +704,8 @@ def test_pass_returned_object_id(one_worker_100MiB):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
-def test_recursively_pass_returned_object_id(one_worker_100MiB):
+@pytest.mark.parametrize("failure", [False, True])
+def test_recursively_pass_returned_object_id(one_worker_100MiB, failure):
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -652,11 +714,14 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     def return_an_id():
         return [put.remote()]
 
-    @ray.remote
+    @ray.remote(max_retries=0)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
-            return ray.get(signal.wait.remote())
+            ray.get(signal.wait.remote())
+            if failure:
+                os._exit(0)
+            return
         else:
             return recursive.remote(ref, signal, max_depth, depth + 1)
 
@@ -678,7 +743,12 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    ray.get(tail_oid)
+    try:
+        ray.get(tail_oid)
+        assert not failure
+    # TODO(edoakes): this should raise WorkerError.
+    except ray.exceptions.UnreconstructableError:
+        assert failure
 
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
@@ -689,7 +759,8 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
 # returns the same ObjectID by calling ray.get() on its submitted task and
 # returning the result. The reference should still exist while the driver has a
 # reference to the final task's ObjectID.
-def test_recursively_return_borrowed_object_id(one_worker_100MiB):
+@pytest.mark.parametrize("failure", [False, True])
+def test_recursively_return_borrowed_object_id(one_worker_100MiB, failure):
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
@@ -697,27 +768,28 @@ def test_recursively_return_borrowed_object_id(one_worker_100MiB):
     @ray.remote
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
-            return put.remote()
+            return put.remote(), os.getpid()
 
-        final_id = ray.get(recursive.remote(num_tasks_left - 1))
-        ray.get(final_id)
-        return final_id
+        return ray.get(recursive.remote(num_tasks_left - 1))
 
     max_depth = 5
     head_oid = recursive.remote(max_depth)
-    final_oid = ray.get(head_oid)
+    final_oid, owner_pid = ray.get(head_oid)
     final_oid_bytes = final_oid.binary()
 
     # Check that the driver's reference pins the object.
     _fill_object_store_and_get(final_oid_bytes)
 
     # Remove the local reference and try it again.
-    final_oid = ray.get(head_oid)
     _fill_object_store_and_get(final_oid_bytes)
 
-    # Remove all references.
-    del head_oid
-    del final_oid
+    if failure:
+        os.kill(owner_pid, signal.SIGKILL)
+    else:
+        # Remove all references.
+        del head_oid
+        del final_oid
+
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
