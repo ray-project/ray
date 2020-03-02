@@ -50,8 +50,6 @@ jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
-jfieldID java_base_task_options_use_direct_call;
-jfieldID java_base_task_options_default_use_direct_call;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_max_reconstructions;
@@ -155,10 +153,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
-  java_base_task_options_use_direct_call =
-      env->GetFieldID(java_base_task_options_class, "useDirectCall", "Z");
-  java_base_task_options_default_use_direct_call =
-      env->GetStaticFieldID(java_base_task_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
 
   java_actor_creation_options_class =
       LoadClass(env, "org/ray/api/options/ActorCreationOptions");

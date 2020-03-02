@@ -32,8 +32,6 @@ public class ActorConcurrentCallTest extends BaseTest {
   }
 
   public void testConcurrentCall() {
-    TestUtils.skipTestIfDirectActorCallDisabled();
-
     ActorCreationOptions op = new ActorCreationOptions.Builder()
         .setMaxConcurrency(3)
         .createActorCreationOptions();

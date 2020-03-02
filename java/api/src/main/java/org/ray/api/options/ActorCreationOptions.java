@@ -18,8 +18,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxConcurrency;
 
   private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
-                               boolean useDirectCall, String jvmOptions, int maxConcurrency) {
-    super(resources, useDirectCall);
+                               String jvmOptions, int maxConcurrency) {
+    super(resources);
     this.maxReconstructions = maxReconstructions;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
@@ -32,7 +32,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
-    private boolean useDirectCall = DEFAULT_USE_DIRECT_CALL;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
 
@@ -75,7 +74,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions createActorCreationOptions() {
       return new ActorCreationOptions(
-          resources, maxReconstructions, useDirectCall, jvmOptions, maxConcurrency);
+          resources, maxReconstructions, jvmOptions, maxConcurrency);
     }
   }
 

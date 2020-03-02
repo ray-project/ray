@@ -121,8 +121,6 @@ public class FailureTest extends BaseTest {
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
     // This test case hangs if the worker to worker connection is implemented with grpc.
-    // TODO (kfstorm): Should be fixed.
-    TestUtils.skipTestIfDirectActorCallEnabled();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     try {
       Ray.call(BadActor::badMethod2, actor).get();
