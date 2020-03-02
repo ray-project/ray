@@ -66,6 +66,8 @@ class Node:
             self._register_shutdown_hooks()
 
         self.head = head
+        self.kernel_fate_share = (spawn_reaper
+                                  and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
@@ -154,7 +156,7 @@ class Node:
                 # raylet starts.
                 self._ray_params.node_manager_port = self._get_unused_port()
 
-        if not connect_only and spawn_reaper:
+        if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
 
         # Start processes.
@@ -413,11 +415,9 @@ class Node:
         This must be the first process spawned and should only be called when
         ray processes should be cleaned up if this process dies.
         """
-        if ray.utils.detect_fate_sharing_support():
-            # No need for a reaper; OS-level fate-sharing supported
-            process_info = None
-        else:
-            process_info = ray.services.start_reaper()
+        assert not self.kernel_fate_share, (
+            "a reaper should not be used with kernel fate-sharing")
+        process_info = ray.services.start_reaper(fate_share=False)
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
@@ -442,7 +442,8 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             include_java=self._ray_params.include_java)
+             include_java=self._ray_params.include_java,
+             fate_share=self.kernel_fate_share)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
@@ -456,7 +457,8 @@ class Node:
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info
@@ -469,7 +471,8 @@ class Node:
             self.redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
@@ -492,7 +495,8 @@ class Node:
             self._temp_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
@@ -510,7 +514,8 @@ class Node:
             stderr_file=stderr_file,
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
-            plasma_store_socket_name=self._plasma_store_socket_name)
+            plasma_store_socket_name=self._plasma_store_socket_name,
+            fate_share=self.kernel_fate_share)
         assert (
             ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
@@ -526,7 +531,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            config=self._config)
+            config=self._config,
+            fate_share=self.kernel_fate_share)
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
@@ -563,7 +569,8 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            use_pickle=self._ray_params.use_pickle)
+            use_pickle=self._ray_params.use_pickle,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -585,7 +592,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
-            redis_password=self._ray_params.redis_password)
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
@@ -597,7 +605,8 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            config=self._config)
+            config=self._config,
+            fate_share=self.kernel_fate_share)
         assert (ray_constants.PROCESS_TYPE_RAYLET_MONITOR not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR] = [
