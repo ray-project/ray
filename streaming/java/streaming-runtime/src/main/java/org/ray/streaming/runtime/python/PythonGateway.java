@@ -130,6 +130,19 @@ public class PythonGateway {
     }
   }
 
+  public byte[] newInstance(byte[] classNameBytes) {
+    String className = (String) serializer.deserialize(classNameBytes);
+    try {
+      Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
+      Object instance = clz.newInstance();
+      referenceMap.put(getReferenceId(instance), instance);
+      return serializer.serialize(getReferenceId(instance));
+    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+      throw new IllegalArgumentException(
+        String.format("Create instance for class %s failed", className), e);
+    }
+  }
+
   private List<Object> processReferenceParameters(List<Object> params) {
     return params.stream().map(this::processReferenceParameter)
         .collect(Collectors.toList());

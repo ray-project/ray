@@ -218,7 +218,63 @@ class DataStream(Stream):
         return StreamSink(self, j_stream, func)
 
 
-class KeyDataStream(Stream):
+class JavaDataStream(Stream):
+    """
+    Represents a stream of data which applies a transformation executed by
+    java. It's also a wrapper of java
+    `org.ray.streaming.api.stream.DataStream`
+    """
+
+    def __init__(self, input_stream, j_stream, streaming_context=None):
+        super().__init__(
+            input_stream, j_stream, streaming_context=streaming_context)
+
+    def map(self, java_func_class):
+        """See org.ray.streaming.api.stream.DataStream.map"""
+        return self._unary_call("map", java_func_class)
+
+    def flat_map(self, java_func_class):
+        """See org.ray.streaming.api.stream.DataStream.flatMap"""
+        return self._unary_call("flatMap", java_func_class)
+
+    def filter(self, java_func_class):
+        """See org.ray.streaming.api.stream.DataStream.filter"""
+        return self._unary_call("filter", java_func_class)
+
+    def key_by(self, java_func_class):
+        """See org.ray.streaming.api.stream.DataStream.keyBy"""
+        self.check_partition_call()
+        return self._unary_call("keyBy", java_func_class)
+
+    def broadcast(self, java_func_class):
+        """See org.ray.streaming.api.stream.DataStream.broadcast"""
+        self.check_partition_call()
+        return self._unary_call("broadcast", java_func_class)
+
+    def partition_by(self, java_func_class):
+        """See org.ray.streaming.api.stream.DataStream.partitionBy"""
+        self.check_partition_call()
+        return self._unary_call("partitionBy", java_func_class)
+
+    def sink(self, java_func_class):
+        """See org.ray.streaming.api.stream.DataStream.sink"""
+        return self._unary_call("sink", java_func_class)
+
+    def check_partition_call(self):
+        if isinstance(self.input_stream, DataStream):
+            # If parent stream is a python stream, we can't call partition
+            # related methods in the java stream
+            raise Exception("Partition related methods can't be called on"
+                            "a java stream before we apply a transformation.")
+
+    def _unary_call(self, func_name, java_func_class):
+        j_func = self._gateway_client().new_instance(java_func_class)
+        j_stream = self._gateway_client(). \
+            call_method(self._j_stream, func_name, j_func)
+        return DataStream(self, j_stream)
+
+
+class KeyDataStream(DataStream):
     """Represents a DataStream returned by a key-by operation.
      Wrapper of java org.ray.streaming.python.stream.PythonKeyDataStream
     """
@@ -250,6 +306,20 @@ class KeyDataStream(Stream):
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, "reduce", j_func)
         return DataStream(self, j_stream)
+
+
+class JavaKeyDataStream(JavaDataStream):
+    """
+    Represents a DataStream returned by a key-by operation in java.
+     Wrapper of org.ray.streaming.api.stream.KeyDataStream
+    """
+
+    def __init__(self, input_stream, j_stream):
+        super().__init__(input_stream, j_stream)
+
+    def reduce(self, java_func_class):
+        """See org.ray.streaming.api.stream.KeyDataStream.reduce"""
+        return super()._unary_call("reduce", java_func_class)
 
 
 class StreamSource(DataStream):
