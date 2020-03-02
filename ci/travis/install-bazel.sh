@@ -43,15 +43,9 @@ if [ "${TRAVIS-}" = true ]; then
   mkdir -p "${HOME}/ray-bazel-cache"
   cat <<EOF >> "${HOME}/.bazelrc"
 build --disk_cache="${HOME}/ray-bazel-cache"
-build --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
 EOF
 fi
-if [ -n "${GITHUB_WORKFLOW-}" ]; then
-  cat <<EOF >> "${HOME}/.bazelrc"
---output_base=".bazel-out"  # On GitHub Actions, staying on the same volume seems to be faster
-EOF
-fi
-if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
   cat <<EOF >> "${HOME}/.bazelrc"
 # CI output doesn't scroll, so don't use curses
 build --curses=no
@@ -59,9 +53,8 @@ build --progress_report_interval=60
 # Use ray google cloud cache
 build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 build --show_progress_rate_limit=15
-build --show_task_finish
+build --show_timestamps
 build --ui_actions_shown=1024
-build --verbose_failures
 EOF
   # If we are in master build, we can write to the cache as well.
   upload=0
