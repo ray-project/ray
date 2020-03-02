@@ -3,17 +3,17 @@
 TODO(ekl): describe the concepts."""
 
 import logging
-from typing import List, Any, Tuple
+from typing import List, Any, Tuple, Union
 import time
 
 import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import MetricsContext
-from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
+from ray.rllib.evaluation.metrics import collect_episodes, \
+    summarize_episodes, get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,13 @@ LEARNER_INFO = "learner"
 
 # Type aliases.
 GradientType = dict
+SampleBatchType = Union[SampleBatch, MultiAgentBatch]
+
+
+def _check_sample_batch_type(batch):
+    if not isinstance(batch, SampleBatchType.__args__):
+        raise ValueError("Expected either SampleBatch or MultiAgentBatch, "
+                         "got {}: {}".format(type(batch), batch))
 
 
 def ParallelRollouts(workers: WorkerSet,
@@ -125,7 +132,7 @@ def AsyncGradients(
             (grads, info), count = item
             metrics = LocalIterator.get_metrics()
             metrics.counters[STEPS_SAMPLED_COUNTER] += count
-            metrics.info[LEARNER_INFO] = info[LEARNER_STATS_KEY]
+            metrics.info[LEARNER_INFO] = get_learner_stats(info)
             metrics.timers[GRAD_WAIT_TIMER].push(time.perf_counter() -
                                                  self.fetch_start_time)
             return grads, count
@@ -186,10 +193,8 @@ class ConcatBatches:
         if self.batch_start_time is None:
             self.batch_start_time = time.perf_counter()
 
-    def __call__(self, batch: SampleBatch) -> List[SampleBatch]:
-        if not isinstance(batch, SampleBatch):
-            raise ValueError("Expected type SampleBatch, got {}: {}".format(
-                type(batch), batch))
+    def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
+        _check_sample_batch_type(batch)
         self.buffer.append(batch)
         self.count += batch.count
         if self.count >= self.min_batch_size:
@@ -222,14 +227,15 @@ class TrainOneStep:
     def __init__(self, workers: WorkerSet):
         self.workers = workers
 
-    def __call__(self, batch: SampleBatch) -> List[dict]:
+    def __call__(self, batch: SampleBatchType) -> List[dict]:
+        _check_sample_batch_type(batch)
         metrics = LocalIterator.get_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
             info = self.workers.local_worker().learn_on_batch(batch)
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
-        metrics.info[LEARNER_INFO] = info[LEARNER_STATS_KEY]
+        metrics.info[LEARNER_INFO] = get_learner_stats(info)
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = ray.put(self.workers.local_worker().get_weights())
@@ -338,11 +344,12 @@ class ComputeGradients:
     def __init__(self, workers):
         self.workers = workers
 
-    def __call__(self, samples):
+    def __call__(self, samples: SampleBatchType):
+        _check_sample_batch_type(samples)
         metrics = LocalIterator.get_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
             grad, info = self.workers.local_worker().compute_gradients(samples)
-        metrics.info[LEARNER_INFO] = info[LEARNER_STATS_KEY]
+        metrics.info[LEARNER_INFO] = get_learner_stats(info)
         return grad, samples.count
 
 
