@@ -122,7 +122,8 @@ class SkOptSearch(SuggestionAlgorithm):
             self._metric_op = 1.
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
-        super(SkOptSearch, self).__init__(**kwargs)
+        super(SkOptSearch, self).__init__(
+            metric=self._metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:

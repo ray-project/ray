@@ -71,14 +71,14 @@ class TuneBOHB(SuggestionAlgorithm):
         self.trial_to_params = {}
         self.running = set()
         self.paused = set()
-        self.metric = metric
+        self._metric = metric
         if mode == "max":
             self._metric_op = -1.
         elif mode == "min":
             self._metric_op = 1.
         bohb_config = bohb_config or {}
         self.bohber = BOHB(space, **bohb_config)
-        super(TuneBOHB, self).__init__()
+        super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
 
     def suggest(self, trial_id):
         if len(self.running) < self._max_concurrent:

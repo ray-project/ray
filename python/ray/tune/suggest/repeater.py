@@ -1,10 +1,17 @@
-import numpy as np
 import copy
+import logging
+import numpy as np
 
-from ray.tune.suggest.search import SearchAlgorithm
+from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+logger = logging.getLogger(__name__)
+
+TRIAL_INDEX = "__trial_index__"
+"""str: A constant value representing the repeat index of the trial."""
+
 
 class _TrialGroup:
-    """Class for grouping trials of same parameters.
+    """Internal class for grouping trials of same parameters.
 
     This is used when repeating trials for reducing training variance.
 
@@ -13,26 +20,24 @@ class _TrialGroup:
             This trial is the one that the Searcher is aware of.
         config (dict): Suggested configuration shared across all trials
             in the trial group.
+        max_trials (int): Max number of trials to execute within this group.
 
     """
 
-    def __init__(self,
-                 primary_trial_id,
-                 config,
-                 count=1):
+    def __init__(self, primary_trial_id, config, max_trials=1):
         assert type(config) is dict, (
             "config is not a dict, got {}".format(config))
         self.primary_trial_id = primary_trial_id
         self.config = config
         self._trials = {primary_trial_id: None}
-        self.count = count
+        self.max_trials = max_trials
 
     def add(self, trial_id):
-        assert len(self._trials) < self.count
+        assert len(self._trials) < self.max_trials
         self._trials[trial_id] = None
 
     def full(self):
-        return len(self._trials) == self.count
+        return len(self._trials) == self.max_trials
 
     def report(self, trial_id, score):
         assert trial_id in self._trials
@@ -41,14 +46,41 @@ class _TrialGroup:
     def scores(self):
         return self._trials.values()
 
+    def count(self):
+        return len(self._trials)
 
-class Repeater(SearchAlgorithm):
-    def __init__(self, search_alg, num_repeat):
+
+class Repeater(SuggestionAlgorithm):
+    """A wrapper algorithm for repeating trials of same parameters.
+
+    It is recommended that you do not run an early-stopping TrialScheduler
+    simultaneously.
+
+    Also sets a tune.suggest.repeater.TRIAL_INDEX in Trainable/Function config
+    which corresponds to the index of the repeated trial. This can be used
+    for seeds.
+
+    Args:
+        search_alg (SearchAlgorithm): SearchAlgorithm object that the
+            Repeater will optimize. Note that the SearchAlgorithm
+            will only see 1 trial among multiple repeated trials.
+            The result/metric passed to the SearchAlgorithm upon
+            trial completion will be averaged among all repeats.
+        num_repeat (int): Number of times to generate a trial with a repeated
+            configuration. Defaults to 1.
+
+    """
+
+    def __init__(self, search_alg, repeat=1):
         self.search_alg = search_alg
-        self.num_repeat = num_repeat
+        self.repeat = repeat
         self._groups = []
         self._trial_id_to_group = {}
         self._current_group = None
+        super(Repeater, self).__init__(
+            metric=self.search_alg.metric,
+            mode=self.search_alg.mode,
+            use_early_stopped_trials=self.search_alg._use_early_stopped)
 
     def suggest(self, trial_id):
         if self._current_group is None or self._current_group.full():
@@ -57,11 +89,15 @@ class Repeater(SearchAlgorithm):
                 return config
             self._current_group = _TrialGroup(trial_id, copy.deepcopy(config))
             self._groups.append(self._current_group)
+            index_in_group = 0
         else:
+            index_in_group = self._current_group.count()
             self._current_group.add(trial_id)
 
+        config = self._current_group.config.copy()
+        config[TRIAL_INDEX] = index_in_group
         self._trial_id_to_group[trial_id] = self._current_group
-        return self._current_group.config.copy()
+        return config
 
     def on_trial_complete(self, trial_id, result=None, **kwargs):
         """Stores the score for and keeps track of a completed trial.
@@ -70,9 +106,12 @@ class Repeater(SearchAlgorithm):
         are met:
             1. ``result`` is empty or not provided.
             2. ``result`` is provided but no metric was provided.
+
         """
         if trial_id not in self._trial_id_to_group:
-            logger.error("Trial {} not seen before; cannot report score".format(trial_id))
+            logger.error("Trial {} not in group; cannot report score. "
+                         "Seen trials: {}".format(
+                             trial_id, list(self._trial_id_to_group)))
         trial_group = self._trial_id_to_group[trial_id]
         if not result or self.search_alg.metric not in result:
             score = np.nan
@@ -81,16 +120,9 @@ class Repeater(SearchAlgorithm):
         if not any(value is None for value in scores):
             self.search_alg.on_trial_complete(
                 trial_group.primary_trial_id,
-                result=np.nanmean(scores),
+                result={self.search_alg.metric,
+                        np.nanmean(scores)},
                 **kwargs)
-
-    def add_configurations(self, *args, **kwargs):
-        """Calls the underlying SearchAlgorithm function."""
-        return self.search_alg.add_configurations(*args, **kwargs)
-
-    def next_trials(self):
-        """Calls the underlying SearchAlgorithm function."""
-        return self.search_alg.next_trials()
 
     def is_finished(self):
         """Calls the underlying SearchAlgorithm function."""

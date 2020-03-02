@@ -86,7 +86,8 @@ class NevergradSearch(SuggestionAlgorithm):
             self._metric_op = 1.
         self._nevergrad_opt = optimizer
         self._live_trial_mapping = {}
-        super(NevergradSearch, self).__init__(**kwargs)
+        super(NevergradSearch, self).__init__(
+            metric=metric, mode=mode, **kwargs)
         # validate parameters
         if hasattr(optimizer, "instrumentation"):  # added in v0.2.0
             if optimizer.instrumentation.kwargs:

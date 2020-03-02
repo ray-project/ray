@@ -28,13 +28,16 @@ class SuggestionAlgorithm(SearchAlgorithm):
         >>> better_parameters = suggester.suggest()
     """
 
-    def __init__(self, use_early_stopped_trials=True):
+    def __init__(self, metric=None, mode="max", use_early_stopped_trials=True):
         """Constructs a generator given experiment specifications.
         """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
+        self._metric = metric
+        assert mode in ["min", "max"]
+        self._mode = mode
         self._use_early_stopped = use_early_stopped_trials
 
     def add_configurations(self, experiments):
@@ -131,6 +134,16 @@ class SuggestionAlgorithm(SearchAlgorithm):
 
     def restore(self, checkpoint_dir):
         raise NotImplementedError
+
+    @property
+    def metric(self):
+        """The training result objective value attribute."""
+        return self._metric
+
+    @property
+    def mode(self):
+        """Specifies if minimizing or maximizing the metric."""
+        return self._mode
 
 
 class _MockSuggestionAlgorithm(SuggestionAlgorithm):

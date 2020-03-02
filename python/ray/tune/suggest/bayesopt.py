@@ -80,7 +80,8 @@ class BayesOptSearch(SuggestionAlgorithm):
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
-        super(BayesOptSearch, self).__init__(**kwargs)
+        super(BayesOptSearch, self).__init__(
+            metric=self._metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
