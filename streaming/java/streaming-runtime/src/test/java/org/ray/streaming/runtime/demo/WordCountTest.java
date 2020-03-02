@@ -36,7 +36,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.fromCollection(streamingContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");

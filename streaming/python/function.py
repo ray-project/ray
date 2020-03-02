@@ -1,11 +1,17 @@
+import enum
 import importlib
 import inspect
 import sys
-from abc import ABC, abstractmethod
 import typing
+from abc import ABC, abstractmethod
 
 import cloudpickle
 from ray.streaming.runtime import gateway_client
+
+
+class Language(enum.Enum):
+    JAVA = 0
+    PYTHON = 1
 
 
 class Function(ABC):
