@@ -5,7 +5,14 @@ from ray.tune.track.session import TrackSession
 logger = logging.getLogger(__name__)
 
 _session = None
+
 trial_info = None
+"""TrialInfo: TrialInfo object of the current trial.
+
+This can be accessed with ``tune.track.trial_info`` if using the Function API.
+If using the Trainable API, please see the ``Trainable`` class for
+documentation on accessing the TrialInfo there.
+"""
 
 
 def get_session():
