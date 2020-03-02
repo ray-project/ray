@@ -9,13 +9,14 @@ cartpole-sac:
         no_done_at_end: false
         prioritized_replay: false
         prioritized_replay_alpha: 0.5
-        initial_alpha: 1.0
+        tau: 1.0
+        initial_alpha: 10.0
         train_batch_size: 128
         optimization:
             actor_learning_rate: 0.0003
-            critic_learning_rate: 0.0003
-            entropy_learning_rate: 0.0003
+            critic_learning_rate: 0.0005
+            entropy_learning_rate: 0.0001
         evaluation_config:
             explore: true
         target_network_update_freq: 1000
-        grad_norm_clipping: 10.0
+        grad_norm_clipping: 2.0
