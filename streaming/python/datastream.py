@@ -247,34 +247,39 @@ class JavaDataStream(Stream):
 
     def map(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.map"""
-        return self._unary_call("map", java_func_class)
+        return JavaDataStream(self, self._unary_call("map", java_func_class))
 
     def flat_map(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.flatMap"""
-        return self._unary_call("flatMap", java_func_class)
+        return JavaDataStream(self, self._unary_call("flatMap",
+                                                     java_func_class))
 
     def filter(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.filter"""
-        return self._unary_call("filter", java_func_class)
+        return JavaDataStream(self, self._unary_call("filter",
+                                                     java_func_class))
 
     def key_by(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.keyBy"""
         self.check_partition_call()
-        return self._unary_call("keyBy", java_func_class)
+        return JavaKeyDataStream(self, self._unary_call("keyBy",
+                                                        java_func_class))
 
     def broadcast(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.broadcast"""
         self.check_partition_call()
-        return self._unary_call("broadcast", java_func_class)
+        return JavaDataStream(self, self._unary_call("broadcast",
+                                                     java_func_class))
 
     def partition_by(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.partitionBy"""
         self.check_partition_call()
-        return self._unary_call("partitionBy", java_func_class)
+        return JavaDataStream(self, self._unary_call("partitionBy",
+                                                     java_func_class))
 
     def sink(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.sink"""
-        return self._unary_call("sink", java_func_class)
+        return JavaStreamSink(self, self._unary_call("sink", java_func_class))
 
     def as_python_stream(self):
         """Convert this java stream into a python DataStream"""
@@ -293,7 +298,7 @@ class JavaDataStream(Stream):
         j_func = self._gateway_client().new_instance(java_func_class)
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, func_name, j_func)
-        return DataStream(self, j_stream)
+        return j_stream
 
 
 class KeyDataStream(DataStream):
@@ -347,7 +352,8 @@ class JavaKeyDataStream(JavaDataStream):
 
     def reduce(self, java_func_class):
         """See org.ray.streaming.api.stream.KeyDataStream.reduce"""
-        return super()._unary_call("reduce", java_func_class)
+        return JavaDataStream(self, super()._unary_call("reduce",
+                                                        java_func_class))
 
     def as_python_stream(self):
         """Convert this java stream into a python KeyDataStream"""
@@ -420,3 +426,15 @@ class StreamSink(Stream):
 
     def get_language(self):
         return function.Language.PYTHON
+
+
+class JavaStreamSink(Stream):
+    """Represents a sink of the java DataStream.
+     Wrapper of java org.ray.streaming.api.stream.StreamSink
+    """
+
+    def __init__(self, input_stream, j_stream):
+        super().__init__(input_stream, j_stream)
+
+    def get_language(self):
+        return function.Language.JAVA
