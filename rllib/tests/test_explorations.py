@@ -4,6 +4,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
+import ray.rllib.agents.ddpg as ddpg
+import ray.rllib.agents.ddpg.td3 as td3
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.impala as impala
 import ray.rllib.agents.pg as pg
@@ -27,9 +29,12 @@ def test_explorations(run,
     # Test all frameworks.
     for fw in ["torch", "eager", "tf"]:
         if fw == "torch" and \
-                run in [dqn.DQNTrainer, dqn.SimpleQTrainer,
-                        impala.ImpalaTrainer, sac.SACTrainer]:
+                run in [ddpg.DDPGTrainer, dqn.DQNTrainer, dqn.SimpleQTrainer,
+                        impala.ImpalaTrainer, sac.SACTrainer, td3.TD3Trainer]:
             continue
+        elif fw == "eager" and run in [ddpg.DDPGTrainer, td3.TD3Trainer]:
+            continue
+
         print("Testing {} in framework={}".format(run, fw))
         config["eager"] = (fw == "eager")
         config["use_pytorch"] = (fw == "torch")
@@ -38,9 +43,8 @@ def test_explorations(run,
         # exploration class.
         for exploration in [None, "Random"]:
             if exploration == "Random":
-                # TODO(sven): Random doesn't work for cont. action spaces
-                #  or IMPALA yet.
-                if env == "Pendulum-v0" or run is impala.ImpalaTrainer:
+                # TODO(sven): Random doesn't work for IMPALA yet.
+                if run is impala.ImpalaTrainer:
                     continue
                 config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
@@ -108,6 +112,14 @@ class TestExplorations(unittest.TestCase):
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(1))
 
+    def test_ddpg(self):
+        test_explorations(
+            ddpg.DDPGTrainer,
+            "Pendulum-v0",
+            ddpg.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0)
+
     def test_simple_dqn(self):
         test_explorations(dqn.SimpleQTrainer, "CartPole-v0",
                           dqn.DEFAULT_CONFIG, np.array([0.0, 0.1, 0.0, 0.0]))
@@ -154,6 +166,14 @@ class TestExplorations(unittest.TestCase):
             sac.SACTrainer,
             "Pendulum-v0",
             sac.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0)
+
+    def test_td3(self):
+        test_explorations(
+            td3.TD3Trainer,
+            "Pendulum-v0",
+            td3.TD3_DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
 

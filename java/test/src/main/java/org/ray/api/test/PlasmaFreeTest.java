@@ -25,9 +25,14 @@ public class PlasmaFreeTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
     final boolean result = TestUtils.waitForCondition(() ->
-        TestUtils.getRuntime().getObjectStore()
-            .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0) == false, 50);
-    Assert.assertTrue(result);
+        !TestUtils.getRuntime().getObjectStore()
+          .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0), 50);
+    if (TestUtils.isDirectActorCallEnabled()) {
+      // Direct call will not delete object from im-memory store.
+      Assert.assertFalse(result);
+    } else {
+      Assert.assertTrue(result);
+    }
   }
 
   @Test

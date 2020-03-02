@@ -13,6 +13,7 @@ class Exploration:
 
     def __init__(self,
                  action_space=None,
+                 *,
                  num_workers=None,
                  worker_index=None,
                  framework="tf"):
@@ -36,7 +37,7 @@ class Exploration:
                                model=None,
                                explore=True,
                                timestep=None):
-        """Returns a (possibly) exploratory action.
+        """Returns a (possibly) exploratory action and its log-likelihood.
 
         Given the Model's logits outputs and action distribution, returns an
         exploratory action.
@@ -57,8 +58,10 @@ class Exploration:
                 counter to the given value.
 
         Returns:
-            any: The chosen exploration action or a tf-op to fetch the
-                exploration action from the graph.
+            Tuple:
+            - The chosen exploration action or a tf-op to fetch the exploration
+              action from the graph.
+            - The log-likelihood of the exploration action.
         """
         pass
 
