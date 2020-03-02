@@ -37,7 +37,7 @@ def _convert_to_numpy(x):
     if x is None:
         return None
     try:
-        return x.numpy()
+        return tf.nest.map_structure(lambda component: component.numpy(), x)
     except AttributeError:
         raise TypeError(
             ("Object of type {} has no method to convert to numpy.").format(
@@ -408,6 +408,10 @@ def build_eager_tf_policy(name,
             self._apply_gradients(
                 zip([(tf.convert_to_tensor(g) if g is not None else None)
                      for g in gradients], self.model.trainable_variables()))
+
+        @override(Policy)
+        def get_exploration_info(self):
+            return _convert_to_numpy(self.exploration.get_info())
 
         @override(Policy)
         def get_weights(self):

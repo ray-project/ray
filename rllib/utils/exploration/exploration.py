@@ -16,6 +16,7 @@ class Exploration:
     """
 
     def __init__(self,
+                 *,
                  action_space: Space,
                  num_workers: int,
                  worker_index: int,
@@ -38,7 +39,7 @@ class Exploration:
                                model: ModelV2,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
-        """Returns a (possibly) exploratory action.
+        """Returns a (possibly) exploratory action and its log-likelihood.
 
         Given the Model's logits outputs and action distribution, returns an
         exploratory action.
@@ -57,8 +58,10 @@ class Exploration:
                     a deterministic action.
 
         Returns:
-            any: The chosen exploration action or a tf-op to fetch the
-                exploration action from the graph.
+            Tuple:
+            - The chosen exploration action or a tf-op to fetch the exploration
+              action from the graph.
+            - The log-likelihood of the exploration action.
         """
         pass
 
