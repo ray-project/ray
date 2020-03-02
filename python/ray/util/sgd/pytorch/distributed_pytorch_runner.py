@@ -95,15 +95,22 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.validation_loader = torch.utils.data.DataLoader(
                 val_set, batch_size=self.batch_size, **self.dataloader_config)
 
-    def step(self):
+        self.training_operator = self.training_operator_cls(
+            self.config,
+            models=self.models,
+            optimizers=self.optimizers,
+            criterion=self.criterion,
+            schedulers=self.schedulers,
+            use_fp16=self.use_fp16)
+
+    def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        logger.debug("Starting step")
         if hasattr(self.train_loader.sampler, "set_epoch"):
-            self.train_loader.sampler.set_epoch(self.epoch)
-        return super(DistributedPyTorchRunner, self).step()
+            self.train_loader.sampler.set_epoch(self.epochs)
+        return super(DistributedPyTorchRunner, self).train_epoch(**kwargs)
 
     def _get_model_state_dicts(self):
         """Fetch state from ``model.module`` instead of ``model``.
