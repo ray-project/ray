@@ -18,7 +18,7 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
-                             TRAINING_ITERATION, RESULT_DUPLICATE)
+                             TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
@@ -147,6 +147,7 @@ class Trainable:
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
+        trial_info = self.config.pop(TRIAL_INFO, None)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -167,7 +168,7 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
-        self._trial_info = None
+        self._trial_info = trial_info
 
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
@@ -206,9 +207,6 @@ class Trainable:
             config (dict): The Trainer's config dict.
         """
         return ""
-
-    def set_trial_info(self, trial_info):
-        self._trial_info = trial_info
 
     def current_ip(self):
         logger.info("Getting current IP.")
@@ -519,11 +517,16 @@ class Trainable:
     def trial_info(self):
         """TrialInfo object for the corresponding trial of this Trainable.
 
-        This allows you to access fields such as the trial_id and trial name
+        This allows you to obtain the trial_id and trial name
         inside the training loop. See the documentation on TrialInfo for more
-        informatino.
+        information.
 
         This is not set if not using Tune.
+
+        .. code-block:: python
+
+            name = self.trial_info.trial_name
+            trial_id = self.trial_info.trial_id
         """
         return self._trial_info
 

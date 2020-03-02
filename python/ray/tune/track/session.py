@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, TrialInfo
 from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
 from ray.tune.logger import UnifiedLogger, Logger
 
@@ -17,7 +17,8 @@ class _ReporterHook(Logger):
 class TrackSession:
     """Manages results for a single session.
 
-    Represents a single Trial in an experiment.
+    Represents a single Trial in an experiment. This is automatically
+    created when using ``tune.run``.
 
     Attributes:
         trial_name (str): Custom trial name.
@@ -31,7 +32,7 @@ class TrackSession:
     """
 
     def __init__(self,
-                 trial_name="",
+                 trial_name=None,
                  experiment_dir=None,
                  upload_dir=None,
                  trial_config=None,
@@ -41,19 +42,19 @@ class TrackSession:
         self._upload_dir = None
         self.trial_config = None
         self._iteration = -1
+        self._trial_info = None
         self.is_tune_session = bool(_tune_reporter)
-        self.trial_id = Trial.generate_id()
-        if trial_name:
-            self.trial_id = trial_name + "_" + self.trial_id
         if self.is_tune_session:
             self._logger = _ReporterHook(_tune_reporter)
             self._logdir = _tune_reporter.logdir
+            self._trial_info = _tune_reporter.trial_info
         else:
-            self._initialize_logging(trial_name, experiment_dir, upload_dir,
-                                     trial_config)
+            trial_id = Trial.generate_id()
+            self._trial_info = TrialInfo(
+                trial_id=trial_id, trial_name=trial_name or trial_id)
+            self._initialize_logging(experiment_dir, upload_dir, trial_config)
 
     def _initialize_logging(self,
-                            trial_name="",
                             experiment_dir=None,
                             upload_dir=None,
                             trial_config=None):
@@ -67,7 +68,8 @@ class TrackSession:
         self._experiment_dir = os.path.expanduser(experiment_dir)
 
         # TODO(rliaw): Refactor `logdir` to `trial_dir`.
-        self._logdir = Trial.create_logdir(trial_name, self._experiment_dir)
+        self._logdir = Trial.create_logdir(self.trial_info.trial_name,
+                                           self._experiment_dir)
         self._upload_dir = upload_dir
         self.trial_config = trial_config or {}
 
@@ -88,13 +90,17 @@ class TrackSession:
         # TODO: Implement a batching mechanism for multiple calls to `log`
         #     within the same iteration.
         metrics_dict = metrics.copy()
-        metrics_dict.update({"trial_id": self.trial_id})
+        metrics_dict.update({"trial_id": self.trial_info.trial_id})
 
         # TODO: Move Trainable autopopulation to a util function
         metrics_dict.setdefault(TRAINING_ITERATION, self._iteration)
         self._logger.on_result(metrics_dict)
 
     def close(self):
+        """Closes loggers.
+
+        No need to call this when using ``tune.run``.
+        """
         self.trial_config["trial_completed"] = True
         self.trial_config["end_time"] = datetime.now().isoformat()
         # TODO(rliaw): Have Tune support updated configs
@@ -106,3 +112,20 @@ class TrackSession:
     def logdir(self):
         """Trial logdir (subdir of given experiment directory)"""
         return self._logdir
+
+    @property
+    def trial_info(self):
+        """TrialInfo object for the corresponding trial of this Trainable.
+
+        This allows you to obtain the trial_id and trial name
+        inside the training loop. See the documentation on TrialInfo for more
+        information.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            name = self.trial_info.trial_name
+            trial_id = self.trial_info.trial_id
+        """
+        return self._trial_info

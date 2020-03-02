@@ -111,8 +111,16 @@ class TrialInfo:
     """
 
     def __init__(self, trial):
-        self.trial_name = str(trial)
-        self.trial_id = trial.trial_id
+        self._trial_name = str(trial)
+        self._trial_id = trial.trial_id
+
+    @property
+    def trial_name(self):
+        return self._trial_name
+
+    @property
+    def trial_id(self):
+        return self._trial_id
 
 
 class Trial:

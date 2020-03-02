@@ -5,6 +5,7 @@ from ray.tune.track.session import TrackSession
 logger = logging.getLogger(__name__)
 
 _session = None
+trial_info = None
 
 
 def get_session():
@@ -24,6 +25,7 @@ def init(ignore_reinit_error=True, **session_kwargs):
         >>> track.init()
     """
     global _session
+    global trial_info
 
     if _session:
         # TODO(ng): would be nice to stack crawl at creation time to report
@@ -38,6 +40,7 @@ def init(ignore_reinit_error=True, **session_kwargs):
             raise ValueError(reinit_msg)
 
     _session = TrackSession(**session_kwargs)
+    trial_info = _session.trial_info
 
 
 def shutdown():
@@ -64,4 +67,7 @@ def trial_dir():
     return _session.logdir
 
 
-__all__ = ["TrackSession", "session", "log", "trial_dir", "init", "shutdown"]
+__all__ = [
+    "TrackSession", "session", "log", "trial_dir", "trial_info", "init",
+    "shutdown"
+]

@@ -1,4 +1,5 @@
 # coding: utf-8
+import copy
 import logging
 import os
 import random
@@ -13,6 +14,7 @@ from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
+from ray.tune.result import TRIAL_INFO
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
@@ -119,16 +121,17 @@ class RayTrialExecutor(TrialExecutor):
         logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
+        trial_config = copy.deepcopy(trial.config)
+        trial_config[TRIAL_INFO] = TrialInfo(trial)
         kwargs = {
-            "config": trial.config,
+            "config": trial_config,
             "logger_creator": logger_creator,
         }
         if issubclass(trial.get_trainable_cls(), DurableTrainable):
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
 
         with self._change_working_directory(trial):
-            training_actor = cls.remote(**kwargs)
-            training_actor.set_trial_info.remote(TrialInfo(trial))
+            return cls.remote(**kwargs)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
