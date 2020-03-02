@@ -15,6 +15,7 @@ def on_episode_start(info):
     episode = info["episode"]
     print("episode {} started".format(episode.episode_id))
     episode.user_data["pole_angles"] = []
+    episode.hist_data["pole_angles"] = []
 
 
 def on_episode_step(info):
@@ -31,6 +32,7 @@ def on_episode_end(info):
     print("episode {} ended with length {} and pole angles {}".format(
         episode.episode_id, episode.length, pole_angle))
     episode.custom_metrics["pole_angle"] = pole_angle
+    episode.hist_data["pole_angles"] = episode.user_data["pole_angles"]
 
 
 def on_sample_end(info):

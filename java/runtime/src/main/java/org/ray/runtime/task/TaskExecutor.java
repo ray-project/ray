@@ -3,11 +3,15 @@ package org.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
+import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.generated.Common.TaskType;
@@ -23,6 +27,10 @@ public abstract class TaskExecutor {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
 
+  // A helper map to help we get the corresponding executor for the given worker in JNI.
+  private static ConcurrentHashMap<UniqueId, TaskExecutor> taskExecutors
+      = new ConcurrentHashMap<>();
+
   protected final AbstractRayRuntime runtime;
 
   /**
@@ -37,6 +45,13 @@ public abstract class TaskExecutor {
 
   protected TaskExecutor(AbstractRayRuntime runtime) {
     this.runtime = runtime;
+    if (RayConfig.getInstance().runMode == RunMode.CLUSTER) {
+      taskExecutors.put(runtime.getWorkerContext().getCurrentWorkerId(), this);
+    }
+  }
+
+  public static TaskExecutor get(byte[] workerId) {
+    return taskExecutors.get(new UniqueId(workerId));
   }
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
@@ -48,11 +63,11 @@ public abstract class TaskExecutor {
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
-    // Find the executable object.
-    RayFunction rayFunction = runtime.getFunctionManager()
-        .getFunction(jobId, parseFunctionDescriptor(rayFunctionInfo));
-    Preconditions.checkNotNull(rayFunction);
+    JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
+    RayFunction rayFunction = null;
     try {
+      // Find the executable object.
+      rayFunction = runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
@@ -91,7 +106,9 @@ public abstract class TaskExecutor {
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        if (rayFunction.hasReturn()) {
+        boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
+        boolean isCrossLanguage = functionDescriptor.signature.equals("");
+        if (hasReturn || isCrossLanguage) {
           returnObjects.add(ObjectSerializer
               .serialize(new RayTaskException("Error executing task " + taskId, e)));
         }

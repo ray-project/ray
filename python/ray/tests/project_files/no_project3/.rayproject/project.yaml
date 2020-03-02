@@ -5,4 +5,5 @@ environment:
 
   dockerimage: "some docker image"
 
-cluster: "cluster.yaml"
+cluster:
+  config: cluster.yaml

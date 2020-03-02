@@ -1,4 +1,5 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
@@ -11,8 +12,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     absl::MutexLock lock(&mu_);
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
-    const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                       task_spec.GetDependencies());
+    const SchedulingKey scheduling_key(
+        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
+        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
     auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
       it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
@@ -28,7 +30,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
   auto it = client_cache_.find(addr);
   if (it == client_cache_.end()) {
     client_cache_[addr] =
-        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr.ToProto()));
     RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
   }
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
@@ -42,6 +44,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   auto lease_entry = worker_to_lease_client_[addr];
   auto queue_entry = task_queues_.find(scheduling_key);
   // Return the worker if there was an error executing the previous task,
+  // the previous task is an actor creation task,
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || queue_entry == task_queues_.end() ||
       current_time_ms() > lease_entry.second) {
@@ -75,9 +78,10 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << raylet_id;
-      it =
-          remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*raylet_address))
-              .first;
+      it = remote_lease_clients_
+               .emplace(raylet_id, lease_client_factory_(raylet_address->ip_address(),
+                                                         raylet_address->port()))
+               .first;
     }
     lease_client = it->second;
   } else {
@@ -105,7 +109,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto status = lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
-          const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
+          const Status &status, const rpc::RequestWorkerLeaseReply &reply) mutable {
         absl::MutexLock lock(&mu_);
         pending_lease_requests_.erase(scheduling_key);
         if (status.ok()) {
@@ -113,12 +117,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
-            rpc::WorkerAddress addr = {
-                reply.worker_address().ip_address(), reply.worker_address().port(),
-                WorkerID::FromBinary(reply.worker_address().worker_id())};
+            rpc::WorkerAddress addr(reply.worker_address());
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
-            OnWorkerIdle(addr, scheduling_key, /*error=*/false, resources_copy);
+            OnWorkerIdle(addr, scheduling_key,
+                         /*error=*/false, resources_copy);
           } else {
             // The raylet redirected us to a different raylet to retry at.
             RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
@@ -147,7 +150,7 @@ void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
     // A local request failed. This shouldn't happen if the raylet is still alive
     // and we don't currently handle raylet failures, so treat it as a fatal
     // error.
-    RAY_LOG(FATAL) << "Lost connection with local raylet. Error: " << status.ToString();
+    RAY_LOG(FATAL) << status.ToString();
   }
 }
 
@@ -158,30 +161,42 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   auto task_id = task_spec.TaskId();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   bool is_actor = task_spec.IsActorTask();
+  bool is_actor_creation = task_spec.IsActorCreationTask();
+
   RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
+  request->mutable_caller_address()->CopyFrom(rpc_address_);
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
+  request->set_intended_worker_id(addr.worker_id.Binary());
   auto status = client.PushNormalTask(
       std::move(request),
-      [this, task_id, is_actor, scheduling_key, addr, assigned_resources](
-          Status status, const rpc::PushTaskReply &reply) {
-        {
+      [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
+       assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+        if (reply.worker_exiting()) {
+          // The worker is draining and will shutdown after it is done. Don't return
+          // it to the Raylet since that will kill it early.
           absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
+          worker_to_lease_client_.erase(addr);
+        } else if (!status.ok() || !is_actor_creation) {
+          // Successful actor creation leases the worker indefinitely from the raylet.
+          absl::MutexLock lock(&mu_);
+          OnWorkerIdle(addr, scheduling_key,
+                       /*error=*/!status.ok(), assigned_resources);
         }
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          task_finisher_->PendingTaskFailed(task_id, is_actor
-                                                         ? rpc::ErrorType::ACTOR_DIED
-                                                         : rpc::ErrorType::WORKER_DIED);
+          task_finisher_->PendingTaskFailed(
+              task_id,
+              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
+              &status);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply);
+          task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
       });
   if (!status.ok()) {
@@ -191,7 +206,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       OnWorkerIdle(addr, scheduling_key, /*error=*/true, assigned_resources);
     }
     task_finisher_->PendingTaskFailed(
-        task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED);
+        task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
+        &status);
   }
 }
 };  // namespace ray

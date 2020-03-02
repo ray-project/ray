@@ -17,6 +17,9 @@ public class DefaultWorker {
   public static void main(String[] args) {
     try {
       System.setProperty("ray.worker.mode", "WORKER");
+      // Set run-mode to `CLUSTER` explicitly, to prevent the DefaultWorker to receive
+      // a wrong run-mode parameter through jvm options.
+      System.setProperty("ray.run-mode", "CLUSTER");
       Thread.setDefaultUncaughtExceptionHandler((Thread t, Throwable e) -> {
         LOGGER.error("Uncaught worker exception in thread {}: {}", t, e);
       });

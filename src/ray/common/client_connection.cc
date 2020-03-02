@@ -9,28 +9,6 @@
 
 namespace ray {
 
-ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
-                       const std::string &ip_address_string, int port) {
-  // Disable Nagle's algorithm, which caused transfer delays of 10s of ms in
-  // certain cases.
-  socket.open(boost::asio::ip::tcp::v4());
-  boost::asio::ip::tcp::no_delay option(true);
-  socket.set_option(option);
-
-  boost::asio::ip::address ip_address =
-      boost::asio::ip::address::from_string(ip_address_string);
-  boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
-  boost::system::error_code error;
-  socket.connect(endpoint, error);
-  const auto status = boost_to_ray_status(error);
-  if (!status.ok()) {
-    // Close the socket if the connect failed.
-    boost::system::error_code close_error;
-    socket.close(close_error);
-  }
-  return status;
-}
-
 template <class T>
 std::shared_ptr<ServerConnection<T>> ServerConnection<T>::Create(
     boost::asio::basic_stream_socket<T> &&socket) {
@@ -361,9 +339,12 @@ std::string ServerConnection<T>::DebugString() const {
   return result.str();
 }
 
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+// We compile conditionally to prevent duplicate explicit instantiation error
 template class ServerConnection<local_stream_protocol>;
-template class ServerConnection<remote_stream_protocol>;
 template class ClientConnection<local_stream_protocol>;
+#endif
+template class ServerConnection<remote_stream_protocol>;
 template class ClientConnection<remote_stream_protocol>;
 
 }  // namespace ray

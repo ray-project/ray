@@ -1,11 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 
 
-class _NullLogSpan(object):
+class _NullLogSpan:
     """A log span context manager that does nothing"""
 
     def __enter__(self):

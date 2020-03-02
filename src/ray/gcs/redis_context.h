@@ -133,6 +133,27 @@ class RedisContext {
   Status Connect(const std::string &address, int port, bool sharding,
                  const std::string &password);
 
+  /// Run an operation on some table key synchronously.
+  ///
+  /// \param command The command to run. This must match a registered Ray Redis
+  /// command. These are strings of the format "RAY.TABLE_*".
+  /// \param id The table key to run the operation at.
+  /// \param data The data to add to the table key, if any.
+  /// \param length The length of the data to be added, if data is provided.
+  /// \param prefix The prefix of table key.
+  /// \param pubsub_channel The channel that update operations to the table
+  /// should be published on.
+  /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
+  /// at which the data must be appended. For all other commands, set to
+  /// -1 for unused. If set, then data must be provided.
+  /// \return The reply from redis.
+  template <typename ID>
+  std::shared_ptr<CallbackReply> RunSync(const std::string &command, const ID &id,
+                                         const void *data, size_t length,
+                                         const TablePrefix prefix,
+                                         const TablePubsub pubsub_channel,
+                                         int log_length = -1);
+
   /// Run an operation on some table key.
   ///
   /// \param command The command to run. This must match a registered Ray Redis
@@ -140,8 +161,9 @@ class RedisContext {
   /// \param id The table key to run the operation at.
   /// \param data The data to add to the table key, if any.
   /// \param length The length of the data to be added, if data is provided.
-  /// \param prefix
-  /// \param pubsub_channel
+  /// \param prefix The prefix of table key.
+  /// \param pubsub_channel The channel that update operations to the table
+  /// should be published on.
   /// \param redisCallback The Redis callback function.
   /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
   /// at which the data must be appended. For all other commands, set to
@@ -223,6 +245,39 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
         pubsub_channel, id.Data(), id.Size());
   }
   return status;
+}
+
+template <typename ID>
+std::shared_ptr<CallbackReply> RedisContext::RunSync(
+    const std::string &command, const ID &id, const void *data, size_t length,
+    const TablePrefix prefix, const TablePubsub pubsub_channel, int log_length) {
+  RAY_CHECK(context_);
+  void *redis_reply = nullptr;
+  if (length > 0) {
+    if (log_length >= 0) {
+      std::string redis_command = command + " %d %d %b %b %d";
+      redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
+                                 id.Data(), id.Size(), data, length, log_length);
+    } else {
+      std::string redis_command = command + " %d %d %b %b";
+      redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
+                                 id.Data(), id.Size(), data, length);
+    }
+  } else {
+    RAY_CHECK(log_length == -1);
+    std::string redis_command = command + " %d %d %b";
+    redis_reply = redisCommand(context_, redis_command.c_str(), prefix, pubsub_channel,
+                               id.Data(), id.Size());
+  }
+  if (redis_reply == nullptr) {
+    RAY_LOG(INFO) << "Run redis command failed , err is " << context_->err;
+    return nullptr;
+  } else {
+    std::shared_ptr<CallbackReply> callback_reply =
+        std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
+    freeReplyObject(redis_reply);
+    return callback_reply;
+  }
 }
 
 }  // namespace gcs

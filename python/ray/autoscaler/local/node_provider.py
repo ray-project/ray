@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from filelock import FileLock
 from threading import RLock
 import json
@@ -19,7 +15,7 @@ filelock_logger = logging.getLogger("filelock")
 filelock_logger.setLevel(logging.WARNING)
 
 
-class ClusterState(object):
+class ClusterState:
     def __init__(self, lock_path, save_path, provider_config):
         self.lock = RLock()
         self.file_lock = FileLock(lock_path)

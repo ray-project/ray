@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import signal
 import sys
@@ -54,7 +50,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -97,7 +93,7 @@ ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -137,7 +133,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Create the object.
-    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -180,7 +176,7 @@ ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # wait can return.
-    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.

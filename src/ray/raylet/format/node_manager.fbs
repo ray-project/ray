@@ -80,8 +80,6 @@ enum MessageType:int {
   ConnectClient,
   // Set dynamic custom resource.
   SetResourceRequest,
-  // Update the active set of object IDs in use on this worker.
-  ReportActiveObjectIDs,
 }
 
 table TaskExecutionSpecification {
@@ -264,9 +262,4 @@ table SetResourceRequest {
   capacity: double;
   // Client ID where this resource will be set.
   client_id: string;
-}
-
-table ReportActiveObjectIDs {
-  // Object IDs that are active in the worker.
-  object_ids: [string];
 }

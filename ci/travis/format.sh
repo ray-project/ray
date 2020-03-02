@@ -5,9 +5,34 @@
 # Cause the script to exit if a single command fails
 set -eo pipefail
 
+FLAKE8_VERSION_REQUIRED="3.7.7"
+YAPF_VERSION_REQUIRED="0.23.0"
+
+check_command_exist() {
+    VERSION=""
+    case "$1" in
+        yapf)
+            VERSION=$YAPF_VERSION_REQUIRED
+            ;;
+        flake8)
+            VERSION=$FLAKE8_VERSION_REQUIRED
+            ;;
+        *)
+            echo "$1 is not a required dependency"
+            exit 1
+    esac
+    if ! [ -x "$(command -v $1)" ]; then
+        echo "$1 not installed. pip install $1==$VERSION"
+        exit 1
+    fi 
+}
+
+check_command_exist yapf
+check_command_exist flake8
+
 ver=$(yapf --version)
 if ! echo $ver | grep -q 0.23.0; then
-    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver"
+    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver. $YAPF_DOWNLOAD_COMMAND_MSG"
     exit 1
 fi
 
@@ -32,8 +57,8 @@ tool_version_check() {
     fi
 }
 
-tool_version_check "flake8" $FLAKE8_VERSION "3.7.7"
-tool_version_check "yapf" $YAPF_VERSION "0.23.0"
+tool_version_check "flake8" $FLAKE8_VERSION $FLAKE8_VERSION_REQUIRED
+tool_version_check "yapf" $YAPF_VERSION $YAPF_VERSION_REQUIRED
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
@@ -54,8 +79,8 @@ YAPF_FLAGS=(
 YAPF_EXCLUDES=(
     '--exclude' 'python/ray/cloudpickle/*'
     '--exclude' 'python/build/*'
-    '--exclude' 'python/ray/pyarrow_files/*'
     '--exclude' 'python/ray/core/src/ray/gcs/*'
+    '--exclude' 'python/ray/thirdparty_files/*'
 )
 
 # Format specified files
@@ -79,14 +104,14 @@ format_changed() {
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
         fi
     fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/ --ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605
         fi
     fi
 
@@ -115,6 +140,11 @@ else
     # Format only the files that changed in last commit.
     format_changed
 fi
+
+# Ensure import ordering
+# Make sure that for every import psutil; import setpproctitle
+# There's a import ray above it.
+python ci/travis/check_import_order.py . -s ci -s python/ray/pyarrow_files -s python/ray/thirdparty_files -s python/build -s lib
 
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted changed files. Please review and stage the changes.'

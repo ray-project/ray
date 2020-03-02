@@ -48,7 +48,7 @@ public class GcsClient {
     List<byte[]> shardAddresses = primary.lrange("RedisShards".getBytes(), 0, -1);
     Preconditions.checkState(shardAddresses.size() == numShards);
     shards = shardAddresses.stream().map((byte[] address) -> {
-      return new RedisClient(new String(address));
+      return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
   }
 

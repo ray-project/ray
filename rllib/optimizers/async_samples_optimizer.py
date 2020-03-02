@@ -2,10 +2,6 @@
 
 https://arxiv.org/abs/1802.01561"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import time
 
@@ -26,7 +22,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     This class coordinates the data transfers between the learner thread
     and remote workers (IMPALA actors).
     """
-
     def __init__(self,
                  workers,
                  train_batch_size=500,

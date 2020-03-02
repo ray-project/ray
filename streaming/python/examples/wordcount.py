@@ -1,14 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import logging
 import time
 
 import ray
 import wikipedia
-from ray.streaming.streaming import Environment
+from ray.streaming import StreamingContext
+from ray.streaming.config import Config
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -23,11 +20,10 @@ parser.add_argument(
 # A custom data source that reads articles from wikipedia
 # Custom data sources need to implement a get_next() method
 # that returns the next data element, in this case sentences
-class Wikipedia(object):
+class Wikipedia:
     def __init__(self, title_file):
         # Titles in this file will be as queries
         self.title_file = title_file
-        # TODO (john): Handle possible exception here
         self.title_reader = iter(list(open(self.title_file, "r").readlines()))
         self.done = False
         self.article_done = True
@@ -61,21 +57,7 @@ class Wikipedia(object):
 # Splits input line into words and
 # outputs records of the form (word,1)
 def splitter(line):
-    records = []
-    words = line.split()
-    for w in words:
-        records.append((w, 1))
-    return records
-
-
-# Returns the first attribute of a tuple
-def key_selector(tuple):
-    return tuple[0]
-
-
-# Returns the second attribute of a tuple
-def attribute_selector(tuple):
-    return tuple[1]
+    return [(word, 1) for word in line.split()]
 
 
 if __name__ == "__main__":
@@ -83,27 +65,23 @@ if __name__ == "__main__":
     args = parser.parse_args()
     titles_file = str(args.titles_file)
 
-    ray.init()
+    ray.init(load_code_from_local=True, include_java=True)
 
+    ctx = StreamingContext.Builder() \
+        .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL) \
+        .build()
     # A Ray streaming environment with the default configuration
-    env = Environment()
-    env.set_parallelism(2)  # Each operator will be executed by two actors
+    ctx.set_parallelism(1)  # Each operator will be executed by two actors
 
-    # The following dataflow is a simple streaming wordcount
-    #  with a rolling sum operator.
-    # It reads articles from wikipedia, splits them in words,
-    # shuffles words, and counts the occurences of each word.
-    stream = env.source(Wikipedia(titles_file)) \
-                .round_robin() \
-                .flat_map(splitter) \
-                .key_by(key_selector) \
-                .sum(attribute_selector) \
-                .inspect(print)     # Prints the contents of the
-    # stream to stdout
+    # Reads articles from wikipedia, splits them in words,
+    # shuffles words, and counts the occurrences of each word.
+    stream = ctx.source(Wikipedia(titles_file)) \
+        .flat_map(splitter) \
+        .key_by(lambda x: x[0]) \
+        .reduce(lambda old_value, new_value:
+                (old_value[0], old_value[1] + new_value[1])) \
+        .sink(print)
     start = time.time()
-    env_handle = env.execute()  # Deploys and executes the dataflow
-    ray.get(env_handle)  # Stay alive until execution finishes
-    env.wait_finish()
+    ctx.execute("wordcount")
     end = time.time()
     logger.info("Elapsed time: {} secs".format(end - start))
-    logger.debug("Output stream id: {}".format(stream.id))

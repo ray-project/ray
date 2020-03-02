@@ -27,10 +27,29 @@ public class TestUtils {
     }
   }
 
-  public static void skipTestIfDirectActorCallEnabled() {
-    if (ActorCreationOptions.DEFAULT_USE_DIRECT_CALL) {
-      throw new SkipException("This test doesn't work when direct actor call is enabled.");
+  public static void skipTestUnderClusterMode() {
+    if (getRuntime().getRayConfig().runMode == RunMode.CLUSTER) {
+      throw new SkipException("This test doesn't work under cluster mode.");
     }
+  }
+
+  public static boolean isDirectActorCallEnabled() {
+    return ActorCreationOptions.DEFAULT_USE_DIRECT_CALL;
+  }
+
+  public static void skipTestIfDirectActorCallEnabled() {
+    skipTestIfDirectActorCallEnabled(true);
+  }
+
+  private static void skipTestIfDirectActorCallEnabled(boolean enabled) {
+    if (enabled == ActorCreationOptions.DEFAULT_USE_DIRECT_CALL) {
+      throw new SkipException(String.format("This test doesn't work when direct actor call is %s.",
+          enabled ? "enabled" : "disabled"));
+    }
+  }
+
+  public static void skipTestIfDirectActorCallDisabled() {
+    skipTestIfDirectActorCallEnabled(false);
   }
 
   /**
@@ -67,7 +86,7 @@ public class TestUtils {
 
   /**
    * Warm up the cluster to make sure there's at least one idle worker.
-   *
+   * <p>
    * This is needed before calling `wait`. Because, in Travis CI, starting a new worker
    * process could be slower than the wait timeout.
    * TODO(hchen): We should consider supporting always reversing a certain number of

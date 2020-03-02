@@ -18,7 +18,7 @@
     "react-dom": "^16.9.0",
     "react-redux": "^7.1.3",
     "react-router-dom": "^5.0.1",
-    "react-scripts": "3.1.1",
+    "react-scripts": "3.1.2",
     "typeface-roboto": "0.0.75",
     "typescript": "3.5.3"
   },

@@ -1,14 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.model import restore_original_dimensions, flatten
 from ray.rllib.utils.annotations import PublicAPI
 
 
 @PublicAPI
-class ModelV2(object):
+class ModelV2:
     """Defines a Keras-style abstract network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
@@ -205,7 +201,7 @@ class ModelV2(object):
         return NullContextManager()
 
 
-class NullContextManager(object):
+class NullContextManager:
     """No-op context manager"""
 
     def __init__(self):

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import traceback
 
@@ -35,7 +31,7 @@ class LocalModeObjectID(ObjectID):
         return new
 
 
-class LocalModeManager(object):
+class LocalModeManager:
     """Used to emulate remote operations when running in local mode."""
 
     def __init__(self):

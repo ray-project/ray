@@ -1,16 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -29,7 +22,8 @@ def build_trainer(name,
                   after_train_result=None,
                   collect_metrics_fn=None,
                   before_evaluate_fn=None,
-                  mixins=None):
+                  mixins=None,
+                  training_pipeline=None):
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -40,8 +34,8 @@ def build_trainer(name,
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
         default_policy (cls): the default Policy class to use
-        default_config (dict): the default config dict of the algorithm,
-            otherwises uses the Trainer default config
+        default_config (dict): The default config dict of the algorithm,
+            otherwise uses the Trainer default config.
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
         get_initial_state (func): optional function that returns the initial
@@ -73,6 +67,8 @@ def build_trainer(name,
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class
+        training_pipeline (func): Experimental support for custom
+            training pipelines. This overrides `make_policy_optimizer`.
 
     Returns:
         a Trainer instance that uses the specified args.
@@ -107,7 +103,12 @@ def build_trainer(name,
             else:
                 self.workers = self._make_workers(env_creator, policy, config,
                                                   self.config["num_workers"])
-            if make_policy_optimizer:
+            self.train_pipeline = None
+            self.optimizer = None
+
+            if training_pipeline:
+                self.train_pipeline = training_pipeline(self.workers, config)
+            elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:
                 optimizer_config = dict(
@@ -120,6 +121,9 @@ def build_trainer(name,
 
         @override(Trainer)
         def _train(self):
+            if self.train_pipeline:
+                return self._train_pipeline()
+
             if before_train_step:
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
@@ -147,6 +151,14 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
+        def _train_pipeline(self):
+            if before_train_step:
+                before_train_step(self)
+            res = next(self.train_pipeline)
+            if after_train_result:
+                after_train_result(self, res)
+            return res
+
         @override(Trainer)
         def _before_evaluate(self):
             if before_evaluate_fn:
@@ -155,13 +167,16 @@ def build_trainer(name,
         def __getstate__(self):
             state = Trainer.__getstate__(self)
             state["trainer_state"] = self.state.copy()
+            if self.train_pipeline:
+                state["train_pipeline"] = self.train_pipeline.metrics.save()
             return state
 
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
             self.state = state["trainer_state"].copy()
+            if self.train_pipeline:
+                self.train_pipeline.metrics.restore(state["train_pipeline"])
 
-    @staticmethod
     def with_updates(**overrides):
         """Build a copy of this trainer with the specified overrides.
 
@@ -171,7 +186,7 @@ def build_trainer(name,
         """
         return build_trainer(**dict(original_kwargs, **overrides))
 
-    trainer_cls.with_updates = with_updates
+    trainer_cls.with_updates = staticmethod(with_updates)
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
     return trainer_cls

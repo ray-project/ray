@@ -8,6 +8,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include "ray/common/status.h"
@@ -95,6 +96,13 @@ void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
   auto randomly_seeded_mersenne_twister = []() {
     auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // To increase the entropy, mix in a number of time samples instead of a single one.
+    // This avoids the possibility of duplicate seeds for many workers that start in
+    // close succession.
+    for (int i = 0; i < 128; i++) {
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
+      seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    }
     std::mt19937 seeded_engine(seed);
     return seeded_engine;
   };

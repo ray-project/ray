@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 from datetime import datetime
 
@@ -18,7 +14,7 @@ class _ReporterHook(Logger):
         return self.tune_reporter(**metrics)
 
 
-class TrackSession(object):
+class TrackSession:
     """Manages results for a single session.
 
     Represents a single Trial in an experiment.

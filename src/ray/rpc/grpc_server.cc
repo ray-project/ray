@@ -3,19 +3,7 @@
 #include <grpcpp/impl/service_type.h>
 #include <boost/asio/detail/socket_holder.hpp>
 
-namespace {
-
-bool PortNotInUse(int port) {
-  boost::asio::detail::socket_holder fd(socket(AF_INET, SOCK_STREAM, 0));
-  struct sockaddr_in server_addr = {0};
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  server_addr.sin_port = htons(port);
-  return fd.get() >= 0 &&
-         bind(fd.get(), (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0;
-}
-
-}  // namespace
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace rpc {
@@ -26,18 +14,18 @@ GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
 }
 
 void GrpcServer::Run() {
+  uint32_t specified_port = port_;
   std::string server_address("0.0.0.0:" + std::to_string(port_));
-  // Unfortunately, grpc will not return an error if the specified port is in
-  // use. There is a race condition here where two servers could check the same
-  // port, but only one would succeed in binding.
-  if (port_ > 0) {
-    RAY_CHECK(PortNotInUse(port_))
-        << "Port " << port_
-        << " specified by caller already in use. Try passing node_manager_port=... into "
-           "ray.init() to pick a specific port";
-  }
 
   grpc::ServerBuilder builder;
+  // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
+  // (default behavior in grpc), we may see multiple workers listen on the same port and
+  // the requests sent to this port may be handled by any of the workers.
+  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
+                             RayConfig::instance().max_grpc_message_size());
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
@@ -54,6 +42,11 @@ void GrpcServer::Run() {
   }
   // Build and start server.
   server_ = builder.BuildAndStart();
+  // If the grpc server failed to bind the port, the `port_` will be set to 0.
+  RAY_CHECK(port_ > 0)
+      << "Port " << specified_port
+      << " specified by caller already in use. Try passing node_manager_port=... into "
+         "ray.init() to pick a specific port";
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.

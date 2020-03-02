@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 import time
@@ -25,9 +21,12 @@ def test_actor_creation_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
 
     @ray.remote
-    class Child(object):
+    class Child:
         def __init__(self, death_probability):
             self.death_probability = death_probability
+
+        def get_probability(self):
+            return self.death_probability
 
         def ping(self):
             # Exit process with some probability.
@@ -35,7 +34,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             if exit_chance < self.death_probability:
                 sys.exit(-1)
 
-    num_children = 50
+    num_children = 25
     # Children actors will die about half the time.
     death_probability = 0.5
 
@@ -58,6 +57,18 @@ def test_actor_creation_node_failure(ray_start_cluster):
                     ray.get(out)
                 except ray.exceptions.RayActorError:
                     children[i] = Child.remote(death_probability)
+
+            children_out = [
+                child.get_probability.remote() for child in children
+            ]
+            # Wait for new created actors to finish creation before
+            # removing a node. This is needed because right now we don't
+            # support reconstructing actors that died in the process of
+            # being created.
+            ready, _ = ray.wait(
+                children_out, num_returns=len(children_out), timeout=5 * 60.0)
+            assert len(ready) == len(children_out)
+
         # Remove a node. Any actor creation tasks that were forwarded to this
         # node must be reconstructed.
         cluster.remove_node(cluster.list_all_nodes()[-1])
@@ -73,6 +84,9 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_monitor()
     ray.worker._global_node.kill_raylet_monitor()
 
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        ray.worker._global_node.kill_gcs_server()
+
     # If the driver can reach the tearDown method, then it is still alive.
 
 
@@ -81,12 +95,24 @@ def test_driver_lives_sequential(ray_start_regular):
     reason="Hanging with new GCS API.")
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
-    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
-    assert len(process_infos) == 5
+
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        process_infos = (
+            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+            all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+            all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
+        assert len(process_infos) == 6
+    else:
+        process_infos = (
+            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+            all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
+        assert len(process_infos) == 5
 
     # Kill all the components in parallel.
     for process_info in process_infos:

@@ -7,4 +7,5 @@ environment:
     - second command
     - third command
 
-cluster: "cluster.yaml"
+cluster:
+  config: cluster.yaml

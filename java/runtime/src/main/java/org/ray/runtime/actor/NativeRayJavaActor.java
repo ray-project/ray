@@ -11,7 +11,7 @@ import org.ray.runtime.generated.Common.Language;
 public class NativeRayJavaActor extends NativeRayActor {
 
   NativeRayJavaActor(long nativeCoreWorkerPointer, byte[] actorId) {
-    super(nativeCoreWorkerPointer, actorId, Language.JAVA);
+    super(nativeCoreWorkerPointer, actorId);
   }
 
   /**

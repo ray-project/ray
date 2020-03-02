@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Example of using a custom model with batch norm."""
 
 import argparse

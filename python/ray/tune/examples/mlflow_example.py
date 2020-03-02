@@ -6,10 +6,6 @@ no artifact support; to save artifacts with Tune and MLFlow, you will need to
 start a MLFlow run inside the Trainable function/class.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import mlflow
 from mlflow.tracking import MlflowClient
 import time

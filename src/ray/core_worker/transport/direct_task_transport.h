@@ -5,7 +5,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -18,29 +17,36 @@
 
 namespace ray {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &)>
+typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
+                                                            int port)>
     LeaseClientFactoryFn;
 
 // The task queues are keyed on resource shape & function descriptor
 // (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
 // and ensure fairness between different tasks, as well as plasma task dependencies as
 // a performance optimization because the raylet will fetch plasma dependencies to the
-// scheduled worker.
-using SchedulingKey = std::pair<SchedulingClass, std::vector<ObjectID>>;
+// scheduled worker. It's also keyed on actor ID to ensure the actor creation task
+// would always request a new worker lease. We need this to let raylet know about
+// direct actor creation task, and reconstruct the actor if it dies. Otherwise if
+// the actor creation task just reuses an existing worker, then raylet will not
+// be aware of the actor and is not able to manage it.
+using SchedulingKey = std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID>;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
-  CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
+  CoreWorkerDirectTaskSubmitter(rpc::Address rpc_address,
+                                std::shared_ptr<WorkerLeaseInterface> lease_client,
                                 rpc::ClientFactoryFn client_factory,
                                 LeaseClientFactoryFn lease_client_factory,
                                 std::shared_ptr<CoreWorkerMemoryStore> store,
                                 std::shared_ptr<TaskFinisherInterface> task_finisher,
                                 ClientID local_raylet_id, int64_t lease_timeout_ms)
-      : local_lease_client_(lease_client),
+      : rpc_address_(rpc_address),
+        local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
-        resolver_(store),
+        resolver_(store, task_finisher),
         task_finisher_(task_finisher),
         local_raylet_id_(local_raylet_id),
         lease_timeout_ms_(lease_timeout_ms) {}
@@ -96,6 +102,9 @@ class CoreWorkerDirectTaskSubmitter {
                       const TaskSpecification &task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
+
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
 
   // Client that can be used to lease and return workers from the local raylet.
   std::shared_ptr<WorkerLeaseInterface> local_lease_client_;

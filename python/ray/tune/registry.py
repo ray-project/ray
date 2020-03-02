@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 from types import FunctionType
 
@@ -98,7 +94,7 @@ def _make_key(category, key):
             key.encode("ascii"))
 
 
-class _Registry(object):
+class _Registry:
     def __init__(self):
         self._to_flush = {}
 

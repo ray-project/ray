@@ -13,6 +13,9 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
 )
+from ray.includes.function_descriptor cimport (
+    CFunctionDescriptor,
+)
 
 
 cdef extern from * namespace "polyfill":
@@ -80,7 +83,10 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
-        CRayStatus SystemExit()
+        CRayStatus IntentionalSystemExit()
+
+        @staticmethod
+        CRayStatus UnexpectedSystemExit()
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -192,14 +198,15 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const size_t DataSize() const
         const shared_ptr[CBuffer] &GetData()
         const shared_ptr[CBuffer] &GetMetadata() const
+        c_bool IsInPlasmaError() const
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::RayFunction":
         CRayFunction()
         CRayFunction(CLanguage language,
-                     const c_vector[c_string] function_descriptor)
+                     const CFunctionDescriptor &function_descriptor)
         CLanguage GetLanguage()
-        const c_vector[c_string]& GetFunctionDescriptor()
+        const CFunctionDescriptor GetFunctionDescriptor()
 
     cdef cppclass CTaskArg "ray::TaskArg":
         @staticmethod

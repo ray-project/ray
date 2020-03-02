@@ -28,7 +28,7 @@ public class PyFunctionDescriptor implements FunctionDescriptor {
 
   @Override
   public List<String> toList() {
-    return Arrays.asList(moduleName, className, functionName);
+    return Arrays.asList(moduleName, className, functionName, "" /* function hash */);
   }
 
   @Override

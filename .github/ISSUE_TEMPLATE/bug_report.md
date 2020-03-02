@@ -13,11 +13,10 @@ assignees: ''
 
 *Ray version and other system information (Python version, TensorFlow version, OS):*
 
-*Does the problem occur on the [latest wheels](https://ray.readthedocs.io/en/latest/installation.html)?*
-
-
-
-### Reproduction
+### Reproduction (REQUIRED)
 Please provide a script that can be run to reproduce the issue. The script should have **no external library dependencies** (i.e., use fake or mock data / environments):
 
 If we cannot run your script, we cannot fix your issue.
+
+- [ ] I have verified my script runs in a clean environment and reproduces the issue.
+- [ ] I have verified the issue also occurs with the [latest wheels](https://ray.readthedocs.io/en/latest/installation.html).

@@ -2,10 +2,6 @@
 
 Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import logging
 import gym
@@ -27,7 +23,7 @@ logger = logging.getLogger(__name__)
 BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
-class VTraceLoss(object):
+class VTraceLoss:
     def __init__(self,
                  actions,
                  actions_logp,
@@ -262,7 +258,7 @@ def add_behaviour_logits(policy):
 
 
 def validate_config(policy, obs_space, action_space, config):
-    if config["vtrace"]:
+    if config["vtrace"] and not config["in_evaluation"]:
         assert config["batch_mode"] == "truncate_episodes", \
             "Must use `truncate_episodes` batch mode with V-trace."
 

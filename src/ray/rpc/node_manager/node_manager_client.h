@@ -1,12 +1,12 @@
 #ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
 #define RAY_RPC_NODE_MANAGER_CLIENT_H
 
-#include <thread>
-
 #include <grpcpp/grpcpp.h>
 
+#include <thread>
+
 #include "ray/common/status.h"
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -25,33 +25,27 @@ class NodeManagerClient {
   NodeManagerClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = NodeManagerService::NewStub(channel);
+    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
+        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
   /// Forward a task and its uncommitted lineage.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  void ForwardTask(const ForwardTaskRequest &request,
-                   const ClientCallback<ForwardTaskReply> &callback) {
-    client_call_manager_
-        .CreateCall<NodeManagerService, ForwardTaskRequest, ForwardTaskReply>(
-            *stub_, &NodeManagerService::Stub::PrepareAsyncForwardTask, request,
-            callback);
-  }
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, grpc_client_, )
 
   /// Get current node stats.
-  void GetNodeStats(const ClientCallback<NodeStatsReply> &callback) {
-    NodeStatsRequest request;
-    client_call_manager_.CreateCall<NodeManagerService, NodeStatsRequest, NodeStatsReply>(
-        *stub_, &NodeManagerService::Stub::PrepareAsyncGetNodeStats, request, callback);
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
+
+  void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
+    GetNodeStatsRequest request;
+    GetNodeStats(request, callback);
   }
 
  private:
-  /// The gRPC-generated stub.
-  std::unique_ptr<NodeManagerService::Stub> stub_;
+  /// The RPC client.
+  std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
@@ -74,22 +68,16 @@ class NodeManagerWorkerClient
   }
 
   /// Request a worker lease.
-  ray::Status RequestWorkerLease(const WorkerLeaseRequest &request,
-                                 const ClientCallback<WorkerLeaseReply> &callback) {
-    auto call = client_call_manager_
-                    .CreateCall<NodeManagerService, WorkerLeaseRequest, WorkerLeaseReply>(
-                        *stub_, &NodeManagerService::Stub::PrepareAsyncRequestWorkerLease,
-                        request, callback);
-    return call->GetStatus();
-  }
+  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
 
-  ray::Status ReturnWorker(const ReturnWorkerRequest &request,
-                           const ClientCallback<ReturnWorkerReply> &callback) {
-    auto call = client_call_manager_.CreateCall<NodeManagerService, ReturnWorkerRequest,
-                                                ReturnWorkerReply>(
-        *stub_, &NodeManagerService::Stub::PrepareAsyncReturnWorker, request, callback);
-    return call->GetStatus();
-  }
+  /// Return a worker lease.
+  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
+
+  /// Notify the raylet to pin the provided object IDs.
+  RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
+
+  /// Trigger global GC across the cluster.
+  RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
 
  private:
   /// Constructor.
@@ -100,13 +88,12 @@ class NodeManagerWorkerClient
   NodeManagerWorkerClient(const std::string &address, const int port,
                           ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = NodeManagerService::NewStub(channel);
+    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
+        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
-  /// The gRPC-generated stub.
-  std::unique_ptr<NodeManagerService::Stub> stub_;
+  /// The RPC client.
+  std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

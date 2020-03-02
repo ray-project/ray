@@ -2,14 +2,11 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
+# cython: c_string_encoding = default
 
 from cpython.exc cimport PyErr_CheckSignals
 
-try:
-    import asyncio
-except ImportError:
-    # Python2 doesn't have asyncio
-    asyncio = None
+import asyncio
 import numpy
 import gc
 import inspect
@@ -17,6 +14,7 @@ import threading
 import time
 import logging
 import os
+import pickle
 import sys
 
 from libc.stdint cimport (
@@ -62,12 +60,6 @@ from ray.includes.common cimport (
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
 )
-from ray.includes.libraylet cimport (
-    CRayletClient,
-    GCSProfileEvent,
-    GCSProfileTableData,
-    WaitResultPair,
-)
 from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
@@ -79,12 +71,15 @@ from ray.includes.libcoreworker cimport (
     CCoreWorker,
     CTaskOptions,
     ResourceMappingType,
-    CFiberEvent
+    CFiberEvent,
+    CActorHandle,
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 
 import ray
+from ray.async_compat import (sync_to_async,
+                              AsyncGetResponse, AsyncMonitorState)
 import ray.experimental.signal as ray_signal
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
@@ -97,28 +92,13 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
-from ray.function_manager import FunctionDescriptor
 from ray.utils import decode
-from ray.ray_constants import (
-    DEFAULT_PUT_OBJECT_DELAY,
-    DEFAULT_PUT_OBJECT_RETRIES,
-    RAW_BUFFER_METADATA,
-    PICKLE_BUFFER_METADATA,
-    PICKLE5_BUFFER_METADATA,
-)
-
-# pyarrow cannot be imported until after _raylet finishes initializing
-# (see ray/__init__.py for details).
-# Unfortunately, Cython won't compile if 'pyarrow' is undefined, so we
-# "forward declare" it here and then replace it with a reference to the
-# imported package from ray/__init__.py.
-# TODO(edoakes): Fix this.
-pyarrow = None
 
 cimport cpython
 
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
+include "includes/function_descriptor.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
@@ -128,17 +108,7 @@ include "includes/libcoreworker.pxi"
 
 logger = logging.getLogger(__name__)
 
-MEMCOPY_THREADS = 12
-PY3 = cpython.PY_MAJOR_VERSION >= 3
-
-
-if PY3:
-    import pickle
-else:
-    import cPickle as pickle
-
-if PY3:
-    from ray.async_compat import sync_to_async
+MEMCOPY_THREADS = 6
 
 
 def set_internal_config(dict options):
@@ -218,84 +188,22 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
-cdef c_bool is_simple_value(value, int64_t *num_elements_contained):
-    num_elements_contained[0] += 1
+cdef increase_recursion_limit():
+    """Double the recusion limit if current depth is close to the limit"""
+    cdef:
+        CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
+        int current_depth = s.recursion_depth
+        int current_limit = Py_GetRecursionLimit()
+        int new_limit = current_limit * 2
 
-    if num_elements_contained[0] >= RayConfig.instance().num_elements_limit():
-        return False
-
-    if (cpython.PyInt_Check(value) or cpython.PyLong_Check(value) or
-            value is False or value is True or cpython.PyFloat_Check(value) or
-            value is None):
-        return True
-
-    if cpython.PyBytes_CheckExact(value):
-        num_elements_contained[0] += cpython.PyBytes_Size(value)
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if cpython.PyUnicode_CheckExact(value):
-        num_elements_contained[0] += cpython.PyUnicode_GET_SIZE(value)
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if (cpython.PyList_CheckExact(value) and
-            cpython.PyList_Size(value) < RayConfig.instance().size_limit()):
-        for item in value:
-            if not is_simple_value(item, num_elements_contained):
-                return False
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if (cpython.PyDict_CheckExact(value) and
-            cpython.PyDict_Size(value) < RayConfig.instance().size_limit()):
-        # TODO(suquark): Using "items" in Python2 is not very efficient.
-        for k, v in value.items():
-            if not (is_simple_value(k, num_elements_contained) and
-                    is_simple_value(v, num_elements_contained)):
-                return False
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if (cpython.PyTuple_CheckExact(value) and
-            cpython.PyTuple_Size(value) < RayConfig.instance().size_limit()):
-        for item in value:
-            if not is_simple_value(item, num_elements_contained):
-                return False
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if isinstance(value, numpy.ndarray):
-        if value.dtype == "O":
-            return False
-        num_elements_contained[0] += value.nbytes
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    return False
+    if current_limit - current_depth < 500:
+        Py_SetRecursionLimit(new_limit)
+        logger.debug("Increasing Python recursion limit to {} "
+                     "current recursion depth is {}.".format(
+                         new_limit, current_depth))
 
 
-def check_simple_value(value):
-    """Check if value is simple enough to be send by value.
-
-    This method checks if a Python object is sufficiently simple that it can
-    be serialized and passed by value as an argument to a task (without being
-    put in the object store). The details of which objects are sufficiently
-    simple are defined by this method and are not particularly important.
-    But for performance reasons, it is better to place "small" objects in
-    the task itself and "large" objects in the object store.
-
-    Args:
-        value: Python object that should be checked.
-
-    Returns:
-        True if the value should be send by value, False otherwise.
-    """
-
-    cdef int64_t num_elements_contained = 0
-    return is_simple_value(value, &num_elements_contained)
-
-
+@cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
 
@@ -308,7 +216,7 @@ cdef class Language:
 
     def __eq__(self, other):
         return (isinstance(other, Language) and
-                (<int32_t>self.lang) == (<int32_t>other.lang))
+                (<int32_t>self.lang) == (<int32_t>(<Language>other).lang))
 
     def __repr__(self):
         if <int32_t>self.lang == <int32_t>LANGUAGE_PYTHON:
@@ -320,11 +228,12 @@ cdef class Language:
         else:
             raise Exception("Unexpected error")
 
+    def __reduce__(self):
+        return Language, (<int32_t>self.lang,)
 
-# Programming language enum values.
-cdef Language LANG_PYTHON = Language.from_native(LANGUAGE_PYTHON)
-cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
-cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
+    PYTHON = Language.from_native(LANGUAGE_PYTHON)
+    CPP = Language.from_native(LANGUAGE_CPP)
+    JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
 cdef int prepare_resources(
@@ -351,168 +260,55 @@ cdef int prepare_resources(
     return 0
 
 
-cdef c_vector[c_string] string_vector_from_list(list string_list):
+cdef void prepare_args(
+        CoreWorker core_worker, args, c_vector[CTaskArg] *args_vector):
     cdef:
-        c_vector[c_string] out
-    for s in string_list:
-        if not isinstance(s, bytes):
-            raise TypeError("string_list elements must be bytes")
-        out.push_back(s)
-    return out
-
-
-cdef:
-    c_string pickle_metadata_str = PICKLE_BUFFER_METADATA
-    shared_ptr[CBuffer] pickle_metadata = dynamic_pointer_cast[
-        CBuffer, LocalMemoryBuffer](
-        make_shared[LocalMemoryBuffer](
-            <uint8_t*>(pickle_metadata_str.data()),
-            pickle_metadata_str.size(), True))
-    c_string raw_meta_str = RAW_BUFFER_METADATA
-    shared_ptr[CBuffer] raw_metadata = dynamic_pointer_cast[
-        CBuffer, LocalMemoryBuffer](
-        make_shared[LocalMemoryBuffer](
-            <uint8_t*>(raw_meta_str.data()),
-            raw_meta_str.size(), True))
-
-cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
-    cdef:
-        c_string pickled_str
-        const unsigned char[:] buffer
         size_t size
+        int64_t put_threshold
         shared_ptr[CBuffer] arg_data
-        shared_ptr[CBuffer] arg_metadata
+        c_vector[CObjectID] inlined_ids
+        ObjectID obj_id
 
-    # TODO be consistent with store_task_outputs
+    worker = ray.worker.global_worker
+    put_threshold = RayConfig.instance().max_direct_call_object_size()
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
                 CTaskArg.PassByReference((<ObjectID>arg).native()))
-        elif not ray._raylet.check_simple_value(arg):
-            args_vector.push_back(
-                CTaskArg.PassByReference((<ObjectID>ray.put(arg)).native()))
-        elif type(arg) is bytes:
-            buffer = arg
-            size = buffer.nbytes
-            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                make_shared[LocalMemoryBuffer](
-                    <uint8_t*>(&buffer[0]), size, True))
-            args_vector.push_back(
-                CTaskArg.PassByValue(
-                    make_shared[CRayObject](arg_data, raw_metadata)))
+
         else:
-            buffer = pickle.dumps(
-                arg, protocol=pickle.HIGHEST_PROTOCOL)
-            size = buffer.nbytes
-            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(&buffer[0]), size, True))
-            args_vector.push_back(
-                CTaskArg.PassByValue(
-                    make_shared[CRayObject](arg_data, pickle_metadata)))
+            serialized_arg = worker.get_serialization_context().serialize(arg)
+            size = serialized_arg.total_bytes
 
-
-cdef class RayletClient:
-    cdef CRayletClient* client
-
-    def __cinit__(self, CoreWorker core_worker):
-        # The core worker and raylet client need to share an underlying
-        # raylet client, so we take a reference to the core worker's client
-        # here. The client is a raw pointer because it is only a temporary
-        # workaround and will be removed once the core worker transition is
-        # complete, so we don't want to change the unique_ptr in core worker
-        # to a shared_ptr. This means the core worker *must* be
-        # initialized before the raylet client.
-        self.client = &core_worker.core_worker.get().GetRayletClient()
-
-    def fetch_or_reconstruct(self, object_ids,
-                             c_bool fetch_only,
-                             TaskID current_task_id=TaskID.nil()):
-        cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.FetchOrReconstruct(
-            fetch_ids, fetch_only, True, current_task_id.native()))
-
-    def push_error(self, JobID job_id, error_type, error_message,
-                   double timestamp):
-        check_status(self.client.PushError(job_id.native(),
-                                           error_type.encode("ascii"),
-                                           error_message.encode("ascii"),
-                                           timestamp))
-
-    def prepare_actor_checkpoint(self, ActorID actor_id):
-        cdef:
-            CActorCheckpointID checkpoint_id
-            CActorID c_actor_id = actor_id.native()
-
-        # PrepareActorCheckpoint will wait for raylet's reply, release
-        # the GIL so other Python threads can run.
-        with nogil:
-            check_status(self.client.PrepareActorCheckpoint(
-                c_actor_id, checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.Binary())
-
-    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
-                                             ActorCheckpointID checkpoint_id):
-        check_status(self.client.NotifyActorResumedFromCheckpoint(
-            actor_id.native(), checkpoint_id.native()))
-
-    def set_resource(self, basestring resource_name,
-                     double capacity, ClientID client_id):
-        self.client.SetResource(resource_name.encode("ascii"), capacity,
-                                CClientID.FromBinary(client_id.binary()))
-
-    @property
-    def job_id(self):
-        return JobID(self.client.GetJobID().Binary())
+            # TODO(edoakes): any objects containing ObjectIDs are spilled to
+            # plasma here. This is inefficient for small objects, but inlined
+            # arguments aren't associated ObjectIDs right now so this is a
+            # simple fix for reference counting purposes.
+            if <int64_t>size <= put_threshold:
+                arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                        make_shared[LocalMemoryBuffer](size))
+                write_serialized_object(serialized_arg, arg_data)
+                for obj_id in serialized_arg.contained_object_ids:
+                    inlined_ids.push_back(obj_id.native())
+                args_vector.push_back(
+                    CTaskArg.PassByValue(make_shared[CRayObject](
+                        arg_data, string_to_buffer(serialized_arg.metadata),
+                        inlined_ids)))
+                inlined_ids.clear()
+            else:
+                args_vector.push_back(
+                    CTaskArg.PassByReference((CObjectID.FromBinary(
+                        core_worker.put_serialized_cobject(serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &arg_reference_ids):
-    cdef:
-        c_vector[shared_ptr[CRayObject]] objects_to_deserialize
-
-    if c_args.size() == 0:
+    if c_args.empty():
         return [], {}
 
-    args = []
-    ids_to_deserialize = []
-    id_indices = []
-    for i in range(c_args.size()):
-        # Passed by value.
-        if arg_reference_ids[i].IsNil():
-            if (c_args[i].get().HasMetadata()
-                and Buffer.make(
-                    c_args[i].get().GetMetadata()).to_pybytes()
-                    == RAW_BUFFER_METADATA):
-                data = Buffer.make(c_args[i].get().GetData())
-                args.append(data.to_pybytes())
-            elif (c_args[i].get().HasMetadata() and Buffer.make(
-                    c_args[i].get().GetMetadata()).to_pybytes()
-                    == PICKLE_BUFFER_METADATA):
-                # This is a pickled "simple python value" argument.
-                data = Buffer.make(c_args[i].get().GetData())
-                args.append(pickle.loads(data.to_pybytes()))
-            else:
-                # This is a Ray object inlined by the direct task submitter.
-                ids_to_deserialize.append(
-                    ObjectID(arg_reference_ids[i].Binary()))
-                id_indices.append(i)
-                objects_to_deserialize.push_back(c_args[i])
-                args.append(None)
-        # Passed by reference.
-        else:
-            ids_to_deserialize.append(
-                ObjectID(arg_reference_ids[i].Binary()))
-            id_indices.append(i)
-            objects_to_deserialize.push_back(c_args[i])
-            args.append(None)
-
-    data_metadata_pairs = RayObjectsToDataMetadataPairs(
-        objects_to_deserialize)
-    for i, arg in enumerate(
-        ray.worker.global_worker.deserialize_objects(
-            data_metadata_pairs, ids_to_deserialize)):
-        args[id_indices[i]] = arg
+    args = ray.worker.global_worker.deserialize_objects(
+             RayObjectsToDataMetadataPairs(c_args),
+             VectorToObjectIDs(arg_reference_ids))
 
     for arg in args:
         if isinstance(arg, RayError):
@@ -543,11 +339,10 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-    descriptor = tuple(ray_function.GetFunctionDescriptor())
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
@@ -557,13 +352,11 @@ cdef execute_task(
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
 
-    execution_info = execution_infos.get(descriptor)
+    execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
-        execution_infos[descriptor] = execution_info
+        execution_infos[function_descriptor] = execution_info
 
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
@@ -594,7 +387,16 @@ cdef execute_task(
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
-            if PY3 and core_worker.current_actor_is_asyncio():
+            if core_worker.current_actor_is_asyncio():
+                # Increase recursion limit if necessary. In asyncio mode,
+                # we have many parallel callstacks (represented in fibers)
+                # that's suspended for execution. Python interpreter will
+                # mistakenly count each callstack towards recusion limit.
+                # We don't need to worry about stackoverflow here because
+                # the max number of callstacks is limited in direct actor
+                # transport with max_concurrency flag.
+                increase_recursion_limit()
+
                 if inspect.iscoroutinefunction(function.method):
                     async_function = function
                 else:
@@ -605,11 +407,16 @@ cdef execute_task(
 
                 coroutine = async_function(actor, *arguments, **kwarguments)
                 loop = core_worker.create_or_get_event_loop()
-
+                monitor_state = loop.monitor_state
+                monitor_state.register_coroutine(coroutine,
+                                                 str(function.method))
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-                future.add_done_callback(
-                    lambda future: fiber_event.Notify())
 
+                def callback(future):
+                    fiber_event.Notify()
+                    monitor_state.unregister_coroutine(coroutine)
+
+                future.add_done_callback(callback)
                 with nogil:
                     (core_worker.core_worker.get()
                         .YieldCurrentFiber(fiber_event))
@@ -628,7 +435,12 @@ cdef execute_task(
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
-
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                actor = worker.actors[core_worker.get_actor_id()]
+                class_name = actor.__class__.__name__
+                actor_title = "{}({}, {})".format(
+                    class_name, repr(args), repr(kwargs))
+                core_worker.set_actor_title(actor_title.encode("utf-8"))
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
@@ -678,9 +490,6 @@ cdef execute_task(
         ray_signal.reset()
 
     if execution_info.max_calls != 0:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
-
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(job_id, function_descriptor)
@@ -688,8 +497,9 @@ cdef execute_task(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(job_id, function_descriptor)
         if task_counter == execution_info.max_calls:
-            worker.core_worker.disconnect()
-            sys.exit(0)
+            exit = SystemExit(0)
+            exit.is_ray_terminate = True
+            raise exit
 
 
 cdef CRayStatus task_execution_handler(
@@ -699,7 +509,8 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
-        c_vector[shared_ptr[CRayObject]] *returns) nogil:
+        c_vector[shared_ptr[CRayObject]] *returns,
+        const CWorkerID &c_worker_id) nogil:
 
     with gil:
         try:
@@ -718,13 +529,25 @@ cdef CRayStatus task_execution_handler(
                     traceback_str,
                     job_id=None)
                 sys.exit(1)
-        except SystemExit:
+        except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
-            return CRayStatus.SystemExit()
+            if hasattr(e, "is_ray_terminate"):
+                return CRayStatus.IntentionalSystemExit()
+            else:
+                logger.exception("SystemExit was raised from the worker")
+                return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
 
+cdef void async_plasma_callback(CObjectID object_id,
+                                int64_t data_size,
+                                int64_t metadata_size) with gil:
+    message = [tuple([ObjectID(object_id.Binary()), data_size, metadata_size])]
+    core_worker = ray.worker.global_worker.core_worker
+    event_handler = core_worker.get_plasma_event_handler()
+    if event_handler is not None:
+        event_handler.process_notifications(message)
 
 cdef CRayStatus check_signals() nogil:
     with gil:
@@ -735,9 +558,15 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
-cdef void exit_handler() nogil:
+cdef void gc_collect() nogil:
     with gil:
-        sys.exit(0)
+        start = time.perf_counter()
+        num_freed = gc.collect()
+        end = time.perf_counter()
+        if num_freed > 0:
+            logger.info(
+                "gc.collect() freed {} refs in {} seconds".format(
+                    num_freed, end - start))
 
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
@@ -752,22 +581,25 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 
 cdef write_serialized_object(
         serialized_object, const shared_ptr[CBuffer]& buf):
-    # avoid initializing pyarrow before raylet
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
     if isinstance(serialized_object, RawSerializedObject):
-        buffer = Buffer.make(buf)
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-        stream.set_memcopy_threads(MEMCOPY_THREADS)
-        stream.write(pyarrow.py_buffer(serialized_object.value))
+        if buf.get() != NULL and buf.get().Size() > 0:
+            size = serialized_object.total_bytes
+            if MEMCOPY_THREADS > 1 and size > kMemcopyDefaultThreshold:
+                parallel_memcopy(buf.get().Data(),
+                                 <const uint8_t*> serialized_object.value,
+                                 size, kMemcopyDefaultBlocksize,
+                                 MEMCOPY_THREADS)
+            else:
+                memcpy(buf.get().Data(),
+                       <const uint8_t*>serialized_object.value, size)
+
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)
     else:
-        buffer = Buffer.make(buf)
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-        stream.set_memcopy_threads(MEMCOPY_THREADS)
-        serialized_object.serialized_object.write_to(stream)
+        raise TypeError("Unsupported serialization type.")
 
 
 cdef class CoreWorker:
@@ -775,9 +607,6 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port):
-        assert pyarrow is not None, ("Expected pyarrow to be imported from "
-                                     "outside _raylet. See __init__.py for "
-                                     "details.")
 
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
@@ -785,12 +614,7 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, exit_handler, True))
-
-    def disconnect(self):
-        self.destory_event_loop_if_exists()
-        with nogil:
-            self.core_worker.get().Disconnect()
+            task_execution_handler, check_signals, gc_collect, True))
 
     def run_task_loop(self):
         with nogil:
@@ -804,6 +628,19 @@ cdef class CoreWorker:
 
     def get_actor_id(self):
         return ActorID(self.core_worker.get().GetActorId().Binary())
+
+    def set_webui_display(self, key, message):
+        self.core_worker.get().SetWebuiDisplay(key, message)
+
+    def set_actor_title(self, title):
+        self.core_worker.get().SetActorTitle(title)
+
+    def subscribe_to_plasma(self, plasma_event_handler):
+        self.plasma_event_handler = plasma_event_handler
+        self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback)
+
+    def get_plasma_event_handler(self):
+        return self.plasma_event_handler
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
@@ -831,31 +668,19 @@ cdef class CoreWorker:
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,
+                            c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
-        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
-        for attempt in reversed(
-                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
-            try:
-                if object_id is None:
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                    metadata, data_size, c_object_id, data))
-                else:
-                    c_object_id[0] = object_id.native()
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                    metadata, data_size, c_object_id[0], data))
-                break
-            except ObjectStoreFullError as e:
-                if attempt:
-                    logger.warning("Waiting {} seconds for space to free up "
-                                   "in the object store.".format(delay))
-                    gc.collect()
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    self.dump_object_store_memory_usage()
-                    raise e
+        if object_id is None:
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                             metadata, data_size, contained_ids,
+                             c_object_id, data))
+        else:
+            c_object_id[0] = object_id.native()
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                            metadata, data_size,
+                            c_object_id[0], data))
 
         # If data is nullptr, that means the ObjectID already existed,
         # which we ignore.
@@ -864,26 +689,40 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_serialized_object(self, serialized_object,
-                              ObjectID object_id=None):
+                              ObjectID object_id=None,
+                              c_bool pin_object=True):
+        return ObjectID(self.put_serialized_cobject(
+            serialized_object, object_id, pin_object))
+
+    def put_serialized_cobject(self, serialized_object,
+                               ObjectID object_id=None,
+                               c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_id, &c_object_id, &data)
+            metadata, total_bytes, object_id,
+            ObjectIDsToVector(serialized_object.contained_object_ids),
+            &c_object_id, &data)
+
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
+                # Using custom object IDs is not supported because we can't
+                # track their lifecycle, so don't pin the object in that case.
                 check_status(
-                    self.core_worker.get().Seal(c_object_id))
-        return ObjectID(c_object_id.Binary())
+                    self.core_worker.get().Seal(
+                        c_object_id, pin_object and object_id is None))
+
+        return c_object_id.Binary()
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
         cdef:
-            WaitResultPair result
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
             CTaskID c_task_id = current_task_id.native()
@@ -913,6 +752,10 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
+    def global_gc(self):
+        with nogil:
+            self.core_worker.get().TriggerGlobalGC()
+
     def set_object_store_client_options(self, client_name,
                                         int64_t limit_bytes):
         try:
@@ -936,10 +779,10 @@ cdef class CoreWorker:
             message.decode("utf-8")))
 
     def submit_task(self,
-                    function_descriptor,
+                    Language language,
+                    FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
-                    c_bool is_direct_call,
                     resources,
                     int max_retries):
         cdef:
@@ -952,10 +795,10 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call, c_resources)
+                num_return_vals, True, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+                language.lang, function_descriptor.descriptor)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
@@ -965,15 +808,16 @@ cdef class CoreWorker:
             return VectorToObjectIDs(return_ids)
 
     def create_actor(self,
-                     function_descriptor,
+                     Language language,
+                     FunctionDescriptor function_descriptor,
                      args,
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
-                     c_bool is_asyncio):
+                     c_bool is_asyncio,
+                     c_string extension_data):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -986,23 +830,25 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+                language.lang, function_descriptor.descriptor)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, max_concurrency,
+                        max_reconstructions, True, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
+                    extension_data,
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
 
     def submit_actor_task(self,
+                          Language language,
                           ActorID actor_id,
-                          function_descriptor,
+                          FunctionDescriptor function_descriptor,
                           args,
                           int num_return_vals,
                           double num_method_cpus):
@@ -1020,8 +866,8 @@ cdef class CoreWorker:
                 c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+                language.lang, function_descriptor.descriptor)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitActorTask(
@@ -1030,6 +876,14 @@ cdef class CoreWorker:
                       args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
+
+    def kill_actor(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            check_status(self.core_worker.get().KillActor(
+                  c_actor_id))
 
     def resource_ids(self):
         cdef:
@@ -1059,30 +913,65 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
+        cdef CActorHandle* c_actor_handle
+        worker = ray.worker.get_global_worker()
+        worker.check_connected()
+        manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
             bytes)
+        check_status(self.core_worker.get().GetActorHandle(
+            c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
-        return actor_id
+        job_id = JobID(c_actor_handle.CreationJobID().Binary())
+        language = Language.from_native(c_actor_handle.ActorLanguage())
+        actor_creation_function_descriptor = \
+            CFunctionDescriptorToPython(
+                c_actor_handle.ActorCreationTaskFunctionDescriptor())
+        if language == Language.PYTHON:
+            assert isinstance(actor_creation_function_descriptor,
+                              PythonFunctionDescriptor)
+            # Load actor_method_cpu from actor handle's extension data.
+            extension_data = <str>c_actor_handle.ExtensionData()
+            if extension_data:
+                actor_method_cpu = int(extension_data)
+            else:
+                actor_method_cpu = 0  # Actor is created by non Python worker.
+            actor_class = manager.load_actor_class(
+                job_id, actor_creation_function_descriptor)
+            method_meta = ray.actor.ActorClassMethodMetadata.create(
+                actor_class, actor_creation_function_descriptor)
+            return ray.actor.ActorHandle(language, actor_id,
+                                         method_meta.decorators,
+                                         method_meta.signatures,
+                                         method_meta.num_return_vals,
+                                         actor_method_cpu,
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
+        else:
+            return ray.actor.ActorHandle(language, actor_id,
+                                         {},  # method decorators
+                                         {},  # method signatures
+                                         {},  # method num_return_vals
+                                         0,  # actor method cpu
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
 
-    def serialize_actor_handle(self, ActorID actor_id):
+    def serialize_actor_handle(self, actor_handle):
+        assert isinstance(actor_handle, ray.actor.ActorHandle)
         cdef:
-            CActorID c_actor_id = actor_id.native()
+            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
         check_status(self.core_worker.get().SerializeActorHandle(
-            c_actor_id, &output))
+            actor_id.native(), &output))
         return output
 
     def add_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().AddObjectIDReference(c_object_id)
+        self.core_worker.get().AddLocalReference(object_id.native())
 
     def remove_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().RemoveObjectIDReference(c_object_id)
+        self.core_worker.get().RemoveLocalReference(object_id.native())
 
     def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
@@ -1096,15 +985,18 @@ cdef class CoreWorker:
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
-            self, const c_string &object_id_binary, const c_string
-            &owner_id_binary, const c_string &serialized_owner_address):
+            self, const c_string &object_id_binary, ObjectID outer_object_id,
+            const c_string &owner_id_binary,
+            const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CObjectID c_outer_object_id = outer_object_id.native()
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
+                c_outer_object_id,
                 c_owner_id,
                 c_owner_address)
 
@@ -1115,6 +1007,7 @@ cdef class CoreWorker:
         cdef:
             c_vector[size_t] data_sizes
             c_vector[shared_ptr[CBuffer]] metadatas
+            c_vector[c_vector[CObjectID]] contained_ids
 
         if return_ids.size() == 0:
             return
@@ -1136,9 +1029,12 @@ cdef class CoreWorker:
                 metadatas.push_back(
                     string_to_buffer(serialized_object.metadata))
                 serialized_objects.append(serialized_object)
+                contained_ids.push_back(
+                    ObjectIDsToVector(serialized_object.contained_object_ids))
 
-        check_status(self.core_worker.get().AllocateReturnObjects(
-            return_ids, data_sizes, metadatas, returns))
+        with nogil:
+            check_status(self.core_worker.get().AllocateReturnObjects(
+                return_ids, data_sizes, metadatas, contained_ids, returns))
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
@@ -1154,6 +1050,15 @@ cdef class CoreWorker:
         if self.async_event_loop is None:
             self.async_event_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
+            # Initialize the async plasma connection.
+            # Delayed import due to async_api depends on _raylet.
+            from ray.experimental.async_api import _async_init
+            self.async_event_loop.run_until_complete(_async_init())
+
+            # Create and attach the monitor object
+            monitor_state = AsyncMonitorState(self.async_event_loop)
+            self.async_event_loop.monitor_state = monitor_state
+
         if self.async_thread is None:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()
@@ -1173,3 +1078,88 @@ cdef class CoreWorker:
 
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
+
+    def get_all_reference_counts(self):
+        cdef:
+            unordered_map[CObjectID, pair[size_t, size_t]] c_ref_counts
+            unordered_map[CObjectID, pair[size_t, size_t]].iterator it
+
+        c_ref_counts = self.core_worker.get().GetAllReferenceCounts()
+        it = c_ref_counts.begin()
+
+        ref_counts = {}
+        while it != c_ref_counts.end():
+            object_id = dereference(it).first.Hex()
+            ref_counts[object_id] = {
+                "local": dereference(it).second.first,
+                "submitted": dereference(it).second.second}
+            postincrement(it)
+
+        return ref_counts
+
+    def in_memory_store_get_async(self, ObjectID object_id, future):
+        self.core_worker.get().GetAsync(
+            object_id.native(),
+            async_set_result_callback,
+            async_retry_with_plasma_callback,
+            <void*>future)
+
+    def push_error(self, JobID job_id, error_type, error_message,
+                   double timestamp):
+        check_status(self.core_worker.get().PushError(
+            job_id.native(), error_type.encode("ascii"),
+            error_message.encode("ascii"), timestamp))
+
+    def prepare_actor_checkpoint(self, ActorID actor_id):
+        cdef:
+            CActorCheckpointID checkpoint_id
+            CActorID c_actor_id = actor_id.native()
+
+        # PrepareActorCheckpoint will wait for raylet's reply, release
+        # the GIL so other Python threads can run.
+        with nogil:
+            check_status(self.core_worker.get().PrepareActorCheckpoint(
+                c_actor_id, &checkpoint_id))
+        return ActorCheckpointID(checkpoint_id.Binary())
+
+    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
+                                             ActorCheckpointID checkpoint_id):
+        check_status(self.core_worker.get().NotifyActorResumedFromCheckpoint(
+            actor_id.native(), checkpoint_id.native()))
+
+    def set_resource(self, basestring resource_name,
+                     double capacity, ClientID client_id):
+        self.core_worker.get().SetResource(
+            resource_name.encode("ascii"), capacity,
+            CClientID.FromBinary(client_id.binary()))
+
+cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
+                                    CObjectID object_id,
+                                    void *future) with gil:
+    cdef:
+        c_vector[shared_ptr[CRayObject]] objects_to_deserialize
+
+    py_future = <object>(future)
+    loop = py_future._loop
+
+    # Object is retrieved from in memory store.
+    # Here we go through the code path used to deserialize objects.
+    objects_to_deserialize.push_back(obj)
+    data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        objects_to_deserialize)
+    ids_to_deserialize = [ObjectID(object_id.Binary())]
+    objects = ray.worker.global_worker.deserialize_objects(
+        data_metadata_pairs, ids_to_deserialize)
+    loop.call_soon_threadsafe(lambda: py_future.set_result(
+        AsyncGetResponse(
+            plasma_fallback_id=None, result=objects[0])))
+
+cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
+                                           CObjectID object_id,
+                                           void *future) with gil:
+    py_future = <object>(future)
+    loop = py_future._loop
+    loop.call_soon_threadsafe(lambda: py_future.set_result(
+                AsyncGetResponse(
+                    plasma_fallback_id=ObjectID(object_id.Binary()),
+                    result=None)))

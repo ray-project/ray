@@ -1,28 +1,14 @@
 diff --git cpp/src/plasma/client.cc cpp/src/plasma/client.cc
-index 5142ee435..5266e3e66 100644
 --- cpp/src/plasma/client.cc
 +++ cpp/src/plasma/client.cc
-@@ -19,10 +19,6 @@
- 
- #include "plasma/client.h"
- 
+@@ -22,4 +22,0 @@
 -#ifdef _WIN32
 -#include <Win32_Interop/win32_types.h>
 -#endif
 -
- #include <fcntl.h>
- #include <netinet/in.h>
- #include <stdio.h>
 diff --git cpp/src/plasma/plasma.h cpp/src/plasma/plasma.h
-index 79e33c2f0..c8241b2fe 100644
 --- cpp/src/plasma/plasma.h
 +++ cpp/src/plasma/plasma.h
-@@ -25,7 +25,6 @@
- #include <stdio.h>
- #include <stdlib.h>
- #include <string.h>
+@@ -28,1 +28,0 @@
 -#include <unistd.h>  // pid_t
- 
- #include <memory>
- #include <string>
 -- 

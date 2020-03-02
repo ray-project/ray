@@ -1,0 +1,9 @@
+diff --git deps/hiredis/test.c deps/hiredis/test.c
+--- deps/hiredis/test.c
++++ deps/hiredis/test.c
+@@ -762,2 +762,4 @@ int main(int argc, char **argv) {
++#ifndef _WIN32
+     /* Ignore broken pipe signal (for I/O error tests). */
+     signal(SIGPIPE, SIG_IGN);
++#endif
+-- 

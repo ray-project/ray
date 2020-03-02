@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import deque, OrderedDict
 import numpy as np
 
@@ -22,7 +18,7 @@ def unflatten(vector, shapes):
     return arrays
 
 
-class TensorFlowVariables(object):
+class TensorFlowVariables:
     """A class used to set and get weights for Tensorflow networks.
 
     Attributes:

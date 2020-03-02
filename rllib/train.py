@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
+import os
+from pathlib import Path
 import yaml
 
 import ray
@@ -13,6 +11,11 @@ from ray.tune.config_parser import make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+
+# Try to import both backends for flag checking/warnings.
+tf = try_import_tf()
+torch, _ = try_import_torch()
 
 EXAMPLE_USAGE = """
 Training example via RLlib CLI:
@@ -97,6 +100,10 @@ def create_parser(parser_creator=None):
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
+        "--torch",
+        action="store_true",
+        help="Whether to use PyTorch (instead of tf) as the DL framework.")
+    parser.add_argument(
         "--eager",
         action="store_true",
         help="Whether to attempt to enable TF eager execution.")
@@ -149,12 +156,24 @@ def run(args, parser):
 
     verbose = 1
     for exp in experiments.values():
+
+        # Bazel makes it hard to find files specified in `args` (and `data`).
+        # Look for them here.
+        if exp["config"].get("input") and \
+                not os.path.exists(exp["config"]["input"]):
+            # This script runs in the ray/rllib dir.
+            rllib_dir = Path(__file__).parent
+            input_file = rllib_dir.absolute().joinpath(exp["config"]["input"])
+            exp["config"]["input"] = str(input_file)
+
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
         if args.eager:
             exp["config"]["eager"] = True
+        if args.torch:
+            exp["config"]["use_pytorch"] = True
         if args.v:
             exp["config"]["log_level"] = "INFO"
             verbose = 2

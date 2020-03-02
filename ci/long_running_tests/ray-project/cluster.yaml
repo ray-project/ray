@@ -13,7 +13,7 @@ auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: m5.xlarge
+    InstanceType: m5.2xlarge
     ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
     BlockDeviceMappings:
         - DeviceName: /dev/sda1

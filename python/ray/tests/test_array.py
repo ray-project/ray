@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from importlib import reload
 import numpy as np
 from numpy.testing import assert_equal, assert_almost_equal
 import pytest
@@ -11,9 +8,6 @@ import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
 import ray.cluster_utils
-
-if sys.version_info >= (3, 0):
-    from importlib import reload
 
 
 @pytest.fixture
@@ -220,5 +214,4 @@ def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

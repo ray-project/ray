@@ -19,6 +19,10 @@ const styles = (theme: Theme) =>
       borderColor: theme.palette.divider,
       borderStyle: "solid",
       borderWidth: 1
+    },
+    inner: {
+      paddingLeft: theme.spacing(1),
+      paddingRight: theme.spacing(1)
     }
   });
 
@@ -27,7 +31,7 @@ interface Props {
   text: string;
 }
 
-class Component extends React.Component<Props & WithStyles<typeof styles>> {
+class UsageBar extends React.Component<Props & WithStyles<typeof styles>> {
   render() {
     const { classes, text } = this.props;
 
@@ -55,10 +59,12 @@ class Component extends React.Component<Props & WithStyles<typeof styles>> {
     // gradient background otherwise.
     return (
       <div className={classes.root}>
-        <div style={{ background: gradient }}>{text}</div>
+        <div className={classes.inner} style={{ background: gradient }}>
+          {text}
+        </div>
       </div>
     );
   }
 }
 
-export default withStyles(styles)(Component);
+export default withStyles(styles)(UsageBar);

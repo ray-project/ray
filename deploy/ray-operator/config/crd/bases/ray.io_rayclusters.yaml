@@ -2177,7 +2177,7 @@ spec:
                 Cannot be updated.
               type: string
             images:
-              description: Docker image name.
+              description: Docker image.
               properties:
                 defaultImage:
                   description: Default docker image

@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
-import org.ray.api.id.UniqueId;
 
 /**
  * RayActor implementation for local mode.

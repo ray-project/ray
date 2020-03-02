@@ -23,19 +23,20 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
+import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.actor.LocalModeRayActor;
 import org.ray.runtime.context.LocalModeWorkerContext;
-import org.ray.runtime.RayDevRuntime;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import org.ray.runtime.generated.Common;
 import org.ray.runtime.generated.Common.ActorCreationTaskSpec;
 import org.ray.runtime.generated.Common.ActorTaskSpec;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.generated.Common.TaskArg;
 import org.ray.runtime.generated.Common.TaskSpec;
 import org.ray.runtime.generated.Common.TaskType;
-import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.LocalModeObjectStore;
+import org.ray.runtime.object.NativeRayObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,18 +51,26 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final Object taskAndObjectLock = new Object();
   private final RayDevRuntime runtime;
   private final LocalModeObjectStore objectStore;
-  private final ExecutorService exec;
+
+  /// The thread pool to execute actor tasks.
+  private final Map<ActorId, ExecutorService> actorTaskExecutorServices;
+
+  /// The thread pool to execute normal tasks.
+  private final ExecutorService normalTaskExecutorService;
+
   private final Deque<TaskExecutor> idleTaskExecutors = new ArrayDeque<>();
   private final Map<ActorId, TaskExecutor> actorTaskExecutors = new HashMap<>();
   private final Object taskExecutorLock = new Object();
   private final ThreadLocal<TaskExecutor> currentTaskExecutor = new ThreadLocal<>();
 
   public LocalModeTaskSubmitter(RayDevRuntime runtime, LocalModeObjectStore objectStore,
-      int numberThreads) {
+                                int numberThreads) {
     this.runtime = runtime;
     this.objectStore = objectStore;
-    // The thread pool that executes tasks in parallel.
-    exec = Executors.newFixedThreadPool(numberThreads);
+    // The thread pool that executes normal tasks in parallel.
+    normalTaskExecutorService = Executors.newFixedThreadPool(numberThreads);
+    // The thread pool that executes actor tasks in parallel.
+    actorTaskExecutorServices = new HashMap<>();
   }
 
   public void onObjectPut(ObjectId id) {
@@ -141,28 +150,35 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   private TaskSpec.Builder getTaskSpecBuilder(TaskType taskType,
-      FunctionDescriptor functionDescriptor, List<FunctionArg> args) {
+                                              FunctionDescriptor functionDescriptor,
+                                              List<FunctionArg> args) {
     byte[] taskIdBytes = new byte[TaskId.LENGTH];
     new Random().nextBytes(taskIdBytes);
+    List<String> functionDescriptorList = functionDescriptor.toList();
+    Preconditions.checkState(functionDescriptorList.size() >= 3);
     return TaskSpec.newBuilder()
         .setType(taskType)
         .setLanguage(Language.JAVA)
         .setJobId(
             ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
         .setTaskId(ByteString.copyFrom(taskIdBytes))
-        .addAllFunctionDescriptor(functionDescriptor.toList().stream().map(ByteString::copyFromUtf8)
-            .collect(Collectors.toList()))
+        .setFunctionDescriptor(org.ray.runtime.generated.Common.FunctionDescriptor.newBuilder()
+                .setJavaFunctionDescriptor(
+                        org.ray.runtime.generated.Common.JavaFunctionDescriptor.newBuilder()
+                        .setClassName(functionDescriptorList.get(0))
+                        .setFunctionName(functionDescriptorList.get(1))
+                        .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
             .addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
-                .setMetadata(arg.value.metadata != null ? ByteString
-                    .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
+            .setMetadata(arg.value.metadata != null ? ByteString
+                .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
             .collect(Collectors.toList()));
   }
 
   @Override
   public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-      int numReturns, CallOptions options) {
+                                   int numReturns, CallOptions options) {
     Preconditions.checkState(numReturns <= 1);
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.NORMAL_TASK, functionDescriptor, args)
         .setNumReturns(numReturns)
@@ -173,7 +189,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   @Override
   public RayActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-      ActorCreationOptions options) {
+                              ActorCreationOptions options) {
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
         .setNumReturns(1)
@@ -186,7 +202,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public List<ObjectId> submitActorTask(RayActor actor, FunctionDescriptor functionDescriptor,
+  public List<ObjectId> submitActorTask(
+      RayActor actor, FunctionDescriptor functionDescriptor,
       List<FunctionArg> args, int numReturns, CallOptions options) {
     Preconditions.checkState(numReturns <= 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
@@ -203,7 +220,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 .build())
         .build();
     submitTaskSpec(taskSpec);
-    if (numReturns  == 0) {
+    if (numReturns == 0) {
       return ImmutableList.of();
     } else {
       return ImmutableList.of(returnIds.get(0));
@@ -211,7 +228,14 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public void shutdown() {
-    exec.shutdown();
+    // Shutdown actor task executor service.
+    synchronized (actorTaskExecutorServices) {
+      for (Map.Entry<ActorId, ExecutorService> item : actorTaskExecutorServices.entrySet()) {
+        item.getValue().shutdown();
+      }
+    }
+    // Shutdown normal task executor service.
+    normalTaskExecutorService.shutdown();
   }
 
   public static ActorId getActorId(TaskSpec taskSpec) {
@@ -231,37 +255,55 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     LOGGER.debug("Submitting task: {}.", taskSpec);
     synchronized (taskAndObjectLock) {
       Set<ObjectId> unreadyObjects = getUnreadyObjects(taskSpec);
+
+      final Runnable runnable = () -> {
+        TaskExecutor taskExecutor = getTaskExecutor(taskSpec);
+        try {
+          List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
+              .map(arg -> arg.id != null ?
+                  objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
+                  : arg.value)
+              .collect(Collectors.toList());
+          ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
+          List<NativeRayObject> returnObjects = taskExecutor
+              .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
+          ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(null);
+          List<ObjectId> returnIds = getReturnIds(taskSpec);
+          for (int i = 0; i < returnIds.size(); i++) {
+            NativeRayObject putObject;
+            if (i >= returnObjects.size()) {
+              // If the task is an actor task or an actor creation task,
+              // put the dummy object in object store, so those tasks which depends on it
+              // can be executed.
+              putObject = new NativeRayObject(new byte[] {1}, null);
+            } else {
+              putObject = returnObjects.get(i);
+            }
+            objectStore.putRaw(putObject, returnIds.get(i));
+          }
+        } finally {
+          returnTaskExecutor(taskExecutor, taskSpec);
+        }
+      };
+
       if (unreadyObjects.isEmpty()) {
         // If all dependencies are ready, execute this task.
-        exec.submit(() -> {
-          TaskExecutor taskExecutor = getTaskExecutor(taskSpec);
-          try {
-            List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
-                .map(arg -> arg.id != null ?
-                    objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
-                    : arg.value)
-                .collect(Collectors.toList());
-            ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
-            List<NativeRayObject> returnObjects = taskExecutor
-                .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
-            ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(null);
-            List<ObjectId> returnIds = getReturnIds(taskSpec);
-            for (int i = 0; i < returnIds.size(); i++) {
-              NativeRayObject putObject;
-              if (i >= returnObjects.size()) {
-                // If the task is an actor task or an actor creation task,
-                // put the dummy object in object store, so those tasks which depends on it
-                // can be executed.
-                putObject = new NativeRayObject(new byte[]{1}, null);
-              } else {
-                putObject = returnObjects.get(i);
-              }
-              objectStore.putRaw(putObject, returnIds.get(i));
-            }
-          } finally {
-            returnTaskExecutor(taskExecutor, taskSpec);
+        if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
+          ExecutorService actorExecutorService = Executors.newSingleThreadExecutor();
+          synchronized (actorTaskExecutorServices) {
+            actorTaskExecutorServices.put(getActorId(taskSpec), actorExecutorService);
           }
-        });
+          actorExecutorService.submit(runnable);
+        } else if (taskSpec.getType() == TaskType.ACTOR_TASK) {
+          synchronized (actorTaskExecutorServices) {
+            ExecutorService actorExecutorService =
+                actorTaskExecutorServices.get(getActorId(taskSpec));
+            actorExecutorService.submit(runnable);
+          }
+        } else {
+          // Normal task.
+          normalTaskExecutorService.submit(runnable);
+        }
       } else {
         // If some dependencies aren't ready yet, put this task in waiting list.
         for (ObjectId id : unreadyObjects) {
@@ -272,9 +314,17 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   private static JavaFunctionDescriptor getJavaFunctionDescriptor(TaskSpec taskSpec) {
-    List<ByteString> functionDescriptor = taskSpec.getFunctionDescriptorList();
-    return new JavaFunctionDescriptor(functionDescriptor.get(0).toStringUtf8(),
-        functionDescriptor.get(1).toStringUtf8(), functionDescriptor.get(2).toStringUtf8());
+    org.ray.runtime.generated.Common.FunctionDescriptor functionDescriptor =
+            taskSpec.getFunctionDescriptor();
+    if (functionDescriptor.getFunctionDescriptorCase() ==
+            Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
+      return new JavaFunctionDescriptor(
+              functionDescriptor.getJavaFunctionDescriptor().getClassName(),
+              functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
+              functionDescriptor.getJavaFunctionDescriptor().getSignature());
+    } else {
+      throw new RuntimeException("Can't build non java function descriptor");
+    }
   }
 
   private static List<FunctionArg> getFunctionArgs(TaskSpec taskSpec) {

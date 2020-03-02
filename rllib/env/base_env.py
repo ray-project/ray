@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.vector_env import VectorEnv
@@ -12,7 +8,7 @@ ASYNC_RESET_RETURN = "async_reset_return"
 
 
 @PublicAPI
-class BaseEnv(object):
+class BaseEnv:
     """The lowest-level env interface used by RLlib for sampling.
 
     BaseEnv models multiple agents executing asynchronously in multiple
@@ -412,7 +408,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
         return [state.env for state in self.env_states]
 
 
-class _MultiAgentEnvState(object):
+class _MultiAgentEnvState:
     def __init__(self, env):
         assert isinstance(env, MultiAgentEnv)
         self.env = env

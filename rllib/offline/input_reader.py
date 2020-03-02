@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import numpy as np
 import threading
@@ -16,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class InputReader(object):
+class InputReader:
     """Input object for loading experiences in policy evaluation."""
 
     @PublicAPI

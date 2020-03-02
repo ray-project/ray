@@ -1,15 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from gym.spaces import Discrete
 import numpy as np
 from scipy.stats import entropy
 
 import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
-from ray.rllib.agents.dqn.simple_q_policy import ExplorationStateMixin, \
-    TargetNetworkMixin
+from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin, \
+    ParameterNoiseMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -30,7 +26,7 @@ Q_TARGET_SCOPE = "target_q_func"
 PRIO_WEIGHTS = "weights"
 
 
-class QLoss(object):
+class QLoss:
     def __init__(self,
                  q_t_selected,
                  q_logits_t_selected,
@@ -107,35 +103,7 @@ class QLoss(object):
             }
 
 
-class QValuePolicy(object):
-    def __init__(self, q_values, observations, num_actions, cur_epsilon,
-                 softmax, softmax_temp, model_config):
-        if softmax:
-            action_dist = Categorical(q_values / softmax_temp)
-            self.action = action_dist.sample()
-            self.action_prob = tf.exp(action_dist.sampled_action_logp())
-            return
-
-        deterministic_actions = tf.argmax(q_values, axis=1)
-        batch_size = tf.shape(observations)[0]
-
-        # Special case masked out actions (q_value ~= -inf) so that we don't
-        # even consider them for exploration.
-        random_valid_action_logits = tf.where(
-            tf.equal(q_values, tf.float32.min),
-            tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-        random_actions = tf.squeeze(
-            tf.multinomial(random_valid_action_logits, 1), axis=1)
-
-        chose_random = tf.random_uniform(
-            tf.stack([batch_size]), minval=0, maxval=1,
-            dtype=tf.float32) < cur_epsilon
-        self.action = tf.where(chose_random, random_actions,
-                               deterministic_actions)
-        self.action_prob = None
-
-
-class ComputeTDErrorMixin(object):
+class ComputeTDErrorMixin:
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
@@ -181,7 +149,7 @@ def postprocess_trajectory(policy,
         policy.parameter_noise_sigma.load(
             policy.parameter_noise_sigma_val, session=policy.get_session())
 
-    return _postprocess_dqn(policy, sample_batch)
+    return postprocess_nstep_and_prio(policy, sample_batch)
 
 
 def build_q_model(policy, obs_space, action_space, config):
@@ -234,33 +202,38 @@ def build_q_model(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def build_q_networks(policy, q_model, input_dict, obs_space, action_space,
-                     config):
+def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
+                       action_space, config):
+    # Action Q network.
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+    q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
+    action_dist = Categorical(q_vals, q_model)
+    return action_dist.logp(actions)
 
-    # Action Q network
-    q_values, q_logits, q_dist = _compute_q_values(
-        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
-        action_space)
-    policy.q_values = q_values
+
+def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
+                                 action_space, explore, config, timestep):
+    # Action Q network.
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
     policy.q_func_vars = q_model.variables()
 
-    # Noise vars for Q network except for layer normalization vars
+    policy.output_actions, policy.sampled_action_logp = \
+        policy.exploration.get_exploration_action(
+            policy.q_values, Categorical, q_model, explore, timestep)
+
+    # Noise vars for Q network except for layer normalization vars.
     if config["parameter_noise"]:
         _build_parameter_noise(
             policy,
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
 
-    # Action outputs
-    qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS],
-                       action_space.n, policy.cur_epsilon, config["soft_q"],
-                       config["softmax_temp"], config["model"])
-    policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
-
-    actions = policy.output_actions
-    action_prob = (tf.log(policy.action_prob)
-                   if policy.action_prob is not None else None)
-    return actions, action_prob
+    return policy.output_actions, policy.sampled_action_logp
 
 
 def _build_parameter_noise(policy, pnet_params):
@@ -378,7 +351,7 @@ def build_q_stats(policy, batch):
 
 def setup_early_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
+    ParameterNoiseMixin.__init__(policy, obs_space, action_space, config)
 
 
 def setup_mid_mixins(policy, obs_space, action_space, config):
@@ -455,7 +428,7 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def _postprocess_dqn(policy, batch):
+def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
     # N-step Q adjustments
     if policy.config["n_step"] > 1:
         _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
@@ -483,10 +456,11 @@ DQNTFPolicy = build_tf_policy(
     name="DQNTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_model,
-    action_sampler_fn=build_q_networks,
+    action_sampler_fn=sample_action_from_q_network,
+    log_likelihood_fn=get_log_likelihood,
     loss_fn=build_q_losses,
     stats_fn=build_q_stats,
-    postprocess_fn=postprocess_trajectory,
+    postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     gradients_fn=clip_gradients,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
@@ -496,7 +470,7 @@ DQNTFPolicy = build_tf_policy(
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
     mixins=[
-        ExplorationStateMixin,
+        ParameterNoiseMixin,
         TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,

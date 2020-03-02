@@ -1,9 +1,6 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import numpy as np
+import random
 import unittest
 
 import ray
@@ -213,6 +210,29 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def testDependentGridSearchCallable(self):
+        class Normal:
+            def __call__(self, _config):
+                return random.normalvariate(mu=0, sigma=1)
+
+        class Single:
+            def __call__(self, _config):
+                return 20
+
+        trials = self.generate_trials({
+            "run": "PPO",
+            "config": {
+                "x": grid_search(
+                    [tune.sample_from(Normal()),
+                     tune.sample_from(Normal())]),
+                "y": tune.sample_from(Single()),
+            },
+        }, "dependent_grid_search")
+        trials = list(trials)
+        self.assertEqual(len(trials), 2)
+        self.assertEqual(trials[0].config["y"], 20)
+        self.assertEqual(trials[1].config["y"], 20)
 
     def testNestedValues(self):
         trials = self.generate_trials({

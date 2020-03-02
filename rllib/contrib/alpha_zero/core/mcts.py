@@ -100,7 +100,7 @@ class Node:
             current = current.parent
 
 
-class RootParentNode(object):
+class RootParentNode:
     def __init__(self, env):
         self.parent = None
         self.child_total_value = collections.defaultdict(float)

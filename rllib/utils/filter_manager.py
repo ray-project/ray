@@ -1,14 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.memory import ray_get_and_free
 
 
 @DeveloperAPI
-class FilterManager(object):
+class FilterManager:
     """Manages filters and coordination across remote evaluators that expose
         `get_filters` and `sync_filters`.
     """

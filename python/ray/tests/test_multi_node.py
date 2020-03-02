@@ -1,14 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import pytest
 import subprocess
 import time
 
 import ray
-from ray import ray_constants
 from ray.test_utils import (
     RayTestTimeoutException,
     run_string_as_driver,
@@ -143,7 +138,7 @@ def test_driver_exiting_quickly(call_ray_start):
 import ray
 ray.init(address="{}")
 @ray.remote
-class Foo(object):
+class Foo:
     def __init__(self):
         pass
 Foo.remote()
@@ -185,14 +180,14 @@ import ray
 import time
 ray.init(address="{}")
 @ray.remote
-class Counter(object):
+class Counter:
     def __init__(self):
         self.count = 0
     def increment(self):
         self.count += 1
         return self.count
 counter = Counter.remote()
-ray.experimental.register_actor("Counter", counter)
+ray.util.register_actor("Counter", counter)
 time.sleep(100)
 """.format(address)
 
@@ -203,7 +198,7 @@ import time
 ray.init(address="{}")
 while True:
     try:
-        counter = ray.experimental.get_actor("Counter")
+        counter = ray.util.get_actor("Counter")
         break
     except ValueError:
         time.sleep(1)
@@ -236,7 +231,7 @@ import time
 log_message = "{}"
 
 @ray.remote
-class Actor(object):
+class Actor:
     def log(self):
         print(log_message)
 
@@ -278,7 +273,7 @@ def g(duration):
     time.sleep(duration)
 
 @ray.remote(num_gpus=1)
-class Foo(object):
+class Foo:
     def __init__(self):
         pass
 
@@ -380,7 +375,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(
-            ["ray", "start", "--head", "--redis-address", "127.0.0.1:6379"])
+            ["ray", "start", "--head", "--address", "127.0.0.1:6379"])
     subprocess.check_output(["ray", "stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
@@ -484,9 +479,7 @@ print("success")
         assert "success" in out
 
 
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(),
-    reason="fate sharing not implemented yet")
+@pytest.mark.skip(reason="fate sharing not implemented yet")
 def test_driver_exiting_when_worker_blocked(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.

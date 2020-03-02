@@ -1,25 +1,26 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
+import errno
 import json
 import logging
 import multiprocessing
 import os
 import random
-import resource
+import re
 import socket
 import subprocess
 import sys
-import textwrap
 import time
 import redis
 
-import pyarrow
+import colorama
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+import psutil
+
+resource = None
+if sys.platform != "win32":
+    import resource
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -57,6 +58,8 @@ RAYLET_MONITOR_EXECUTABLE = os.path.join(
     "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
+GCS_SERVER_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "core/src/ray/gcs/gcs_server")
 
 DEFAULT_JAVA_WORKER_OPTIONS = "-classpath {}".format(
     os.path.join(
@@ -94,11 +97,6 @@ def include_java_from_redis(redis_client):
 
 
 def find_redis_address_or_die():
-    try:
-        import psutil
-    except ImportError:
-        raise ImportError(
-            "Please install `psutil` to automatically detect the Ray cluster.")
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -288,10 +286,10 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # connection.
         s.connect((ip_address, int(port)))
         node_ip_address = s.getsockname()[0]
-    except Exception as e:
+    except OSError as e:
         node_ip_address = "127.0.0.1"
         # [Errno 101] Network is unreachable
-        if e.errno == 101:
+        if e.errno == errno.ENETUNREACH:
             try:
                 # try get node ip address from host name
                 host_name = socket.getfqdn(socket.gethostname())
@@ -446,9 +444,7 @@ def start_ray_process(command,
     # in interactive sessions. This is only supported in Python 3.3 and above.
     def block_sigint():
         import signal
-        import sys
-        if sys.version_info >= (3, 3):
-            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
 
     process = subprocess.Popen(
         command,
@@ -514,22 +510,21 @@ def wait_for_redis_to_start(redis_ip_address,
 
 
 def _compute_version_info():
-    """Compute the versions of Python, pyarrow, and Ray.
+    """Compute the versions of Python, and Ray.
 
     Returns:
         A tuple containing the version information.
     """
     ray_version = ray.__version__
     python_version = ".".join(map(str, sys.version_info[:3]))
-    pyarrow_version = pyarrow.__version__
-    return ray_version, python_version, pyarrow_version
+    return ray_version, python_version
 
 
 def _put_version_info_in_redis(redis_client):
     """Store version information in Redis.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, pyarrow, or Ray.
+    different versions of Python, or Ray.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -541,7 +536,7 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, pyarrow, or Ray. If the version
+    different versions of Python, or Ray. If the version
     information is not present in Redis, then no check is done.
 
     Args:
@@ -564,12 +559,10 @@ def check_version_info(redis_client):
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
                          "    Python: " + true_version_info[1] + "\n"
-                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
                          "This process on node " + node_ip_address +
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
-                         "    Python: " + version_info[1] + "\n"
-                         "    Pyarrow: " + str(version_info[2]))
+                         "    Python: " + version_info[1] + "\n")
         if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
@@ -593,11 +586,15 @@ def start_reaper():
     try:
         os.setpgrp()
     except OSError as e:
-        logger.warning("setpgrp failed, processes may not be "
-                       "cleaned up properly: {}.".format(e))
-        # Don't start the reaper in this case as it could result in killing
-        # other user processes.
-        return None
+        if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
+            # Nothing to do; we're already a session leader.
+            pass
+        else:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+            # Don't start the reaper in this case as it could result in killing
+            # other user processes.
+            return None
 
     reaper_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
@@ -909,7 +906,7 @@ def _start_redis_instance(executable,
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
-    else:
+    elif resource is not None:
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
         # clients.
@@ -1003,13 +1000,6 @@ def start_reporter(redis_address,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    try:
-        import psutil  # noqa: F401
-    except ImportError:
-        logger.warning("Failed to start the reporter. The reporter requires "
-                       "'pip install psutil'.")
-        return None
-
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REPORTER,
@@ -1018,7 +1008,8 @@ def start_reporter(redis_address,
     return process_info
 
 
-def start_dashboard(host,
+def start_dashboard(require_webui,
+                    host,
                     redis_address,
                     temp_dir,
                     stdout_file=None,
@@ -1027,6 +1018,9 @@ def start_dashboard(host,
     """Start a dashboard process.
 
     Args:
+        require_webui (bool): If true, this will raise an exception if we fail
+            to start the webui. Otherwise it will print a warning if we fail
+            to start the webui.
         host (str): The host to bind the dashboard web server to.
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
@@ -1040,7 +1034,7 @@ def start_dashboard(host,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port = 8080
+    port = 8265  # Note: list(map(ord, "RAY")) == [82, 65, 89]
     while True:
         try:
             port_test_socket = socket.socket()
@@ -1064,39 +1058,73 @@ def start_dashboard(host,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    if sys.version_info <= (3, 0):
-        return None, None
+    webui_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
-        import psutil  # noqa: F401
-        import setproctitle  # noqa: F401
         import grpc  # noqa: F401
     except ImportError:
-        raise ImportError(
+        webui_dependencies_present = False
+        warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
+        if require_webui:
+            raise ImportError(warning_message)
+        else:
+            logger.warning(warning_message)
 
+    if webui_dependencies_present:
+        process_info = start_ray_process(
+            command,
+            ray_constants.PROCESS_TYPE_DASHBOARD,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file)
+
+        dashboard_url = "{}:{}".format(
+            host if host != "0.0.0.0" else get_node_ip_address(), port)
+        logger.info("View the Ray dashboard at {}{}{}{}{}".format(
+            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+            colorama.Fore.RESET, colorama.Style.NORMAL))
+        return dashboard_url, process_info
+    else:
+        return None, None
+
+
+def start_gcs_server(redis_address,
+                     stdout_file=None,
+                     stderr_file=None,
+                     redis_password=None,
+                     config=None):
+    """Start a gcs server.
+    Args:
+        redis_address (str): The address that the Redis server is listening on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+        config (dict|None): Optional configuration that will
+            override defaults in RayConfig.
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    gcs_ip_address, gcs_port = redis_address.split(":")
+    redis_password = redis_password or ""
+    config = config or {}
+    config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
+    command = [
+        GCS_SERVER_EXECUTABLE,
+        "--redis_address={}".format(gcs_ip_address),
+        "--redis_port={}".format(gcs_port),
+        "--config_list={}".format(config_str),
+    ]
+    if redis_password:
+        command += ["--redis_password={}".format(redis_password)]
     process_info = start_ray_process(
         command,
-        ray_constants.PROCESS_TYPE_DASHBOARD,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    dashboard_url = "http://{}:{}".format(
-        host if host == "127.0.0.1" else get_node_ip_address(), port)
-    print("\n" + "=" * 70)
-    print("View the dashboard at {}.".format(dashboard_url))
-    if host == "127.0.0.1":
-        note = (
-            "Note: If Ray is running on a remote node, you will need to set "
-            "up an SSH tunnel with local port forwarding in order to access "
-            "the dashboard in your browser, e.g. by running "
-            "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can set "
-            "webui_host=\"0.0.0.0\" in the call to ray.init() to allow direct "
-            "access from external machines.")
-        note = note.format(port, host, port)
-        print("\n".join(textwrap.wrap(note, width=70)))
-    print("=" * 70 + "\n")
-    return dashboard_url, process_info
+    return process_info
 
 
 def start_raylet(redis_address,
@@ -1252,6 +1280,18 @@ def start_raylet(redis_address,
     return process_info
 
 
+def get_ray_jars_dir():
+    """Return a directory where all ray-related jars and
+      their dependencies locate."""
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
+    if not os.path.exists(jars_dir):
+        raise Exception("Ray jars is not packaged into ray. "
+                        "Please build ray with java enabled "
+                        "(set env var RAY_INSTALL_JAVA=1)")
+    return os.path.abspath(os.path.join(current_dir, "jars"))
+
+
 def build_java_worker_command(
         java_worker_options,
         redis_address,
@@ -1274,8 +1314,6 @@ def build_java_worker_command(
     Returns:
         The command string for starting Java worker.
     """
-    assert java_worker_options is not None
-
     command = "java "
 
     if redis_address is not None:
@@ -1294,14 +1332,33 @@ def build_java_worker_command(
 
     command += "-Dray.home={} ".format(RAY_HOME)
     command += "-Dray.log-dir={} ".format(os.path.join(session_dir, "logs"))
-
+    command += "-Dray.session-dir={}".format(session_dir)
     command += ("-Dray.raylet.config.num_workers_per_process_java=" +
                 "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
 
-    if java_worker_options:
-        # Put `java_worker_options` in the last, so it can overwrite the
-        # above options.
-        command += java_worker_options + " "
+    # Add ray jars path to java classpath
+    ray_jars = os.path.join(get_ray_jars_dir(), "*")
+    cp_sep = ":"
+    import platform
+    if platform.system() == "Windows":
+        cp_sep = ";"
+    if java_worker_options is None:
+        java_worker_options = ""
+    options = re.split("\\s+", java_worker_options)
+    cp_index = -1
+    for i in range(len(options)):
+        option = options[i]
+        if option == "-cp" or option == "-classpath":
+            cp_index = i + 1
+            break
+    if cp_index != -1:
+        options[cp_index] = options[cp_index] + cp_sep + ray_jars
+    else:
+        options = ["-cp", ray_jars] + options
+    java_worker_options = " ".join(options)
+    # Put `java_worker_options` in the last, so it can overwrite the
+    # above options.
+    command += java_worker_options + " "
 
     command += "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"

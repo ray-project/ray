@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import os
 import sys
@@ -13,12 +9,8 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
-
-@pytest.mark.skipif(
-    RAY_FORCE_DIRECT,
-    reason="No reconstruction for objects placed in plasma yet")
+@pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [{
@@ -28,7 +20,7 @@ RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
         "object_store_memory": 1000 * 1024 * 1024,
         "_internal_config": json.dumps({
             # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100,
+            "num_heartbeats_timeout": 10,
             "object_manager_pull_timeout_ms": 1000,
             "object_manager_push_timeout_ms": 1000,
             "object_manager_repeated_push_delay_ms": 1000,
@@ -82,7 +74,6 @@ def test_object_reconstruction(ray_start_cluster):
         ray.get(xs)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no actor restart yet")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 4,
@@ -95,7 +86,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
 
     @ray.remote
-    class Child(object):
+    class Child:
         def __init__(self, death_probability):
             self.death_probability = death_probability
 
@@ -105,7 +96,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             if exit_chance < self.death_probability:
                 sys.exit(-1)
 
-    num_children = 50
+    num_children = 25
     # Children actors will die about half the time.
     death_probability = 0.5
 

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 import numpy as np
 import time
@@ -9,12 +5,12 @@ import unittest
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
-from ray.rllib.evaluation import SampleBatch
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.optimizers import AsyncGradientsOptimizer, AsyncSamplesOptimizer
 from ray.rllib.optimizers.aso_tree_aggregator import TreeAggregator
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.tests.mock_worker import _MockWorker
 from ray.rllib.utils import try_import_tf
 

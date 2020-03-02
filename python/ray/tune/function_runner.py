@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import time
 import inspect
@@ -24,7 +20,7 @@ ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
 
 
-class StatusReporter(object):
+class StatusReporter:
     """Object passed into your function that you can report status through.
 
     Example:
@@ -248,10 +244,10 @@ def wrap_function(train_func):
 
     use_track = False
     try:
-        func_args = inspect.getargspec(train_func).args
+        func_args = inspect.getfullargspec(train_func).args
         use_track = ("reporter" not in func_args and len(func_args) == 1)
         if use_track:
-            logger.info("tune.track signature detected.")
+            logger.debug("tune.track signature detected.")
     except Exception:
         logger.info(
             "Function inspection failed - assuming reporter signature.")

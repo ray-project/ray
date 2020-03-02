@@ -170,20 +170,11 @@ cdef class ObjectID(BaseID):
     def is_direct_call_type(self):
         return self.data.IsDirectCallType()
 
-    def with_plasma_transport_type(self):
-        return ObjectID(self.data.WithPlasmaTransportType().Binary())
-
     def is_nil(self):
         return self.data.IsNil()
 
     def task_id(self):
         return TaskID(self.data.TaskId().Binary())
-
-    def set_buffer_ref(self, ref):
-        self.buffer_ref = ref
-
-    def get_buffer_ref(self):
-        return self.buffer_ref
 
     cdef size_t hash(self):
         return self.data.Hash()
@@ -196,6 +187,15 @@ cdef class ObjectID(BaseID):
     def from_random(cls):
         return cls(CObjectID.FromRandom().Binary())
 
+    def __await__(self):
+        # Delayed import because this can only be imported in py3.
+        from ray.async_compat import get_async
+        return get_async(self).__await__()
+
+    def as_future(self):
+        # Delayed import because this can only be imported in py3.
+        from ray.async_compat import get_async
+        return get_async(self)
 
 cdef class TaskID(BaseID):
     cdef CTaskID data

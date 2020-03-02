@@ -2,9 +2,8 @@
 
 #include <unistd.h>
 #include "ray/common/ray_config.h"
-#include "ray/gcs/redis_actor_info_accessor.h"
+#include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/gcs/redis_job_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -73,13 +72,8 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {
-#if RAY_USE_NEW_GCS
-  command_type_ = CommandType::kChain;
-#else
-  command_type_ = CommandType::kRegular;
-#endif
-}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
+    : GcsClient(options), command_type_(CommandType::kRegular) {}
 
 RedisGcsClient::RedisGcsClient(const GcsClientOptions &options, CommandType command_type)
     : GcsClient(options), command_type_(command_type) {}
@@ -131,7 +125,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   // We will use NodeID instead of ClientID.
   // For worker/driver, it might not have this field(NodeID).
   // For raylet, NodeID should be initialized in raylet layer(not here).
-  client_table_.reset(new ClientTable({primary_context_}, this, ClientID::FromRandom()));
+  client_table_.reset(new ClientTable({primary_context_}, this));
 
   error_table_.reset(new ErrorTable({primary_context_}, this));
   job_table_.reset(new JobTable({primary_context_}, this));
@@ -146,9 +140,16 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
+  worker_failure_table_.reset(new WorkerFailureTable(shard_contexts_, this));
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
+  object_accessor_.reset(new RedisObjectInfoAccessor(this));
+  node_accessor_.reset(new RedisNodeInfoAccessor(this));
+  task_accessor_.reset(new RedisTaskInfoAccessor(this));
+  error_accessor_.reset(new RedisErrorInfoAccessor(this));
+  stats_accessor_.reset(new RedisStatsInfoAccessor(this));
+  worker_accessor_.reset(new RedisWorkerInfoAccessor(this));
 
   is_connected_ = true;
 
@@ -199,6 +200,10 @@ ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
 raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
+
+WorkerFailureTable &RedisGcsClient::worker_failure_table() {
+  return *worker_failure_table_;
+}
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;

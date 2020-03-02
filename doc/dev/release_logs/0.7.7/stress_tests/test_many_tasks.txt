@@ -1,0 +1,13 @@
+Stage 1 results:
+        Total time: 562.7756896018982
+        Average iteration time: 56.277525544166565
+        Max iteration time: 59.43245506286621
+        Min iteration time: 46.18883228302002
+Stage 2 results:
+        Total time: 650.9956197738647
+        Average iteration time: 130.19871163368225
+        Max iteration time: 134.73312878608704
+        Min iteration time: 126.5669572353363
+Stage 3 results:
+        Actor creation time: 0.12409853935241699
+        Total time: 3345.6912751197815

@@ -1,6 +1,7 @@
 name: "project1"
 
-cluster: ray-project/cluster.yaml
+cluster:
+  config: ray-project/cluster.yaml
 
 environment:
   requirements: requirements.txt

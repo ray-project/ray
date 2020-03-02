@@ -10,92 +10,34 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/un.h>
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
+#include "ray/util/url.h"
 
 using MessageType = ray::protocol::MessageType;
 
-// TODO(rkn): The io methods below should be removed.
-bool connect_ipc_sock(Socket &sock, const std::string &socket_pathname) {
-  struct sockaddr_un socket_address;
-
-  sock.reset(socket(AF_UNIX, SOCK_STREAM, 0));
-  if (sock.get() < 0) {
-    RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
-    return false;
-  }
-
-  memset(&socket_address, 0, sizeof(socket_address));
-  socket_address.sun_family = AF_UNIX;
-  if (socket_pathname.length() + 1 > sizeof(socket_address.sun_path)) {
-    RAY_LOG(ERROR) << "Socket pathname is too long.";
-    return false;
-  }
-  strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
-
-  if (connect(sock.get(), (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
-      0) {
-    return false;
-  }
-  return true;
+static int read_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+  boost::system::error_code ec;
+  size_t nread = boost::asio::read(conn, boost::asio::buffer(cursor, length), ec);
+  return nread == length ? 0 : -1;
 }
 
-int read_bytes(Socket &conn, uint8_t *cursor, size_t length) {
-  ssize_t nbytes = 0;
-  // Termination condition: EOF or read 'length' bytes total.
-  size_t bytesleft = length;
-  size_t offset = 0;
-  while (bytesleft > 0) {
-    nbytes = read(conn.get(), cursor + offset, bytesleft);
-    if (nbytes < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-        continue;
-      }
-      return -1;  // Errno will be set.
-    } else if (0 == nbytes) {
-      // Encountered early EOF.
-      return -1;
-    }
-    RAY_CHECK(nbytes > 0);
-    bytesleft -= nbytes;
-    offset += nbytes;
-  }
-  return 0;
-}
-
-int write_bytes(Socket &conn, uint8_t *cursor, size_t length) {
-  ssize_t nbytes = 0;
-  size_t bytesleft = length;
-  size_t offset = 0;
-  while (bytesleft > 0) {
-    // While we haven't written the whole message, write to the file
-    // descriptor, advance the cursor, and decrease the amount left to write.
-    nbytes = write(conn.get(), cursor + offset, bytesleft);
-    if (nbytes < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-        continue;
-      }
-      return -1;  // Errno will be set.
-    } else if (0 == nbytes) {
-      // Encountered early EOF.
-      return -1;
-    }
-    RAY_CHECK(nbytes > 0);
-    bytesleft -= nbytes;
-    offset += nbytes;
-  }
-  return 0;
+static int write_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+  boost::system::error_code ec;
+  size_t nread = boost::asio::write(conn, boost::asio::buffer(cursor, length), ec);
+  return nread == length ? 0 : -1;
 }
 
 namespace ray {
 
-raylet::RayletConnection::RayletConnection(const std::string &raylet_socket,
-                                           int num_retries, int64_t timeout) {
+raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
+                                           const std::string &raylet_socket,
+                                           int num_retries, int64_t timeout)
+    : conn_(io_service) {
   // Pick the default values if the user did not specify.
   if (num_retries < 0) {
     num_retries = RayConfig::instance().num_connect_attempts();
@@ -104,10 +46,14 @@ raylet::RayletConnection::RayletConnection(const std::string &raylet_socket,
     timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
   RAY_CHECK(!raylet_socket.empty());
-  bool connected = false;
+  boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-    connected = connect_ipc_sock(conn_, raylet_socket);
-    if (connected) {
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+    local_stream_protocol::endpoint endpoint(raylet_socket);
+#else
+    local_stream_protocol::endpoint endpoint = parse_ip_tcp_endpoint(raylet_socket);
+#endif
+    if (!conn_.connect(endpoint, ec)) {
       break;
     }
     if (num_attempts > 0) {
@@ -119,7 +65,7 @@ raylet::RayletConnection::RayletConnection(const std::string &raylet_socket,
     usleep(timeout * 1000);
   }
   // If we could not connect to the socket, exit.
-  if (!connected) {
+  if (ec) {
     RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
   }
 }
@@ -143,12 +89,12 @@ Status raylet::RayletConnection::ReadMessage(MessageType type,
   int64_t cookie;
   int64_t type_field;
   int64_t length;
-  int closed = read_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
+  int closed = read_bytes(conn_, &cookie, sizeof(cookie));
   if (closed) goto disconnected;
   RAY_CHECK(cookie == RayConfig::instance().ray_cookie());
-  closed = read_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
+  closed = read_bytes(conn_, &type_field, sizeof(type_field));
   if (closed) goto disconnected;
-  closed = read_bytes(conn_, (uint8_t *)&length, sizeof(length));
+  closed = read_bytes(conn_, &length, sizeof(length));
   if (closed) goto disconnected;
   message = std::unique_ptr<uint8_t[]>(new uint8_t[length]);
   closed = read_bytes(conn_, message.get(), length);
@@ -182,11 +128,11 @@ Status raylet::RayletConnection::WriteMessage(MessageType type,
   int64_t type_field = static_cast<int64_t>(type);
   auto io_error = Status::IOError("[RayletClient] Connection closed unexpectedly.");
   int closed;
-  closed = write_bytes(conn_, (uint8_t *)&cookie, sizeof(cookie));
+  closed = write_bytes(conn_, &cookie, sizeof(cookie));
   if (closed) return io_error;
-  closed = write_bytes(conn_, (uint8_t *)&type_field, sizeof(type_field));
+  closed = write_bytes(conn_, &type_field, sizeof(type_field));
   if (closed) return io_error;
-  closed = write_bytes(conn_, (uint8_t *)&length, sizeof(length));
+  closed = write_bytes(conn_, &length, sizeof(length));
   if (closed) return io_error;
   closed = write_bytes(conn_, bytes, length * sizeof(char));
   if (closed) return io_error;
@@ -207,13 +153,14 @@ raylet::RayletClient::RayletClient(
     : grpc_client_(std::move(grpc_client)) {}
 
 raylet::RayletClient::RayletClient(
+    boost::asio::io_service &io_service,
     std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id, bool is_worker,
     const JobID &job_id, const Language &language, ClientID *raylet_id, int port)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<raylet::RayletConnection>(
-      new raylet::RayletConnection(raylet_socket, -1, -1));
+      new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateRegisterClientRequest(
@@ -360,7 +307,7 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 }
 
 Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
-                                                    ActorCheckpointID &checkpoint_id) {
+                                                    ActorCheckpointID *checkpoint_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
@@ -373,7 +320,7 @@ Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
   if (!status.ok()) return status;
   auto reply_message =
       flatbuffers::GetRoot<protocol::PrepareActorCheckpointReply>(reply.get());
-  checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
+  *checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
   return Status::OK();
 }
 
@@ -397,19 +344,10 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
-Status raylet::RayletClient::ReportActiveObjectIDs(
-    const std::unordered_set<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-
-  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
-}
-
 Status raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::WorkerLeaseReply> &callback) {
-  rpc::WorkerLeaseRequest request;
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+  rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
   return grpc_client_->RequestWorkerLease(request, callback);
 }
@@ -426,6 +364,23 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
           RAY_LOG(INFO) << "Error returning worker: " << status;
         }
       });
+}
+
+Status raylet::RayletClient::PinObjectIDs(
+    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
+  rpc::PinObjectIDsRequest request;
+  request.mutable_owner_address()->CopyFrom(caller_address);
+  for (const ObjectID &object_id : object_ids) {
+    request.add_object_ids(object_id.Binary());
+  }
+  return grpc_client_->PinObjectIDs(request, callback);
+}
+
+Status raylet::RayletClient::GlobalGC(
+    const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
+  rpc::GlobalGCRequest request;
+  return grpc_client_->GlobalGC(request, callback);
 }
 
 }  // namespace ray

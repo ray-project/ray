@@ -4,10 +4,6 @@ Both the model and env are trivial (and super-fast), so they are useful
 for running perf microbenchmarks.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from gym.spaces import Discrete, Box
 import gym
 import numpy as np

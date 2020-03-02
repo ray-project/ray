@@ -6,7 +6,7 @@ FROM ray-project/base-deps
 # a test runner.
 RUN conda install -y numpy
 RUN pip install -U pip
-RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev7-cp36-cp36m-manylinux1_x86_64.whl || pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
+RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
 RUN pip install -U boto3
 # We install this after the latest wheels -- this should not override the latest wheels.
 # Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.

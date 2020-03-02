@@ -13,6 +13,8 @@ Ray Package Reference
 
 .. autofunction:: ray.put
 
+.. autofunction:: ray.kill
+
 .. autofunction:: ray.get_gpu_ids
 
 .. autofunction:: ray.get_resource_ids
@@ -50,6 +52,7 @@ Experimental APIs
 -----------------
 
 .. automodule:: ray.experimental
+   :members:
 
 The Ray Command Line API
 ------------------------
@@ -74,6 +77,10 @@ The Ray Command Line API
    :prog: ray exec
    :show-nested:
 
+.. click:: ray.scripts.scripts:submit
+   :prog: ray submit
+   :show-nested:
+
 .. click:: ray.scripts.scripts:attach
    :prog: ray attach
    :show-nested:
@@ -84,6 +91,10 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:stack
    :prog: ray stack
+   :show-nested:
+
+.. click:: ray.scripts.scripts:stat
+   :prog: ray stat
    :show-nested:
 
 .. click:: ray.scripts.scripts:timeline

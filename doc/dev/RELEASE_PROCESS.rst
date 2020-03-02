@@ -9,55 +9,62 @@ This document describes the process for creating new releases.
    ``releases/<release-version>``. Then push that branch to the ray repo:
    ``git push upstream releases/<release-version>``.
 
-2. **Update the release branch version:** Push a commit that increments the Python
-   package version in python/ray/__init__.py and src/ray/raylet/main.cc. You can
-   push this directly to the release branch.
+2. **Update the release branch version:** Push a commit directly to the
+   newly-created release branch that increments the Python package version in
+   python/ray/__init__.py and src/ray/raylet/main.cc. See this
+   `sample commit for bumping the release branch version`_.
 
-3. **Update the master branch version:** Create a pull request to
-   increment the version of the master branch, see `this PR`_.
-   The format of the new version is as follows:
+3. **Update the master branch version:**
 
-   New minor release (e.g., 0.7.0): Increment the minor version and append
-   ``.dev0`` to the version. For example, if the version of the new release is
-   0.7.0, the master branch needs to be updated to 0.8.0.dev0.
+   For a new minor release (e.g., 0.7.0): Create a pull request to
+   increment the dev version in of the master branch. See this
+   `sample PR for bumping a minor release version`_. **NOTE:** Not all of
+   the version numbers should be replaced. For example, ``0.7.0`` appears in
+   this file but should not be updated.
 
-   New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the
-   number after ``dev`` equals the micro version. For example, if the version
-   of the new release is 0.7.1, the master branch needs to be updated to
-   0.8.0.dev1.
+   For a new micro release (e.g., 0.7.1): No action is required.
 
-   After the wheels for the new version are built, create and merge a
-   `PR like this`_.
+4. **Testing:** Before releasing, the following sets of tests should be run.
+   The results of each of these tests for previous releases are checked in
+   under ``doc/dev/release_tests``, and should be compared against to identify
+   any regressions.
 
-   These should be merged as soon as step 1 is complete to make sure the links
-   in the documentation keep working and the master stays on the development
-   version.
-
-4. **Testing:** Before a release is created, significant testing should be done.
-   Run the following scripts
-
-   .. code-block:: bash
-
-       ray/ci/stress_tests/run_stress_tests.sh <release-version> <release-commit>
-       ray/ci/stress_tests/run_application_stress_tests.sh <release-version> <release-commit>
-       rllib train -f rllib/tuned_examples/compact-regression-test.yaml
-
-   and make sure they pass. For the RLlib regression tests, see the comment on the
-   file for the pass criteria. For the rest, it will be obvious if they passed.
-   This will use the autoscaler to start a bunch of machines and run some tests.
-   **Caution!**: By default, the stress tests will require expensive GPU instances.
-
-   You'll also want to kick off the long-running tests by following the instructions
-   in:
+   1. Long-running tests
 
    .. code-block:: bash
 
        ray/ci/long_running_tests/README.rst
 
-   Following the instructions to check the status of the workloads to verify that they
-   are running. Let them run for at least 24 hours, and check them again. They should
-   all still be running (printing new iterations), and their CPU load should be stable
-   when you view them in the AWS monitoring console (not increasing over time).
+   Follow the instructions to kick off the tests and check the status of the workloads
+   These tests should run for at least 24 hours (printing new iterations and CPU load
+   stable in the AWS console).
+
+   2. Multi-node regression tests
+
+   Follow the same instruction as long running stress tests. The large scale distributed
+   regression tests identify potential performance regression in distributed environment.
+   The following test should be ran:
+
+   - ``ci/regression_test/rllib_regression-tests`` run the compact regression test for rllib.
+   - ``ci/regression_test/rllib_stress_tests`` run multinode 8hr IMPALA trial.
+   - ``ci/regression_test/stress_tests`` contains two tests: ``many_tasks`` and ``dead_actors``.
+     Each of the test runs on 105 spot instances.
+
+   Make sure that these pass. For the RLlib regression tests, see the comment on the
+   file for the pass criteria. For the rest, it will be obvious if they passed.
+   This will use the autoscaler to start a bunch of machines and run some tests.
+   **Caution!**: By default, the stress tests will require expensive GPU instances.
+
+   The summaries printed by each test should be checked in under
+   ``doc/dev/release_logs/<version>``.
+
+   3. Microbenchmarks
+
+   Run the ``ci/microbenchmark`` with the commit. Under the hood, the session will
+   run `ray microbenchmark` on an `m4.16xl` instance running `Ubuntu 18.04` with `Python 3`
+   to get the latest microbenchmark numbers.
+
+   The results should be checked in under ``doc/dev/release_logs/<version>``.
 
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
@@ -67,7 +74,31 @@ This document describes the process for creating new releases.
 
    These changes should then be pushed directly to the release branch.
 
-6. **Download all the wheels:** Now the release is ready to begin final
+6. **Create a GitHub release:** Create a `GitHub release`_. This should include
+   **release notes**. Copy the style and formatting used by previous releases.
+   Create a draft of the release notes containing information about substantial
+   changes/updates/bugfixes and their PR numbers. Once you have a draft, send it
+   out to other Ray developers (especially those who contributed heavily during
+   this release) for feedback. At the end of the release note, you should also
+   add a list of contributors. Make sure Ray, Tune, RLLib, Autoscaler are
+   capitalized correctly.
+
+   Run ``doc/dev/get_contributors.py`` to generate the list of commits corresponding
+   to this release and the formatted list of contributors.
+   You will need to provide a GitHub personal access token
+   (github.com -> settings -> developer settings -> personal access tokens).
+
+    .. code-block:: bash
+
+      # Must be run from inside the Ray repository.
+      pip install PyGitHub tqdm
+      python get_contributors.py --help
+      python get_contributors.py \
+        --access-token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+        --prev-release-commit="<COMMIT_SHA>" \
+        --curr-release-commit="<COMMIT_SHA>"
+
+7. **Download all the wheels:** Now the release is ready to begin final
    testing. The wheels are automatically uploaded to S3, even on the release
    branch. To test, ``pip install`` from the following URLs:
 
@@ -75,29 +106,31 @@ This document describes the process for creating new releases.
 
        export RAY_HASH=...  # e.g., 618147f57fb40368448da3b2fb4fd213828fa12b
        export RAY_VERSION=...  # e.g., 0.7.0
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27mu-manylinux1_x86_64.whl
+
+       # Linux Wheels
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-manylinux1_x86_64.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-manylinux1_x86_64.whl
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-manylinux1_x86_64.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp27-cp27m-macosx_10_6_intel.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-macosx_10_6_intel.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_6_intel.whl
-       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
 
-7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
-   ``twine`` (ask Robert to add you as a maintainer to the PyPI project on both the
-   real and test PyPI). You'll need to run a command like
+       # Mac Wheels
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp35-cp35m-macosx_10_13_intel.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp36-cp36m-macosx_10_13_intel.whl
+       pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_13_intel.whl
+
+8. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
+   ``twine``.
 
    .. code-block:: bash
 
-     twine upload --repository-url https://test.pypi.org/legacy/ ray/.whl/*
+     # Downloads all of the wheels to the current directory.
+     RAY_VERSION=<version> COMMIT=<commit_sha> bash download_wheels.sh
 
-   assuming that you've downloaded the wheels from the ``ray-wheels`` S3 bucket
-   and put them in ``ray/.whl``, that you've installed ``twine`` through
-   ``pip``, and that you've created both PyPI accounts.
+     # Will ask for your PyPI test credentials and require that you're a maintainer
+     # on PyPI test. If you are not, ask @robertnishihara to add you.
+     pip install twine
+     twine upload --repository-url https://test.pypi.org/legacy/ *.whl
 
-   Test that you can install the wheels with pip from the PyPI test repository
-   with:
+   Test that you can install the wheels with pip from the PyPI test repository:
 
    .. code-block:: bash
 
@@ -112,77 +145,34 @@ This document describes the process for creating new releases.
    scripts. Make sure that it is finding the version of Ray that you just
    installed by checking ``ray.__version__`` and ``ray.__file__``.
 
-   Do this at least for MacOS and for Linux, as well as for Python 2 and Python
-   3.
+   Do this at least for MacOS and Linux.
 
-8. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
+9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
    **it will not be possible to modify wheels once you upload them**, so any
-   mistake will require a new release. You can upload the wheels with a command
-   like
+   mistake will require a new release.
 
    .. code-block:: bash
 
-     twine upload --repository-url https://upload.pypi.org/legacy/ ray/.whl/*
+     # Will ask for your real PyPI credentials and require that you're a maintainer
+     # on real PyPI. If you are not, ask @robertnishihara to add you.
+     twine upload --repository-url https://upload.pypi.org/legacy/ *.whl
 
-   Verify that
+   Now, try installing from the real PyPI mirror. Verify that the correct version is
+   installed and that you can run some simple scripts.
 
    .. code-block:: bash
 
      pip install -U ray
 
-   finds the correct Ray version, and successfully runs some simple scripts on
-   both MacOS and Linux as well as Python 2 and Python 3.
-
-9. **Create a GitHub release:** Create a GitHub release through the
-    `GitHub website`_. The release should be created at the commit from the
-    previous step. This should include **release notes**. Copy the style and
-    formatting used by previous releases. Create a draft of the release notes
-    containing information about substantial changes/updates/bugfixes and their
-    PR numbers. Once you have a draft, make sure you solicit feedback from other
-    Ray developers before publishing. Use the following to get started:
-
-    .. code-block:: bash
-
-      git pull origin master --tags
-      git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" | sort
-
-
-    At the end of the release note, you can add a list of contributors that help
-    creating this release. Use the ``doc/dev/get_contributors.py`` to generate this
-    list. You will need to create a GitHub personal access token first if you don't
-    have one (github.com -> settings -> developer settings -> personal access tokens).
-
-    .. code-block:: bash
-
-      # Must be run from inside the Ray repository.
-      python get_contributors.py --help
-      python get_contributors.py \
-        --access-token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-        --prev-branch="ray-0.7.1" \
-        --curr-branch="ray-0.7.2"
-
-    Run `ray microbenchmark` on an `m4.16xl` instance running `Ubuntu 18.04` with `Python 3.7` to get the
-    latest microbenchmark numbers and update them in `profiling.rst`.
-
-    .. code-block:: bash
-
-      ray microbenchmark
-
-10. **Update version numbers throughout codebase:** Suppose we just released
-    0.7.1. The previous release version number (in this case 0.7.0) and the
-    previous dev version number (in this case 0.8.0.dev0) appear in many places
-    throughout the code base including the installation documentation, the
-    example autoscaler config files, and the testing scripts. Search for all of
-    the occurrences of these version numbers and update them to use the new
-    release and dev version numbers. **NOTE:** Not all of the version numbers
-    should be replaced. For example, ``0.7.0`` appears in this file but should
-    not be updated.
+10. **Create a point release on readthedocs page:** In the `read the docs project page`_,
+    mark the release branch as "active" so there is a point release for the documentation.
+    Add @richardliaw to add you if you don't have access.
 
 11. **Improve the release process:** Find some way to improve the release
     process so that whoever manages the release next will have an easier time.
 
-.. _`this example`: https://github.com/ray-project/ray/pull/4226
-.. _`this PR`: https://github.com/ray-project/ray/pull/5523
-.. _`PR like this`: https://github.com/ray-project/ray/pull/5585
-.. _`GitHub website`: https://github.com/ray-project/ray/releases
+.. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/6303
+.. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/commit/a39325d818339970e51677708d5596f4b8f790ce
+.. _`GitHub release`: https://github.com/ray-project/ray/releases
+.. _`read the docs project page`: https://readthedocs.org/projects/ray/

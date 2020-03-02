@@ -1,7 +1,7 @@
 Installing Ray
 ==============
 
-Ray supports Python 2 and Python 3 as well as MacOS and Linux. Windows support
+Ray currently supports MacOS and Linux. Windows support
 is planned for the future.
 
 Latest stable version
@@ -12,6 +12,9 @@ You can install the latest stable version of Ray as follows.
 .. code-block:: bash
 
   pip install -U ray  # also recommended: ray[debug]
+
+
+.. _install-nightlies:
 
 Latest Snapshots (Nightlies)
 ----------------------------
@@ -30,30 +33,43 @@ master branch). To install these wheels, run the following command:
 `Linux Python 3.7`_  `MacOS Python 3.7`_
 `Linux Python 3.6`_  `MacOS Python 3.6`_
 `Linux Python 3.5`_  `MacOS Python 3.5`_
-`Linux Python 2.7`_  `MacOS Python 2.7`_
 ===================  ===================
 
 
-.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp37-cp37m-manylinux1_x86_64.whl
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp37-cp37m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp27-cp27m-macosx_10_6_intel.whl
+.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
+.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
+
+Installing from a specific commit
+---------------------------------
+
+You can install the Ray wheels of any particular commit on ``master`` with the following template. You need to specify the commit hash, Ray version, Operating System, and Python version:
+
+.. code-block::
+
+    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
+
+For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit ``a0ba4499ac645c9d3e82e68f3a281e48ad57f873``:
+
+.. code-block::
+
+    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
+
 
 Installing Ray with Anaconda
 ----------------------------
 
-If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands: 
+If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
 
   conda create --name ray
   conda activate ray
   conda install --name ray pip
-  pip install ray 
+  pip install ray
 
 Use ``pip list`` to confirm that ``ray`` is installed.
 
@@ -135,25 +151,35 @@ steps are included in the installation instructions above.
 
 .. _`Node.js`: https://nodejs.org/
 
-The dashboard also requires:
-
--  Python 3
--  aiohttp
--  psutil
-
-The latter two can be installed via pip:
+The dashboard requires a few additional Python packages, which can be installed
+via pip.
 
 .. code-block:: bash
 
-  pip install aiohttp psutil
- 
-The dashboard is enabled by setting
-``include_webui=True`` during initialization, i.e.
+  pip install ray[dashboard]
 
-.. code-block:: python
+If you are using Anaconda and have trouble installing ``psutil`` or
+``setproctitle``, the try
 
-  import ray
-  ray.init(include_webui=True)
+.. code-block:: bash
+
+  conda install psutil setproctitle
+
+The command ``ray.init()`` or ``ray start --head`` will print out the address of
+the dashboard. For example,
+
+.. code-block::
+
+  >>> import ray
+  >>> ray.init()
+  ======================================================================
+  View the dashboard at http://127.0.0.1:8265.
+  Note: If Ray is running on a remote node, you will need to set up an
+  SSH tunnel with local port forwarding in order to access the dashboard
+  in your browser, e.g. by running 'ssh -L 8265:127.0.0.1:8265
+  <username>@<host>'. Alternatively, you can set webui_host="0.0.0.0" in
+  the call to ray.init() to allow direct access from external machines.
+  ======================================================================
 
 
 Docker Source Images

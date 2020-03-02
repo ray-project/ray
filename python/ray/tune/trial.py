@@ -1,11 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
 import logging
+import shutil
 import uuid
 import time
 import tempfile
@@ -13,15 +10,17 @@ import os
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.logger import pretty_print, UnifiedLogger
-from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.trainable import TrainableUtil
+from ray.tune.utils import flatten_dict
+from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
@@ -32,7 +31,7 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-class Location(object):
+class Location:
     """Describes the location at which Trial is placed to run."""
 
     def __init__(self, hostname=None, pid=None):
@@ -48,7 +47,7 @@ class Location(object):
             return "{}:{}".format(self.hostname, self.pid)
 
 
-class ExportFormat(object):
+class ExportFormat:
     """Describes the format to export the trial Trainable.
 
     This may correspond to different file formats based on the
@@ -73,7 +72,37 @@ class ExportFormat(object):
                                 export_formats[i])
 
 
-class Trial(object):
+def checkpoint_deleter(trial_id, runner):
+    """Returns a checkpoint deleter callback for a runner."""
+    if not runner:
+        return lambda checkpoint: None
+
+    def delete(checkpoint):
+        """Requests checkpoint deletion asynchronously.
+
+        Args:
+            checkpoint (Checkpoint): Checkpoint to delete.
+        """
+        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+            logger.debug("Trial %s: Deleting checkpoint %s", trial_id,
+                         checkpoint.value)
+            checkpoint_path = checkpoint.value
+            # Delete local copy, if any exists.
+            if os.path.exists(checkpoint_path):
+                try:
+                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                        checkpoint_path)
+                    shutil.rmtree(checkpoint_dir)
+                except FileNotFoundError:
+                    logger.warning("Checkpoint dir not found during deletion.")
+
+            # TODO(ujvl): Batch remote deletes.
+            runner.delete_checkpoint.remote(checkpoint.value)
+
+    return delete
+
+
+class Trial:
     """A trial object holds the state for one model training run.
 
     Trials are themselves managed by the TrialRunner class, which implements
@@ -98,6 +127,7 @@ class Trial(object):
                  experiment_tag="",
                  resources=None,
                  stopping_criterion=None,
+                 remote_checkpoint_dir=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -137,7 +167,7 @@ class Trial(object):
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources
-        self.address = Location()
+        self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
@@ -148,17 +178,9 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = {}
         self.last_update_time = -float("inf")
-        self.checkpoint_freq = checkpoint_freq
-        self.checkpoint_at_end = checkpoint_at_end
 
         # stores in memory max/min/last result for each metric by trial
         self.metric_analysis = {}
-
-        self.sync_on_checkpoint = sync_on_checkpoint
-        newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
-        self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
-                                                    checkpoint_score_attr)
-        self.checkpoint_manager.newest_checkpoint = newest_checkpoint
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -169,8 +191,26 @@ class Trial(object):
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
-        self.num_failures = 0
         self.custom_trial_name = None
+
+        # Checkpointing fields
+        self.saving_to = None
+        if remote_checkpoint_dir:
+            self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
+        else:
+            self.remote_checkpoint_dir_prefix = None
+        self.checkpoint_freq = checkpoint_freq
+        self.checkpoint_at_end = checkpoint_at_end
+        self.sync_on_checkpoint = sync_on_checkpoint
+        self.checkpoint_manager = CheckpointManager(
+            keep_checkpoints_num, checkpoint_score_attr,
+            checkpoint_deleter(self._trainable_name(), self.runner))
+        checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
+        self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
+
+        # Restoration fields
+        self.restoring_from = None
+        self.num_failures = 0
 
         # AutoML fields
         self.results = None
@@ -179,7 +219,6 @@ class Trial(object):
         self.extra_arg = None
 
         self._nonjson_fields = [
-            "checkpoint",
             "loggers",
             "sync_to_driver_fn",
             "results",
@@ -192,33 +231,50 @@ class Trial(object):
 
     @property
     def node_ip(self):
-        return self.address.hostname
+        return self.location.hostname
 
     @property
     def checkpoint(self):
-        return self.checkpoint_manager.newest_checkpoint
+        """Returns the most recent checkpoint.
+
+        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
+        Otherwise, it is the most recent PERSISTENT checkpoint.
+        """
+        if self.status == Trial.PAUSED:
+            assert self.checkpoint_manager.newest_memory_checkpoint.value
+            return self.checkpoint_manager.newest_memory_checkpoint
+        else:
+            return self.checkpoint_manager.newest_persistent_checkpoint
 
     @classmethod
     def generate_id(cls):
         return str(uuid.uuid1().hex)[:8]
 
+    @property
+    def remote_checkpoint_dir(self):
+        assert self.logdir, "Trial {}: logdir not initialized.".format(self)
+        if not self.remote_checkpoint_dir_prefix:
+            return None
+        logdir_name = os.path.basename(self.logdir)
+        return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
+
     @classmethod
     def create_logdir(cls, identifier, local_dir):
         local_dir = os.path.expanduser(local_dir)
-        if not os.path.exists(local_dir):
-            os.makedirs(local_dir)
+        os.makedirs(local_dir, exist_ok=True)
         return tempfile.mkdtemp(
             prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
             dir=local_dir)
 
     def init_logger(self):
         """Init logger."""
-
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = Trial.create_logdir(str(self), self.local_dir)
-            elif not os.path.exists(self.logdir):
-                os.makedirs(self.logdir)
+                self.logdir = Trial.create_logdir(
+                    self._trainable_name() + "_" + self.experiment_tag,
+                    self.local_dir)
+            else:
+                os.makedirs(self.logdir, exist_ok=True)
 
             self.result_logger = UnifiedLogger(
                 self.config,
@@ -239,24 +295,21 @@ class Trial(object):
             raise ValueError("Cannot update resources while Trial is running.")
         self.resources = Resources(cpu, gpu, **kwargs)
 
-    def sync_logger_to_new_location(self, worker_ip):
-        """Updates the logger location.
-
-        Also pushes logdir to worker_ip, allowing for cross-node recovery.
-        """
-        if self.result_logger:
-            self.result_logger.sync_results_to_new_location(worker_ip)
-            self.set_location(Location(worker_ip))
+    def set_runner(self, runner):
+        self.runner = runner
+        self.checkpoint_manager.delete = checkpoint_deleter(
+            self._trainable_name(), runner)
 
     def set_location(self, location):
         """Sets the location of the trial."""
-        self.address = location
+        self.location = location
 
     def set_status(self, status):
         """Sets the status of the trial."""
-        if status == Trial.RUNNING and self.start_time is None:
-            self.start_time = time.time()
         self.status = status
+        if status == Trial.RUNNING:
+            if self.start_time is None:
+                self.start_time = time.time()
 
     def close_logger(self):
         """Closes logger."""
@@ -266,7 +319,7 @@ class Trial(object):
 
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
-            self.num_failures += 1  # may be moved to outer scope?
+            self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
             with open(self.error_file, "a+") as f:
                 f.write("Failure # {} (occurred at {})\n".format(
@@ -276,12 +329,8 @@ class Trial(object):
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
-
         if result.get(DONE):
             return True
-
-        if callable(self.stopping_criterion):
-            return self.stopping_criterion(self.trial_id, result)
 
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
@@ -309,6 +358,7 @@ class Trial(object):
 
     def clear_checkpoint(self):
         self.checkpoint.value = None
+        self.restoring_from = None
 
     def on_checkpoint(self, checkpoint):
         """Hook for handling checkpoints taken by the Trainable.
@@ -316,19 +366,50 @@ class Trial(object):
         Args:
             checkpoint (Checkpoint): Checkpoint taken.
         """
-        if self.sync_on_checkpoint and checkpoint.storage == Checkpoint.DISK:
-            # Wait for any other syncs to finish. We need to sync again after
-            # this to handle checkpoints taken mid-sync.
-            self.result_logger.wait()
-            # Force sync down and wait before tracking the new checkpoint. This
-            # prevents attempts to restore from partially synced checkpoints.
-            if self.result_logger.sync_down():
+        if checkpoint.storage == Checkpoint.MEMORY:
+            self.checkpoint_manager.on_checkpoint(checkpoint)
+            return
+        if self.sync_on_checkpoint:
+            try:
+                # Wait for any other syncs to finish. We need to sync again
+                # after this to handle checkpoints taken mid-sync.
                 self.result_logger.wait()
-            else:
+            except TuneError as e:
+                # Errors occurring during this wait are not fatal for this
+                # checkpoint, so it should just be logged.
                 logger.error(
-                    "Trial %s: Checkpoint sync skipped. "
-                    "This should not happen.", self)
+                    "Trial %s: An error occurred during the "
+                    "checkpoint pre-sync wait - %s", self, str(e))
+            # Force sync down and wait before tracking the new checkpoint.
+            try:
+                if self.result_logger.sync_down():
+                    self.result_logger.wait()
+                else:
+                    logger.error(
+                        "Trial %s: Checkpoint sync skipped. "
+                        "This should not happen.", self)
+            except TuneError as e:
+                if issubclass(self.get_trainable_cls(), DurableTrainable):
+                    # Even though rsync failed the trainable can restore
+                    # from remote durable storage.
+                    logger.error("Trial %s: Sync error - %s", self, str(e))
+                else:
+                    # If the trainable didn't have remote storage to upload
+                    # to then this checkpoint may have been lost, so we
+                    # shouldn't track it with the checkpoint_manager.
+                    raise e
+            if not issubclass(self.get_trainable_cls(), DurableTrainable):
+                if not os.path.exists(checkpoint.value):
+                    raise TuneError("Trial {}: Checkpoint path {} not "
+                                    "found after successful sync down.".format(
+                                        self, checkpoint.value))
         self.checkpoint_manager.on_checkpoint(checkpoint)
+
+    def on_restore(self):
+        """Handles restoration completion."""
+        assert self.is_restoring
+        self.last_result = self.restoring_from.result
+        self.restoring_from = None
 
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.
@@ -375,15 +456,26 @@ class Trial(object):
         self.verbose = verbose
 
     def is_finished(self):
-        return self.status in [Trial.TERMINATED, Trial.ERROR]
+        return self.status in [Trial.ERROR, Trial.TERMINATED]
+
+    @property
+    def is_restoring(self):
+        return self.restoring_from is not None
+
+    @property
+    def is_saving(self):
+        return self.saving_to is not None
 
     def __repr__(self):
-        return str(self)
+        return self._trainable_name(include_trial_id=True)
 
     def __str__(self):
+        return self._trainable_name(include_trial_id=True)
+
+    def _trainable_name(self, include_trial_id=False):
         """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
-        Can be overriden with a custom string creator.
+        Can be overridden with a custom string creator.
         """
         if self.custom_trial_name:
             return self.custom_trial_name
@@ -395,16 +487,17 @@ class Trial(object):
             identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
-        identifier += "_" + self.trial_id
+        if include_trial_id:
+            identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
     def __getstate__(self):
         """Memento generator for Trial.
 
         Sets RUNNING trials to PENDING, and flushes the result logger.
-        Note this can only occur if the trial holds a DISK checkpoint.
+        Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
-        assert self.checkpoint.storage == Checkpoint.DISK, (
+        assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
@@ -414,8 +507,11 @@ class Trial(object):
 
         state["runner"] = None
         state["result_logger"] = None
+        # Avoid waiting for events that will never occur on resume.
+        state["resuming_from"] = None
+        state["saving_to"] = None
         if self.result_logger:
-            self.result_logger.flush()
+            self.result_logger.flush(sync_down=False)
             state["__logger_started__"] = True
         else:
             state["__logger_started__"] = False
@@ -424,6 +520,7 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
+
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
         for key in self._nonjson_fields:

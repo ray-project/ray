@@ -148,7 +148,14 @@ py_test(
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
- 
+
+py_test(
+    name = "test_trainable_util",
+    size = "small",
+    srcs = ["tests/test_trainable_util.py"],
+    deps = [":tune_lib"],
+)
+
 py_test(
     name = "test_trial_scheduler",
     size = "medium",

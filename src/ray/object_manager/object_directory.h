@@ -33,8 +33,6 @@ class ObjectDirectoryInterface {
  public:
   virtual ~ObjectDirectoryInterface() {}
 
-  virtual void RegisterBackend() = 0;
-
   /// Lookup how to connect to a remote object manager.
   ///
   /// \param connection_info The connection information to fill out. This
@@ -75,7 +73,7 @@ class ObjectDirectoryInterface {
   /// method may fire immediately, within the call to this method, if any other
   /// listener is subscribed to the same object: This occurs when location data
   /// for the object has already been obtained.
-  //
+  ///
   /// \param callback_id The id associated with the specified callback. This is
   /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
@@ -115,11 +113,6 @@ class ObjectDirectoryInterface {
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
-  /// Get local client id
-  ///
-  /// \return ClientID
-  virtual ray::ClientID GetLocalClientID() = 0;
-
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -136,11 +129,9 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// \param gcs_client A Ray GCS client to request object and client
   /// information from.
   ObjectDirectory(boost::asio::io_service &io_service,
-                  std::shared_ptr<gcs::RedisGcsClient> &gcs_client);
+                  std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   virtual ~ObjectDirectory() {}
-
-  void RegisterBackend() override;
 
   void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
 
@@ -163,8 +154,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectRemoved(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
-
-  ray::ClientID GetLocalClientID() override;
 
   std::string DebugString() const override;
 
@@ -189,7 +178,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// Reference to the event loop.
   boost::asio::io_service &io_service_;
   /// Reference to the gcs client.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
 };

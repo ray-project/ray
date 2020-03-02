@@ -3,8 +3,58 @@ Memory Management
 
 This page describes how memory management works in Ray, and how you can set memory quotas to ensure memory-intensive applications run predictably and reliably.
 
-Overview
---------
+Summary
+-------
+
+You can set memory quotas to ensure your application runs predictably on any Ray cluster configuration. If you're not sure, you can start with a conservative default configuration like the following and see if any limits are hit.
+
+For Ray initialization on a single node, consider setting the following fields:
+
+.. code-block:: python
+
+  ray.init(
+      memory=2000 * 1024 * 1024,
+      object_store_memory=200 * 1024 * 1024,
+      driver_object_store_memory=100 * 1024 * 1024)
+
+For Ray usage on a cluster, consider setting the following fields on both the command line and in your Python script:
+
+.. tip:: 200 * 1024 * 1024 bytes is 200 MiB. Use double parentheses to evaluate math in Bash: ``$((200 * 1024 * 1024))``.
+
+.. code-block:: bash
+
+  # On the head node
+  ray start --head --redis-port=6379 \
+      --object-store-memory=$((200 * 1024 * 1024)) \
+      --memory=$((200 * 1024 * 1024)) \
+      --num-cpus=1
+
+  # On the worker node
+  ray start --object-store-memory=$((200 * 1024 * 1024)) \
+      --memory=$((200 * 1024 * 1024)) \
+      --num-cpus=1 \
+      --address=$RAY_HEAD_ADDRESS:6379
+
+.. code-block:: python
+
+  # In your Python script connecting to Ray:
+  ray.init(
+      address="auto",  # or "<hostname>:<port>" if not using the default port
+      driver_object_store_memory=100 * 1024 * 1024
+  )
+
+
+For any custom remote method or actor, you can set requirements as follows:
+
+.. code-block:: python
+
+  @ray.remote(
+      memory=2000 * 1024 * 1024,
+  )
+
+
+Concept Overview
+----------------
 
 There are several ways that Ray applications use memory:
 
@@ -34,10 +84,11 @@ Heap memory quota
 
 When Ray starts, it queries the available memory on a node / container not reserved for Redis and the object store or being used by other applications. This is considered "available memory" that actors and tasks can request memory out of. You can also set ``memory=<bytes>`` on Ray init to tell Ray explicitly how much memory is available.
 
-.. note::
+.. important::
 
-  Setting available memory for the node does not impose any limits on memory usage
-  of tasks. To set per-task limits, see the following sections.
+  Setting available memory for the node does NOT impose any limits on memory usage
+  unless you specify memory resource requirements in decorators. By default, tasks
+  and actors request no memory (and hence have no limit).
 
 To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the ``memory`` argument. The Ray scheduler will then reserve the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 
@@ -79,14 +130,3 @@ Object store shared memory
 --------------------------
 
 Object store memory is also used to map objects returned by ``ray.get`` calls in shared memory. While an object is mapped in this way (i.e., there is a Python reference to the object), it is pinned and cannot be evicted from the object store. However, ray does not provide quota management for this kind of shared memory usage.
-
-Summary
--------
-
-You can set memory quotas to ensure your application runs predictably on any Ray cluster configuration. If you're not sure, you can start with a conservative default configuration like the following and see if any limits are hit:
-
-.. code-block:: python
-
-  @ray.remote(
-      memory=2000 * 1024 * 1024,
-      object_store_memory=200 * 1024 * 1024)

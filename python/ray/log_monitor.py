@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import errno
 import glob
@@ -22,7 +18,7 @@ import ray.utils
 logger = logging.getLogger(__name__)
 
 
-class LogFileInfo(object):
+class LogFileInfo:
     def __init__(self,
                  filename=None,
                  size_when_last_opened=None,
@@ -37,7 +33,7 @@ class LogFileInfo(object):
         self.worker_pid = None
 
 
-class LogMonitor(object):
+class LogMonitor:
     """A monitor process for monitoring Ray log files.
 
     This class mantains a list of open files and a list of closed log files. We

@@ -1,0 +1,34 @@
+diff --git deps/hiredis/net.c deps/hiredis/net.c
+--- deps/hiredis/net.c
++++ deps/hiredis/net.c
+@@ -79,1 +79,1 @@
+-    if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1) {
++    if (setsockopt(c->fd, SOL_SOCKET, SO_REUSEADDR, (char const *)&on, sizeof(on)) == -1) {
+@@ -131,1 +131,1 @@
+-    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) == -1){
++    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char const *)&val, sizeof(val)) == -1){
+@@ -139,1 +139,1 @@
+-    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, &val, sizeof(val)) < 0) {
++    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, (char const *)&val, sizeof(val)) < 0) {
+@@ -146,1 +146,1 @@
+-    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val)) < 0) {
++    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, (char const *)&val, sizeof(val)) < 0) {
+@@ -153,1 +153,1 @@
+-    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val)) < 0) {
++    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, (char const *)&val, sizeof(val)) < 0) {
+@@ -159,1 +159,1 @@
+-    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val)) < 0) {
++    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, (char const *)&val, sizeof(val)) < 0) {
+@@ -171,1 +171,1 @@
+-    if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1) {
++    if (setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, (char const *)&yes, sizeof(yes)) == -1) {
+@@ -240,1 +240,1 @@
+-    if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1) {
++    if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, (char *)&err, &errlen) == -1) {
+@@ -255,5 +255,5 @@
+-    if (setsockopt(c->fd,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)) == -1) {
++    if (setsockopt(c->fd,SOL_SOCKET,SO_RCVTIMEO,(char const *)&tv,sizeof(tv)) == -1) {
+@@ -259,1 +259,1 @@
+-    if (setsockopt(c->fd,SOL_SOCKET,SO_SNDTIMEO,&tv,sizeof(tv)) == -1) {
++    if (setsockopt(c->fd,SOL_SOCKET,SO_SNDTIMEO,(char const *)&tv,sizeof(tv)) == -1) {
+-- 

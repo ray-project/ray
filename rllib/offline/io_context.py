@@ -1,14 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from ray.rllib.utils.annotations import PublicAPI
 
 
 @PublicAPI
-class IOContext(object):
+class IOContext:
     """Attributes to pass to input / output class constructors.
 
     RLlib auto-sets these attributes when constructing input / output classes.

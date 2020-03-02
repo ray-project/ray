@@ -77,6 +77,13 @@ public interface RayRuntime {
   void setResource(String resourceName, double capacity, UniqueId nodeId);
 
   /**
+   * Kill the actor immediately.
+   *
+   * @param actor The actor to be killed.
+   */
+  void killActor(RayActor<?> actor);
+
+  /**
    * Invoke a remote function.
    *
    * @param func The remote function to run.
@@ -142,6 +149,10 @@ public interface RayRuntime {
    */
   RayPyActor createPyActor(String moduleName, String className, Object[] args,
       ActorCreationOptions options);
+
+  Object getAsyncContext();
+
+  void setAsyncContext(Object asyncContext);
 
   /**
    * Wrap a {@link Runnable} with necessary context capture.

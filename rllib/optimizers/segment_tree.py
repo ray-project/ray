@@ -1,11 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import operator
 
 
-class SegmentTree(object):
+class SegmentTree:
     def __init__(self, capacity, operation, neutral_element):
         """Build a Segment Tree data structure.
 
@@ -142,5 +138,4 @@ class MinSegmentTree(SegmentTree):
 
     def min(self, start=0, end=None):
         """Returns min(arr[start], ...,  arr[end])"""
-
         return super(MinSegmentTree, self).reduce(start, end)

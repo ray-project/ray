@@ -2,10 +2,6 @@
 
 Keep in sync with changes to VTraceTFPolicy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import logging
 import gym
@@ -20,7 +16,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
-from ray.rllib.agents.ppo.ppo_policy import KLCoeffMixin, ValueNetworkMixin
+from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
@@ -34,7 +30,7 @@ TARGET_POLICY_SCOPE = "target_func"
 logger = logging.getLogger(__name__)
 
 
-class PPOSurrogateLoss(object):
+class PPOSurrogateLoss:
     """Loss used when V-trace is disabled.
 
     Arguments:
@@ -97,7 +93,7 @@ class PPOSurrogateLoss(object):
             self.total_loss += cur_kl_coeff * self.mean_kl
 
 
-class VTraceSurrogateLoss(object):
+class VTraceSurrogateLoss:
     def __init__(self,
                  actions,
                  prev_actions_logp,
@@ -393,7 +389,8 @@ def postprocess_trajectory(policy,
             last_r,
             policy.config["gamma"],
             policy.config["lambda"],
-            use_gae=policy.config["use_gae"])
+            use_gae=policy.config["use_gae"],
+            use_critic=policy.config["use_critic"])
     else:
         batch = sample_batch
     del batch.data["new_obs"]  # not used, so save some bandwidth
@@ -407,7 +404,7 @@ def add_values_and_logits(policy):
     return out
 
 
-class TargetNetworkMixin(object):
+class TargetNetworkMixin:
     def __init__(self, obs_space, action_space, config):
         """Target Network is updated by the master learner every
         trainer.update_target_frequency steps. All worker batches

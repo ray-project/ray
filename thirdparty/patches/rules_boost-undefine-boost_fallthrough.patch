@@ -1,5 +1,4 @@
 diff --git BUILD.boost BUILD.boost
-index 104c726..108e778 100644
 --- BUILD.boost
 +++ BUILD.boost
 @@ -1356,3 +1356,2 @@ boost_library(

@@ -1,11 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import torch.nn as nn
-
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils import try_import_torch
+
+_, nn = try_import_torch()
 
 
 @PublicAPI

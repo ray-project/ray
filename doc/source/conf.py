@@ -23,6 +23,7 @@ from custom_directives import CustomGalleryItemDirective
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
 MOCK_MODULES = [
+    "blist",
     "gym",
     "gym.spaces",
     "ray._raylet",
@@ -48,6 +49,7 @@ MOCK_MODULES = [
     "torch",
     "torch.distributed",
     "torch.nn",
+    "torch.nn.parallel",
     "torch.utils.data",
 ]
 for mod_name in MOCK_MODULES:
@@ -61,6 +63,8 @@ sys.modules["tensorflow"].VERSION = "9.9.9"
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
 
+import ray
+
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
@@ -70,8 +74,13 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
-    'sphinx_click.ext', 'sphinx-jsonschema', 'sphinx_gallery.gen_gallery'
+    'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
+    'sphinx_click.ext',
+    'sphinx-jsonschema',
+    'sphinx_gallery.gen_gallery',
+    'sphinx_copybutton',
 ]
 
 sphinx_gallery_conf = {

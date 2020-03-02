@@ -13,16 +13,16 @@ type RayClusterSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	// ClusterName is unique identifier for RayCluster in one namespace.
-	ClusterName     string          `json:"clusterName"`
+	ClusterName string `json:"clusterName"`
 	// Docker image.
-	Images          RayClusterImage `json:"images"`
+	Images RayClusterImage `json:"images"`
 	// Image pull policy.
 	// One of Always, Never, IfNotPresent.
 	// Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
 	// Cannot be updated.
-	ImagePullPolicy string          `json:"imagePullPolicy,omitempty"`
+	ImagePullPolicy v1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	// Specification of the desired behavior of pod group
-	Extensions      []Extension     `json:"extensions,omitempty"`
+	Extensions []Extension `json:"extensions,omitempty"`
 }
 
 // RayCluster pod type

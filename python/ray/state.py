@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 import json
 import logging
@@ -9,7 +5,6 @@ import sys
 import time
 
 import ray
-from ray.function_manager import FunctionDescriptor
 
 from ray import (
     gcs_utils,
@@ -121,7 +116,7 @@ def _parse_resource_table(redis_client, client_id):
     return resources
 
 
-class GlobalState(object):
+class GlobalState:
     """A class used to interface with the Ray control state.
 
     # TODO(zongheng): In the future move this to use Ray's redis module in the
@@ -306,6 +301,74 @@ class GlobalState(object):
                     self._object_table(binary_to_object_id(object_id_binary)))
             return results
 
+    def _actor_table(self, actor_id):
+        """Fetch and parse the actor table information for a single actor ID.
+
+        Args:
+            actor_id: A actor ID to get information about.
+
+        Returns:
+            A dictionary with information about the actor ID in question.
+        """
+        assert isinstance(actor_id, ray.ActorID)
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ACTOR"), "",
+            actor_id.binary())
+        if message is None:
+            return {}
+        gcs_entries = gcs_utils.GcsEntry.FromString(message)
+
+        assert len(gcs_entries.entries) == 1
+        actor_table_data = gcs_utils.ActorTableData.FromString(
+            gcs_entries.entries[0])
+
+        actor_info = {
+            "ActorID": binary_to_hex(actor_table_data.actor_id),
+            "JobID": binary_to_hex(actor_table_data.job_id),
+            "Address": {
+                "IPAddress": actor_table_data.address.ip_address,
+                "Port": actor_table_data.address.port
+            },
+            "OwnerAddress": {
+                "IPAddress": actor_table_data.owner_address.ip_address,
+                "Port": actor_table_data.owner_address.port
+            },
+            "IsDirectCall": actor_table_data.is_direct_call,
+            "State": actor_table_data.state,
+            "Timestamp": actor_table_data.timestamp,
+        }
+
+        return actor_info
+
+    def actor_table(self, actor_id=None):
+        """Fetch and parse the actor table information for one or more actor IDs.
+
+        Args:
+            actor_id: A hex string of the actor ID to fetch information about.
+                If this is None, then the actor table is fetched.
+
+        Returns:
+            Information from the actor table.
+        """
+        self._check_connected()
+        if actor_id is not None:
+            actor_id = ray.ActorID(hex_to_binary(actor_id))
+            return self._actor_table(actor_id)
+        else:
+            actor_table_keys = list(
+                self.redis_client.scan_iter(
+                    match=gcs_utils.TablePrefix_ACTOR_string + "*"))
+            actor_ids_binary = [
+                key[len(gcs_utils.TablePrefix_ACTOR_string):]
+                for key in actor_table_keys
+            ]
+
+            results = {}
+            for actor_id_binary in actor_ids_binary:
+                results[binary_to_hex(actor_id_binary)] = self._actor_table(
+                    ray.ActorID(actor_id_binary))
+            return results
+
     def _task_table(self, task_id):
         """Fetch and parse the task table information for a single task ID.
 
@@ -329,9 +392,7 @@ class GlobalState(object):
 
         task = ray._raylet.TaskSpec.from_string(
             task_table_data.task.task_spec.SerializeToString())
-        function_descriptor_list = task.function_descriptor_list()
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            function_descriptor_list)
+        function_descriptor = task.function_descriptor()
 
         task_spec_info = {
             "JobID": task.job_id().hex(),
@@ -348,11 +409,7 @@ class GlobalState(object):
             "Args": task.arguments(),
             "ReturnObjectIDs": task.returns(),
             "RequiredResources": task.required_resources(),
-            "FunctionID": function_descriptor.function_id.hex(),
-            "FunctionHash": binary_to_hex(function_descriptor.function_hash),
-            "ModuleName": function_descriptor.module_name,
-            "ClassName": function_descriptor.class_name,
-            "FunctionName": function_descriptor.function_name,
+            "FunctionDescriptor": function_descriptor.to_dict(),
         }
 
         execution_spec = ray._raylet.TaskExecutionSpec.from_string(
@@ -1004,65 +1061,8 @@ class GlobalState(object):
         }
 
 
-class DeprecatedGlobalState(object):
-    """A class used to print errors when the old global state API is used."""
-
-    def object_table(self, object_id=None):
-        raise DeprecationWarning(
-            "ray.global_state.object_table() is deprecated. Use ray.objects() "
-            "instead.")
-
-    def task_table(self, task_id=None):
-        raise DeprecationWarning(
-            "ray.global_state.task_table() is deprecated. Use ray.tasks() "
-            "instead.")
-
-    def function_table(self, function_id=None):
-        raise DeprecationWarning(
-            "ray.global_state.function_table() is deprecated.")
-
-    def client_table(self):
-        raise DeprecationWarning(
-            "ray.global_state.client_table() is deprecated. Use ray.nodes() "
-            "instead.")
-
-    def profile_table(self):
-        raise DeprecationWarning(
-            "ray.global_state.profile_table() is deprecated.")
-
-    def chrome_tracing_dump(self, filename=None):
-        raise DeprecationWarning(
-            "ray.global_state.chrome_tracing_dump() is deprecated. Use "
-            "ray.timeline() instead.")
-
-    def chrome_tracing_object_transfer_dump(self, filename=None):
-        raise DeprecationWarning(
-            "ray.global_state.chrome_tracing_object_transfer_dump() is "
-            "deprecated. Use ray.object_transfer_timeline() instead.")
-
-    def workers(self):
-        raise DeprecationWarning("ray.global_state.workers() is deprecated.")
-
-    def cluster_resources(self):
-        raise DeprecationWarning(
-            "ray.global_state.cluster_resources() is deprecated. Use "
-            "ray.cluster_resources() instead.")
-
-    def available_resources(self):
-        raise DeprecationWarning(
-            "ray.global_state.available_resources() is deprecated. Use "
-            "ray.available_resources() instead.")
-
-    def error_messages(self, all_jobs=False):
-        raise DeprecationWarning(
-            "ray.global_state.error_messages() is deprecated. Use "
-            "ray.errors() instead.")
-
-
 state = GlobalState()
 """A global object used to access the cluster's global state."""
-
-global_state = DeprecatedGlobalState()
 
 
 def jobs():
@@ -1118,6 +1118,19 @@ def node_ids():
             if k.startswith(ray.resource_spec.NODE_ID_PREFIX):
                 node_ids.append(k)
     return node_ids
+
+
+def actors(actor_id=None):
+    """Fetch and parse the actor info for one or more actor IDs.
+
+    Args:
+        actor_id: A hex string of the actor ID to fetch information about. If
+            this is None, then all actor information is fetched.
+
+    Returns:
+        Information about the actors.
+    """
+    return state.actor_table(actor_id=actor_id)
 
 
 def tasks(task_id=None):

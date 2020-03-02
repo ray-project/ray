@@ -8,6 +8,7 @@
 
 // This test just print some call stack information.
 namespace ray {
+#ifndef _WIN32
 
 void Sleep() { usleep(100000); }
 
@@ -77,6 +78,7 @@ TEST(SignalTest, SIGILL_Test) {
   }
 }
 
+#endif  // !_WIN32
 }  // namespace ray
 
 int main(int argc, char **argv) {

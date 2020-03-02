@@ -1,7 +1,6 @@
 import pytest
 import time
 
-from ray import ray_constants
 import ray
 import ray.experimental.signal as signal
 
@@ -43,7 +42,7 @@ def test_send_signal_from_actor_to_driver(ray_start_regular):
     # Send several signals from an actor, and receive them in the driver.
 
     @ray.remote
-    class ActorSendSignal(object):
+    class ActorSendSignal:
         def __init__(self):
             pass
 
@@ -67,7 +66,7 @@ def test_send_signals_from_actor_to_driver(ray_start_regular):
     # these signals in the driver.
 
     @ray.remote
-    class ActorSendSignals(object):
+    class ActorSendSignals:
         def __init__(self):
             pass
 
@@ -124,7 +123,7 @@ def test_actor_crash(ray_start_regular):
     # of a method that failed.
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -146,7 +145,7 @@ def test_actor_crash_init(ray_start_regular):
     # Get an error when an actor's __init__ failed.
 
     @ray.remote
-    class ActorCrashInit(object):
+    class ActorCrashInit:
         def __init__(self):
             raise Exception("exception message")
 
@@ -166,7 +165,7 @@ def test_actor_crash_init2(ray_start_regular):
     # of the actor.
 
     @ray.remote
-    class ActorCrashInit(object):
+    class ActorCrashInit:
         def __init__(self):
             raise Exception("exception message")
 
@@ -189,7 +188,7 @@ def test_actor_crash_init3(ray_start_regular):
     # another method of the actor is invoked.
 
     @ray.remote
-    class ActorCrashInit(object):
+    class ActorCrashInit:
         def __init__(self):
             raise Exception("exception message")
 
@@ -210,7 +209,7 @@ def test_send_signals_from_actor_to_actor(ray_start_regular):
     # these signals in another actor.
 
     @ray.remote
-    class ActorSendSignals(object):
+    class ActorSendSignals:
         def __init__(self):
             pass
 
@@ -219,7 +218,7 @@ def test_send_signals_from_actor_to_actor(ray_start_regular):
                 signal.send(UserSignal(value + str(i)))
 
     @ray.remote
-    class ActorGetSignalsAll(object):
+    class ActorGetSignalsAll:
         def __init__(self):
             self.received_signals = []
 
@@ -258,7 +257,7 @@ def test_forget(ray_start_regular):
     # actor. Then show that the driver only gets the last "count" signals.
 
     @ray.remote
-    class ActorSendSignals(object):
+    class ActorSendSignals:
         def __init__(self):
             pass
 
@@ -276,13 +275,10 @@ def test_forget(ray_start_regular):
     assert len(result_list) == count
 
 
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(),
-    reason="TODO(ekl): this requires reconstruction")
 def test_signal_on_node_failure(two_node_cluster):
     """Test actor checkpointing on a remote node."""
 
-    class ActorSignal(object):
+    class ActorSignal:
         def __init__(self):
             pass
 
@@ -395,6 +391,5 @@ def test_small_receive_timeout(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

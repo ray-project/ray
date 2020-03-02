@@ -1,9 +1,5 @@
 """Registry of algorithm names for `rllib train --run=<alg_name>`"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
@@ -17,6 +13,11 @@ def _import_sac():
 def _import_appo():
     from ray.rllib.agents import ppo
     return ppo.APPOTrainer
+
+
+def _import_ddppo():
+    from ray.rllib.agents import ppo
+    return ppo.DDPPOTrainer
 
 
 def _import_qmix():
@@ -99,6 +100,21 @@ def _import_marwil():
     return marwil.MARWILTrainer
 
 
+def _import_a2c_pipeline():
+    from ray.rllib.agents import a3c
+    return a3c.A2CPipeline
+
+
+def _import_a3c_pipeline():
+    from ray.rllib.agents import a3c
+    return a3c.A3CPipeline
+
+
+def _import_pg_pipeline():
+    from ray.rllib.agents import pg
+    return pg.PGPipeline
+
+
 ALGORITHMS = {
     "SAC": _import_sac,
     "DDPG": _import_ddpg,
@@ -117,7 +133,13 @@ ALGORITHMS = {
     "QMIX": _import_qmix,
     "APEX_QMIX": _import_apex_qmix,
     "APPO": _import_appo,
+    "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
+
+    # Experimental pipeline-based impls.
+    "A2C_pl": _import_a2c_pipeline,
+    "A3C_pl": _import_a3c_pipeline,
+    "PG_pl": _import_pg_pipeline,
 }
 
 

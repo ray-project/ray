@@ -9,6 +9,7 @@ VERSION_1.0 {
         *ray*RayObject*;
         *ray*Status*;
         *ray*RayFunction*;
+        *ray*FunctionDescriptorBuilder*;
         *ray*TaskArg*;
         *ray*TaskOptions*;
         *ray*Buffer*;
@@ -27,5 +28,6 @@ VERSION_1.0 {
         *PyInit*;
         *init_raylet*;
         *Java*;
+        *JNI_*;
     local: *;
 };

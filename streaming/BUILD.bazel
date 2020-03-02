@@ -1,8 +1,8 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
+load("//bazel:ray.bzl", "COPTS")
 
 proto_library(
     name = "streaming_proto",
@@ -10,14 +10,21 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
-cc_proto_library(
-    name = "streaming_cc_proto",
-    deps = [":streaming_proto"],
-)
-
 proto_library(
     name = "streaming_queue_proto",
     srcs = ["src/protobuf/streaming_queue.proto"],
+)
+
+proto_library(
+    name = "remote_call_proto",
+    srcs = ["src/protobuf/remote_call.proto"],
+    visibility = ["//visibility:public"],
+    deps = ["streaming_proto"],
+)
+
+cc_proto_library(
+    name = "streaming_cc_proto",
+    deps = [":streaming_proto"],
 )
 
 cc_proto_library(
@@ -30,6 +37,7 @@ cc_proto_library(
 # be linked into streaming libs by dynamic linker. See bazel rule `//:_raylet`
 cc_binary(
     name = "ray_util.so",
+    copts = COPTS,
     linkshared = 1,
     visibility = ["//visibility:public"],
     deps = ["//:ray_util"],
@@ -37,6 +45,7 @@ cc_binary(
 
 cc_binary(
     name = "ray_common.so",
+    copts = COPTS,
     linkshared = 1,
     visibility = ["//visibility:public"],
     deps = ["//:ray_common"],
@@ -44,6 +53,7 @@ cc_binary(
 
 cc_binary(
     name = "core_worker_lib.so",
+    copts = COPTS,
     linkshared = 1,
     deps = ["//:core_worker_lib"],
 )
@@ -56,6 +66,7 @@ cc_library(
     hdrs = glob([
         "src/util/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src",
     ],
@@ -75,6 +86,7 @@ cc_library(
     hdrs = glob([
         "src/config/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_cc_proto",
@@ -90,6 +102,7 @@ cc_library(
     hdrs = glob([
         "src/message/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_config",
@@ -105,8 +118,8 @@ cc_library(
     hdrs = glob([
         "src/queue/*.h",
     ]),
+    copts = COPTS,
     deps = [
-        "core_worker_lib.so",
         "ray_common.so",
         "ray_util.so",
         ":streaming_config",
@@ -115,7 +128,15 @@ cc_library(
         ":streaming_util",
         "@boost//:asio",
         "@boost//:thread",
-    ],
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [
+            # TODO(mehrdadn): This is to resolve symbols on Windows for now. Should remove this later. (See d7f8d18.)
+            "//:core_worker_lib",
+        ],
+        "//conditions:default": [
+            "core_worker_lib.so",
+        ],
+    }),
 )
 
 cc_library(
@@ -128,6 +149,7 @@ cc_library(
         "src/queue/*.h",
         "src/test/*.h",
     ]),
+    copts = COPTS,
     includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
@@ -154,6 +176,7 @@ cc_binary(
     srcs = glob(["src/test/*.h"]) + [
         "src/test/mock_actor.cc",
     ],
+    copts = COPTS,
     includes = [
         "streaming/src/test",
     ],
@@ -166,6 +189,7 @@ cc_binary(
     srcs = glob(["src/test/*.h"]) + [
         "src/test/streaming_queue_tests.cc",
     ],
+    copts = COPTS,
     deps = test_common_deps,
 )
 
@@ -174,6 +198,7 @@ cc_test(
     srcs = [
         "src/test/ring_buffer_tests.cc",
     ],
+    copts = COPTS,
     includes = [
         "streaming/src/test",
     ],
@@ -185,6 +210,7 @@ cc_test(
     srcs = [
         "src/test/message_serialization_tests.cc",
     ],
+    copts = COPTS,
     deps = test_common_deps,
 )
 
@@ -193,6 +219,7 @@ cc_test(
     srcs = [
         "src/test/mock_transfer_tests.cc",
     ],
+    copts = COPTS,
     deps = test_common_deps,
 )
 
@@ -200,6 +227,15 @@ cc_test(
     name = "streaming_util_tests",
     srcs = [
         "src/test/streaming_util_tests.cc",
+    ],
+    copts = COPTS,
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "event_service_tests",
+    srcs = [
+        "src/test/event_service_tests.cc",
     ],
     deps = test_common_deps,
 )
@@ -209,10 +245,23 @@ python_proto_compile(
     deps = ["//streaming:streaming_proto"],
 )
 
+python_proto_compile(
+    name = "remote_call_py_proto",
+    deps = ["//streaming:remote_call_proto"],
+)
+
+filegroup(
+    name = "all_py_proto",
+    srcs = [
+        ":remote_call_py_proto",
+        ":streaming_py_proto",
+    ],
+)
+
 genrule(
     name = "copy_streaming_py_proto",
     srcs = [
-        ":streaming_py_proto",
+        ":all_py_proto",
     ],
     outs = [
         "copy_streaming_py_proto.out",
@@ -220,16 +269,70 @@ genrule(
     cmd = """
         set -e
         set -x
-        WORK_DIR=$$(pwd)
+        WORK_DIR="$$(pwd)"
         # Copy generated files.
-        GENERATED_DIR=$$WORK_DIR/streaming/python/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
-        for f in $(locations //streaming:streaming_py_proto); do
-            cp $$f $$GENERATED_DIR
+        GENERATED_DIR="$$WORK_DIR/streaming/python/generated"
+        rm -rf "$$GENERATED_DIR"
+        mkdir -p "$$GENERATED_DIR"
+        touch "$$GENERATED_DIR/__init__.py"
+        for f in $(locations //streaming:all_py_proto); do
+            cp -f "$$f" "$$GENERATED_DIR"
         done
-        echo $$(date) > $@
+        sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
+        date > $@
     """,
     local = 1,
     visibility = ["//visibility:public"],
+)
+
+# Streaming java
+genrule(
+    name = "copy_jni_h",
+    srcs = ["@bazel_tools//tools/jdk:jni_header"],
+    outs = ["jni.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "copy_jni_md_h",
+    srcs = select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    outs = ["jni_md.h"],
+    cmd = "cp -f $< $@",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "jni",
+    hdrs = [
+        ":jni.h",
+        ":jni_md.h",
+    ],
+    copts = COPTS,
+    includes = [
+        ".",  # needed for `include <jni.h>`
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "libstreaming_java.so",
+    srcs = glob([
+        "src/lib/java/*.cc",
+        "src/lib/java/*.h",
+    ]),
+    copts = COPTS,
+    includes = [
+        "src",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":jni",
+        ":streaming_lib",
+    ],
 )

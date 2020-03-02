@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 #include "gtest/gtest.h"
+#include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/test_util.h"
 
@@ -15,16 +16,17 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-class AccessorTestBase : public ::testing::Test {
+class AccessorTestBase : public RedisServiceManagerForTest {
  public:
-  AccessorTestBase() : options_("127.0.0.1", 6379, "", true) {}
+  AccessorTestBase() {}
 
   virtual ~AccessorTestBase() {}
 
   virtual void SetUp() {
     GenTestData();
 
-    gcs_client_.reset(new RedisGcsClient(options_));
+    GcsClientOptions options = GcsClientOptions("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    gcs_client_.reset(new RedisGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
     work_thread_.reset(new std::thread([this] {
@@ -62,7 +64,6 @@ class AccessorTestBase : public ::testing::Test {
   }
 
  protected:
-  GcsClientOptions options_;
   std::unique_ptr<RedisGcsClient> gcs_client_;
 
   boost::asio::io_service io_service_;

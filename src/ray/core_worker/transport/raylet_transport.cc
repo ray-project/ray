@@ -7,7 +7,7 @@ namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     const WorkerID &worker_id, std::shared_ptr<raylet::RayletClient> &raylet_client,
-    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
+    const TaskHandler &task_handler, const std::function<void(bool)> &exit_handler)
     : worker_id_(worker_id),
       raylet_client_(raylet_client),
       task_handler_(task_handler),
@@ -16,19 +16,6 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // Check that the message was intended for our WorkerID and drop it if not.
-  // This handles the case where a message is delayed so we get an AssignTask
-  // bound for a previous worker that is now dead because we bound to the same
-  // port. Note that returning the status here doesn't actually cause the raylet
-  // to fail the task, that happens due to the unintentional disconnect from the
-  // asio connection when the previous worker died.
-  WorkerID intended_worker_id = WorkerID::FromBinary(request.worker_id());
-  if (intended_worker_id != worker_id_) {
-    RAY_LOG(WARNING) << "Received task for mismatched WorkerID " << intended_worker_id;
-    send_reply_callback(Status::Invalid("Mismatched WorkerID"), nullptr, nullptr);
-    return;
-  }
-
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId() << " is create "
@@ -61,9 +48,12 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(task_spec, resource_ids, &results);
+  ReferenceCounter::ReferenceTableProto borrower_refs;
+  // NOTE(swang): Distributed ref counting does not work for the raylet
+  // transport.
+  auto status = task_handler_(task_spec, resource_ids, &results, &borrower_refs);
   if (status.IsSystemExit()) {
-    exit_handler_();
+    exit_handler_(status.IsIntentionalSystemExit());
     return;
   }
 

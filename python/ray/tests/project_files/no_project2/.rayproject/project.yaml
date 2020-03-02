@@ -1,3 +1,4 @@
 name: testmissingyaml
 
-cluster: "cluster.yaml"
+cluster:
+  config: cluster.yaml

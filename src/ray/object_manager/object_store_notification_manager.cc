@@ -14,22 +14,52 @@
 namespace ray {
 
 ObjectStoreNotificationManager::ObjectStoreNotificationManager(
-    boost::asio::io_service &io_service, const std::string &store_socket_name)
+    boost::asio::io_service &io_service, const std::string &store_socket_name,
+    bool exit_on_error)
     : store_client_(),
       length_(0),
       num_adds_processed_(0),
       num_removes_processed_(0),
-      socket_(io_service) {
+      socket_(io_service),
+      exit_on_error_(exit_on_error) {
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
-  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
+  int c_socket;  // TODO(mehrdadn): This should be type SOCKET for Windows
+  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket));
   boost::system::error_code ec;
-  socket_.assign(local_stream_protocol(), c_socket_, ec);
+#ifdef _WIN32
+  WSAPROTOCOL_INFO pi;
+  size_t n = sizeof(pi);
+  char *p = reinterpret_cast<char *>(&pi);
+  const int level = SOL_SOCKET;
+  const int opt = SO_PROTOCOL_INFO;
+  if (boost::asio::detail::socket_ops::getsockopt(c_socket, 0, level, opt, p, &n, ec) !=
+      boost::asio::detail::socket_error_retval) {
+    switch (pi.iAddressFamily) {
+    case AF_INET:
+      socket_.assign(local_stream_protocol::v4(), c_socket, ec);
+      break;
+    case AF_INET6:
+      socket_.assign(local_stream_protocol::v6(), c_socket, ec);
+      break;
+    default:
+      ec = boost::system::errc::make_error_code(
+          boost::system::errc::address_family_not_supported);
+      break;
+    }
+  }
+#else
+  socket_.assign(local_stream_protocol(), c_socket, ec);
+#endif
   assert(!ec.value());
   NotificationWait();
 }
 
 ObjectStoreNotificationManager::~ObjectStoreNotificationManager() {
+  RAY_ARROW_CHECK_OK(store_client_.Disconnect());
+}
+
+void ObjectStoreNotificationManager::Shutdown() {
   RAY_ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
@@ -43,15 +73,26 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
     const boost::system::error_code &error) {
   notification_.resize(length_);
   if (error) {
-    // When shutting down a cluster, it's possible that the plasma store is killed
-    // earlier than raylet, in this case we don't want raylet to crash, we instead
-    // log an error message and exit.
-    RAY_LOG(ERROR) << "Failed to process store length: "
-                   << boost_to_ray_status(error).ToString()
-                   << ", most likely plasma store is down, raylet will exit";
-    // Exit raylet process.
-    _exit(kRayletStoreErrorExitCode);
+    if (exit_on_error_) {
+      // When shutting down a cluster, it's possible that the plasma store is killed
+      // earlier than raylet. In this case we don't want raylet to crash, we instead
+      // log an error message and exit.
+      RAY_LOG(ERROR) << "Failed to process store length: "
+                     << boost_to_ray_status(error).ToString()
+                     << ", most likely plasma store is down, raylet will exit";
+      // Exit raylet process.
+      _exit(kRayletStoreErrorExitCode);
+    } else {
+      // The log level is set to debug so user don't see it on ctrl+c exit.
+      RAY_LOG(DEBUG) << "Failed to process store length: "
+                     << boost_to_ray_status(error).ToString()
+                     << ", most likely plasma store is down. "
+                     << "The error is silenced because exit_on_error_ "
+                     << "flag is set.";
+      return;
+    }
   }
+
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
       boost::bind(&ObjectStoreNotificationManager::ProcessStoreNotification, this,
@@ -61,9 +102,19 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
   if (error) {
-    RAY_LOG(FATAL)
-        << "Problem communicating with the object store from raylet, check logs or "
-        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+    if (exit_on_error_) {
+      RAY_LOG(FATAL)
+          << "Problem communicating with the object store from raylet, check logs or "
+          << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+    } else {
+      // The log level is set to debug so user don't see it on ctrl+c exit.
+      RAY_LOG(DEBUG)
+          << "Problem communicating with the object store from raylet, check logs or "
+          << "dmesg for previous errors: " << boost_to_ray_status(error).ToString()
+          << " The error is silenced because exit_on_error_ "
+          << "flag is set.";
+      return;
+    }
   }
 
   const auto &object_notification =

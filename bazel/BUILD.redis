@@ -28,5 +28,8 @@ cc_library(
     copts = COPTS,
     includes = ["deps"],
     strip_include_prefix = "deps",
+    deps = [
+        "@com_github_ray_project_ray//:platform_shims",
+    ],
     visibility = ["//visibility:public"],
 )

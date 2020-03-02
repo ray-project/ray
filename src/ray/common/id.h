@@ -74,7 +74,9 @@ class BaseID {
 
  protected:
   BaseID(const std::string &binary) {
-    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), T::Size());
+    RAY_CHECK(binary.size() == Size() || binary.size() == 0)
+        << "expected size is " << Size() << ", but got " << binary.size();
+    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), binary.size());
   }
   // All IDs are immutable for hash evaluations. MutableData is only allow to use
   // in construction time, so this function is protected.
@@ -389,7 +391,9 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
                                                                                \
    private:                                                                    \
     explicit type(const std::string &binary) {                                 \
-      std::memcpy(&id_, binary.data(), kUniqueIDSize);                         \
+      RAY_CHECK(binary.size() == Size() || binary.size() == 0)                 \
+          << "expected size is " << Size() << ", but got " << binary.size();   \
+      std::memcpy(&id_, binary.data(), binary.size());                         \
     }                                                                          \
   };
 
@@ -416,10 +420,10 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size())
+  RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
       << "expected size is " << T::Size() << ", but got " << binary.size();
   T t = T::Nil();
-  std::memcpy(t.MutableData(), binary.data(), T::Size());
+  std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;
 }
 

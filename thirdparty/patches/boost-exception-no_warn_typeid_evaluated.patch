@@ -1,5 +1,4 @@
 diff --git boost/exception/info.hpp boost/exception/info.hpp
-index f7ac50e..9a18650 100644
 --- boost/exception/info.hpp
 +++ boost/exception/info.hpp
 @@ -84,3 +84,4 @@ boost

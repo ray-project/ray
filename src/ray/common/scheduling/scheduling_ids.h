@@ -2,6 +2,7 @@
 #define RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/util/logging.h"
 
 #include <string>
 

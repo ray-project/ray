@@ -25,6 +25,8 @@ enum TaskType {
   ACTOR_CREATION_TASK = 1;
   // Actor task.
   ACTOR_TASK = 2;
+  // Driver task.
+  DRIVER_TASK = 3;
 }
 
 // Address of a worker or node manager.
@@ -36,6 +38,29 @@ message Address {
   bytes worker_id = 4;
 }
 
+/// Function descriptor for Java.
+message JavaFunctionDescriptor {
+  string class_name = 1;
+  string function_name = 2;
+  string signature = 3;
+}
+
+/// Function descriptor for Python.
+message PythonFunctionDescriptor {
+  string module_name = 1;
+  string class_name = 2;
+  string function_name = 3;
+  string function_hash = 4;
+}
+
+// A union wrapper for various function descriptor types.
+message FunctionDescriptor {
+  oneof function_descriptor {
+    JavaFunctionDescriptor java_function_descriptor = 1;
+    PythonFunctionDescriptor python_function_descriptor = 2;
+  }
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
@@ -44,11 +69,8 @@ message TaskSpec {
   TaskType type = 1;
   // Language of this task.
   Language language = 2;
-  // Function descriptor of this task, which is a list of strings that can
-  // uniquely describe the function to execute.
-  // For a Python function, it should be: [module_name, class_name, function_name]
-  // For a Java function, it should be: [class_name, method_name, type_descriptor]
-  repeated bytes function_descriptor = 3;
+  // Function descriptor of this task uniquely describe the function to execute.
+  FunctionDescriptor function_descriptor = 3;
   // ID of the job that this task belongs to.
   bytes job_id = 4;
   // Task ID of the task.
@@ -94,6 +116,8 @@ message TaskArg {
   bytes data = 2;
   // Metadata for pass-by-value arguments.
   bytes metadata = 3;
+  // ObjectIDs that were nested in the inlined arguments of the data field.
+  repeated bytes nested_inlined_ids = 4;
 }
 
 // Task spec of an actor creation task.
@@ -160,4 +184,60 @@ message ResourceMapEntry {
   string name = 1;
   // The set of resource ids assigned.
   repeated ResourceId resource_ids = 2;
+}
+
+message ViewData {
+  message Measure {
+    // A short string that describes the tags for this mesaure, e.g.,
+    // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
+    string tags = 1;
+    // Int64 type value (if present).
+    int64 int_value = 2;
+    // Double type value (if present).
+    double double_value = 3;
+    // Distribution type value (if present).
+    double distribution_min = 4;
+    double distribution_mean = 5;
+    double distribution_max = 6;
+    double distribution_count = 7;
+    repeated double distribution_bucket_boundaries = 8;
+    repeated double distribution_bucket_counts = 9;
+  }
+
+  // The name of this Census view.
+  string view_name = 1;
+  // The list of measures recorded under this view.
+  repeated Measure measures = 2;
+}
+
+// Debug info returned from the core worker.
+message CoreWorkerStats {
+  // Debug string of the currently executing task.
+  string current_task_desc = 1;
+  // Number of pending normal and actor tasks.
+  int32 num_pending_tasks = 2;
+  // Number of object ids in local scope.
+  int32 num_object_ids_in_scope = 3;
+  // String representation of the function descriptor of the currently executing task.
+  string current_task_func_desc = 4;
+  // IP address of the core worker.
+  string ip_address = 6;
+  // Port of the core worker.
+  int64 port = 7;
+  // Actor ID.
+  bytes actor_id = 8;
+  // A map from the resource name (e.g. "CPU") to the amount of resource used.
+  map<string, double> used_resources = 9;
+  // A string displayed on Dashboard.
+  map<string, string> webui_display = 10;
+  // Number of objects stored in local memory.
+  int32 num_local_objects = 11;
+  // Used local object store memory.
+  int64 used_object_store_memory = 12;
+  // Length of the task queue.
+  int32 task_queue_length = 13;
+  // Number of executed tasks.
+  int32 num_executed_tasks = 14;
+  // Actor constructor.
+  string actor_title = 15;
 }

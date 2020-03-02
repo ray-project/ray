@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import json
 import os
@@ -16,9 +12,6 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray import ray_constants
-
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -29,7 +22,7 @@ def test_actor_deletion_with_gpus(shutdown_only):
     # are released.
 
     @ray.remote(num_gpus=1)
-    class Actor(object):
+    class Actor:
         def getpid(self):
             return os.getpid()
 
@@ -42,7 +35,7 @@ def test_actor_deletion_with_gpus(shutdown_only):
 
 def test_actor_state(ray_start_regular):
     @ray.remote
-    class Counter(object):
+    class Counter:
         def __init__(self):
             self.value = 0
 
@@ -63,7 +56,7 @@ def test_actor_state(ray_start_regular):
 
 
 def test_actor_class_methods(ray_start_regular):
-    class Foo(object):
+    class Foo:
         x = 2
 
         @classmethod
@@ -87,94 +80,6 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.g.remote(2)) == 4
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no actor method resources")
-def test_resource_assignment(shutdown_only):
-    """Test to make sure that we assign resource to actors at instantiation."""
-    # This test will create 16 actors. Declaring this many CPUs initially will
-    # speed up the test because the workers will be started ahead of time.
-    ray.init(
-        num_cpus=16,
-        num_gpus=1,
-        resources={"Custom": 1},
-        object_store_memory=int(150 * 1024 * 1024))
-
-    class Actor(object):
-        def __init__(self):
-            self.resources = ray.get_resource_ids()
-
-        def get_actor_resources(self):
-            return self.resources
-
-        def get_actor_method_resources(self):
-            return ray.get_resource_ids()
-
-    decorator_resource_args = [{}, {
-        "num_cpus": 0.1
-    }, {
-        "num_gpus": 0.1
-    }, {
-        "resources": {
-            "Custom": 0.1
-        }
-    }]
-    instantiation_resource_args = [{}, {
-        "num_cpus": 0.2
-    }, {
-        "num_gpus": 0.2
-    }, {
-        "resources": {
-            "Custom": 0.2
-        }
-    }]
-    for decorator_args in decorator_resource_args:
-        for instantiation_args in instantiation_resource_args:
-            if len(decorator_args) == 0:
-                actor_class = ray.remote(Actor)
-            else:
-                actor_class = ray.remote(**decorator_args)(Actor)
-            actor = actor_class._remote(**instantiation_args)
-            actor_resources = ray.get(actor.get_actor_resources.remote())
-            actor_method_resources = ray.get(
-                actor.get_actor_method_resources.remote())
-            if len(decorator_args) == 0 and len(instantiation_args) == 0:
-                assert len(actor_resources) == 0, (
-                    "Actor should not be assigned resources.")
-                assert list(actor_method_resources.keys()) == [
-                    "CPU"
-                ], ("Actor method should only have CPUs")
-                assert actor_method_resources["CPU"][0][1] == 1, (
-                    "Actor method should default to one cpu.")
-            else:
-                if ("num_cpus" not in decorator_args
-                        and "num_cpus" not in instantiation_args):
-                    assert actor_resources["CPU"][0][1] == 1, (
-                        "Actor should default to one cpu.")
-                correct_resources = {}
-                defined_resources = decorator_args.copy()
-                defined_resources.update(instantiation_args)
-                for resource, value in defined_resources.items():
-                    if resource == "num_cpus":
-                        correct_resources["CPU"] = value
-                    elif resource == "num_gpus":
-                        correct_resources["GPU"] = value
-                    elif resource == "resources":
-                        for custom_resource, amount in value.items():
-                            correct_resources[custom_resource] = amount
-                for resource, amount in correct_resources.items():
-                    assert (actor_resources[resource][0][0] ==
-                            actor_method_resources[resource][0][0]), (
-                                "Should have assigned same {} for both actor ",
-                                "and actor method.".format(resource))
-                    assert (actor_resources[resource][0][
-                        1] == actor_method_resources[resource][0][1]), (
-                            "Should have assigned same amount of {} for both ",
-                            "actor and actor method.".format(resource))
-                    assert actor_resources[resource][0][1] == amount, (
-                        "Actor should have {amount} {resource} but has ",
-                        "{amount} {resource}".format(
-                            amount=amount, resource=resource))
-
-
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
@@ -188,7 +93,7 @@ def test_actor_gpus(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -227,7 +132,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -259,7 +164,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
 
     # We should be able to create more actors that use only a single GPU.
     @ray.remote(num_gpus=1)
-    class Actor2(object):
+    class Actor2:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -297,7 +202,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -343,7 +248,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     @ray.remote
     def create_actors(i, n):
         @ray.remote(num_gpus=1)
-        class Actor(object):
+        class Actor:
             def __init__(self, i, j):
                 self.gpu_ids = ray.get_gpu_ids()
 
@@ -389,7 +294,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
         assert len(set(gpus_in_use[node_name])) == num_gpus_per_raylet
 
     @ray.remote(num_gpus=1)
-    class Actor(object):
+    class Actor:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -403,8 +308,6 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     assert ready_ids == []
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_actors_and_tasks_with_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -454,7 +357,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
                 [t1, t2])
 
     @ray.remote(num_gpus=1)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
             assert len(self.gpu_ids) == 1
@@ -530,7 +433,7 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # for a long time in order to make sure the GPU is not released
     # prematurely.
     @ray.remote
-    class RecordGPUs(object):
+    class RecordGPUs:
         def __init__(self):
             self.gpu_ids_seen = []
             self.num_calls = 0
@@ -552,7 +455,7 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
         time.sleep(1000)
 
     @ray.remote(num_gpus=1)
-    class Actor(object):
+    class Actor:
         def __init__(self, record_gpu_actor):
             self.gpu_ids = ray.get_gpu_ids()
             assert len(self.gpu_ids) == 1
@@ -594,7 +497,7 @@ def test_blocking_actor_task(shutdown_only):
         return 1
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             pass
 
@@ -607,7 +510,7 @@ def test_blocking_actor_task(shutdown_only):
     ray.get(actor.blocking_method.remote())
 
     @ray.remote(num_cpus=1)
-    class CPUFoo(object):
+    class CPUFoo:
         def __init__(self):
             pass
 
@@ -623,7 +526,7 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
     @ray.remote(num_gpus=1)
-    class GPUFoo(object):
+    class GPUFoo:
         def __init__(self):
             pass
 
@@ -638,19 +541,16 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0),
-    reason="This test is currently failing on Python 2.7.")
 def test_lifetime_and_transient_resources(ray_start_regular):
     # This actor acquires resources only when running methods.
     @ray.remote
-    class Actor1(object):
+    class Actor1:
         def method(self):
             pass
 
     # This actor acquires resources for its lifetime.
     @ray.remote(num_cpus=1)
-    class Actor2(object):
+    class Actor2:
         def method(self):
             pass
 
@@ -671,12 +571,12 @@ def test_custom_label_placement(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
-    class ResourceActor1(object):
+    class ResourceActor1:
         def get_location(self):
             return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource2": 1})
-    class ResourceActor2(object):
+    class ResourceActor2:
         def get_location(self):
             return ray.worker.global_worker.node.unique_id
 
@@ -697,12 +597,12 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.init(num_cpus=10, num_gpus=2, resources={"CustomResource1": 1})
 
     @ray.remote(num_gpus=1)
-    class ResourceActor1(object):
+    class ResourceActor1:
         def method(self):
             return ray.get_gpu_ids()[0]
 
     @ray.remote(resources={"CustomResource1": 1})
-    class ResourceActor2(object):
+    class ResourceActor2:
         def method(self):
             pass
 
@@ -743,5 +643,4 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

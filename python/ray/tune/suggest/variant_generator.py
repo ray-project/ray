@@ -1,12 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import logging
 import numpy
 import random
-import types
 
 from ray.tune import TuneError
 from ray.tune.sample import sample_from
@@ -130,7 +125,7 @@ def _generate_variants(spec):
     grid_vars = []
     lambda_vars = []
     for path, value in unresolved.items():
-        if isinstance(value, types.FunctionType):
+        if callable(value):
             lambda_vars.append((path, value))
         else:
             grid_vars.append((path, value))

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 import logging
 import numpy as np
@@ -11,13 +7,13 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
 
 from ray.rllib.models.extra_spaces import Simplex
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                       TorchDiagGaussian)
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
-from ray.rllib.models.tf.tf_action_dist import (
-    Categorical, MultiCategorical, Deterministic, DiagGaussian,
-    MultiActionDistribution, Dirichlet)
+from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
+    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
@@ -78,21 +74,23 @@ MODEL_DEFAULTS = {
     "zero_mean": True,
 
     # === Options for custom models ===
-    # Name of a custom preprocessor to use
-    "custom_preprocessor": None,
     # Name of a custom model to use
     "custom_model": None,
-    # Name of a custom action distribution to use
+    # Name of a custom action distribution to use.
     "custom_action_dist": None,
+
     # Extra options to pass to the custom classes
     "custom_options": {},
+    # Custom preprocessors are deprecated. Please use a wrapper class around
+    # your environment instead to preprocess observations.
+    "custom_preprocessor": None,
 }
 # __sphinx_doc_end__
 # yapf: enable
 
 
 @PublicAPI
-class ModelCatalog(object):
+class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
     Examples:
@@ -108,27 +106,39 @@ class ModelCatalog(object):
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space, config, dist_type=None, torch=False):
-        """Returns action distribution class and size for the given action space.
+    def get_action_dist(action_space,
+                        config,
+                        dist_type=None,
+                        framework="tf",
+                        **kwargs):
+        """Returns a distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
-            config (dict): Optional model config.
-            dist_type (str): Optional identifier of the action distribution.
-            torch (bool):  Optional whether to return PyTorch distribution.
+            config (Optional[dict]): Optional model config.
+            dist_type (Optional[str]): Identifier of the action distribution.
+            framework (str): One of "tf" or "torch".
+            kwargs (dict): Optional kwargs to pass on to the Distribution's
+                constructor.
 
         Returns:
             dist_class (ActionDistribution): Python class of the distribution.
             dist_dim (int): The size of the input vector to the distribution.
         """
-
+        dist = None
         config = config or MODEL_DEFAULTS
+        # Custom distribution given.
         if config.get("custom_action_dist"):
             action_dist_name = config["custom_action_dist"]
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
             dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
-
+        # Dist_type is given directly as a class.
+        elif type(dist_type) is type and \
+                issubclass(dist_type, ActionDistribution) and \
+                dist_type is not MultiActionDistribution:
+            dist = dist_type
+        # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
@@ -137,16 +147,21 @@ class ModelCatalog(object):
                     "Consider reshaping this into a single dimension, "
                     "using a custom action distribution, "
                     "using a Tuple action space, or the multi-agent API.")
+            # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
-                dist = TorchDiagGaussian if torch else DiagGaussian
+                dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
             elif dist_type == "deterministic":
                 dist = Deterministic
+        # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist = TorchCategorical if torch else Categorical
-        elif isinstance(action_space, gym.spaces.Tuple):
-            if torch:
-                raise NotImplementedError("Tuple action spaces not supported "
-                                          "for Pytorch.")
+            dist = Categorical if framework == "tf" else TorchCategorical
+        # Tuple Space -> MultiAction.
+        elif dist_type is MultiActionDistribution or \
+                isinstance(action_space, gym.spaces.Tuple):
+            if framework == "torch":
+                # TODO(sven): implement
+                raise NotImplementedError(
+                    "Tuple action spaces not supported for Pytorch.")
             child_dist = []
             input_lens = []
             for action in action_space.spaces:
@@ -156,29 +171,36 @@ class ModelCatalog(object):
                 input_lens.append(action_size)
             return partial(
                 MultiActionDistribution,
-                child_distributions=child_dist,
                 action_space=action_space,
+                child_distributions=child_dist,
                 input_lens=input_lens), sum(input_lens)
+        # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
-            if torch:
-                raise NotImplementedError("Simplex action spaces not "
-                                          "supported for Pytorch.")
+            if framework == "torch":
+                # TODO(sven): implement
+                raise NotImplementedError(
+                    "Simplex action spaces not supported for torch.")
             dist = Dirichlet
+        # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            if torch:
-                raise NotImplementedError("MultiDiscrete action spaces not "
-                                          "supported for Pytorch.")
+            if framework == "torch":
+                # TODO(sven): implement
+                raise NotImplementedError(
+                    "MultiDiscrete action spaces not supported for Pytorch.")
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
+        # Dict -> TODO(sven)
         elif isinstance(action_space, gym.spaces.Dict):
+            # TODO(sven): implement
             raise NotImplementedError(
                 "Dict action spaces are not supported, consider using "
                 "gym.spaces.Tuple instead")
+        # Unknown type -> Error.
+        else:
+            raise NotImplementedError("Unsupported args: {} {}".format(
+                action_space, dist_type))
 
         return dist, dist.required_model_output_shape(action_space, config)
-
-        raise NotImplementedError("Unsupported args: {} {}".format(
-            action_space, dist_type))
 
     @staticmethod
     @DeveloperAPI
@@ -207,6 +229,7 @@ class ModelCatalog(object):
                 else:
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
+            size = int(size)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
         elif isinstance(action_space, gym.spaces.Dict):
             raise NotImplementedError(
@@ -218,7 +241,7 @@ class ModelCatalog(object):
 
     @staticmethod
     @DeveloperAPI
-    def get_action_placeholder(action_space):
+    def get_action_placeholder(action_space, name=None):
         """Returns an action placeholder consistent with the action space
 
         Args:
@@ -229,7 +252,7 @@ class ModelCatalog(object):
 
         dtype, shape = ModelCatalog.get_action_shape(action_space)
 
-        return tf.placeholder(dtype, shape=shape, name="action")
+        return tf.placeholder(dtype, shape=shape, name=(name or "action"))
 
     @staticmethod
     @DeveloperAPI
@@ -237,7 +260,7 @@ class ModelCatalog(object):
                      action_space,
                      num_outputs,
                      model_config,
-                     framework,
+                     framework="tf",
                      name="default_model",
                      model_interface=None,
                      default_model=None,
@@ -250,7 +273,7 @@ class ModelCatalog(object):
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): Either "tf" or "torch".
+            framework (str): One of "tf" or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
@@ -368,6 +391,12 @@ class ModelCatalog(object):
         if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
+            logger.warning(
+                "DeprecationWarning: Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead of preprocessors.")
             prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 observation_space, options)
         else:

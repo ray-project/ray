@@ -23,7 +23,7 @@ following.
 
 .. code-block:: bash
 
-    python test_performance.py --num-nodes=3 --redis-address=<redis-address>
+    python test_performance.py --num-nodes=3 --address=<redis-address>
 
 The ``--num-nodes`` flag must match the number of nodes in the cluster. The
 nodes in the cluster must be configured with the appropriate resource labels. In

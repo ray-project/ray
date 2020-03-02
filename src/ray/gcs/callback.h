@@ -39,6 +39,11 @@ using MultiItemCallback =
 template <typename ID, typename Data>
 using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 
+/// This callback is used to receive a single item from GCS.
+/// \param result The item returned by GCS.
+template <typename Data>
+using ItemCallback = std::function<void(const Data &result)>;
+
 }  // namespace gcs
 
 }  // namespace ray

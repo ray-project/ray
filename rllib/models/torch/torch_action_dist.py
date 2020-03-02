@@ -1,20 +1,19 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-try:
-    import torch
-except ImportError:
-    pass  # soft dep
-
 import numpy as np
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils import try_import_torch
+
+torch, nn = try_import_torch()
 
 
 class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
+
+    def __init_(self, inputs):
+        super().__init__(inputs)
+        # Store the last sample here.
+        self.last_sample = None
 
     @override(ActionDistribution)
     def logp(self, actions):
@@ -26,11 +25,17 @@ class TorchDistributionWrapper(ActionDistribution):
 
     @override(ActionDistribution)
     def kl(self, other):
-        return torch.distributions.kl.kl_divergence(self.dist, other)
+        return torch.distributions.kl.kl_divergence(self.dist, other.dist)
 
     @override(ActionDistribution)
     def sample(self):
-        return self.dist.sample()
+        self.last_sample = self.dist.sample()
+        return self.last_sample
+
+    @override(ActionDistribution)
+    def sampled_action_logp(self):
+        assert self.last_sample is not None
+        return self.logp(self.last_sample)
 
 
 class TorchCategorical(TorchDistributionWrapper):
@@ -38,7 +43,12 @@ class TorchCategorical(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def __init__(self, inputs, model):
+        super().__init__(inputs, model)
         self.dist = torch.distributions.categorical.Categorical(logits=inputs)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return self.dist.probs.argmax(dim=1)
 
     @staticmethod
     @override(ActionDistribution)
@@ -51,12 +61,25 @@ class TorchDiagGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def __init__(self, inputs, model):
+        super().__init__(inputs, model)
         mean, log_std = torch.chunk(inputs, 2, dim=1)
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
 
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        return self.dist.mean
+
     @override(TorchDistributionWrapper)
     def logp(self, actions):
-        return TorchDistributionWrapper.logp(self, actions).sum(-1)
+        return super().logp(actions).sum(-1)
+
+    @override(TorchDistributionWrapper)
+    def entropy(self):
+        return super().entropy().sum(-1)
+
+    @override(TorchDistributionWrapper)
+    def kl(self, other):
+        return super().kl(other).sum(-1)
 
     @staticmethod
     @override(ActionDistribution)

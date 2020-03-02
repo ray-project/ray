@@ -26,7 +26,28 @@ class ActorInfoAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
       actor->set_actor_id(actor_id.Binary());
       id_to_data_[actor_id] = actor;
     }
+    GenCheckpointData();
   }
+
+  void GenCheckpointData() {
+    for (const auto item : id_to_data_) {
+      const ActorID &id = item.first;
+      ActorCheckpointList checkpoints;
+      for (size_t i = 0; i < checkpoint_number_; ++i) {
+        ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
+        auto checkpoint = std::make_shared<ActorCheckpointData>();
+        checkpoint->set_actor_id(id.Binary());
+        checkpoint->set_checkpoint_id(checkpoint_id.Binary());
+        checkpoint->set_execution_dependency(checkpoint_id.Binary());
+        checkpoints.emplace_back(checkpoint);
+      }
+      id_to_checkpoints_[id] = std::move(checkpoints);
+    }
+  }
+
+  typedef std::vector<std::shared_ptr<ActorCheckpointData>> ActorCheckpointList;
+  std::unordered_map<ActorID, ActorCheckpointList> id_to_checkpoints_;
+  size_t checkpoint_number_{2};
 };
 
 TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
@@ -99,6 +120,75 @@ TEST_F(ActorInfoAccessorTest, Subscribe) {
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
 }
 
+TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
+  ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
+  auto on_add_done = [this](Status status) {
+    RAY_CHECK_OK(status);
+    --pending_count_;
+  };
+  for (size_t index = 0; index < checkpoint_number_; ++index) {
+    for (const auto &actor_checkpoints : id_to_checkpoints_) {
+      const ActorCheckpointList &checkpoints = actor_checkpoints.second;
+      const auto &checkpoint = checkpoints[index];
+      ++pending_count_;
+      Status status = actor_accessor.AsyncAddCheckpoint(checkpoint, on_add_done);
+      RAY_CHECK_OK(status);
+    }
+    WaitPendingDone(wait_pending_timeout_);
+  }
+
+  for (const auto &actor_checkpoints : id_to_checkpoints_) {
+    const ActorCheckpointList &checkpoints = actor_checkpoints.second;
+    for (const auto &checkpoint : checkpoints) {
+      ActorCheckpointID checkpoint_id =
+          ActorCheckpointID::FromBinary(checkpoint->checkpoint_id());
+      auto on_get_done = [this, checkpoint_id](
+                             Status status,
+                             const boost::optional<ActorCheckpointData> &result) {
+        RAY_CHECK(result);
+        ActorCheckpointID result_checkpoint_id =
+            ActorCheckpointID::FromBinary(result->checkpoint_id());
+        ASSERT_EQ(checkpoint_id, result_checkpoint_id);
+        --pending_count_;
+      };
+      ++pending_count_;
+      Status status = actor_accessor.AsyncGetCheckpoint(checkpoint_id, on_get_done);
+      RAY_CHECK_OK(status);
+    }
+  }
+  WaitPendingDone(wait_pending_timeout_);
+
+  for (const auto &actor_checkpoints : id_to_checkpoints_) {
+    const ActorID &actor_id = actor_checkpoints.first;
+    const ActorCheckpointList &checkpoints = actor_checkpoints.second;
+    auto on_get_done = [this, &checkpoints](
+                           Status status,
+                           const boost::optional<ActorCheckpointIdData> &result) {
+      RAY_CHECK(result);
+      ASSERT_EQ(checkpoints.size(), result->checkpoint_ids_size());
+      for (size_t i = 0; i < checkpoints.size(); ++i) {
+        const std::string checkpoint_id_str = checkpoints[i]->checkpoint_id();
+        const std::string &result_checkpoint_id_str = result->checkpoint_ids(i);
+        ASSERT_EQ(checkpoint_id_str, result_checkpoint_id_str);
+      }
+      --pending_count_;
+    };
+    ++pending_count_;
+    Status status = actor_accessor.AsyncGetCheckpointID(actor_id, on_get_done);
+    RAY_CHECK_OK(status);
+  }
+  WaitPendingDone(wait_pending_timeout_);
+}
+
 }  // namespace gcs
 
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 4);
+  ray::REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  return RUN_ALL_TESTS();
+}

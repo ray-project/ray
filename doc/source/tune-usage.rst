@@ -1,8 +1,6 @@
 Tune User Guide
 ===============
 
-.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
-
 Tune Overview
 -------------
 
@@ -121,7 +119,7 @@ Tune automatically runs N concurrent trials, where N is the number of CPUs (core
     # If you have 4 CPUs on your machine, this will run 1 trial at a time.
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
 
-To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See the section on`resource allocation <tune-usage#resource-allocation-using-gpus>`_, which provides more details about GPU usage and trials that are distributed:
+To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See the section on `resource allocation <tune-usage.html#resource-allocation-using-gpus>`_, which provides more details about GPU usage and trials that are distributed:
 
 .. code-block:: python
 
@@ -494,23 +492,38 @@ In the example below, each trial will be stopped either when it completes 10 ite
 
 For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
 
-You can use this to stop all trials after the criteria is fulfilled by any individual trial:
+.. code-block:: python
+
+
+    def stopper(trial_id, result):
+        return result["mean_accuracy"] / result["training_iteration"] > 5
+
+    tune.run(my_trainable, stop=stopper)
+
+Finally, you can implement the ``Stopper`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
 .. code-block:: python
 
-    class Stopper:
+    from ray.tune import Stopper
+
+    class CustomStopper(Stopper):
         def __init__(self):
             self.should_stop = False
 
-        def stop(self, trial_id, result):
+        def __call__(self, trial_id, result):
             if not self.should_stop and result['foo'] > 10:
                 self.should_stop = True
             return self.should_stop
 
-    stopper = Stopper()
-    tune.run(my_trainable, stop=stopper.stop)
+        def stop_all(self):
+            """Returns whether to stop trials and prevent new ones from starting."""
+            return self.should_stop
 
-Note that in the above example all trials will not stop immediately, but will do so once their current iterations are complete.
+    stopper = CustomStopper()
+    tune.run(my_trainable, stop=stopper)
+
+
+Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete.
 
 Auto-Filled Results
 -------------------
@@ -537,11 +550,11 @@ The following fields will automatically show up on the console output, if provid
 TensorBoard
 -----------
 
-To visualize learning in tensorboard, install TensorFlow:
+To visualize learning in tensorboard, install TensorFlow or tensorboardX:
 
 .. code-block:: bash
 
-    $ pip install tensorflow
+    $ pip install tensorboardX # or pip install tensorflow
 
 Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results. Note that if you running Ray on a remote cluster, you can forward the tensorboard port to your local machine through SSH using ``ssh -L 6006:localhost:6006 <address>``:
 
@@ -604,23 +617,6 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
     )
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
-
-.. warning:: If you run into issues for TensorBoard logging, consider using the TensorBoardX Logger (``from ray.tune.logger import TBXLogger``)
-
-TBXLogger (TensorboardX)
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Tune provides a logger using `TensorBoardX <https://github.com/lanpa/tensorboardX>`_. You can install tensorboardX via ``pip install tensorboardX``. This logger automatically outputs loggers similar to the default TensorFlow logging format but is nice if you are undergoing a TF1 to TF2 transition. By default, it will log any scalar value provided via the result dictionary along with HParams information.
-
-.. code-block:: python
-
-    from ray.tune.logger import TBXLogger
-
-    tune.run(
-        MyTrainableClass,
-        name="experiment_name",
-        loggers=[TBXLogger]
-    )
 
 MLFlow
 ~~~~~~
@@ -712,6 +708,80 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
 
 Note that some behavior such as writing to files by depending on the current working directory in a Trainable and setting global process variables may not work as expected. Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
 
+CLI Progress Reporting
+----------------------
+
+By default, Tune reports experiment progress periodically to the command-line as follows.
+
+.. code-block:: bash
+
+    == Status ==
+    Memory usage on this node: 11.4/16.0 GiB
+    Using FIFO scheduling algorithm.
+    Resources requested: 4/12 CPUs, 0/0 GPUs, 0.0/3.17 GiB heap, 0.0/1.07 GiB objects
+    Result logdir: /Users/foo/ray_results/myexp
+    Number of trials: 4 (4 RUNNING)
+    +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
+    | Trial name           | status   | loc                 |    param1 | param2 | param3 |    acc |   loss |   total time (s) |  iter |
+    |----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------|
+    | MyTrainable_a826033a | RUNNING  | 10.234.98.164:31115 | 0.303706  | 0.0761 | 0.4328 | 0.1289 | 1.8572 |          7.54952 |    15 |
+    | MyTrainable_a8263fc6 | RUNNING  | 10.234.98.164:31117 | 0.929276  | 0.158  | 0.3417 | 0.4865 | 1.6307 |          7.0501  |    14 |
+    | MyTrainable_a8267914 | RUNNING  | 10.234.98.164:31111 | 0.068426  | 0.0319 | 0.1147 | 0.9585 | 1.9603 |          7.0477  |    14 |
+    | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1784 | 0.1797 | 1.7161 |          7.05715 |    14 |
+    +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
+
+Note that columns will be hidden if they are completely empty. The output can be configured in various ways by instantiating a ``CLIReporter`` instance (or ``JupyterNotebookReporter`` if you're using jupyter notebook). Here's an example:
+
+.. code-block:: python
+
+    from ray.tune import CLIReporter
+
+    # Limit the number of rows.
+    reporter = CLIReporter(max_progress_rows=10)
+    # Add a custom metric column, in addition to the default metrics.
+    # Note that this must be a metric that is returned in your training results.
+    reporter.add_metric_column("custom_metric")
+    tune.run(my_trainable, progress_reporter=reporter)
+
+Extending ``CLIReporter`` lets you control reporting frequency. For example:
+
+.. code-block:: python
+
+    class ExperimentTerminationReporter(CLIReporter):
+        def should_report(self, trials, done=False):
+            """Reports only on experiment termination."""
+            return done
+
+    tune.run(my_trainable, progress_reporter=ExperimentTerminationReporter())
+
+    class TrialTerminationReporter(CLIReporter):
+        def __init__(self):
+            self.num_terminated = 0
+
+        def should_report(self, trials, done=False):
+            """Reports only on trial termination events."""
+            old_num_terminated = self.num_terminated
+            self.num_terminated = len([t for t in trials if t.status == Trial.TERMINATED])
+            return self.num_terminated > old_num_terminated
+
+    tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
+
+The default reporting style can also be overriden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
+
+.. code-block:: python
+
+    from ray.tune import ProgressReporter
+
+    class CustomReporter(ProgressReporter):
+
+        def should_report(self, trials, done=False):
+            return True
+
+        def report(self, trials, *sys_info):
+            print(*sys_info)
+            print("\n".join([str(trial) for trial in trials]))
+
+    tune.run(my_trainable, progress_reporter=CustomReporter())
 
 Tune CLI (Experimental)
 -----------------------

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import numpy as np
 import logging
@@ -294,7 +290,7 @@ class HyperBandScheduler(FIFOScheduler):
         trial_runner.trial_executor.unpause_trial(trial)
 
 
-class Bracket(object):
+class Bracket:
     """Logical object for tracking Hyperband bracket progress. Keeps track
     of proper parameters as designated by HyperBand.
 

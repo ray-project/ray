@@ -1,18 +1,22 @@
 import numpy as np
-import torch
+
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
-
 from ray.rllib.contrib.alpha_zero.core.mcts import Node, RootParentNode
+from ray.rllib.utils import try_import_torch
+
+torch, _ = try_import_torch()
 
 
 class AlphaZeroPolicy(TorchPolicy):
-    def __init__(self, observation_space, action_space, model, loss,
+    def __init__(self, observation_space, action_space, config, model, loss,
                  action_distribution_class, mcts_creator, env_creator,
                  **kwargs):
-        super().__init__(observation_space, action_space, model, loss,
-                         action_distribution_class)
+        super().__init__(
+            observation_space, action_space, config, model, loss,
+            action_distribution_class
+        )
         # we maintain an env copy in the policy that is used during mcts
         # simulations
         self.env_creator = env_creator

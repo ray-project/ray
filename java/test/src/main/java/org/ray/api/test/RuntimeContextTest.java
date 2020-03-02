@@ -1,11 +1,12 @@
 package org.ray.api.test;
 
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
-import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -13,9 +14,16 @@ import org.testng.annotations.Test;
 
 public class RuntimeContextTest extends BaseTest {
 
-  private static JobId JOB_ID = JobId.fromHexString("00112233");
+  private static JobId JOB_ID = getJobId();
   private static String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
   private static String OBJECT_STORE_SOCKET_NAME = "/tmp/ray/test/object_store_socket";
+
+  private static JobId getJobId() {
+    // Must be stable across different processes.
+    byte[] bytes = new byte[JobId.LENGTH];
+    Arrays.fill(bytes, (byte) 127);
+    return JobId.fromByteBuffer(ByteBuffer.wrap(bytes));
+  }
 
   @BeforeClass
   public void setUp() {

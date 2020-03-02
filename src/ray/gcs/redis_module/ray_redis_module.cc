@@ -977,7 +977,10 @@ extern "C" {
 
 /// This function must be present on each Redis module. It is used in order to
 /// register the commands into the Redis server.
-int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+    int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
 

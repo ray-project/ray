@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import jsonschema
 import os
 import pytest
@@ -9,16 +5,13 @@ import subprocess
 import yaml
 from click.testing import CliRunner
 import sys
+from unittest.mock import patch, DEFAULT
 
 from contextlib import contextmanager
 
-from ray.projects.scripts import session_start, session_execute
+from ray.projects.scripts import (session_start, session_commands,
+                                  session_execute)
 import ray
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch, DEFAULT
-else:
-    from mock import patch, DEFAULT
 
 TEST_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "project_files")
@@ -239,8 +232,18 @@ def test_session_create_multiple():
     assert result.exit_code == 1
 
 
+def test_session_commands():
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/commands-test", session_commands, [])
+
+    assert "This is the first parameter" in result.output
+    assert "This is the second parameter" in result.output
+
+    assert 'Command "first"' in result.output
+    assert 'Command "second"' in result.output
+
+
 if __name__ == "__main__":
-    import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

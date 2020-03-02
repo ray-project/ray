@@ -14,10 +14,6 @@ algorithms might crash if they don't properly ignore the -inf action scores.
 Working configurations are given below.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import random
 import numpy as np

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import binascii
 import errno
 import hashlib
@@ -10,14 +6,17 @@ import logging
 import numpy as np
 import os
 import six
-import subprocess
 import sys
 import threading
 import time
 import uuid
 
+import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+import psutil
+
+logger = logging.getLogger(__name__)
 
 
 def _random_string():
@@ -64,7 +63,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    worker.raylet_client.push_error(job_id, error_type, message, time.time())
+    worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
@@ -129,6 +128,21 @@ def is_function_or_method(obj):
 def is_class_method(f):
     """Returns whether the given method is a class_method."""
     return hasattr(f, "__self__") and f.__self__ is not None
+
+
+def is_static_method(cls, f_name):
+    """Returns whether the class has a static method with the given name.
+
+    Args:
+        cls: The Python class (i.e. object of type `type`) to
+            search for the method in.
+        f_name: The name of the method to look up in this class
+            and check whether or not it is static.
+    """
+    for cls in inspect.getmro(cls):
+        if f_name in cls.__dict__:
+            return isinstance(cls.__dict__[f_name], staticmethod)
+    return False
 
 
 def random_string():
@@ -250,7 +264,8 @@ def get_cuda_visible_devices():
 
     Returns:
         if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set, this returns None.
+            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
+            this returns None.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
@@ -258,6 +273,9 @@ def get_cuda_visible_devices():
         return None
 
     if gpu_ids_str == "":
+        return []
+
+    if gpu_ids_str == "NoDevFiles":
         return []
 
     return [int(i) for i in gpu_ids_str.split(",")]
@@ -365,46 +383,6 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
-def vmstat(stat):
-    """Run vmstat and get a particular statistic.
-
-    Args:
-        stat: The statistic that we are interested in retrieving.
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(["vmstat", "-s"])
-    stat = stat.encode("ascii")
-    for line in out.split(b"\n"):
-        line = line.strip()
-        if stat in line:
-            return int(line.split(b" ")[0])
-    raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
-
-
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5e90b0a7f3fccb177445a186cc4fac62cfadb510/psutil/tests/test_osx.py#L29-L38  # noqa: E501
-def sysctl(command):
-    """Run a sysctl command and parse the output.
-
-    Args:
-        command: A sysctl command with an argument, for example,
-            ["sysctl", "hw.memsize"].
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(command)
-    result = out.split(b" ")[1]
-    try:
-        return int(result)
-    except ValueError:
-        return result
-
-
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
@@ -421,62 +399,50 @@ def get_system_memory():
             docker_limit = int(f.read())
 
     # Use psutil if it is available.
-    psutil_memory_in_bytes = None
-    try:
-        import psutil
-        psutil_memory_in_bytes = psutil.virtual_memory().total
-    except ImportError:
-        pass
-
-    if psutil_memory_in_bytes is not None:
-        memory_in_bytes = psutil_memory_in_bytes
-    elif sys.platform == "linux" or sys.platform == "linux2":
-        # Handle Linux.
-        bytes_in_kilobyte = 1024
-        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
-    else:
-        # Handle MacOS.
-        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+    psutil_memory_in_bytes = psutil.virtual_memory().total
 
     if docker_limit is not None:
-        return min(docker_limit, memory_in_bytes)
-    else:
-        return memory_in_bytes
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
+        return min(docker_limit, psutil_memory_in_bytes)
+
+    return psutil_memory_in_bytes
+
+
+def get_used_memory():
+    """Return the currently used system memory in bytes
+
+    Returns:
+        The total amount of used memory
+    """
+    # Try to accurately figure out the memory usage if we are in a docker
+    # container.
+    docker_usage = None
+    memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    if os.path.exists(memory_usage_filename):
+        with open(memory_usage_filename, "r") as f:
+            docker_usage = int(f.read())
+
+    # Use psutil if it is available.
+    psutil_memory_in_bytes = psutil.virtual_memory().used
+
+    if docker_usage is not None:
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
+        return min(docker_usage, psutil_memory_in_bytes)
+
+    return psutil_memory_in_bytes
 
 
 def estimate_available_memory():
     """Return the currently available amount of system memory in bytes.
 
     Returns:
-        The total amount of available memory in bytes. It may be an
-        overestimate if psutil is not installed.
+        The total amount of available memory in bytes. Based on the used
+        and total memory.
+
     """
-
-    # check cgroup memory first
-    try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-            cgroup_memory_usage = int(f.read())
-    except IOError:
-        cgroup_memory_usage = None
-
-    if cgroup_memory_usage is not None:
-        return get_system_memory() - cgroup_memory_usage
-
-    # Use psutil if it is available.
-    try:
-        import psutil
-        return psutil.virtual_memory().available
-    except ImportError:
-        pass
-
-    # Handle Linux.
-    if sys.platform == "linux" or sys.platform == "linux2":
-        bytes_in_kilobyte = 1024
-        return (
-            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
-
-    # Give up
-    return get_system_memory()
+    return get_system_memory() - get_used_memory()
 
 
 def get_shared_memory_bytes():
@@ -545,26 +511,14 @@ def try_make_directory_shared(directory_path):
             raise
 
 
-def try_to_create_directory(directory_path, warn_if_exist=True):
+def try_to_create_directory(directory_path):
     """Attempt to create a directory that is globally readable/writable.
 
     Args:
         directory_path: The path of the directory to create.
-        warn_if_exist (bool): Warn if the directory already exists.
     """
     directory_path = os.path.expanduser(directory_path)
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise e
-            if warn_if_exist:
-                logger = logging.getLogger("ray")
-                logger.warning(
-                    "Attempted to create '{}', but the directory already "
-                    "exists.".format(directory_path))
-
+    os.makedirs(directory_path, exist_ok=True)
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)

@@ -10,10 +10,6 @@ pattern, and a custom action distribution class that leverages that model.
 This examples shows both.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 from gym.spaces import Discrete, Tuple
 import argparse
@@ -25,7 +21,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Categorical, ActionDistribution
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.policy.policy import TupleActions
+from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -33,6 +29,7 @@ tf = try_import_tf()
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")  # try PG, PPO, IMPALA
 parser.add_argument("--stop", type=int, default=200)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class CorrelatedActionsEnv(gym.Env):
@@ -69,6 +66,19 @@ class BinaryAutoregressiveOutput(ActionDistribution):
     @staticmethod
     def required_model_output_shape(self, model_config):
         return 16  # controls model output feature vector size
+
+    def deterministic_sample(self):
+        # first, sample a1
+        a1_dist = self._a1_distribution()
+        a1 = a1_dist.deterministic_sample()
+
+        # sample a2 conditioned on a1
+        a2_dist = self._a2_distribution(a1)
+        a2 = a2_dist.deterministic_sample()
+        self._action_logp = a1_dist.logp(a1) + a2_dist.logp(a2)
+
+        # return the action tuple
+        return TupleActions([a1, a2])
 
     def sample(self):
         # first, sample a1
@@ -196,8 +206,8 @@ class AutoregressiveActionsModel(TFModelV2):
 
 
 if __name__ == "__main__":
-    ray.init()
     args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("autoregressive_model",
                                        AutoregressiveActionsModel)
     ModelCatalog.register_custom_action_dist("binary_autoreg_output",

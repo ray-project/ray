@@ -13,15 +13,6 @@
 
 namespace ray {
 
-/// Connect a TCP socket.
-///
-/// \param socket The socket to connect.
-/// \param ip_address The IP address to connect to.
-/// \param port The port to connect to.
-/// \return Status.
-ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
-                       const std::string &ip_address, int port);
-
 /// \typename ServerConnection
 ///
 /// A generic type representing a client connection to a server. This typename
@@ -217,7 +208,7 @@ typedef
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
     boost::asio::local::stream_protocol
 #else
-    boost::asio::generic::stream_protocol
+    boost::asio::ip::tcp
 #endif
         local_stream_protocol;
 

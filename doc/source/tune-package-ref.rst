@@ -7,11 +7,13 @@ ray.tune
 .. automodule:: ray.tune
     :members:
     :show-inheritance:
-    :exclude-members: TuneError, Trainable
+    :exclude-members: TuneError, Trainable, DurableTrainable
 
 .. autoclass:: ray.tune.Trainable
     :members:
     :private-members:
+
+.. autoclass:: ray.tune.DurableTrainable
 
 .. autoclass:: ray.tune.function_runner.StatusReporter
     :members: __call__, logdir

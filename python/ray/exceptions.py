@@ -2,12 +2,8 @@ import os
 
 import colorama
 
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
-
 import ray
+import setproctitle
 
 
 class RayError(Exception):
@@ -166,7 +162,13 @@ class RayTimeoutError(RayError):
     pass
 
 
+class PlasmaObjectNotAvailable(RayError):
+    """Called when an object was not available within the given timeout."""
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
+    PlasmaObjectNotAvailable,
     RayError,
     RayTaskError,
     RayWorkerError,

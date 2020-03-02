@@ -7,6 +7,7 @@
 *ray*RayObject*
 *ray*Status*
 *ray*RayFunction*
+*ray*FunctionDescriptorBuilder*
 *ray*TaskArg*
 *ray*TaskOptions*
 *ray*Buffer*
@@ -25,3 +26,4 @@
 *PyInit*
 *init_raylet*
 *Java*
+*JNI_*

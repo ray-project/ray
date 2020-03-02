@@ -1,4 +1,5 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "name": {
@@ -13,6 +14,10 @@
       "description": "The URL of the repo this project is part of",
       "type": "string"
     },
+    "documentation": {
+      "description": "Link to the documentation of this project",
+      "type": "string"
+    },
     "tags": {
       "description": "Relevant tags for this project",
       "type": "array",
@@ -20,13 +25,49 @@
         "type": "string"
       }
     },
-    "documentation": {
-      "description": "Link to the documentation of this project",
-      "type": "string"
-    },
     "cluster": {
-      "description": "Path to a .yaml cluster configuration file (relative to the project root)",
-      "type": "string"
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "string",
+          "description": "Path to a .yaml cluster configuration file (relative to the project root)"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "help": {
+                "type": "string"
+              },
+              "choices": {
+                "type": "array"
+              },
+              "default": {
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "int",
+                  "float",
+                  "str"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "additionalProperties": false
     },
     "environment": {
       "description": "The environment that needs to be set up to run the project",
@@ -51,7 +92,8 @@
             "type": "string"
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "commands": {
       "type": "array",
@@ -63,11 +105,15 @@
             "description": "Name of the command",
             "type": "string"
           },
+          "help": {
+            "description": "Help string for the command",
+            "type": "string"
+          },
           "command": {
             "description": "Shell command to run on the cluster",
             "type": "string"
           },
-          "params" : {
+          "params": {
             "type": "array",
             "items": {
               "description": "Possible parameters in the command",
@@ -84,8 +130,23 @@
                 "choices": {
                   "description": "Possible values the parameter can take",
                   "type": "array"
+                },
+                "default": {
+                },
+                "type": {
+                  "description": "Required type for the parameter",
+                  "type": "string",
+                  "enum": [
+                    "int",
+                    "float",
+                    "str"
+                  ]
                 }
-              }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
             }
           },
           "config": {
@@ -102,12 +163,19 @@
               "additionalProperties": false
             }
           }
-        }
+        },
+        "required": [
+          "name",
+          "command"
+        ],
+        "additionalProperties": false
       }
-    }
+    },
+    "output_files": {}
   },
   "required": [
     "name",
     "cluster"
-  ]
+  ],
+  "additionalProperties": false
 }
