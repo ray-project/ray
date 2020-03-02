@@ -54,7 +54,7 @@ class GaussianNoise(Exploration):
 
         self.random_timesteps = random_timesteps
         self.random_exploration = Random(
-            action_space, framework=self.framework)
+            action_space, framework=self.framework, **kwargs)
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
