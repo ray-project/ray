@@ -197,6 +197,8 @@ COMMON_CONFIG = {
     # policy, even if this is a stochastic one. Setting "explore=False" here
     # will result in the evaluation workers not using this optimal policy!
     "evaluation_config": {
+        # Set `in_evaluation` flag to True, in case a Trainer needs to know.
+        "in_evaluation": True,
         # Example: overriding env_config, exploration, etc:
         # "env_config": {...},
         # "explore": False
@@ -594,7 +596,6 @@ class Trainer(Trainable):
                 extra_config.update({
                     "batch_mode": "complete_episodes",
                     "batch_steps": 1,
-                    "in_evaluation": True,
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
