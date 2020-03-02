@@ -10,26 +10,21 @@ class PlasmaObjectFuture(asyncio.Future):
     pass
 
 
-def _complete_future(eventHandler, ray_object_id):
+def _complete_future(event_handler, ray_object_id):
     # TODO(ilr): Consider race condition between popping from the
     # waiting_dict and as_future appending to the waiting_dict's list.
     logger.debug(
         "Completing plasma futures for object id {}".format(ray_object_id))
-    obj = ray.get(ray_object_id, timeout=0.1)
-    futures = eventHandler._waiting_dict.pop(ray_object_id)
+    obj = ray.get(ray_object_id, timeout=0)
+    futures = event_handler._waiting_dict.pop(ray_object_id)
     for fut in futures:
-        loop = fut._loop
-
-        def complete_closure():
-            try:
-                fut.set_result(obj)
-            except asyncio.InvalidStateError:
-                # Avoid issues where process_notifications
-                # and check_ready both get executed
-                logger.debug("Failed to set result for future {}."
-                             "Most likely already set.".format(fut))
-
-        loop.call_soon_threadsafe(complete_closure)
+        try:
+            fut.set_result(obj)
+        except asyncio.InvalidStateError:
+            # Avoid issues where process_notifications
+            # and check_immediately both get executed
+            logger.debug("Failed to set result for future {}."
+                         "Most likely already set.".format(fut))
 
 
 class PlasmaEventHandler:
