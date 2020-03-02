@@ -10,10 +10,12 @@ namespace ray {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals, std::function<void()> on_store_full)
-    : raylet_client_(raylet_client) {
-  check_signals_ = check_signals;
-  on_store_full_ = on_store_full;
+    std::function<Status()> check_signals, bool evict_if_full,
+    std::function<void()> on_store_full)
+    : raylet_client_(raylet_client),
+      check_signals_(check_signals),
+      evict_if_full_(evict_if_full),
+      on_store_full_(on_store_full) {
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
@@ -67,9 +69,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_.Create(
-          object_id.ToPlasmaId(), data_size, metadata ? metadata->Data() : nullptr,
-          metadata ? metadata->Size() : 0, &arrow_buffer);
+      plasma_status =
+          store_client_.Create(object_id.ToPlasmaId(), evict_if_full_, data_size,
+                               metadata ? metadata->Data() : nullptr,
+                               metadata ? metadata->Size() : 0, &arrow_buffer);
     }
     if (plasma::IsPlasmaStoreFull(plasma_status)) {
       std::ostringstream message;
