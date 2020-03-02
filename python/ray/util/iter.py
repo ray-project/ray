@@ -158,7 +158,7 @@ class ParallelIterator(Generic[T]):
     def __init__(self, actor_sets: List["_ActorSet"], name: str,
                  parent_iterators: List["ParallelIterator[Any]"]):
         """Create a parallel iterator (this is an internal function)."""
-        
+
         # We track multiple sets of actors to support parallel .union().
         self.actor_sets = actor_sets
         self.name = name
