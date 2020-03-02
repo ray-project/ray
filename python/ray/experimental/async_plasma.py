@@ -11,7 +11,6 @@ class PlasmaObjectFuture(asyncio.Future):
 
 
 def _complete_future(eventHandler, ray_object_id):
-    print("completing future")
     # TODO(ilr): Consider race condition between popping from the
     # waiting_dict and as_future appending to the waiting_dict's list.
     logger.debug(
@@ -44,28 +43,6 @@ class PlasmaEventHandler:
 
     def process_notifications(self, messages):
         """Process notifications."""
-
-        # def _complete_future(eventHandler, ray_object_id):
-        #     # TODO(ilr): Consider race condition between popping from the
-        #     # waiting_dict and as_future appending to the waiting_dict's list.
-        #     logger.debug("Completing plasma futures for object id {}".format(
-        #         ray_object_id))
-        #     obj = ray.get(ray_object_id, timeout=0.1)
-        #     futures = eventHandler._waiting_dict.pop(ray_object_id)
-        #     for fut in futures:
-        #         loop = fut._loop
-
-        #         def complete_closure():
-        #             try:
-        #                 fut.set_result(obj)
-        #             except asyncio.InvalidStateError:
-        #                 # Avoid issues where process_notifications
-        #                 # and check_ready both get executed
-        #                 logger.debug("Failed to set result for future {}."
-        #                              "Most likely already set.".format(fut))
-
-        #         loop.call_soon_threadsafe(complete_closure)
-
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
                 self._loop.call_soon_threadsafe(_complete_future, self,
@@ -79,7 +56,6 @@ class PlasmaEventHandler:
 
     def check_immediately(self, object_id):
         ready, _ = ray.wait([object_id], timeout=0)
-        print("Checking immediately: ", ready)
         if ready:
             _complete_future(self, object_id)
 
