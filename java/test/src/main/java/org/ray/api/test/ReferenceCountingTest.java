@@ -188,7 +188,6 @@ public class ReferenceCountingTest extends BaseTest {
     return null;
   }
 
-  @Test(enabled = false)
   public void testPendingTaskDependencyPinning() {
     //    # The object that is ray.put here will go out of scope immediately, so if
     //    # pending task dependencies aren't considered, it will be evicted before
@@ -205,9 +204,8 @@ public class ReferenceCountingTest extends BaseTest {
               .limit(25 * 1024 * 1024)
               .collect(Collectors.toList()));
     }
-    //
-    //    ray.worker.global_worker.put_object(None, object_id=random_oid)
-    //    ray.get(oid)
+    TestUtils.getRuntime().getObjectStore().put(null, randomId);
+    result.get();
   }
 
   @Test(enabled = false)
