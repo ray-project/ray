@@ -37,7 +37,7 @@ def train_loss(targets, outputs):
 
 def train_bit_shift(seq_length, num_iterations, print_every_n):
 
-    optimizer = tf.keras.optimizers.Adam(1e-2)
+    optimizer = tf.keras.optimizers.Adam(1e-3)
 
     model = make_model(
         seq_length,
