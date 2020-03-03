@@ -10,12 +10,12 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.util.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
-from ray.util.sgd.pytorch.training_operator import _TestingOperator
-from ray.util.sgd.pytorch.constants import BATCH_COUNT, SCHEDULER_STEP
+from ray.util.sgd.torch import TorchTrainer, TorchTrainable
+from ray.util.sgd.torch.training_operator import _TestingOperator
+from ray.util.sgd.torch.constants import BATCH_COUNT, SCHEDULER_STEP
 from ray.util.sgd.utils import check_for_failure
 
-from ray.util.sgd.pytorch.examples.train_example import (
+from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
 
 
@@ -28,7 +28,7 @@ def ray_start_2_cpus():
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
-    trainer = PyTorchTrainer(
+    trainer = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
@@ -44,7 +44,7 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
-    trainer = PyTorchTrainer(
+    trainer = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
@@ -107,7 +107,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):
         ]
         return opts[0], opts[1]
 
-    trainer1 = PyTorchTrainer(
+    trainer1 = TorchTrainer(
         multi_model_creator,
         data_creator,
         multi_optimizer_creator,
@@ -124,7 +124,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):
 
     trainer1.shutdown()
 
-    trainer2 = PyTorchTrainer(
+    trainer2 = TorchTrainer(
         multi_model_creator,
         data_creator,
         multi_optimizer_creator,
@@ -193,7 +193,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
     for model_count in range(1, 3):
         for optimizer_count in range(1, 3):
             for scheduler_count in range(1, 3):
-                trainer = PyTorchTrainer(
+                trainer = TorchTrainer(
                     multi_model_creator,
                     data_creator,
                     multi_optimizer_creator,
@@ -221,7 +221,7 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
         return torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=30, gamma=0.1)
 
-    trainer = PyTorchTrainer(
+    trainer = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
@@ -239,7 +239,7 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
 def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-    trainer = PyTorchTrainer(
+    trainer = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
@@ -273,7 +273,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     }
 
     analysis = tune.run(
-        PyTorchTrainable,
+        TorchTrainable,
         num_samples=2,
         config=config,
         stop={"training_iteration": 2},
@@ -293,7 +293,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
 def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
-    trainer1 = PyTorchTrainer(
+    trainer1 = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
@@ -308,7 +308,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     trainer1.shutdown()
 
-    trainer2 = PyTorchTrainer(
+    trainer2 = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
@@ -346,8 +346,8 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
         success = check_for_failure(worker_stats)
         return success, worker_stats
 
-    with patch.object(PyTorchTrainer, "_train_epoch", step_with_fail):
-        trainer1 = PyTorchTrainer(
+    with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
+        trainer1 = TorchTrainer(
             model_creator,
             single_loader,
             optimizer_creator,
@@ -376,8 +376,8 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
         success = check_for_failure(worker_stats)
         return success, worker_stats
 
-    with patch.object(PyTorchTrainer, "_train_epoch", step_with_fail):
-        trainer1 = PyTorchTrainer(
+    with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
+        trainer1 = TorchTrainer(
             model_creator,
             single_loader,
             optimizer_creator,
@@ -412,8 +412,8 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
         success = check_for_failure(worker_stats)
         return success, worker_stats
 
-    with patch.object(PyTorchTrainer, "_train_epoch", step_with_fail):
-        trainer1 = PyTorchTrainer(
+    with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
+        trainer1 = TorchTrainer(
             model_creator,
             single_loader,
             optimizer_creator,
