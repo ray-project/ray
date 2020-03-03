@@ -160,6 +160,12 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status PlasmaObjectReady(
+      const PlasmaObjectReadyRequest &request,
+      const ClientCallback<PlasmaObjectReadyReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -197,6 +203,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {
