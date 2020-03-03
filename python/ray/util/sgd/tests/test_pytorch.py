@@ -205,7 +205,8 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
                     config={
                         "models": model_count,
                         "optimizers": optimizer_count,
-                        "schedulers": scheduler_count
+                        "schedulers": scheduler_count,
+                        "custom_func": train_epoch
                     })
                 trainer.train()
                 trainer.shutdown()

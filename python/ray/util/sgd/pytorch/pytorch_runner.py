@@ -156,6 +156,14 @@ class PyTorchRunner:
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
 
+        self.training_operator = self.training_operator_cls(
+            self.config,
+            models=self.models,
+            optimizers=self.optimizers,
+            criterion=self.criterion,
+            schedulers=self.schedulers,
+            use_fp16=self.use_fp16)
+
     def get_node_ip(self):
         """Returns the IP address of the current node."""
         return ray.services.get_node_ip_address()
