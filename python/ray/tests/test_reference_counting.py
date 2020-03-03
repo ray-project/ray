@@ -25,6 +25,7 @@ def one_worker_100MiB(request):
     config = json.dumps({
         "distributed_ref_counting_enabled": 1,
         "object_store_full_max_retries": 1,
+        "task_retry_delay_ms": 0,
     })
     yield ray.init(
         num_cpus=1,
@@ -365,7 +366,7 @@ def test_feature_flag(shutdown_only):
 # and should be evicted after it returns.
 @pytest.mark.parametrize("failure", [False, True])
 def test_basic_serialized_reference(one_worker_100MiB, failure):
-    @ray.remote(max_retries=0)
+    @ray.remote(max_retries=1)
     def pending(ref, dep):
         ray.get(ref[0])
         if failure:
@@ -406,7 +407,7 @@ def test_basic_serialized_reference(one_worker_100MiB, failure):
 # chain is running and should be removed once it finishes.
 @pytest.mark.parametrize("failure", [False, True])
 def test_recursive_serialized_reference(one_worker_100MiB, failure):
-    @ray.remote(max_retries=0)
+    @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
@@ -513,7 +514,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, failure):
 # the worker a duplicate reference to the same object ID.
 @pytest.mark.parametrize("failure", [False, True])
 def test_worker_holding_serialized_reference(one_worker_100MiB, failure):
-    @ray.remote(max_retries=0)
+    @ray.remote(max_retries=1)
     def child(dep1, dep2):
         if failure:
             os._exit(0)
@@ -572,7 +573,7 @@ def test_basic_nested_ids(one_worker_100MiB):
 # recursively and for submitted tasks.
 @pytest.mark.parametrize("failure", [False, True])
 def test_recursively_nest_ids(one_worker_100MiB, failure):
-    @ray.remote(max_retries=0)
+    @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
         if depth == max_depth:
@@ -632,7 +633,7 @@ def test_return_object_id(one_worker_100MiB, failure):
     def return_an_id():
         return [put.remote()]
 
-    @ray.remote(max_retries=0)
+    @ray.remote(max_retries=1)
     def exit():
         os._exit(0)
 
@@ -672,6 +673,7 @@ def test_pass_returned_object_id(one_worker_100MiB, failure):
     def return_an_id():
         return [put.remote()]
 
+    # TODO(edoakes): this fails with an ActorError with max_retries=1.
     @ray.remote(max_retries=0)
     def pending(ref, signal):
         ray.get(signal.wait.remote())
@@ -714,7 +716,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, failure):
     def return_an_id():
         return [put.remote()]
 
-    @ray.remote(max_retries=0)
+    @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
         if depth == max_depth:
