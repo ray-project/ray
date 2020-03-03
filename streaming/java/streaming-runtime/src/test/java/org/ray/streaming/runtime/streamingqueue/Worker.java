@@ -200,7 +200,7 @@ class WriterWorker extends Worker {
   }
 
   public String testCallReader(RayActor readerActor) {
-    String name = (String) Ray.call(ReaderWorker::getName, readerActor).get();
+    String name = (String) readerActor.call(ReaderWorker::getName).get();
     LOGGER.info("testCallReader: {}", name);
     return name;
   }
@@ -221,7 +221,7 @@ class WriterWorker extends Worker {
     LOGGER.info("Peer isDirectActorCall: {}", ((NativeRayActor) peer).isDirectCallActor());
     int count = 3;
     while (count-- != 0) {
-      Ray.call(ReaderWorker::testRayCall, peer).get();
+      peer.call(ReaderWorker::testRayCall).get();
     }
 
     try {
