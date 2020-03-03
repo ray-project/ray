@@ -1399,6 +1399,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
 void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
   plasma_notifier_->SubscribeObjAdded(
       [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
+        // This callback must be asynchronous to allow plasma to receive objects
         subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
                            info.metadata_size);
       });
