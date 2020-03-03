@@ -232,13 +232,14 @@ class OrderedIMapIterator(IMapIterator):
             if self._next_chunk_index == self._total_chunks:
                 raise StopIteration
 
-            while timeout is None or timeout > 0:
+            # This loop will break when the next index in order is ready or
+            # self._result_thread.next_ready_index() raises a timeout.
+            index = -1
+            while index != self._next_chunk_index:
                 start = time.time()
                 index = self._result_thread.next_ready_index(timeout=timeout)
                 self._submit_next_chunk()
                 self._submitted_chunks[index] = True
-                if index == self._next_chunk_index:
-                    break
                 if timeout is not None:
                     timeout = max(0, timeout - (time.time() - start))
 
