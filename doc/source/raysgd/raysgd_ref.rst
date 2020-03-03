@@ -11,6 +11,14 @@ PyTorchTrainer
 
     .. automethod:: __init__
 
+.. _ref-pytorch-operator:
+
+PyTorch TrainingOperator
+------------------------
+
+.. autoclass:: ray.util.sgd.pytorch.TrainingOperator
+    :members:
+
 
 PyTorchTrainable
 ----------------

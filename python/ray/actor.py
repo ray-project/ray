@@ -783,18 +783,10 @@ class ActorHandle:
                 self.__ray_terminate__._actor_hard_ref = None
 
     def __ray_kill__(self):
-        """Kill the actor that this actor handle refers to immediately.
-
-        This will cause any outstanding tasks submitted to the actor to fail
-        and the actor to exit in the same way as if it crashed. In general,
-        you should prefer to just delete the actor handle and let it clean up
-        gracefull.
-
-        Returns:
-            None.
-        """
-        worker = ray.worker.get_global_worker()
-        worker.core_worker.kill_actor(self._ray_actor_id)
+        """Deprecated - use ray.kill() instead."""
+        logger.warning("actor.__ray_kill__() is deprecated and will be removed"
+                       " in the near future. Use ray.kill(actor) instead.")
+        ray.kill(self)
 
     @property
     def _actor_id(self):

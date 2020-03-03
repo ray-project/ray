@@ -45,8 +45,7 @@ Then, we can tell DQN to train using these previously generated experiences with
         --config='{
             "input": "/tmp/cartpole-out",
             "input_evaluation": [],
-            "exploration_final_eps": 0,
-            "exploration_fraction": 0}'
+            "explore": false}'
 
 **Off-policy estimation:** Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value. Alternatively, `off-policy estimation <https://arxiv.org/pdf/1511.03722.pdf>`__ can be used, which requires both the source and target action probabilities to be available (i.e., the ``action_prob`` batch key). For DQN, this means enabling soft Q learning so that actions are sampled from a probability distribution:
 
@@ -58,8 +57,10 @@ Then, we can tell DQN to train using these previously generated experiences with
         --config='{
             "input": "/tmp/cartpole-out",
             "input_evaluation": ["is", "wis"],
-            "soft_q": true,
-            "softmax_temp": 1.0}'
+            "exploration_config": {
+                "type": "SoftQ",
+                "temperature": 1.0,
+            }'
 
 This example plot shows the Q-value metric in addition to importance sampling (IS) and weighted importance sampling (WIS) gain estimates (>1.0 means there is an estimated improvement over the original policy):
 
@@ -121,8 +122,7 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
                 "hdfs:/archive/cartpole": 0.3,
                 "sampler": 0.3,
             },
-            "exploration_final_eps": 0,
-            "exploration_fraction": 0}'
+            "explore": false}'
 
 Scaling I/O throughput
 ~~~~~~~~~~~~~~~~~~~~~~

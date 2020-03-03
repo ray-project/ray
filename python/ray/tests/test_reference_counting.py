@@ -12,7 +12,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor
+from ray.test_utils import SignalActor, wait_for_condition
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
@@ -106,9 +106,12 @@ def test_global_gc(shutdown_only):
 
         # GC should be triggered for all workers, including the local driver.
         global_gc()
-        time.sleep(1)
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
     finally:
         gc.enable()
 
@@ -155,16 +158,24 @@ def test_global_gc_when_full(shutdown_only):
         # object store. This should cause the captured ObjectIDs' numpy arrays
         # to be evicted.
         ray.put(np.zeros(80 * 1024 * 1024, dtype=np.uint8))
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
 
         # Local driver.
         local_ref = weakref.ref(LargeObjectWithCyclicRef())
 
         # Remote workers.
         actors = [GarbageHolder.remote() for _ in range(2)]
-        assert local_ref() is not None
-        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
 
         # GC should be triggered for all workers, including the local driver,
         # when a remote task tries to put a return value that doesn't fit in
@@ -720,6 +731,61 @@ def test_recursively_return_borrowed_object_id(one_worker_100MiB):
     del final_oid
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
+
+
+def test_out_of_band_serialized_object_id(one_worker_100MiB):
+    assert len(
+        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
+    oid = ray.put("hello")
+    _check_refcounts({oid: (1, 0)})
+    oid_str = ray.cloudpickle.dumps(oid)
+    _check_refcounts({oid: (2, 0)})
+    del oid
+    assert len(
+        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
+    assert ray.get(ray.cloudpickle.loads(oid_str)) == "hello"
+
+
+def test_captured_object_id(one_worker_100MiB):
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.wait.remote())
+        ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    oid = f.remote(signal)
+
+    # Delete local references.
+    del f
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(oid)
+
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    class Actor:
+        def get(self, signal):
+            ray.get(signal.wait.remote())
+            ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    actor = Actor.remote()
+    oid = actor.get.remote(signal)
+
+    # Delete local references.
+    del Actor
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(oid)
 
 
 if __name__ == "__main__":
