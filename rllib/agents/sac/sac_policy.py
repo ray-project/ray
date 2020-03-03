@@ -148,11 +148,15 @@ def actor_critic_loss(policy, model, _, train_batch):
     policy_t = model.action_model(model_out_t)
     policy.raw_policy_out = policy_t
 
-    policy_t = tf.nn.softmax(policy_t)
-    log_pis_t = tf.log(policy_t)
+    #policy_t = tf.nn.softmax(policy_t)
+    #log_pis_t = tf.log(policy_t)
+    log_pis_t = tf.nn.log_softmax(policy_t, -1)
+    policy_t = tf.exp(log_pis_t)
 
-    policy_tp1 = tf.nn.softmax(model.action_model(model_out_tp1), -1)
-    log_pis_tp1 = tf.log(policy_tp1)
+    #policy_tp1 = tf.nn.softmax(model.action_model(model_out_tp1), -1)
+    log_pis_tp1 = tf.nn.log_softmax(model.action_model(model_out_tp1), -1)
+    policy_tp1 = tf.exp(log_pis_tp1)
+    #log_pis_tp1 = tf.log(policy_tp1)
     # Q-values for current policy in given current state.
     q_t = model.get_q_values(model_out_t)
     policy.q_t = q_t
