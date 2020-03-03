@@ -82,6 +82,9 @@ This causes a few changes in behavior:
        for _ in range(4):
            remote_function.remote()
 
+The invocations are executed in parallel because the call to ``remote_function.remote()`` doesn't block.
+All I/O is performed in the background using Ray's internal event loop.
+
 See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
 
 **Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
