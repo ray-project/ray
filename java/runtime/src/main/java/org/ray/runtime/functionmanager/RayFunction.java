@@ -56,21 +56,6 @@ public class RayFunction {
     return functionDescriptor;
   }
 
-  public RayRemote getRayRemoteAnnotation() {
-    RayRemote rayRemote;
-
-    // If this method is a constructor, the task of it should be a actorCreationTask.
-    // And the annotation of actorCreationTask should inherit from class.
-    // Otherwise, it's a normal method, and it shouldn't inherit annotation from class.
-    if (isConstructor()) {
-      rayRemote = executable.getDeclaringClass().getAnnotation(RayRemote.class);
-    } else {
-      rayRemote = executable.getAnnotation(RayRemote.class);
-    }
-
-    return rayRemote;
-  }
-
   /**
    * @return Whether this function has a return value.
    */
