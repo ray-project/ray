@@ -123,10 +123,12 @@ public class MultiThreadingTest extends BaseTest {
     return "ok";
   }
 
+  @Test(timeOut = 3 * 60 * 1000)
   public void testInDriver() {
     testMultiThreading();
   }
 
+  @Test(timeOut = 3 * 60 * 1000)
   public void testInWorker() {
     // Single-process mode doesn't have real workers.
     TestUtils.skipTestUnderSingleProcess();
@@ -187,13 +189,5 @@ public class MultiThreadingTest extends BaseTest {
     return true;
   }
 
-  public void testGetAsyncContextAndSetAsyncContextInDriver() throws Exception {
-    Assert.assertTrue(testGetAsyncContextAndSetAsyncContext());
-  }
-
-  public void testGetAsyncContextAndSetAsyncContextInWorker() {
-    RayObject<Boolean> obj = Ray.call(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext);
-    Assert.assertTrue(obj.get());
-  }
 
 }

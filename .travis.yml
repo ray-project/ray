@@ -26,6 +26,7 @@ matrix:
       script:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./java/test.sh
+        - for f in `ls /tmp/ray/session_latest/logs`; do echo "=======================$f" && cat /tmp/ray/session_latest/logs/$f; done
 
     - os: linux
       env:
@@ -66,6 +67,7 @@ matrix:
         - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
         - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
         - ./java/test.sh
+        - for f in `ls /tmp/ray/session_latest/logs`; do echo "=======================$f" && cat /tmp/ray/session_latest/logs/$f; done
 
     - os: linux
       env:
