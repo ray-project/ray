@@ -194,7 +194,6 @@ class SerializationContext:
                 outer_id = context.get_outer_object_id()
                 # outer_id is None in the case that this ObjectID was closed
                 # over in a function or pickled directly using pickle.dumps().
-                # TODO(edoakes): make sure these objects are pinned forever.
                 if outer_id is None:
                     outer_id = ray.ObjectID.nil()
                 worker.core_worker.deserialize_and_register_object_id(
