@@ -8,8 +8,7 @@ TrainingOperator = None
 try:
     import torch  # noqa: F401
 
-    from ray.util.sgd.torch.torch_trainer import (TorchTrainer,
-                                                      TorchTrainable)
+    from ray.util.sgd.torch.torch_trainer import (TorchTrainer, TorchTrainable)
 
     from ray.util.sgd.torch.training_operator import TrainingOperator
 

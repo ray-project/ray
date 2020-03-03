@@ -116,8 +116,8 @@ class TestTorchRunner(unittest.TestCase):
         self.assertEqual(len(runner.given_models), 3)
         self.assertEqual(len(runner.given_optimizers), 3)
 
-        runner2 = TorchRunner(model_creator, single_loader,
-                                optimizer_creator, loss_creator)
+        runner2 = TorchRunner(model_creator, single_loader, optimizer_creator,
+                              loss_creator)
         runner2.setup()
 
         self.assertNotEqual(runner2.given_models, runner2.models)
@@ -129,18 +129,18 @@ class TestTorchRunner(unittest.TestCase):
                     LinearDataset(2, 5, size=400))
 
         runner = TorchRunner(model_creator, three_data_loader,
-                               optimizer_creator, loss_creator)
+                             optimizer_creator, loss_creator)
         with self.assertRaises(ValueError):
             runner.setup()
 
         runner2 = TorchRunner(model_creator, three_data_loader,
-                                optimizer_creator, loss_creator)
+                              optimizer_creator, loss_creator)
         with self.assertRaises(ValueError):
             runner2.setup()
 
     def testSingleLoader(self):
         runner = TorchRunner(model_creator, single_loader, optimizer_creator,
-                               loss_creator)
+                             loss_creator)
         runner.setup()
         runner.train_epoch()
         with self.assertRaises(ValueError):
@@ -166,7 +166,7 @@ class TestTorchRunner(unittest.TestCase):
             return opts[0], opts[1], opts[2]
 
         runner = TorchRunner(multi_model_creator, single_loader,
-                               multi_optimizer_creator, loss_creator)
+                             multi_optimizer_creator, loss_creator)
 
         with self.assertRaises(ValueError):
             runner.setup()

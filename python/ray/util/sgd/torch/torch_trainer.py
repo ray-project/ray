@@ -220,8 +220,7 @@ class TorchTrainer:
         else:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=1,
-                num_gpus=int(self.use_gpu))(DistributedTorchRunner)
+                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Compute batch size per replica
             batch_size_per_replica = self.batch_size // num_replicas
             if self.batch_size % num_replicas > 0:
