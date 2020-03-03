@@ -101,6 +101,10 @@ class Worker {
   };
   std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }; 
   void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };   
+
+  Task assigned_task_;
+  Task &GetAssignedTask() { return assigned_task_; };
+  void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
   /// XXX                                               
 
   rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }

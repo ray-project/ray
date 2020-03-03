@@ -1580,9 +1580,10 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers, spec.TaskId() = " 
         << spec.TaskId() << ", spec.JobId() = " << spec.JobId(); 
 
-    // worker->AssignTaskId(spec.TaskId()); // XXX
-    // worker->SetOwnerAddress(spec.CallerAddress());
-    // worker->AssignJobId(spec.JobId());
+    worker->AssignTaskId(spec.TaskId()); // XXX
+    worker->SetOwnerAddress(spec.CallerAddress());
+    worker->AssignJobId(spec.JobId());
+    worker->SetAssignedTask(task.second);
 
     RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers -> SetAllocatedInstances 1";
     reply(worker, ClientID::Nil(), "", -1);
@@ -1633,9 +1634,22 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
 void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   RAY_LOG(WARNING) << "xxxx WaitForTaskArgsRequests";
   RAY_CHECK(new_scheduler_enabled_);
-  std::vector<ObjectID> object_ids = work.second.GetTaskSpecification().GetDependencies();
+  const Task &task = work.second;
+  std::vector<ObjectID> object_ids = task.GetTaskSpecification().GetDependencies();
 
   if (object_ids.size() > 0) {
+      bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
+          task.GetTaskSpecification().TaskId(), task.GetDependencies());
+      if (args_ready) {
+        task_dependency_manager_.UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId());
+        tasks_to_dispatch_.push_back(work);
+      } else {
+        waiting_tasks_[task.GetTaskSpecification().TaskId()] = work;
+      }
+  } else {
+    tasks_to_dispatch_.push_back(work);
+  }
+  /*
     ray::Status status = object_manager_.Wait(
         object_ids, -1, object_ids.size(), false,
         [this, work](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
@@ -1648,7 +1662,11 @@ void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   } else {
     tasks_to_dispatch_.push_back(work);
   }
+  */
 };
+
+
+
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
@@ -2465,16 +2483,20 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
 
   // (See design_docs/task_states.rst for the state transition diagram.)
   Task task;
-  RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
+  if (new_scheduler_enabled_) {
+    task = worker.GetAssignedTask();
+  } else {
+    RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
 
-  // Release task's resources. The worker's lifetime resources are still held.
-  auto const &task_resources = worker.GetTaskResourceIds();
-  local_available_resources_.ReleaseConstrained(
-      task_resources, cluster_resource_map_[self_node_id_].GetTotalResources());
-  cluster_resource_map_[self_node_id_].Release(task_resources.ToResourceSet());
-  worker.ResetTaskResourceIds();
+    // Release task's resources. The worker's lifetime resources are still held.
+    auto const &task_resources = worker.GetTaskResourceIds();
+    local_available_resources_.ReleaseConstrained(
+        task_resources, cluster_resource_map_[self_node_id_].GetTotalResources());
+    cluster_resource_map_[self_node_id_].Release(task_resources.ToResourceSet());
+    worker.ResetTaskResourceIds();
+  }
 
-  const auto &spec = task.GetTaskSpecification();
+  const auto &spec = task.GetTaskSpecification(); // 
   if ((spec.IsActorCreationTask() || spec.IsActorTask())) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
@@ -2810,33 +2832,44 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
                  << " on " << self_node_id_ << ", " << ready_task_ids.size()
                  << " tasks ready";
   // Transition the tasks whose dependencies are now fulfilled to the ready state.
-  if (ready_task_ids.size() > 0) {
-    std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
-                                                 ready_task_ids.end());
-
-    // First filter out the tasks that should not be moved to READY.
-    local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
-    local_queues_.FilterState(ready_task_id_set, TaskState::RUNNING);
-    local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
-    local_queues_.FilterState(ready_task_id_set, TaskState::WAITING_FOR_ACTOR_CREATION);
-
-    // Make sure that the remaining tasks are all WAITING or direct call
-    // actors.
-    auto ready_task_id_set_copy = ready_task_id_set;
-    local_queues_.FilterState(ready_task_id_set_copy, TaskState::WAITING);
-    // Filter out direct call actors. These are not tracked by the raylet and
-    // their assigned task ID is the actor ID.
-    for (const auto &id : ready_task_id_set_copy) {
-      RAY_CHECK(actor_registry_.count(id.ActorId()) > 0);
-      ready_task_id_set.erase(id);
+  if (new_scheduler_enabled_) {
+    for (auto task_id: ready_task_ids) {
+      auto it = waiting_tasks_.find(task_id);
+      if (it != waiting_tasks_.end()) {
+        task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+        tasks_to_dispatch_.push_back(it->second);
+        waiting_tasks_.erase(it);
+      }
     }
+  } else {  
+    if (ready_task_ids.size() > 0) {
+      std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
+                                                  ready_task_ids.end());
 
-    // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
-    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
-    local_queues_.QueueTasks(ready_tasks, TaskState::READY);
-    DispatchTasks(MakeTasksByClass(ready_tasks));
+      // First filter out the tasks that should not be moved to READY.
+      local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
+      local_queues_.FilterState(ready_task_id_set, TaskState::RUNNING);
+      local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
+      local_queues_.FilterState(ready_task_id_set, TaskState::WAITING_FOR_ACTOR_CREATION);
+
+      // Make sure that the remaining tasks are all WAITING or direct call
+      // actors.
+      auto ready_task_id_set_copy = ready_task_id_set;
+      local_queues_.FilterState(ready_task_id_set_copy, TaskState::WAITING);
+      // Filter out direct call actors. These are not tracked by the raylet and
+      // their assigned task ID is the actor ID.
+      for (const auto &id : ready_task_id_set_copy) {
+        RAY_CHECK(actor_registry_.count(id.ActorId()) > 0);
+        ready_task_id_set.erase(id);
+      }
+
+      // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
+      auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
+      local_queues_.QueueTasks(ready_tasks, TaskState::READY);
+      DispatchTasks(MakeTasksByClass(ready_tasks));
+    }
   }
-}
+ }
 
 bool NodeManager::IsDirectActorCreationTask(const TaskID &task_id) {
   auto actor_id = task_id.ActorId();

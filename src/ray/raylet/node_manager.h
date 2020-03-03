@@ -669,6 +669,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
   /// Queue of lease requests that should be scheduled onto workers.
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
+  /// Queue storing the tasks waiting for their arguments to be transferred locally.
+  absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
