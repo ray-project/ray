@@ -1,6 +1,7 @@
 package org.ray.streaming.api.stream;
 
 
+import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FilterFunction;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
@@ -15,6 +16,7 @@ import org.ray.streaming.operator.impl.FlatMapOperator;
 import org.ray.streaming.operator.impl.KeyByOperator;
 import org.ray.streaming.operator.impl.MapOperator;
 import org.ray.streaming.operator.impl.SinkOperator;
+import org.ray.streaming.python.stream.PythonDataStream;
 
 /**
  * Represents a stream of data.
@@ -30,6 +32,14 @@ public class DataStream<T> extends Stream<T> {
   }
 
   public DataStream(DataStream input, StreamOperator streamOperator) {
+    super(input, streamOperator);
+  }
+
+  /**
+   * @param input parent data stream
+   * @param streamOperator operator for deserialize data from upstream python stream
+   */
+  public DataStream(PythonDataStream input, StreamOperator streamOperator) {
     super(input, streamOperator);
   }
 
@@ -139,4 +149,8 @@ public class DataStream<T> extends Stream<T> {
     return this;
   }
 
+  @Override
+  public Language getLanguage() {
+    return Language.JAVA;
+  }
 }

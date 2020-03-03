@@ -1,6 +1,7 @@
 package org.ray.streaming.api.stream;
 
 import java.io.Serializable;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
@@ -27,11 +28,7 @@ public abstract class Stream<T> implements Serializable {
     this.streamingContext = streamingContext;
     this.operator = streamOperator;
     this.id = streamingContext.generateId();
-    if (streamOperator instanceof PythonOperator) {
-      this.partition = PythonPartition.RoundRobinPartition;
-    } else {
-      this.partition = new RoundRobinPartition<>();
-    }
+    this.partition = selectPartition();
   }
 
   public Stream(Stream<T> inputStream, StreamOperator streamOperator) {
@@ -45,10 +42,14 @@ public abstract class Stream<T> implements Serializable {
 
   @SuppressWarnings("unchecked")
   private Partition<T> selectPartition() {
-    if (inputStream instanceof PythonStream) {
-      return PythonPartition.RoundRobinPartition;
-    } else {
-      return new RoundRobinPartition<>();
+    switch (operator.getLanguage()) {
+      case PYTHON:
+        this.partition = PythonPartition.RoundRobinPartition;
+      case JAVA:
+        this.partition = new RoundRobinPartition<>();
+      default:
+        throw new UnsupportedOperationException(
+          "Unsupported language " + operator.getLanguage());
     }
   }
 
@@ -88,4 +89,6 @@ public abstract class Stream<T> implements Serializable {
   public void setPartition(Partition<T> partition) {
     this.partition = partition;
   }
+
+  public abstract Language getLanguage();
 }

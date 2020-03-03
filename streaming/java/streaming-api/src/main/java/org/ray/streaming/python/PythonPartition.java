@@ -13,7 +13,6 @@ import org.ray.streaming.api.partition.Partition;
  * If this object is constructed from moduleName and className/functionName,
  * python worker will use `importlib` to load python partition function.
  * <p>
- * TODO serialize to bytes using protobuf
  */
 public class PythonPartition implements Partition {
   public static final PythonPartition BroadcastPartition = new PythonPartition(

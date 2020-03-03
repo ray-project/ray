@@ -1,5 +1,6 @@
 package org.ray.streaming.api.stream;
 
+import org.ray.streaming.api.Language;
 import org.ray.streaming.operator.impl.SinkOperator;
 
 /**
@@ -17,5 +18,10 @@ public class DataStreamSink<T> extends StreamSink<T> {
   public DataStreamSink<T> setParallelism(int parallelism) {
     this.parallelism = parallelism;
     return this;
+  }
+
+  @Override
+  public Language getLanguage() {
+    return Language.JAVA;
   }
 }

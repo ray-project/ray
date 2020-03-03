@@ -7,7 +7,7 @@ import org.ray.streaming.operator.StreamOperator;
  *
  * @param <T> Type of the input data of this sink.
  */
-public class StreamSink<T> extends Stream<T> {
+public abstract class StreamSink<T> extends Stream<T> {
   public StreamSink(Stream<T> inputStream, StreamOperator streamOperator) {
     super(inputStream, streamOperator);
   }

@@ -1,5 +1,6 @@
 package org.ray.streaming.python.stream;
 
+import org.ray.streaming.api.Language;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.python.PythonOperator;
 
@@ -15,6 +16,11 @@ public class PythonStreamSink extends StreamSink implements PythonStream {
   public PythonStreamSink setParallelism(int parallelism) {
     this.parallelism = parallelism;
     return this;
+  }
+
+  @Override
+  public Language getLanguage() {
+    return Language.PYTHON;
   }
 
 }

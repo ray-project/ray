@@ -1,6 +1,8 @@
 package org.ray.streaming.python.stream;
 
+import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonFunction.FunctionInterface;
@@ -111,6 +113,16 @@ public class PythonDataStream extends Stream implements PythonStream {
   public PythonDataStream setParallelism(int parallelism) {
     this.parallelism = parallelism;
     return this;
+  }
+
+  @Override
+  public Language getLanguage() {
+    return Language.PYTHON;
+  }
+
+  public DataStream asJavaStream() {
+    // TODO add deserialization operator
+    return new DataStream(this, null);
   }
 
 }
