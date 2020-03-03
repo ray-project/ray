@@ -1402,28 +1402,26 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
-  RAY_LOG(ERROR) << "ARRIVAL";
   // This callback must be asynchronous to allow plasma to receive objects
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
-  RAY_LOG(ERROR) << "Going to send reply callback";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
-  void CoreWorker::SetActorId(const ActorID &actor_id) {
-    absl::MutexLock lock(&mutex_);
-    RAY_CHECK(actor_id_.IsNil());
-    actor_id_ = actor_id;
-  }
 
-  void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
-    absl::MutexLock lock(&mutex_);
-    webui_display_[key] = message;
-  }
+void CoreWorker::SetActorId(const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  RAY_CHECK(actor_id_.IsNil());
+  actor_id_ = actor_id;
+}
 
-  void CoreWorker::SetActorTitle(const std::string &title) {
-    absl::MutexLock lock(&mutex_);
-    actor_title_ = title;
-    actor_title_ = title;
+void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
+  absl::MutexLock lock(&mutex_);
+  webui_display_[key] = message;
+}
+
+void CoreWorker::SetActorTitle(const std::string &title) {
+  absl::MutexLock lock(&mutex_);
+  actor_title_ = title;
 }
 
 }  // namespace ray

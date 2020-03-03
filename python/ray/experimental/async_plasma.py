@@ -16,7 +16,6 @@ def _complete_future(event_handler, ray_object_id):
     logger.debug(
         "Completing plasma futures for object id {}".format(ray_object_id))
     obj = event_handler._worker.get_objects([ray_object_id], timeout=0)[0]
-    print('post get', ray_object_id, obj)
     futures = event_handler._waiting_dict.pop(ray_object_id)
     for fut in futures:
         try:
@@ -41,7 +40,6 @@ class PlasmaEventHandler:
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
-                print("HANDLING")
                 # This must be asynchronous to allow objects to be locally
                 # received
                 self._loop.call_soon_threadsafe(_complete_future, self,
@@ -77,5 +75,4 @@ class PlasmaEventHandler:
                 self._waiting_dict[object_id]) == 1:
             # Only subscribe once
             self._worker.core_worker.subscribe_to_plasma_object(object_id)
-            print("AS FUTURE CALLED")
         return future

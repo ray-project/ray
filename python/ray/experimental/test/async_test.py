@@ -22,7 +22,7 @@ def gen_tasks(time_scale=0.1):
     @ray.remote
     def f(n):
         time.sleep(n * time_scale)
-        return n, np.zeros(1024 * 1024 * 50, dtype=np.uint8)
+        return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
     return [f.remote(i) for i in range(5)]
 
@@ -42,12 +42,7 @@ def test_gather(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks()
     futures = [async_api.as_future(obj_id) for obj_id in tasks]
-    for i in range(len(futures)):
-        fut = futures[i]
-        result = asyncio.get_event_loop().run_until_complete(fut)
-        print("Got the ", i, "th")
-        assert result[0] == ray.get(tasks[i])[0]
-    # results = loop.run_until_complete(asyncio.gather(*futures))
+    results = loop.run_until_complete(asyncio.gather(*futures))
     assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks)))
 
 
