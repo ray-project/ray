@@ -136,9 +136,8 @@ class ObjectStoreFullError(RayError):
             " and cannot be evicted. Try increasing the object store memory "
             "available with ray.init(object_store_memory=<bytes>). "
             "You can also try setting an option to fallback to LRU eviction "
-            "when the object store is full by calling ray.init("
-            "_internal_config=json.dumps({\"object_pinning_enabled\": 0})). "
-            "See also: "
+            "when the object store is full by calling "
+            "ray.init(lru_evict=True). See also: "
             "https://ray.readthedocs.io/en/latest/memory-management.html.")
 
 

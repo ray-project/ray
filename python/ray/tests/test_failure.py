@@ -934,14 +934,7 @@ def test_fill_object_store_exception(shutdown_only):
 
 
 def test_fill_object_store_lru_fallback(shutdown_only):
-    ray.init(
-        num_cpus=2,
-        object_store_memory=10**8,
-        _internal_config=json.dumps({
-            "object_store_full_max_retries": 0,
-            "distributed_ref_counting_enabled": 1,
-            "object_pinning_enabled": 0,
-        }))
+    ray.init(num_cpus=2, object_store_memory=10**8, lru_evict=True)
 
     @ray.remote
     def expensive_task():
