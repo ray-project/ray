@@ -33,7 +33,7 @@ namespace rpc {
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
   RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER, CONCURRENCY)
 
-#define SERVER_CALL_CONCURRENCY 9999
+#define SERVER_CALL_CONCURRENCY 100
 
 class JobInfoGcsServiceHandler {
  public:

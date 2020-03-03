@@ -16,12 +16,12 @@ namespace rpc {
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_CORE_WORKER_RPC_HANDLERS                                          \
   RPC_SERVICE_HANDLER(CoreWorkerService, AssignTask, 5)                       \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, 9999)                      \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, 100)                       \
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, 100) \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, 9999)               \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction, 9999)         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved, 9999)             \
-  RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 9999)                     \
+  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, 100)                \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction, 100)          \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved, 100)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 100)                      \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC, 100)
 
