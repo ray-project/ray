@@ -45,10 +45,17 @@ GradientType = dict
 SampleBatchType = Union[SampleBatch, MultiAgentBatch]
 
 
+# Asserts that an object is a type of SampleBatch.
 def _check_sample_batch_type(batch):
     if not isinstance(batch, SampleBatchType.__args__):
         raise ValueError("Expected either SampleBatch or MultiAgentBatch, "
                          "got {}: {}".format(type(batch), batch))
+
+
+# Returns pipeline global vars that should be periodically sent to each worker.
+def _get_global_vars():
+    metrics = LocalIterator.get_metrics()
+    return {"timestep": metrics.counters[NUM_STEPS_SAMPLED]}
 
 
 def ParallelRollouts(workers: WorkerSet,
@@ -82,6 +89,9 @@ def ParallelRollouts(workers: WorkerSet,
 
     Updates the STEPS_SAMPLED_COUNTER counter in the local iterator context.
     """
+
+    # Ensure workers are initially in sync.
+    workers.sync_weights()
 
     def report_timesteps(batch):
         metrics = LocalIterator.get_metrics()
@@ -130,6 +140,9 @@ def AsyncGradients(
     Updates the STEPS_SAMPLED_COUNTER counter and LEARNER_INFO field in the
     local iterator context.
     """
+
+    # Ensure workers are initially in sync.
+    workers.sync_weights()
 
     # This function will be applied remotely on the workers.
     def samples_to_grads(samples):
@@ -252,7 +265,7 @@ class TrainOneStep:
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = ray.put(self.workers.local_worker().get_weights())
                 for e in self.workers.remote_workers():
-                    e.set_weights.remote(weights)
+                    e.set_weights.remote(weights, _get_global_vars())
         return info
 
 
@@ -417,7 +430,7 @@ class ApplyGradients:
                     weights = ray.put(
                         self.workers.local_worker().get_weights())
                     for e in self.workers.remote_workers():
-                        e.set_weights.remote(weights)
+                        e.set_weights.remote(weights, _get_global_vars())
         else:
             if metrics.cur_actor is None:
                 raise ValueError("Could not find actor to update. When "
@@ -425,7 +438,8 @@ class ApplyGradients:
                                  "in the iterator context.")
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = self.workers.local_worker().get_weights()
-                metrics.cur_actor.set_weights.remote(weights)
+                metrics.cur_actor.set_weights.remote(weights,
+                                                     _get_global_vars())
 
 
 class AverageGradients:
