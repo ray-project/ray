@@ -39,7 +39,7 @@ This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.
 
 Using a local repository for dependencies
------------
+-----------------------------------------
 
 If you'd like to build Ray with custom dependencies (for example, with a
 different version of Cython), you can modify your ``.bzl`` file as follows:
