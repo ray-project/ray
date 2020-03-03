@@ -16,12 +16,16 @@ import org.ray.api.function.RayFuncVoid5;
 import org.ray.api.function.RayFuncVoid6;
 
 /**
- * This class provides type-safe interfaces for actor calls..
+ * This class provides type-safe interfaces for remote actor calls.
  **/
 @SuppressWarnings({"rawtypes", "unchecked"})
 interface ActorCall<A> {
 
   RayActor<A> getThis();
+
+  // =======================================
+  // Methods for remote actor calls.
+  // =======================================
 
   default <R> RayObject<R> call(RayFunc1<A, R> f) {
     Object[] args = new Object[]{};

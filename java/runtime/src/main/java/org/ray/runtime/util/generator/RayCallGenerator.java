@@ -93,12 +93,16 @@ public class RayCallGenerator extends BaseGenerator {
     }
     newLine("");
     newLine("/**");
-    newLine(" * This class provides type-safe interfaces for actor calls..");
+    newLine(" * This class provides type-safe interfaces for remote actor calls.");
     newLine(" **/");
     newLine("@SuppressWarnings({\"rawtypes\", \"unchecked\"})");
     newLine("interface ActorCall<A> {");
     newLine("");
     newLine(1, "RayActor<A> getThis();");
+    newLine("");
+    newLine(1, "// =======================================");
+    newLine(1, "// Methods for remote actor calls.");
+    newLine(1, "// =======================================");
     newLine("");
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
       buildCalls(i, true, false, true, false);
