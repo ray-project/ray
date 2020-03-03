@@ -31,6 +31,19 @@ public class ChannelUtils {
       builder.setEmptyMessageInterval(
           Integer.parseInt(conf.get(Config.STREAMING_EMPTY_MESSAGE_INTERVAL)));
     }
+    if (conf.containsKey(Config.FLOW_CONTROL_TYPE)) {
+      builder.setFlowControlType(
+          Streaming.FlowControlType.forNumber(
+              Integer.parseInt(conf.get(Config.FLOW_CONTROL_TYPE))));
+    }
+    if (conf.containsKey(Config.WRITER_CONSUMED_STEP)) {
+      builder.setWriterConsumedStep(
+          Integer.parseInt(conf.get(Config.WRITER_CONSUMED_STEP)));
+    }
+    if (conf.containsKey(Config.READER_CONSUMED_STEP)) {
+      builder.setReaderConsumedStep(
+          Integer.parseInt(conf.get(Config.READER_CONSUMED_STEP)));
+    }
     Streaming.StreamingConfig streamingConf = builder.build();
     LOGGER.info("Streaming native conf {}", streamingConf.toString());
     return streamingConf.toByteArray();

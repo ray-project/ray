@@ -2,6 +2,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# A constant to use for any configuration that should be deprecated
+# (to check, whether this config has actually been assigned a proper value or
+# not).
+DEPRECATED_VALUE = -1
+
 
 def deprecation_warning(old, new=None, error=None):
     """

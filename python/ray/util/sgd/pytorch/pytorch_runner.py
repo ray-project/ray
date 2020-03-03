@@ -33,8 +33,7 @@ class PyTorchRunner:
         loss_creator (dict -> loss | Loss class): see pytorch_trainer.py.
         scheduler_creator (optimizers, dict -> schedulers): see
             pytorch_trainer.py.
-        train_function: see pytorch_trainer.py
-        validation_function: see pytorch_trainer.py
+        training_operator_cls: see pytorch_trainer.py
         config (dict): see pytorch_trainer.py.
         dataloader_config (dict): See pytorch_trainer.py.
         batch_size (int): see pytorch_trainer.py.
@@ -69,7 +68,7 @@ class PyTorchRunner:
         self.batch_size = batch_size
         self.verbose = True
 
-        self.steps = 0
+        self.epochs = 0
         self._timers = {
             k: utils.TimerStat(window_size=1)
             for k in [
@@ -178,38 +177,34 @@ class PyTorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def train_epoch(self, info=None):
+    def train_epoch(self, num_steps=None, info=None):
         """Runs a training epoch and updates the model parameters."""
-        logger.debug("Begin Training Step {}".format(self.steps + 1))
+        logger.debug("Begin Training Step {}".format(self.epochs + 1))
         info = info or {}
         info.update({
-            "train_steps": self.steps,
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self._timers["training"]:
             iterator = self.train_loader
-            if "num_steps" in info:
-                iterator = itertools.islice(
-                    iter(self.train_loader), info["num_steps"])
+            if num_steps:
+                iterator = itertools.islice(iter(self.train_loader), num_steps)
             train_stats = self.training_operator.train_epoch(iterator, info)
 
-        self.steps += 1
-        train_stats["train_steps"] = self.steps
-
+        self.epochs += 1
         train_stats.update(self.stats())
         return train_stats
 
-    def validate(self, info=None):
+    def validate(self, num_steps=None, info=None):
         """Evaluates the model on the validation data set."""
         if self.validation_loader is None:
             raise ValueError("No validation dataloader provided.")
         info = info or {}
         with self._timers["validation"]:
             iterator = self.validation_loader
-            if "num_steps" in info:
+            if num_steps:
                 iterator = itertools.islice(
-                    iter(self.validation_loader), info["num_steps"])
+                    iter(self.validation_loader), num_steps)
             validation_stats = self.training_operator.validate(iterator, info)
 
         validation_stats.update(self.stats())
@@ -217,7 +212,7 @@ class PyTorchRunner:
 
     def stats(self):
         """Returns a dictionary of statistics collected."""
-        stats = {"epoch": self.steps}
+        stats = {"epoch": self.epochs}
         for k, t in self._timers.items():
             stats[k + "_time_mean"] = t.mean
             stats[k + "_time_total"] = t.sum
@@ -242,7 +237,7 @@ class PyTorchRunner:
         """Returns the state of the runner."""
 
         state = {
-            "epoch": self.steps,
+            "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
             "models": self._get_model_state_dicts(),
             "optimizers": [opt.state_dict() for opt in self.optimizers],
@@ -272,7 +267,7 @@ class PyTorchRunner:
 
         if self.use_fp16 and "amp" in state and amp:
             amp.load_state_dict(state["amp"])
-        self.steps = state["stats"]["epoch"]
+        self.epochs = state["stats"]["epoch"]
         self.training_operator.load_state_dict(state_dict)
 
     def apply(self, fn):

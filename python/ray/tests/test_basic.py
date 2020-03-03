@@ -8,10 +8,8 @@ import pickle
 import re
 import string
 import sys
-import tempfile
 import threading
 import time
-import uuid
 import weakref
 
 import numpy as np
@@ -36,6 +34,29 @@ def test_ignore_http_proxy(shutdown_only):
         return 1
 
     assert ray.get(f.remote()) == 1
+
+
+# https://github.com/ray-project/ray/issues/7263
+def test_grpc_message_size(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def bar(*a):
+        return
+
+    # 50KiB, not enough to spill to plasma, but will be inlined.
+    def f():
+        return np.zeros(50000, dtype=np.uint8)
+
+    # Executes a 10MiB task spec
+    ray.get(bar.remote(*[f() for _ in range(200)]))
+
+
+# https://github.com/ray-project/ray/issues/7287
+def test_omp_threads_set(shutdown_only):
+    ray.init(num_cpus=1)
+    # Should have been auto set by ray init.
+    assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
 def test_simple_serialization(ray_start_regular):
@@ -357,6 +378,56 @@ def test_complex_serialization_with_pickle(shutdown_only):
     complex_serialization(use_pickle=True)
 
 
+def test_numpy_serialization(ray_start_regular):
+    array = np.zeros(314)
+    from ray.cloudpickle import dumps
+    buffers = []
+    inband = dumps(array, protocol=5, buffer_callback=buffers.append)
+    assert len(inband) < array.nbytes
+    assert len(buffers) == 1
+
+
+def test_numpy_subclass_serialization(ray_start_regular):
+    class MyNumpyConstant(np.ndarray):
+        def __init__(self, value):
+            super().__init__()
+            self.constant = value
+
+        def __str__(self):
+            print(self.constant)
+
+    constant = MyNumpyConstant(123)
+
+    def explode(x):
+        raise RuntimeError("Expected error.")
+
+    ray.register_custom_serializer(
+        type(constant), serializer=explode, deserializer=explode)
+
+    try:
+        ray.put(constant)
+        assert False, "Should never get here!"
+    except (RuntimeError, IndexError):
+        print("Correct behavior, proof that customer serializer was used.")
+
+
+def test_numpy_subclass_serialization_pickle(ray_start_regular):
+    class MyNumpyConstant(np.ndarray):
+        def __init__(self, value):
+            super().__init__()
+            self.constant = value
+
+        def __str__(self):
+            print(self.constant)
+
+    constant = MyNumpyConstant(123)
+    ray.register_custom_serializer(type(constant), use_pickle=True)
+
+    repr_orig = repr(constant)
+    repr_ser = repr(ray.get(ray.put(constant)))
+    assert repr_orig == repr_ser
+
+
 def test_function_descriptor():
     python_descriptor = ray._raylet.PythonFunctionDescriptor(
         "module_name", "function_name", "class_name", "function_hash")
@@ -460,13 +531,15 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
     # from being garbage-collected without explicity invoking gc.collect.
+
+    # test a dynamic function
     def f():
         return 4669201609102990671853203821578
 
     wr = weakref.ref(f)
 
     bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads
+    from ray.cloudpickle import CloudPickler, loads, dumps
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
     new_f = loads(bio.getvalue())
@@ -476,6 +549,27 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     del f
 
     assert wr() is None
+
+    # test a dynamic class
+    class ShortlivedObject:
+        def __del__(self):
+            print("Went out of scope!")
+
+    obj = ShortlivedObject()
+    new_obj = weakref.ref(obj)
+
+    dumps(obj)
+    del obj
+    assert new_obj() is None
+
+
+def test_deserialized_from_buffer_immutable(ray_start_regular):
+    x = np.full((2, 2), 1.)
+    o = ray.put(x)
+    y = ray.get(o)
+    with pytest.raises(
+            ValueError, match="assignment destination is read-only"):
+        y[0, 0] = 9.
 
 
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
@@ -1268,59 +1362,24 @@ def test_get_dict(ray_start_regular):
 
 
 def test_get_with_timeout(ray_start_regular):
-    def random_path():
-        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
-
-    def touch(path):
-        with open(path, "w"):
-            pass
-
-    @ray.remote
-    def wait_for_file(path):
-        if path:
-            while True:
-                if os.path.exists(path):
-                    break
-                time.sleep(0.1)
+    signal = ray.test_utils.SignalActor.remote()
 
     # Check that get() returns early if object is ready.
     start = time.time()
-    ray.get(wait_for_file.remote(None), timeout=30)
+    ray.get(signal.wait.remote(should_wait=False), timeout=30)
     assert time.time() - start < 30
 
     # Check that get() raises a TimeoutError after the timeout if the object
     # is not ready yet.
-    path = random_path()
-    result_id = wait_for_file.remote(path)
+    result_id = signal.wait.remote()
     with pytest.raises(RayTimeoutError):
         ray.get(result_id, timeout=0.1)
 
     # Check that a subsequent get() returns early.
-    touch(path)
+    ray.get(signal.send.remote())
     start = time.time()
     ray.get(result_id, timeout=30)
     assert time.time() - start < 30
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 1,
-        "num_nodes": 1,
-    }, {
-        "num_cpus": 1,
-        "num_nodes": 2,
-    }],
-    indirect=True)
-def test_direct_call_simple(ray_start_cluster):
-    @ray.remote
-    def f(x):
-        return x + 1
-
-    f_direct = f.options(is_direct_call=True)
-    assert ray.get(f_direct.remote(2)) == 3
-    for _ in range(10):
-        assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
-            range(1, 101))
 
 
 # https://github.com/ray-project/ray/issues/6329
@@ -1353,28 +1412,7 @@ def test_call_actors_indirect_through_tasks(ray_start_regular):
         ray.get(zoo.remote([c]))
 
 
-def test_direct_call_refcount(ray_start_regular):
-    @ray.remote
-    def f(x):
-        return x + 1
-
-    @ray.remote
-    def sleep():
-        time.sleep(.1)
-        return 1
-
-    # Multiple gets should not hang with ref counting enabled.
-    f_direct = f.options(is_direct_call=True)
-    x = f_direct.remote(2)
-    ray.get(x)
-    ray.get(x)
-
-    # Temporary objects should be retained for chained callers.
-    y = f_direct.remote(sleep.options(is_direct_call=True).remote())
-    assert ray.get(y) == 2
-
-
-def test_direct_call_matrix(shutdown_only):
+def test_call_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
     @ray.remote
@@ -1410,23 +1448,23 @@ def test_direct_call_matrix(shutdown_only):
               if is_large else "small_object", "out_of_band"
               if out_of_band else "in_band")
         if source_actor:
-            a = Actor.options(is_direct_call=True).remote()
+            a = Actor.remote()
             if is_large:
                 x_id = a.large_value.remote()
             else:
                 x_id = a.small_value.remote()
         else:
             if is_large:
-                x_id = large_value.options(is_direct_call=True).remote()
+                x_id = large_value.remote()
             else:
-                x_id = small_value.options(is_direct_call=True).remote()
+                x_id = small_value.remote()
         if out_of_band:
             x_id = [x_id]
         if dest_actor:
-            b = Actor.options(is_direct_call=True).remote()
+            b = Actor.remote()
             x = ray.get(b.echo.remote(x_id))
         else:
-            x = ray.get(echo.options(is_direct_call=True).remote(x_id))
+            x = ray.get(echo.remote(x_id))
         if is_large:
             assert isinstance(x, np.ndarray)
         else:
@@ -1448,19 +1486,18 @@ def test_direct_call_matrix(shutdown_only):
         "num_nodes": 2,
     }],
     indirect=True)
-def test_direct_call_chain(ray_start_cluster):
+def test_call_chain(ray_start_cluster):
     @ray.remote
     def g(x):
         return x + 1
 
-    g_direct = g.options(is_direct_call=True)
     x = 0
     for _ in range(100):
-        x = g_direct.remote(x)
+        x = g.remote(x)
     assert ray.get(x) == 100
 
 
-def test_direct_inline_arg_memory_corruption(ray_start_regular):
+def test_inline_arg_memory_corruption(ray_start_regular):
     @ray.remote
     def f():
         return np.zeros(1000, dtype=np.uint8)
@@ -1475,13 +1512,12 @@ def test_direct_inline_arg_memory_corruption(ray_start_regular):
             for prev in self.z:
                 assert np.sum(prev) == 0, ("memory corruption detected", prev)
 
-    a = Actor.options(is_direct_call=True).remote()
-    f_direct = f.options(is_direct_call=True)
+    a = Actor.remote()
     for i in range(100):
-        ray.get(a.add.remote(f_direct.remote()))
+        ray.get(a.add.remote(f.remote()))
 
 
-def test_direct_actor_enabled(ray_start_regular):
+def test_skip_plasma(ray_start_regular):
     @ray.remote
     class Actor:
         def __init__(self):
@@ -1490,14 +1526,14 @@ def test_direct_actor_enabled(ray_start_regular):
         def f(self, x):
             return x * 2
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
     obj_id = a.f.remote(1)
     # it is not stored in plasma
     assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
     assert ray.get(obj_id) == 2
 
 
-def test_direct_actor_order(shutdown_only):
+def test_actor_call_order(shutdown_only):
     ray.init(num_cpus=4)
 
     @ray.remote
@@ -1515,14 +1551,12 @@ def test_direct_actor_order(shutdown_only):
             self.count += 1
             return count
 
-    a = Actor._remote(is_direct_call=True)
-    assert ray.get([
-        a.inc.remote(i, small_value.options(is_direct_call=True).remote())
-        for i in range(100)
-    ]) == list(range(100))
+    a = Actor.remote()
+    assert ray.get([a.inc.remote(i, small_value.remote())
+                    for i in range(100)]) == list(range(100))
 
 
-def test_direct_actor_large_objects(ray_start_regular):
+def test_actor_large_objects(ray_start_regular):
     @ray.remote
     class Actor:
         def __init__(self):
@@ -1532,7 +1566,7 @@ def test_direct_actor_large_objects(ray_start_regular):
             time.sleep(1)
             return np.zeros(10000000)
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
     obj_id = a.f.remote()
     assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
     done, _ = ray.wait([obj_id])
@@ -1541,7 +1575,7 @@ def test_direct_actor_large_objects(ray_start_regular):
     assert isinstance(ray.get(obj_id), np.ndarray)
 
 
-def test_direct_actor_pass_by_ref(ray_start_regular):
+def test_actor_pass_by_ref(ray_start_regular):
     @ray.remote
     class Actor:
         def __init__(self):
@@ -1558,7 +1592,7 @@ def test_direct_actor_pass_by_ref(ray_start_regular):
     def error():
         sys.exit(0)
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
     assert ray.get(a.f.remote(f.remote(1))) == 2
 
     fut = [a.f.remote(f.remote(i)) for i in range(100)]
@@ -1569,7 +1603,7 @@ def test_direct_actor_pass_by_ref(ray_start_regular):
         ray.get(a.f.remote(error.remote()))
 
 
-def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
+def test_actor_pass_by_ref_order_optimization(shutdown_only):
     ray.init(num_cpus=4)
 
     @ray.remote
@@ -1580,7 +1614,7 @@ def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
         def f(self, x):
             pass
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
 
     @ray.remote
     def fast_value():
@@ -1606,7 +1640,7 @@ def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
-def test_direct_actor_recursive(ray_start_regular):
+def test_actor_recursive(ray_start_regular):
     @ray.remote
     class Actor:
         def __init__(self, delegate=None):
@@ -1617,9 +1651,9 @@ def test_direct_actor_recursive(ray_start_regular):
                 return ray.get(self.delegate.f.remote(x))
             return x * 2
 
-    a = Actor._remote(is_direct_call=True)
-    b = Actor._remote(args=[a], is_direct_call=True)
-    c = Actor._remote(args=[b], is_direct_call=True)
+    a = Actor.remote()
+    b = Actor.remote(a)
+    c = Actor.remote(b)
 
     result = ray.get([c.f.remote(i) for i in range(100)])
     assert result == [x * 2 for x in range(100)]
@@ -1629,7 +1663,7 @@ def test_direct_actor_recursive(ray_start_regular):
     assert result == [x * 2 for x in range(100)]
 
 
-def test_direct_actor_concurrent(ray_start_regular):
+def test_actor_concurrent(ray_start_regular):
     @ray.remote
     class Batcher:
         def __init__(self):
@@ -1644,7 +1678,7 @@ def test_direct_actor_concurrent(ray_start_regular):
                 self.event.wait()
             return sorted(self.batch)
 
-    a = Batcher.options(is_direct_call=True, max_concurrency=3).remote()
+    a = Batcher.options(max_concurrency=3).remote()
     x1 = a.add.remote(1)
     x2 = a.add.remote(2)
     x3 = a.add.remote(3)
@@ -1699,6 +1733,35 @@ def test_wait(ray_start_regular):
         ray.wait(1)
     with pytest.raises(TypeError):
         ray.wait([1])
+
+
+def test_duplicate_args(ray_start_regular):
+    @ray.remote
+    def f(arg1,
+          arg2,
+          arg1_duplicate,
+          kwarg1=None,
+          kwarg2=None,
+          kwarg1_duplicate=None):
+        assert arg1 == kwarg1
+        assert arg1 != arg2
+        assert arg1 == arg1_duplicate
+        assert kwarg1 != kwarg2
+        assert kwarg1 == kwarg1_duplicate
+
+    # Test by-value arguments.
+    arg1 = [1]
+    arg2 = [2]
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
+
+    # Test by-reference arguments.
+    arg1 = ray.put([1])
+    arg2 = ray.put([2])
+    ray.get(
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
 if __name__ == "__main__":

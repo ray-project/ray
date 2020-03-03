@@ -166,10 +166,20 @@ COMMON_CONFIG = {
     "no_eager_on_workers": False,
 
     # === Exploration Settings ===
+    # Default exploration behavior, iff `explore`=None is passed into
+    # compute_action(s).
+    # Set to False for no exploration behavior (e.g., for evaluation).
+    "explore": True,
     # Provide a dict specifying the Exploration object's config.
-    # Set to False or None for no exploration behavior (e.g., for evaluation).
-    "exploration": False,
-
+    "exploration_config": {
+        # The Exploration class to use. In the simplest case, this is the name
+        # (str) of any class present in the `rllib.utils.exploration` package.
+        # You can also provide the python class directly or the full location
+        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+        # EpsilonGreedy").
+        "type": "StochasticSampling",
+        # Add constructor kwargs here (if any).
+    },
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
@@ -179,14 +189,17 @@ COMMON_CONFIG = {
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
+    # Internal flag that is set to True for evaluation workers.
+    "in_evaluation": False,
     # Typical usage is to pass extra args to evaluation env creator
-    # and to disable exploration by computing deterministic actions
+    # and to disable exploration by computing deterministic actions.
+    # IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
+    # policy, even if this is a stochastic one. Setting "explore=False" here
+    # will result in the evaluation workers not using this optimal policy!
     "evaluation_config": {
         # Example: overriding env_config, exploration, etc:
         # "env_config": {...},
-        # "exploration_fraction": 0,
-        # "exploration_final_eps": 0,
-        "exploration": False
+        # "explore": False
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
@@ -200,6 +213,9 @@ COMMON_CONFIG = {
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
+    # EXPERIMENTAL: use the pipeline based implementation of the algo. Can also
+    # be enabled by setting RLLIB_USE_PIPELINE_IMPL=1.
+    "use_pipeline_impl": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -247,11 +263,11 @@ COMMON_CONFIG = {
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
     "remote_env_batch_wait_ms": 0,
-    # Minimum time per train iteration
+    # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,
+    "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
@@ -369,13 +385,20 @@ class Trainer(Trainable):
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
     """
-
+    # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
+
+    # List of top-level keys with value=dict, for which new sub-keys are
+    # allowed to be added to the value dict.
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
-        "evaluation_config"
+        "evaluation_config", "exploration_config"
     ]
+
+    # List of top level keys with value=dict, for which we always override the
+    # entire value (dict), iff the "type" key in that value dict changes.
+    _override_all_subkeys_if_type_changes = ["exploration_config"]
 
     @PublicAPI
     def __init__(self, config=None, env=None, logger_creator=None):
@@ -530,13 +553,11 @@ class Trainer(Trainable):
         else:
             self.env_creator = lambda env_config: None
 
-        # Merge the supplied config with the class default
-        merged_config = copy.deepcopy(self._default_config)
-        merged_config = deep_update(merged_config, config,
-                                    self._allow_unknown_configs,
-                                    self._allow_unknown_subkeys)
+        # Merge the supplied config with the class default, but store the
+        # user-provided one.
         self.raw_user_config = config
-        self.config = merged_config
+        self.config = Trainer.merge_trainer_configs(self._default_config,
+                                                    config)
 
         if self.config["normalize_actions"]:
             inner = self.env_creator
@@ -576,6 +597,7 @@ class Trainer(Trainable):
                 extra_config.update({
                     "batch_mode": "complete_episodes",
                     "batch_steps": 1,
+                    "in_evaluation": True,
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
@@ -591,7 +613,7 @@ class Trainer(Trainable):
     def _stop(self):
         if hasattr(self, "workers"):
             self.workers.stop()
-        if hasattr(self, "optimizer"):
+        if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
@@ -710,7 +732,7 @@ class Trainer(Trainable):
                        info=None,
                        policy_id=DEFAULT_POLICY_ID,
                        full_fetch=False,
-                       explore=True):
+                       explore=None):
         """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
@@ -729,7 +751,8 @@ class Trainer(Trainable):
             policy_id (str): Policy to query (only applies to multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
-            explore (bool): Whether to pick an action using exploration or not.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
 
         Returns:
             any: The computed action if full_fetch=False, or
@@ -744,8 +767,7 @@ class Trainer(Trainable):
             preprocessed, update=False)
 
         # Figure out the current (sample) time step and pass it into Policy.
-        timestep = self.optimizer.num_steps_sampled \
-            if self._has_policy_optimizer() else None
+        self.global_vars["timestep"] += 1
 
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
@@ -755,7 +777,7 @@ class Trainer(Trainable):
             info,
             clip_actions=self.config["clip_actions"],
             explore=explore,
-            timestep=timestep)
+            timestep=self.global_vars["timestep"])
 
         if state or full_fetch:
             return result
@@ -854,6 +876,13 @@ class Trainer(Trainable):
                 "setting `num_workers`, `num_gpus`, and other configs. See "
                 "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
+
+    @classmethod
+    def merge_trainer_configs(cls, config1, config2):
+        config1 = copy.deepcopy(config1)
+        return deep_update(config1, config2, cls._allow_unknown_configs,
+                           cls._allow_unknown_subkeys,
+                           cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
     def _validate_config(config):

@@ -74,7 +74,7 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test(enabled = false, groups = {"directCall"})
+  @Test(enabled = false)
   public void testSubmittingManyTasksToOneActor() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Actor> actor = Ray.createActor(Actor::new);

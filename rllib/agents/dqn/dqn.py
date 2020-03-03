@@ -6,7 +6,7 @@ from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
 
 logger = logging.getLogger(__name__)
@@ -36,18 +36,25 @@ DEFAULT_CONFIG = with_common_config({
     "n_step": 1,
 
     # === Exploration Settings (Experimental) ===
-    "exploration": {
-        # The Exploration class to use. In the simplest case, this is the name
-        # (str) of any class present in the `rllib.utils.exploration` package.
-        # You can also provide the python class directly or the full location
-        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-        # EpsilonGreedy").
+    "exploration_config": {
+        # The Exploration class to use.
         "type": "EpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
         "final_epsilon": 0.02,
         "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+
+        # For soft_q, use:
+        # "exploration_config" = {
+        #   "type": "SoftQ"
+        #   "temperature": [float, e.g. 1.0]
+        # }
     },
+    # Switch to greedy actions in evaluation workers.
+    "evaluation_config": {
+        "explore": False,
+    },
+
     # TODO(sven): Make Exploration class for parameter noise.
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
@@ -58,11 +65,6 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
-    # Use softmax for sampling actions. Required for off policy estimation.
-    "soft_q": False,
-    # Softmax temperature. Q values are divided by this value prior to softmax.
-    # Softmax approaches argmax as the temperature drops to zero.
-    "softmax_temp": 1.0,
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
@@ -114,11 +116,13 @@ DEFAULT_CONFIG = with_common_config({
     # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
     # by user's config). If we don't set them here, we will get an error
     # from the config-key checker.
-    "schedule_max_timesteps": -1,
-    "exploration_final_eps": -1,
-    "exploration_fraction": -1,
-    "beta_annealing_fraction": -1,
-    "per_worker_exploration": -1,
+    "schedule_max_timesteps": DEPRECATED_VALUE,
+    "exploration_final_eps": DEPRECATED_VALUE,
+    "exploration_fraction": DEPRECATED_VALUE,
+    "beta_annealing_fraction": DEPRECATED_VALUE,
+    "per_worker_exploration": DEPRECATED_VALUE,
+    "softmax_temp": DEPRECATED_VALUE,
+    "soft_q": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -155,50 +159,69 @@ def validate_config_and_setup_param_noise(config):
     if config["use_pytorch"]:
         raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
 
-    # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["sample_batch_size"],
-                              config.get("n_step", 1))
-    config["sample_batch_size"] = adjusted_batch_size
-
     # TODO(sven): Remove at some point.
     #  Backward compatibility of epsilon-exploration config AND beta-annealing
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
     schedule_max_timesteps = None
-    if "schedule_max_timesteps" in config and \
-            config["schedule_max_timesteps"] > 0:
+    if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         deprecation_warning(
-            "schedule_max_timesteps", "exploration.epsilon_timesteps AND "
+            "schedule_max_timesteps",
+            "exploration_config.epsilon_timesteps AND "
             "prioritized_replay_beta_annealing_timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
-    if "exploration_final_eps" in config and \
-            config["exploration_final_eps"] > 0:
+    if config.get("exploration_final_eps", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         deprecation_warning("exploration_final_eps",
-                            "exploration.final_epsilon")
-        if isinstance(config["exploration"], dict):
-            config["exploration"]["final_epsilon"] = \
+                            "exploration_config.final_epsilon")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["final_epsilon"] = \
                 config.pop("exploration_final_eps")
-    if "exploration_fraction" in config and config["exploration_fraction"] > 0:
+    if config.get("exploration_fraction", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         assert schedule_max_timesteps is not None
         deprecation_warning("exploration_fraction",
-                            "exploration.epsilon_timesteps")
-        if isinstance(config["exploration"], dict):
-            config["exploration"]["epsilon_timesteps"] = config.pop(
+                            "exploration_config.epsilon_timesteps")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["epsilon_timesteps"] = config.pop(
                 "exploration_fraction") * schedule_max_timesteps
-    if "beta_annealing_fraction" in config and \
-            config["beta_annealing_fraction"] > 0:
+    if config.get("beta_annealing_fraction", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         assert schedule_max_timesteps is not None
         deprecation_warning(
             "beta_annealing_fraction (decimal)",
             "prioritized_replay_beta_annealing_timesteps (int)")
         config["prioritized_replay_beta_annealing_timesteps"] = config.pop(
             "beta_annealing_fraction") * schedule_max_timesteps
-    if "per_worker_exploration" in config and \
-            config["per_worker_exploration"] != -1:
+    if config.get("per_worker_exploration", DEPRECATED_VALUE) != \
+            DEPRECATED_VALUE:
         deprecation_warning("per_worker_exploration",
-                            "exploration.type=PerWorkerEpsilonGreedy")
-        if isinstance(config["exploration"], dict):
-            config["exploration"]["type"] = PerWorkerEpsilonGreedy
+                            "exploration_config.type=PerWorkerEpsilonGreedy")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["type"] = PerWorkerEpsilonGreedy
+    if config.get("softmax_temp", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning(
+            "soft_q", "exploration_config={"
+            "type=StochasticSampling, temperature=[float]"
+            "}")
+        if config.get("softmax_temp", 1.0) < 0.00001:
+            logger.warning("softmax temp very low: Clipped it to 0.00001.")
+            config["softmax_temperature"] = 0.00001
+    if config.get("soft_q", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning(
+            "soft_q", "exploration_config={"
+            "type=SoftQ, temperature=[float]"
+            "}")
+        config["exploration_config"] = {
+            "type": "SoftQ",
+            "temperature": config.get("softmax_temp", 1.0)
+        }
+
+    # Update effective batch size to include n-step
+    adjusted_batch_size = max(config["sample_batch_size"],
+                              config.get("n_step", 1))
+    config["sample_batch_size"] = adjusted_batch_size
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):

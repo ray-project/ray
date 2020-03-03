@@ -93,18 +93,6 @@ from ray.exceptions import (
 )
 from ray.experimental.no_return import NoReturn
 from ray.utils import decode
-from ray.ray_constants import (
-    DEFAULT_PUT_OBJECT_DELAY,
-    DEFAULT_PUT_OBJECT_RETRIES,
-)
-
-# pyarrow cannot be imported until after _raylet finishes initializing
-# (see ray/__init__.py for details).
-# Unfortunately, Cython won't compile if 'pyarrow' is undefined, so we
-# "forward declare" it here and then replace it with a reference to the
-# imported package from ray/__init__.py.
-# TODO(edoakes): Fix this.
-pyarrow = None
 
 cimport cpython
 
@@ -120,7 +108,7 @@ include "includes/libcoreworker.pxi"
 
 logger = logging.getLogger(__name__)
 
-MEMCOPY_THREADS = 12
+MEMCOPY_THREADS = 6
 
 
 def set_internal_config(dict options):
@@ -278,6 +266,8 @@ cdef void prepare_args(
         size_t size
         int64_t put_threshold
         shared_ptr[CBuffer] arg_data
+        c_vector[CObjectID] inlined_ids
+        ObjectID obj_id
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -294,14 +284,17 @@ cdef void prepare_args(
             # plasma here. This is inefficient for small objects, but inlined
             # arguments aren't associated ObjectIDs right now so this is a
             # simple fix for reference counting purposes.
-            if (<int64_t>size <= put_threshold and
-                    len(serialized_arg.contained_object_ids) == 0):
+            if <int64_t>size <= put_threshold:
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
+                for obj_id in serialized_arg.contained_object_ids:
+                    inlined_ids.push_back(obj_id.native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(serialized_arg.metadata))))
+                        arg_data, string_to_buffer(serialized_arg.metadata),
+                        inlined_ids)))
+                inlined_ids.clear()
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
@@ -547,6 +540,14 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
+cdef void async_plasma_callback(CObjectID object_id,
+                                int64_t data_size,
+                                int64_t metadata_size) with gil:
+    message = [tuple([ObjectID(object_id.Binary()), data_size, metadata_size])]
+    core_worker = ray.worker.global_worker.core_worker
+    event_handler = core_worker.get_plasma_event_handler()
+    if event_handler is not None:
+        event_handler.process_notifications(message)
 
 cdef CRayStatus check_signals() nogil:
     with gil:
@@ -555,6 +556,17 @@ cdef CRayStatus check_signals() nogil:
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
     return CRayStatus.OK()
+
+
+cdef void gc_collect() nogil:
+    with gil:
+        start = time.perf_counter()
+        num_freed = gc.collect()
+        end = time.perf_counter()
+        if num_freed > 0:
+            logger.info(
+                "gc.collect() freed {} refs in {} seconds".format(
+                    num_freed, end - start))
 
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
@@ -569,17 +581,20 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 
 cdef write_serialized_object(
         serialized_object, const shared_ptr[CBuffer]& buf):
-    # avoid initializing pyarrow before raylet
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
     if isinstance(serialized_object, RawSerializedObject):
         if buf.get() != NULL and buf.get().Size() > 0:
-            buffer = Buffer.make(buf)
-            # `Buffer` has a nullptr buffer underlying if size is 0,
-            # which will cause `pyarrow.py_buffer` crash
-            stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-            stream.set_memcopy_threads(MEMCOPY_THREADS)
-            stream.write(pyarrow.py_buffer(serialized_object.value))
+            size = serialized_object.total_bytes
+            if MEMCOPY_THREADS > 1 and size > kMemcopyDefaultThreshold:
+                parallel_memcopy(buf.get().Data(),
+                                 <const uint8_t*> serialized_object.value,
+                                 size, kMemcopyDefaultBlocksize,
+                                 MEMCOPY_THREADS)
+            else:
+                memcpy(buf.get().Data(),
+                       <const uint8_t*>serialized_object.value, size)
+
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)
@@ -592,9 +607,6 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port):
-        assert pyarrow is not None, ("Expected pyarrow to be imported from "
-                                     "outside _raylet. See __init__.py for "
-                                     "details.")
 
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
@@ -602,7 +614,7 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, True))
+            task_execution_handler, check_signals, gc_collect, True))
 
     def run_task_loop(self):
         with nogil:
@@ -622,6 +634,13 @@ cdef class CoreWorker:
 
     def set_actor_title(self, title):
         self.core_worker.get().SetActorTitle(title)
+
+    def subscribe_to_plasma(self, plasma_event_handler):
+        self.plasma_event_handler = plasma_event_handler
+        self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback)
+
+    def get_plasma_event_handler(self):
+        return self.plasma_event_handler
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
@@ -651,32 +670,17 @@ cdef class CoreWorker:
                             size_t data_size, ObjectID object_id,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
-        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
-        for attempt in reversed(
-                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
-            try:
-                if object_id is None:
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                     metadata, data_size, contained_ids,
-                                     c_object_id, data))
-                else:
-                    c_object_id[0] = object_id.native()
-                    with nogil:
-                        check_status(self.core_worker.get().Create(
-                                    metadata, data_size, contained_ids,
-                                    c_object_id[0], data))
-                break
-            except ObjectStoreFullError as e:
-                if attempt:
-                    logger.warning("Waiting {} seconds for space to free up "
-                                   "in the object store.".format(delay))
-                    gc.collect()
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    self.dump_object_store_memory_usage()
-                    raise e
+        if object_id is None:
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                             metadata, data_size, contained_ids,
+                             c_object_id, data))
+        else:
+            c_object_id[0] = object_id.native()
+            with nogil:
+                check_status(self.core_worker.get().Create(
+                            metadata, data_size,
+                            c_object_id[0], data))
 
         # If data is nullptr, that means the ObjectID already existed,
         # which we ignore.
@@ -748,6 +752,10 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
+    def global_gc(self):
+        with nogil:
+            self.core_worker.get().TriggerGlobalGC()
+
     def set_object_store_client_options(self, client_name,
                                         int64_t limit_bytes):
         try:
@@ -775,7 +783,6 @@ cdef class CoreWorker:
                     FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
-                    c_bool is_direct_call,
                     resources,
                     int max_retries):
         cdef:
@@ -788,7 +795,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call, c_resources)
+                num_return_vals, True, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
@@ -807,7 +814,6 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_bool is_asyncio,
@@ -831,7 +837,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, max_concurrency,
+                        max_reconstructions, True, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
@@ -979,26 +985,20 @@ cdef class CoreWorker:
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
-            self, const c_string &object_id_binary, const c_string
-            &owner_id_binary, const c_string &serialized_owner_address):
+            self, const c_string &object_id_binary, ObjectID outer_object_id,
+            const c_string &owner_id_binary,
+            const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CObjectID c_outer_object_id = outer_object_id.native()
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
+                c_outer_object_id,
                 c_owner_id,
                 c_owner_address)
-
-    def add_contained_object_ids(
-            self, ObjectID object_id, contained_object_ids):
-        cdef:
-            CObjectID c_object_id = object_id.native()
-            c_vector[CObjectID] c_contained_ids
-        c_contained_ids = ObjectIDsToVector(contained_object_ids)
-        self.core_worker.get().AddContainedObjectIDs(
-            c_object_id, c_contained_ids)
 
     # TODO: handle noreturn better
     cdef store_task_outputs(
@@ -1032,8 +1032,9 @@ cdef class CoreWorker:
                 contained_ids.push_back(
                     ObjectIDsToVector(serialized_object.contained_object_ids))
 
-        check_status(self.core_worker.get().AllocateReturnObjects(
-            return_ids, data_sizes, metadatas, contained_ids, returns))
+        with nogil:
+            check_status(self.core_worker.get().AllocateReturnObjects(
+                return_ids, data_sizes, metadatas, contained_ids, returns))
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.

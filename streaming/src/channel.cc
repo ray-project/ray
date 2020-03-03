@@ -218,9 +218,10 @@ struct MockQueueItem {
 class MockQueue {
  public:
   std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBuffer<MockQueueItem>>>
-      message_buffer_;
+      message_bffer;
   std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBuffer<MockQueueItem>>>
-      consumed_buffer_;
+      consumed_buffer;
+  std::unordered_map<ObjectID, StreamingQueueInfo> queue_info_map;
   static std::mutex mutex;
   static MockQueue &GetMockQueue() {
     static MockQueue mock_queue;
@@ -232,25 +233,25 @@ std::mutex MockQueue::mutex;
 StreamingStatus MockProducer::CreateTransferChannel() {
   std::unique_lock<std::mutex> lock(MockQueue::mutex);
   MockQueue &mock_queue = MockQueue::GetMockQueue();
-  mock_queue.message_buffer_[channel_info_.channel_id] =
-      std::make_shared<RingBufferImplThreadSafe<MockQueueItem>>(500);
-  mock_queue.consumed_buffer_[channel_info_.channel_id] =
-      std::make_shared<RingBufferImplThreadSafe<MockQueueItem>>(500);
+  mock_queue.message_bffer[channel_info_.channel_id] =
+      std::make_shared<RingBufferImplThreadSafe<MockQueueItem>>(10000);
+  mock_queue.consumed_buffer[channel_info_.channel_id] =
+      std::make_shared<RingBufferImplThreadSafe<MockQueueItem>>(10000);
   return StreamingStatus::OK;
 }
 
 StreamingStatus MockProducer::DestroyTransferChannel() {
   std::unique_lock<std::mutex> lock(MockQueue::mutex);
   MockQueue &mock_queue = MockQueue::GetMockQueue();
-  mock_queue.message_buffer_.erase(channel_info_.channel_id);
-  mock_queue.consumed_buffer_.erase(channel_info_.channel_id);
+  mock_queue.message_bffer.erase(channel_info_.channel_id);
+  mock_queue.consumed_buffer.erase(channel_info_.channel_id);
   return StreamingStatus::OK;
 }
 
 StreamingStatus MockProducer::ProduceItemToChannel(uint8_t *data, uint32_t data_size) {
   std::unique_lock<std::mutex> lock(MockQueue::mutex);
   MockQueue &mock_queue = MockQueue::GetMockQueue();
-  auto &ring_buffer = mock_queue.message_buffer_[channel_info_.channel_id];
+  auto &ring_buffer = mock_queue.message_bffer[channel_info_.channel_id];
   if (ring_buffer->Full()) {
     return StreamingStatus::OutOfMemory;
   }
@@ -260,6 +261,14 @@ StreamingStatus MockProducer::ProduceItemToChannel(uint8_t *data, uint32_t data_
   item.data_size = data_size;
   std::memcpy(item.data.get(), data, data_size);
   ring_buffer->Push(item);
+  mock_queue.queue_info_map[channel_info_.channel_id].last_seq_id = item.seq_id;
+  return StreamingStatus::OK;
+}
+
+StreamingStatus MockProducer::RefreshChannelInfo() {
+  MockQueue &mock_queue = MockQueue::GetMockQueue();
+  channel_info_.queue_info.consumed_seq_id =
+      mock_queue.queue_info_map[channel_info_.channel_id].consumed_seq_id;
   return StreamingStatus::OK;
 }
 
@@ -269,16 +278,16 @@ StreamingStatus MockConsumer::ConsumeItemFromChannel(uint64_t &offset_id, uint8_
   std::unique_lock<std::mutex> lock(MockQueue::mutex);
   MockQueue &mock_queue = MockQueue::GetMockQueue();
   auto &channel_id = channel_info_.channel_id;
-  if (mock_queue.message_buffer_.find(channel_id) == mock_queue.message_buffer_.end()) {
+  if (mock_queue.message_bffer.find(channel_id) == mock_queue.message_bffer.end()) {
     return StreamingStatus::NoSuchItem;
   }
 
-  if (mock_queue.message_buffer_[channel_id]->Empty()) {
+  if (mock_queue.message_bffer[channel_id]->Empty()) {
     return StreamingStatus::NoSuchItem;
   }
-  MockQueueItem item = mock_queue.message_buffer_[channel_id]->Front();
-  mock_queue.message_buffer_[channel_id]->Pop();
-  mock_queue.consumed_buffer_[channel_id]->Push(item);
+  MockQueueItem item = mock_queue.message_bffer[channel_id]->Front();
+  mock_queue.message_bffer[channel_id]->Pop();
+  mock_queue.consumed_buffer[channel_id]->Push(item);
   offset_id = item.seq_id;
   data = item.data.get();
   data_size = item.data_size;
@@ -289,10 +298,18 @@ StreamingStatus MockConsumer::NotifyChannelConsumed(uint64_t offset_id) {
   std::unique_lock<std::mutex> lock(MockQueue::mutex);
   MockQueue &mock_queue = MockQueue::GetMockQueue();
   auto &channel_id = channel_info_.channel_id;
-  auto &ring_buffer = mock_queue.consumed_buffer_[channel_id];
+  auto &ring_buffer = mock_queue.consumed_buffer[channel_id];
   while (!ring_buffer->Empty() && ring_buffer->Front().seq_id <= offset_id) {
     ring_buffer->Pop();
   }
+  mock_queue.queue_info_map[channel_id].consumed_seq_id = offset_id;
+  return StreamingStatus::OK;
+}
+
+StreamingStatus MockConsumer::RefreshChannelInfo() {
+  MockQueue &mock_queue = MockQueue::GetMockQueue();
+  channel_info_.queue_info.last_seq_id =
+      mock_queue.queue_info_map[channel_info_.channel_id].last_seq_id;
   return StreamingStatus::OK;
 }
 

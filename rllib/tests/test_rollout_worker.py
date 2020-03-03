@@ -24,7 +24,7 @@ class MockPolicy(TestPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
-                        explore=True,
+                        explore=None,
                         timestep=None,
                         **kwargs):
         return [random.choice([0, 1])] * len(obs_batch), [], {}
@@ -45,7 +45,7 @@ class BadPolicy(MockPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
-                        explore=True,
+                        explore=None,
                         timestep=None,
                         **kwargs):
         raise Exception("intentional error")
@@ -159,6 +159,7 @@ class TestRolloutWorker(unittest.TestCase):
             len(set(SampleBatch.concat(batch1, batch2)["unroll_id"])), 2)
 
     def test_global_vars_update(self):
+        # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
         agent = A2CTrainer(
             env="CartPole-v0",
@@ -179,6 +180,7 @@ class TestRolloutWorker(unittest.TestCase):
             result["info"]["num_steps_trained"]))
 
     def test_no_step_on_init(self):
+        # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
         register_env("fail", lambda _: FailOnStepEnv())
         pg = PGTrainer(env="fail", config={"num_workers": 1})
@@ -209,6 +211,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertLess(counts["step"], 400)
 
     def test_query_evaluators(self):
+        # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
         register_env("test", lambda _: gym.make("CartPole-v0"))
         pg = PGTrainer(
@@ -277,6 +280,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(sum(samples["dones"]), 1)
 
     def test_metrics(self):
+        # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),

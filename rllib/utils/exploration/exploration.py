@@ -1,16 +1,19 @@
-from ray.rllib.utils.framework import check_framework
+from ray.rllib.utils.framework import check_framework, try_import_tf
+
+tf = try_import_tf()
 
 
 class Exploration:
-    """Implements an env-exploration strategy for Policies.
+    """Implements an exploration strategy for Policies.
 
-    An Exploration takes the predicted actions or action values from the agent,
-    and selects the action to actually apply to the environment using some
-    predefined exploration schema.
+    An Exploration takes model outputs, a distribution, and a timestep from
+    the agent and computes an action to apply to the environment using an
+    implemented exploration schema.
     """
 
     def __init__(self,
                  action_space=None,
+                 *,
                  num_workers=None,
                  worker_index=None,
                  framework="tf"):
@@ -29,31 +32,36 @@ class Exploration:
         self.framework = check_framework(framework)
 
     def get_exploration_action(self,
-                               action,
+                               distribution_inputs,
+                               action_dist_class,
                                model=None,
-                               action_dist=None,
                                explore=True,
                                timestep=None):
-        """Returns an action for exploration purposes.
+        """Returns a (possibly) exploratory action and its log-likelihood.
 
-        Given the Model's output and action distribution, returns an
-        exploration action (as opposed to the original model calculated
-        action).
+        Given the Model's logits outputs and action distribution, returns an
+        exploratory action.
 
         Args:
-            action (any): The already sampled action (non-exploratory case).
+            distribution_inputs (any): The output coming from the model,
+                ready for parameterizing a distribution
+                (e.g. q-values or PG-logits).
+            action_dist_class (class): The action distribution class
+                to use.
             model (ModelV2): The Model object.
-            action_dist: The ActionDistribution class.
-            explore (bool): Whether to explore or not (this could be a tf
-                placeholder).
+            explore (bool): True: "Normal" exploration behavior.
+                False: Suppress all exploratory behavior and return
+                    a deterministic action.
             timestep (int): The current sampling time step. If None, the
                 component should try to use an internal counter, which it
                 then increments by 1. If provided, will set the internal
                 counter to the given value.
 
         Returns:
-            any: The chosen exploration action or a tf-op to fetch the
-                exploration action from the graph.
+            Tuple:
+            - The chosen exploration action or a tf-op to fetch the exploration
+              action from the graph.
+            - The log-likelihood of the exploration action.
         """
         pass
 
@@ -85,7 +93,8 @@ class Exploration:
         Returns:
             any: A description of the Exploration (not necessarily its state).
         """
-        return None
+        if self.framework == "tf":
+            return tf.no_op()
 
     def get_state(self):
         """Returns the current exploration state.

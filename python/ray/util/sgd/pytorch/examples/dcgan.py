@@ -21,7 +21,7 @@ from ray.util.sgd.pytorch import TrainingOperator
 
 
 def data_creator(config):
-    return datasets.MNIST(
+    dataset = datasets.MNIST(
         root="~/mnist/",
         download=True,
         transform=transforms.Compose([
@@ -29,10 +29,13 @@ def data_creator(config):
             transforms.ToTensor(),
             transforms.Normalize((0.5, ), (0.5, )),
         ]))
+    if config.get("test_mode"):
+        dataset = torch.utils.data.Subset(dataset, list(range(64)))
+    return dataset
 
 
 class Generator(nn.Module):
-    def __init__(self, latent_vector_size=100, features=32, num_channels=1):
+    def __init__(self, latent_vector_size, features=32, num_channels=1):
         super(Generator, self).__init__()
         self.latent_vector_size = latent_vector_size
         self.main = nn.Sequential(
@@ -104,7 +107,8 @@ def model_creator(config):
     discriminator = Discriminator()
     discriminator.apply(weights_init)
 
-    generator = Generator()
+    generator = Generator(
+        latent_vector_size=config.get("latent_vector_size", 100))
     generator.apply(weights_init)
     return discriminator, generator
 
@@ -124,10 +128,12 @@ class GANOperator(TrainingOperator):
                                    if torch.cuda.is_available() else "cpu")
 
         self.classifier = LeNet()
-        self.classifier.load_state_dict(torch.load(config["model_path"]))
+        self.classifier.load_state_dict(
+            torch.load(config["classification_model_path"]))
         self.classifier.eval()
 
     def inception_score(self, imgs, batch_size=32, splits=1):
+        """Calculate the inception score of the generated images."""
         N = len(imgs)
         dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
         up = nn.Upsample(
@@ -138,6 +144,7 @@ class GANOperator(TrainingOperator):
             x = self.classifier(x)
             return F.softmax(x).data.cpu().numpy()
 
+        # Obtain predictions for the fake provided images
         preds = np.zeros((N, 10))
         for i, batch in enumerate(dataloader, 0):
             batch = batch.type(torch.FloatTensor)
@@ -160,16 +167,14 @@ class GANOperator(TrainingOperator):
         return np.mean(split_scores), np.std(split_scores)
 
     @override(TrainingOperator)
-    def train_batch(self, batch, batch_idx):
-        """Trains on one batch of data from the data creator.
-
-        User needs to manually handle
-        """
+    def train_batch(self, batch, batch_info):
+        """Trains on one batch of data from the data creator."""
         real_label = 1
         fake_label = 0
         discriminator, generator = self.models
         optimD, optimG = self.optimizers
 
+        # Compute a discriminator update for real images
         discriminator.zero_grad()
         real_cpu = batch[0].to(self.device)
         batch_size = real_cpu.size(0)
@@ -178,16 +183,24 @@ class GANOperator(TrainingOperator):
         errD_real = self.criterion(output, label)
         errD_real.backward()
 
+        # Compute a discriminator update for fake images
         noise = torch.randn(
-            batch_size, generator.latent_vector_size, 1, 1, device=self.device)
+            batch_size,
+            self.config.get("latent_vector_size", 100),
+            1,
+            1,
+            device=self.device)
         fake = generator(noise)
         label.fill_(fake_label)
         output = discriminator(fake.detach()).view(-1)
         errD_fake = self.criterion(output, label)
         errD_fake.backward()
         errD = errD_real + errD_fake
+
+        # Update the discriminator
         optimD.step()
 
+        # Update the generator
         generator.zero_grad()
         label.fill_(real_label)
         output = discriminator(fake).view(-1)
@@ -210,7 +223,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         "test_mode": test_mode,
         "classification_model_path": os.path.join(
             os.path.dirname(ray.__file__),
-            "experimental/sgd/pytorch/examples/mnist_cnn.pt")
+            "util/sgd/pytorch/examples/mnist_cnn.pt")
     }
     trainer = PyTorchTrainer(
         model_creator,
@@ -223,8 +236,8 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
-    for i in range(10):
-        stats = trainer.train(num_steps=test_mode or None)
+    for i in range(5):
+        stats = trainer.train()
         print(stats)
 
     return trainer
@@ -238,7 +251,7 @@ if __name__ == "__main__":
         "--address",
         required=False,
         type=str,
-        help="the address to use for connecting to a cluster.")
+        help="the address to use to connect to a cluster.")
     parser.add_argument(
         "--num-replicas",
         "-n",

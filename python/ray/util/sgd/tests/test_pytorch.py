@@ -10,9 +10,8 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
-from ray.util.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable,
-                                          TrainingOperator)
+from ray.util.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
+from ray.util.sgd.pytorch.training_operator import _TestingOperator
 from ray.util.sgd.pytorch.constants import BATCH_COUNT, SCHEDULER_STEP
 from ray.util.sgd.utils import check_for_failure
 
@@ -20,26 +19,12 @@ from ray.util.sgd.pytorch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
 
 
-def train(model, criterion, optimizer, dataloader):
-    model.train()
-    train_loss = 0
-    correct = 0
-    total = 0
-    for batch_idx, (inputs, targets) in enumerate(dataloader):
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
-
-        train_loss += loss.item()
-        _, predicted = outputs.max(1)
-        total += targets.size(0)
-        correct += predicted.eq(targets).sum().item()
-    return {
-        "accuracy": correct / total,
-        "train_loss": train_loss / (batch_idx + 1)
-    }
+@pytest.fixture
+def ray_start_2_cpus():
+    address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
@@ -49,10 +34,10 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
         optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=1)
-    metrics = trainer.train(info=dict(num_steps=1))
+    metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
-    val_metrics = trainer.validate(info=dict(num_steps=1))
+    val_metrics = trainer.validate(num_steps=1)
     assert val_metrics[BATCH_COUNT] == 1
 
 
@@ -80,18 +65,38 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
-def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
-    def CustomOpWrapper(*args, **kwargs):
-        class CustomOp(TrainingOperator):
-            def train_epoch(self, iterator, info):
-                result = {}
-                for i, (model, optimizer) in enumerate(
-                        zip(self.models, self.optimizers)):
-                    result["model_{}".format(i)] = train(
-                        model, optimizer, self.criterion, iterator)
-                return result
+def test_multi_model(ray_start_2_cpus, num_replicas):
+    def train(*, model=None, criterion=None, optimizer=None, dataloader=None):
+        model.train()
+        train_loss = 0
+        correct = 0
+        total = 0
+        for batch_idx, (inputs, targets) in enumerate(dataloader):
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
 
-        return CustomOpWrapper(*args, **kwargs)
+            train_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += targets.size(0)
+            correct += predicted.eq(targets).sum().item()
+        return {
+            "accuracy": correct / total,
+            "train_loss": train_loss / (batch_idx + 1)
+        }
+
+    def train_epoch(self, iterator, info):
+        result = {}
+        for i, (model, optimizer) in enumerate(
+                zip(self.models, self.optimizers)):
+            result["model_{}".format(i)] = train(
+                model=model,
+                criterion=self.criterion,
+                optimizer=optimizer,
+                dataloader=iterator)
+        return result
 
     def multi_model_creator(config):
         return nn.Linear(1, 1), nn.Linear(1, 1)
@@ -107,7 +112,8 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
         data_creator,
         multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        training_operator_cls=CustomOp,
+        config={"custom_func": train_epoch},
+        training_operator_cls=_TestingOperator,
         num_replicas=num_replicas)
     trainer1.train()
 
@@ -123,6 +129,8 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
         data_creator,
         multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
+        config={"custom_func": train_epoch},
+        training_operator_cls=_TestingOperator,
         num_replicas=num_replicas)
     trainer2.restore(filename)
 
@@ -146,23 +154,18 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
 def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
-    def CustomOpWrapper(*args, **kwargs):
-        class CustomOp(TrainingOperator):
-            def train_epoch(self, iterator, info):
-                if self.config.get("models", 1) > 1:
-                    assert len(
-                        self.models) == self.config["models"], self.config
+    def train_epoch(self, iterator, info):
+        if self.config.get("models", 1) > 1:
+            assert len(self.models) == self.config["models"], self.config
 
-                if self.config.get("optimizers", 1) > 1:
-                    assert len(self.optimizers) == self.config[
-                        "optimizers"], self.config
+        if self.config.get("optimizers", 1) > 1:
+            assert len(
+                self.optimizers) == self.config["optimizers"], self.config
 
-                if self.config.get("schedulers", 1) > 1:
-                    assert len(self.schedulers) == self.config[
-                        "schedulers"], self.config
-                return {"done": 1}
-
-        return CustomOp(*args, **kwargs)
+        if self.config.get("schedulers", 1) > 1:
+            assert len(
+                self.schedulers) == self.config["schedulers"], self.config
+        return {"done": 1}
 
     def multi_model_creator(config):
         models = []
@@ -196,12 +199,13 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
                     multi_optimizer_creator,
                     loss_creator=nn.MSELoss,
                     scheduler_creator=multi_scheduler_creator,
-                    training_operator_cls=CustomOpWrapper,
+                    training_operator_cls=_TestingOperator,
                     num_replicas=num_replicas,
                     config={
                         "models": model_count,
                         "optimizers": optimizer_count,
-                        "schedulers": scheduler_count
+                        "schedulers": scheduler_count,
+                        "custom_func": train_epoch
                     })
                 trainer.train()
                 trainer.shutdown()
@@ -209,13 +213,9 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize("scheduler_freq", ["epoch", "batch"])
 def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
-    def CustomOpWrapper(*args, **kwargs):
-        class CustomOp(TrainingOperator):
-            def train_epoch(self, iterator, info):
-                assert self.config[SCHEDULER_STEP] == scheduler_freq
-                return {"done": 1}
-
-        return
+    def train_epoch(self, iterator, info):
+        assert info[SCHEDULER_STEP] == scheduler_freq
+        return {"done": 1}
 
     def scheduler_creator(optimizer, config):
         return torch.optim.lr_scheduler.StepLR(
@@ -226,22 +226,17 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
         data_creator,
         optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        training_operator_cls=CustomOp,
-        scheduler_creator=scheduler_creator)
+        config={"custom_func": train_epoch},
+        training_operator_cls=_TestingOperator,
+        scheduler_creator=scheduler_creator,
+        scheduler_step_freq=scheduler_freq)
 
     for i in range(3):
-        trainer.train()["train_loss"]
+        trainer.train()
     trainer.shutdown()
 
 
 def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
-    def CustomOpWrapper(*args, **kwargs):
-        class CustomOp(TrainingOperator):
-            def train_epoch(self, iterator, info):
-                return {"done": 1}
-
-        return CustomOp(*args, **kwargs)
-
     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
     trainer = PyTorchTrainer(
@@ -250,11 +245,12 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
         optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer),
-        training_operator_cls=CustomOpWrapper)
+        training_operator_cls=_TestingOperator)
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
     assert all(
-        trainer.apply_all_workers(lambda r: r.schedulers[0].last_epoch == 2))
+        trainer.apply_all_operators(
+            lambda op: op.schedulers[0].last_epoch == 2))
     trainer.shutdown()
 
 
@@ -285,13 +281,13 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
-        train_loss1 = df.loc[0, "train_loss"]
-        train_loss2 = df.loc[1, "train_loss"]
-        validation_loss1 = df.loc[0, "validation_loss"]
-        validation_loss2 = df.loc[1, "validation_loss"]
+        mean_train_loss1 = df.loc[0, "mean_train_loss"]
+        mean_train_loss2 = df.loc[1, "mean_train_loss"]
+        mean_validation_loss1 = df.loc[0, "mean_validation_loss"]
+        mean_validation_loss2 = df.loc[1, "mean_validation_loss"]
 
-        assert train_loss2 <= train_loss1
-        assert validation_loss2 <= validation_loss1
+        assert mean_train_loss2 <= mean_train_loss1
+        assert mean_validation_loss2 <= mean_validation_loss1
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
@@ -340,8 +336,10 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
     def single_loader(config):
         return LinearDataset(2, 5, size=1000000)
 
-    def step_with_fail(self):
-        worker_stats = [w.train_epoch.remote() for w in self.workers]
+    def step_with_fail(self, *args, **kwargs):
+        worker_stats = [
+            w.train_epoch.remote(*args, **kwargs) for w in self.workers
+        ]
         if self._num_failures < 3:
             time.sleep(1)  # Make the batch will fail correctly.
             self.workers[0].__ray_kill__()
@@ -368,8 +366,10 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
     def single_loader(config):
         return LinearDataset(2, 5, size=1000000)
 
-    def step_with_fail(self):
-        worker_stats = [w.train_epoch.remote() for w in self.workers]
+    def step_with_fail(self, *args, **kwargs):
+        worker_stats = [
+            w.train_epoch.remote(*args, **kwargs) for w in self.workers
+        ]
         if self._num_failures < 1:
             time.sleep(1)  # Make the batch will fail correctly.
             self.workers[0].__ray_kill__()
@@ -402,8 +402,10 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
     def single_loader(config):
         return LinearDataset(2, 5, size=1000000)
 
-    def step_with_fail(self):
-        worker_stats = [w.train_epoch.remote() for w in self.workers]
+    def step_with_fail(self, *args, **kwargs):
+        worker_stats = [
+            w.train_epoch.remote(*args, **kwargs) for w in self.workers
+        ]
         if self._num_failures < 2:
             time.sleep(1)
             self.workers[0].__ray_kill__()
@@ -420,3 +422,9 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
             num_replicas=2)
 
         trainer1.train(max_retries=2)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-x", __file__]))

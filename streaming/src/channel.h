@@ -51,11 +51,13 @@ struct ConsumerChannelInfo {
 
   StreamingQueueInfo queue_info;
 
-  uint64_t last_queue_item_delay;
-  uint64_t last_queue_item_latency;
-  uint64_t last_queue_target_diff;
-  uint64_t get_queue_item_times;
+  uint64_t last_queue_item_delay = 0;
+  uint64_t last_queue_item_latency = 0;
+  uint64_t last_queue_target_diff = 0;
+  uint64_t get_queue_item_times = 0;
   ActorID actor_id;
+  // Total count of notify request.
+  uint64_t notify_cnt = 0;
 };
 
 /// Two types of channel are presented:
@@ -162,7 +164,7 @@ class MockProducer : public ProducerChannel {
     return StreamingStatus::OK;
   }
 
-  StreamingStatus RefreshChannelInfo() override { return StreamingStatus::OK; }
+  StreamingStatus RefreshChannelInfo() override;
 
   StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) override;
 
@@ -182,7 +184,7 @@ class MockConsumer : public ConsumerChannel {
                                           uint64_t checkpoint_offset) override {
     return StreamingStatus::OK;
   }
-  StreamingStatus RefreshChannelInfo() override { return StreamingStatus::OK; }
+  StreamingStatus RefreshChannelInfo() override;
   StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
                                          uint32_t &data_size, uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;

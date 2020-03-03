@@ -13,7 +13,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-@Test(groups = {"directCall"})
+@Test
 public class ActorConcurrentCallTest extends BaseTest {
 
   @RayRemote

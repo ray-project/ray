@@ -10,6 +10,7 @@ import org.ray.api.RayActor;
 import org.ray.streaming.jobgraph.JobVertex;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
+import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
@@ -34,15 +35,18 @@ public class ExecutionJobVertex {
   private int parallelism;
   private List<ExecutionVertex> executionVertices;
 
+  private JobRuntimeContext runtimeContext;
+
   private List<ExecutionJobEdge> inputEdges = new ArrayList<>();
   private List<ExecutionJobEdge> outputEdges = new ArrayList<>();
 
-  public ExecutionJobVertex(JobVertex jobVertex) {
+  public ExecutionJobVertex(JobVertex jobVertex, JobRuntimeContext runtimeContext) {
     this.jobVertexId = jobVertex.getVertexId();
     this.jobVertexName = generateVertexName(jobVertexId, jobVertex.getStreamOperator());
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
     this.parallelism = jobVertex.getParallelism();
+    this.runtimeContext = runtimeContext;
     this.executionVertices = createExecutionVertics();
   }
 
@@ -131,6 +135,10 @@ public class ExecutionJobVertex {
 
   public boolean isSinkVertex() {
     return getVertexType() == VertexType.SINK;
+  }
+
+  public JobRuntimeContext getRuntimeContext() {
+    return runtimeContext;
   }
 
   @Override

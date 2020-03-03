@@ -1,3 +1,4 @@
+import asyncio
 import json
 import fnmatch
 import os
@@ -39,7 +40,7 @@ def wait_for_pid_to_exit(pid, timeout=20):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process to exit.")
+        "Timed out while waiting for process {} to exit.".format(pid))
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -51,8 +52,8 @@ def wait_for_children_of_pid(pid, num_children=1, timeout=20):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process children to start "
-        "({}/{} started).".format(num_alive, num_children))
+        "Timed out while waiting for process {} children to start "
+        "({}/{} started).".format(pid, num_alive, num_children))
 
 
 def wait_for_children_of_pid_to_exit(pid, timeout=20):
@@ -210,3 +211,27 @@ def generate_internal_config_map(**kwargs):
         "_internal_config": internal_config,
     }
     return ray_kwargs
+
+
+@ray.remote(num_cpus=0)
+class SignalActor:
+    def __init__(self):
+        self.ready_event = asyncio.Event()
+
+    def send(self):
+        self.ready_event.set()
+
+    async def wait(self, should_wait=True):
+        if should_wait:
+            await self.ready_event.wait()
+
+
+class RemoteSignal:
+    def __init__(self):
+        self.signal_actor = SignalActor.remote()
+
+    def send(self):
+        ray.get(self.signal_actor.send.remote())
+
+    def wait(self):
+        ray.get(self.signal_actor.wait.remote())

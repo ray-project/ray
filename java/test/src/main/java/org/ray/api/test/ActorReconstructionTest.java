@@ -17,7 +17,7 @@ import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups = {"directCall"})
+@Test
 public class ActorReconstructionTest extends BaseTest {
 
   @RayRemote()
