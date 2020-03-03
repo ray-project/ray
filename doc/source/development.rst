@@ -38,6 +38,29 @@ the following:
 This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.
 
+Using a local repository for dependencies
+-----------
+
+If you'd like to build Ray with custom dependencies (for example, with a
+different version of Cython), you can modify your ``.bzl`` file as follows:
+
+     http_archive(
+         name = "cython",
+         ...,
+     ) if False else native.new_local_repository(
+         name = "cython",
+         build_file = "bazel/BUILD.cython",
+         path = "../cython",
+     )
+
+This replaces the existing ``http_archive`` rule with one that references a
+sibling of your Ray directory (named ``cython``) using the build file
+provided in the Ray repository (``bazel/BUILD.cython``).
+If the dependency already has a Bazel build file in it, you can use
+``native.local_repository`` instead, and omit ``build_file``.
+
+To test switching back to the original rule, change ``False`` to ``True``.
+
 Debugging
 ---------
 
