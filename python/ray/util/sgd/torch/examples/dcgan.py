@@ -15,9 +15,9 @@ from torch.nn import functional as F
 from scipy.stats import entropy
 
 import ray
-from ray.util.sgd import PyTorchTrainer
+from ray.util.sgd import TorchTrainer
 from ray.util.sgd.utils import override
-from ray.util.sgd.pytorch import TrainingOperator
+from ray.util.sgd.torch import TrainingOperator
 
 
 def data_creator(config):
@@ -225,7 +225,7 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
             os.path.dirname(ray.__file__),
             "util/sgd/pytorch/examples/mnist_cnn.pt")
     }
-    trainer = PyTorchTrainer(
+    trainer = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,

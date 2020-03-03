@@ -11,11 +11,11 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.trial import Resources
-from ray.util.sgd.pytorch.distributed_pytorch_runner import (
-    DistributedPyTorchRunner)
+from ray.util.sgd.torch.distributed_torch_runner import (
+    DistributedTorchRunner)
 from ray.util.sgd import utils
-from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
-from ray.util.sgd.pytorch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.torch.torch_runner import TorchRunner
+from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -29,7 +29,7 @@ def _validate_scheduler_step_freq(scheduler_step_freq):
                     VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
-class PyTorchTrainer:
+class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
     Launches a set of actors which connect via distributed PyTorch and
@@ -49,7 +49,7 @@ class PyTorchTrainer:
         def data_creator(config):
             return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
-        trainer = PyTorchTrainer(
+        trainer = TorchTrainer(
             model_creator,
             data_creator,
             optimizer_creator,
@@ -186,7 +186,7 @@ class PyTorchTrainer:
         if num_workers == 1:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(PyTorchRunner)
+                num_cpus=1, num_gpus=int(self.use_gpu))(TorchRunner)
             # Start workers
             self.workers = [
                 Runner.remote(
@@ -210,8 +210,7 @@ class PyTorchTrainer:
         else:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=1,
-                num_gpus=int(self.use_gpu))(DistributedPyTorchRunner)
+                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Compute batch size per replica
             batch_size_per_replica = self.batch_size // num_workers
             if self.batch_size % num_workers > 0:
@@ -274,7 +273,7 @@ class PyTorchTrainer:
                 in case of shared cluster usage.
             checkpoint (str): Path to checkpoint to restore from if retrying.
                 If max_retries is set and ``checkpoint == "auto"``,
-                PyTorchTrainer will save a checkpoint before starting to train.
+                TorchTrainer will save a checkpoint before starting to train.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
 
@@ -476,7 +475,7 @@ class PyTorchTrainer:
         return False
 
 
-class PyTorchTrainable(Trainable):
+class TorchTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
         return Resources(
@@ -486,7 +485,7 @@ class PyTorchTrainable(Trainable):
             extra_gpu=int(config["use_gpu"]) * config["num_workers"])
 
     def _setup(self, config):
-        self._trainer = PyTorchTrainer(**config)
+        self._trainer = TorchTrainer(**config)
 
     def _train(self):
         train_stats = self._trainer.train()

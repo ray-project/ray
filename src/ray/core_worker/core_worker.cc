@@ -6,6 +6,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -99,7 +100,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
-  gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
+  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+    gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
+  } else {
+    gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(gcs_options);
+  }
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
@@ -1399,6 +1404,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
 void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
   plasma_notifier_->SubscribeObjAdded(
       [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
+        // This callback must be asynchronous to allow plasma to receive objects
         subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
                            info.metadata_size);
       });

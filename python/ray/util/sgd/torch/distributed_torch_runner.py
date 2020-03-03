@@ -6,24 +6,24 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
-from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.util.sgd.torch.torch_runner import TorchRunner
 
 logger = logging.getLogger(__name__)
 
 
-class DistributedPyTorchRunner(PyTorchRunner):
+class DistributedTorchRunner(TorchRunner):
     """Manages a distributed PyTorch model replica.
 
 
     Args:
-        args: Arguments for PyTorchRunner.
+        args: Arguments for TorchRunner.
         backend (string): backend used by distributed PyTorch.
-        kwargs: Keyword arguments for PyTorchRunner.
+        kwargs: Keyword arguments for TorchRunner.
 
     """
 
     def __init__(self, *args, backend="gloo", **kwargs):
-        super(DistributedPyTorchRunner, self).__init__(*args, **kwargs)
+        super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
@@ -98,7 +98,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
         """
         if hasattr(self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(self.epochs)
-        return super(DistributedPyTorchRunner, self).train_epoch(**kwargs)
+        return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
     def _get_model_state_dicts(self):
         """Fetch state from ``model.module`` instead of ``model``.
@@ -120,7 +120,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
     # def shutdown(self):
         """Attempts to shut down the worker."""
-        # super(DistributedPyTorchRunner, self).shutdown()
+        # super(DistributedTorchRunner, self).shutdown()
         # TODO: Temporarily removing since it causes hangs on MacOSX.
         # However, it seems to be harmless to remove permanently
         # since the processes are shutdown anyways. This comment can be
