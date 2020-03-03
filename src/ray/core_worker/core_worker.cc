@@ -119,13 +119,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     auto execute_task =
         std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    auto exit = std::bind(&CoreWorker::Exit, this, std::placeholders::_1);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
+            worker_context_.GetWorkerID(), local_raylet_client_, execute_task));
     direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
-                                         task_execution_service_, execute_task, exit));
+                                         task_execution_service_, execute_task));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
