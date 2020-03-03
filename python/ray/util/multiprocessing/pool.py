@@ -31,7 +31,7 @@ class ResultThread(threading.Thread):
                  callback=None,
                  error_callback=None,
                  total_object_ids=None):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self._got_error = False
         self._object_ids = []
         self._num_ready = 0

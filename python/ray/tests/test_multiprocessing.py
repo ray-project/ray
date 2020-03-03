@@ -23,6 +23,7 @@ def pool():
     pool = Pool(processes=1)
     yield pool
     pool.terminate()
+    pool.join()
     ray.shutdown()
 
 
@@ -31,6 +32,7 @@ def pool_4_processes():
     pool = Pool(processes=4)
     yield pool
     pool.terminate()
+    pool.join()
     ray.shutdown()
 
 
@@ -47,6 +49,8 @@ def test_ray_init(shutdown_only):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == 2
     check_pool_size(pool, 2)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that starting a pool doesn't affect ray if there is a local
@@ -56,6 +60,8 @@ def test_ray_init(shutdown_only):
     pool = Pool(processes=2)
     assert int(ray.state.cluster_resources()["CPU"]) == 3
     check_pool_size(pool, 2)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that trying to start a pool on an existing ray cluster throws an
@@ -65,6 +71,8 @@ def test_ray_init(shutdown_only):
     with pytest.raises(ValueError):
         Pool(processes=2)
     assert int(ray.state.cluster_resources()["CPU"]) == 1
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
 
@@ -94,6 +102,8 @@ def test_connect_to_ray(ray_start_cluster):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == init_cpus
     check_pool_size(pool, init_cpus)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that starting a pool connects to a running ray cluster if
@@ -102,6 +112,8 @@ def test_connect_to_ray(ray_start_cluster):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
     check_pool_size(pool, start_cpus)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Set RAY_ADDRESS, so pools should connect to the running ray cluster.
@@ -113,6 +125,8 @@ def test_connect_to_ray(ray_start_cluster):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
     check_pool_size(pool, start_cpus)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that trying to start a pool on an existing ray cluster throws an
@@ -120,6 +134,8 @@ def test_connect_to_ray(ray_start_cluster):
     with pytest.raises(Exception):
         Pool(processes=start_cpus + 1)
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
 
@@ -135,6 +151,7 @@ def test_initializer(shutdown_only):
 
         assert len(os.listdir(dirname)) == 4
         pool.terminate()
+        pool.join()
 
 
 def test_close(pool_4_processes):
@@ -449,8 +466,10 @@ def test_imap_timeout(pool_4_processes):
 
     wait_index = 23
     signal = SignalActor.remote()
+    print("1", flush=True)
     result_iter = pool_4_processes.imap(
         f, [(index, wait_index, signal) for index in range(100)])
+    print("2", flush=True)
     for i in range(100):
         if i == wait_index:
             with pytest.raises(TimeoutError):
@@ -459,15 +478,18 @@ def test_imap_timeout(pool_4_processes):
 
         result = result_iter.next()
         assert result == i
+    print("3", flush=True)
 
     with pytest.raises(StopIteration):
         result_iter.next()
 
     wait_index = 23
     signal = SignalActor.remote()
+    print("4", flush=True)
     result_iter = pool_4_processes.imap_unordered(
         f, [(index, wait_index, signal) for index in range(100)], chunksize=11)
     in_order = []
+    print("5", flush=True)
     for i in range(100):
         try:
             result = result_iter.next(timeout=1)
@@ -476,14 +498,17 @@ def test_imap_timeout(pool_4_processes):
             result = result_iter.next()
 
         in_order.append(result == i)
+    print("6", flush=True)
 
     # Check that the results didn't come back all in order.
     # NOTE: this could be flaky if the calls happened to finish in order due
     # to the random sleeps, but it's very unlikely.
     assert not all(in_order)
 
+    print("7", flush=True)
     with pytest.raises(StopIteration):
         result_iter.next()
+    print("8", flush=True)
 
 
 def test_maxtasksperchild(shutdown_only):
@@ -492,6 +517,8 @@ def test_maxtasksperchild(shutdown_only):
 
     pool = Pool(5, maxtasksperchild=1)
     assert len(set(pool.map(f, range(20)))) == 20
+    pool.terminate()
+    pool.join()
 
 
 if __name__ == "__main__":
