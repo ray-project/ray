@@ -92,6 +92,7 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.utils import decode
+import msgpack
 
 cimport cpython
 
@@ -632,7 +633,7 @@ cdef write_serialized_object(
 
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
-            serialized_object.inband, buf, MEMCOPY_THREADS)
+            serialized_object.msgpack_bytes, serialized_object.inband, buf, MEMCOPY_THREADS)
     else:
         raise TypeError("Unsupported serialization type.")
 

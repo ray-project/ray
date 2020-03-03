@@ -1,4 +1,4 @@
-package org.ray.runtime.util;
+package org.ray.runtime.serializer;
 
 import org.nustaq.serialization.FSTConfiguration;
 import org.ray.runtime.actor.NativeRayActor;
@@ -7,7 +7,7 @@ import org.ray.runtime.actor.NativeRayActorSerializer;
 /**
  * Java object serialization TODO: use others (e.g. Arrow) for higher performance
  */
-public class Serializer {
+public class FSTSerializer {
 
   private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal.withInitial(() -> {
     FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
@@ -15,11 +15,8 @@ public class Serializer {
     return conf;
   });
 
-  public static byte[] encode(Object obj) {
-    return conf.get().asByteArray(obj);
-  }
 
-  public static byte[] encode(Object obj, ClassLoader classLoader) {
+  public static byte[] encode(Object obj, Serializer.Meta meta, ClassLoader classLoader) {
     byte[] result;
     FSTConfiguration current = conf.get();
     if (classLoader != null && classLoader != current.getClassLoader()) {
@@ -30,14 +27,10 @@ public class Serializer {
     } else {
       result = current.asByteArray(obj);
     }
-
+    meta.isCrossLanguage = false;
     return result;
   }
 
-  @SuppressWarnings("unchecked")
-  public static <T> T decode(byte[] bs) {
-    return (T) conf.get().asObject(bs);
-  }
 
   @SuppressWarnings("unchecked")
   public static <T> T decode(byte[] bs, ClassLoader classLoader) {

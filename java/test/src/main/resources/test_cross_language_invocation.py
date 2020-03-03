@@ -7,6 +7,24 @@ import ray
 
 
 @ray.remote
+def py_return_input(v):
+    return v
+
+
+@ray.remote
+def py_return_java():
+    f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                          "pack")
+    input = [100, "hello", 1.23, [1, "2", 3.0]]
+    r = f.remote(*input)
+    v = ray.get(r)
+    import math
+    float_dis = math.fabs(v[2] - input[2])
+    v[2] = input[2] = None
+    return float_dis < 0.00001 and v == input
+
+
+@ray.remote
 def py_func(value):
     assert isinstance(value, bytes)
     return b"Response from Python: " + value

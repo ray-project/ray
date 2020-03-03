@@ -118,13 +118,13 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public <T> T get(ObjectId objectId) {
-    return getCurrentRuntime().get(objectId);
+  public <T> T get(ObjectId objectId, Class<?> objectType) {
+    return getCurrentRuntime().get(objectId, objectType);
   }
 
   @Override
-  public <T> List<T> get(List<ObjectId> objectIds) {
-    return getCurrentRuntime().get(objectIds);
+  public <T> List<T> get(List<ObjectId> objectIds, Class<?> elementType) {
+    return getCurrentRuntime().get(objectIds, elementType);
   }
 
   @Override

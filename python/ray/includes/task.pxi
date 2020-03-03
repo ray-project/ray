@@ -5,7 +5,6 @@ from ray.includes.task cimport (
     RpcTaskExecutionSpec,
     TaskTableData,
 )
-from ray.ray_constants import RAW_BUFFER_METADATA
 from ray.utils import decode
 
 
@@ -89,11 +88,7 @@ cdef class TaskSpec:
                         :self.task_spec.get().ArgDataSize(i)]
                     metadata = self.task_spec.get().ArgMetadata(i)[
                         :self.task_spec.get().ArgMetadataSize(i)]
-                    if metadata == RAW_BUFFER_METADATA:
-                        obj = data
-                    else:
-                        obj = data
-                    arg_list.append(obj)
+                    arg_list.append(data)
         elif lang == <int32_t>LANGUAGE_JAVA:
             arg_list = num_args * ["<java-argument>"]
 

@@ -43,6 +43,7 @@ define_java_module(
         "@maven//:javax_xml_bind_jaxb_api",
         "@maven//:log4j_log4j",
         "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:org_msgpack_msgpack_core",
     ],
 )
 
@@ -65,6 +66,7 @@ define_java_module(
         "@maven//:com_beust_jcommander",
         "@maven//:org_testng_testng",
         "@maven//:commons_io_commons_io",
+        "@maven//:org_msgpack_msgpack_core",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -80,6 +82,7 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:redis_clients_jedis",
+        "@maven//:org_msgpack_msgpack_core",
     ],
 )
 

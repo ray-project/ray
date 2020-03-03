@@ -189,7 +189,8 @@ requires = [
     "py-spy >= 0.2.0",
     "aiohttp",
     "google",
-    "grpcio"
+    "grpcio",
+    "msgpack",
 ]
 
 setup(

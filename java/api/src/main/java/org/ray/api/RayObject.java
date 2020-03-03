@@ -19,5 +19,10 @@ public interface RayObject<T> {
    */
   ObjectId getId();
 
+  /**
+   * Get the Object type.
+   */
+  Class<?> getType();
+
 }
 

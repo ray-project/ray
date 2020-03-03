@@ -1,8 +1,10 @@
 package org.ray.runtime.task;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+import com.google.common.base.Preconditions;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
@@ -42,6 +44,10 @@ public class ArgumentsBuilder {
         id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
+        if (language != Language.JAVA) {
+          Preconditions.checkState(Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
+              Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW));
+        }
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
           RayRuntime runtime = Ray.internal();
           if (runtime instanceof RayMultiWorkerNativeRuntime) {
@@ -67,10 +73,10 @@ public class ArgumentsBuilder {
   /**
    * Convert list of NativeRayObject to real function arguments.
    */
-  public static Object[] unwrap(List<NativeRayObject> args, ClassLoader classLoader) {
+  public static Object[] unwrap(List<NativeRayObject> args, Class<?>[] types, ClassLoader classLoader) {
     Object[] realArgs = new Object[args.size()];
     for (int i = 0; i < args.size(); i++) {
-      realArgs[i] = ObjectSerializer.deserialize(args.get(i), null, classLoader);
+      realArgs[i] = ObjectSerializer.deserialize(args.get(i), null, types[i], classLoader);
     }
     return realArgs;
   }

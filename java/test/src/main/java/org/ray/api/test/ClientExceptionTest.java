@@ -23,7 +23,7 @@ public class ClientExceptionTest extends BaseTest {
   public void testWaitAndCrash() {
     TestUtils.skipTestUnderSingleProcess();
     ObjectId randomId = ObjectId.fromRandom();
-    RayObject<String> notExisting = new RayObjectImpl(randomId);
+    RayObject<String> notExisting = new RayObjectImpl(randomId, String.class);
 
     Thread thread = new Thread(() -> {
       try {

@@ -1,6 +1,6 @@
 package org.ray.streaming.runtime.worker.tasks;
 
-import org.ray.runtime.util.Serializer;
+import org.ray.runtime.serializer.Serializer;
 import org.ray.streaming.runtime.core.processor.Processor;
 import org.ray.streaming.runtime.transfer.Message;
 import org.ray.streaming.runtime.worker.JobWorker;
@@ -28,7 +28,7 @@ public abstract class InputStreamTask extends StreamTask {
       if (item != null) {
         byte[] bytes = new byte[item.body().remaining()];
         item.body().get(bytes);
-        Object obj = Serializer.decode(bytes);
+        Object obj = Serializer.decode(bytes, null);
         processor.process(obj);
       }
     }

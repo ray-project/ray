@@ -2,7 +2,7 @@ package org.ray.streaming.runtime.core.collector;
 
 import java.nio.ByteBuffer;
 import java.util.Collection;
-import org.ray.runtime.util.Serializer;
+import org.ray.runtime.serializer.Serializer;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.message.Record;
@@ -30,8 +30,9 @@ public class OutputCollector implements Collector<Record> {
 
   @Override
   public void collect(Record record) {
+    Serializer.Meta encodeMeta = new Serializer.Meta();
     int[] partitions = this.partition.partition(record, outputQueues.length);
-    ByteBuffer msgBuffer = ByteBuffer.wrap(Serializer.encode(record));
+    ByteBuffer msgBuffer = ByteBuffer.wrap(Serializer.encode(record, encodeMeta));
     for (int partition : partitions) {
       writer.write(outputQueues[partition], msgBuffer);
     }

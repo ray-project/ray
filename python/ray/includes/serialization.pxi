@@ -9,6 +9,9 @@ DEF kMajorBufferAlign = 64
 DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
+DEF kCrossLanguageTypeExtensionId = 100
+DEF kLanguageSpecificTypeExtensionId = 101
+DEF kMessagePackOffset = 9
 
 cdef extern from "ray/util/memory.h" namespace "ray" nogil:
     void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
@@ -141,26 +144,74 @@ cdef class SubBuffer:
             p[0] = self.buf
         return self.size
 
+cdef class MessagePackSerializer(object):
+    _cross_type_tables = {}
+
+    @classmethod
+    def register_cross_type(cls, cross_type):
+        cross_typeid = cross_type.__cross_typeid__
+        assert hasattr(cross_type, '__to_cross_data__')
+        assert hasattr(cross_type, '__from_cross_data__')
+        cls._cross_type_tables[cross_typeid] = cross_type
+
+    @staticmethod
+    def dumps(o, python_serializer=None):
+        def _default(obj):
+            cross_typeid = getattr(obj, '__cross_typeid__', None)
+            if cross_typeid is not None:
+                state = msgpack.dumps(o.__to_cross_data__(), use_bin_type=True)
+                return msgpack.ExtType(kCrossLanguageTypeExtensionId, [cross_typeid, state])
+            if python_serializer is not None:
+                return msgpack.ExtType(kLanguageSpecificTypeExtensionId, msgpack.dumps(python_serializer(obj)))
+            return obj
+        return msgpack.dumps(o, default=_default, use_bin_type=True)
+
+    @classmethod
+    def loads(cls, s, python_deserializer=None):
+        def _ext_hook(code, data):
+            if code == kLanguageSpecificTypeExtensionId:
+                if python_deserializer is not None:
+                    return python_deserializer(msgpack.loads(data))
+                raise Exception('Unrecognized ext type id: {}'.format(code))
+            if code == kCrossLanguageTypeExtensionId:
+                cross_typeid, state = msgpack.loads(data, raw=False)
+                cross_type = cls._cross_type_tables.get(cross_typeid, None)
+                if cross_type is None:
+                    raise Exception('Unrecognized ext type id: {}'.format(code))
+                return cross_type.__from_cross_data__(state)
+        return msgpack.loads(s, ext_hook=_ext_hook, raw=False)
 
 # See 'serialization.proto' for the memory layout in the Plasma buffer.
-def unpack_pickle5_buffers(Buffer buf):
+def unpack_pickle5_buffers(Buffer buf, metadata):
     cdef:
         shared_ptr[CBuffer] _buffer = buf.buffer
         const uint8_t *data = buf.buffer.get().Data()
         size_t size = _buffer.get().Size()
         CPythonObject python_object
         CPythonBuffer *buffer_meta
+        c_string msgpack_bytes
         c_string inband_data
+        int64_t msgpack_bytes_length
+        int64_t python_payload_offset
         int64_t protobuf_offset
         int64_t protobuf_size
         int32_t i
         const uint8_t *buffers_segment
-    protobuf_offset = (<int64_t*>data)[0]
+    header_unpacker = msgpack.Unpacker()
+    header_unpacker.feed(c_string(<char*>data, kMessagePackOffset))
+    msgpack_bytes_length = header_unpacker.unpack()
+    assert kMessagePackOffset + msgpack_bytes_length <= size
+    msgpack_bytes.append(<char*>(data + kMessagePackOffset),
+                         <size_t>msgpack_bytes_length)
+    if metadata == ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE:
+        return msgpack_bytes, None, None
+    python_payload_offset = kMessagePackOffset + msgpack_bytes_length
+    protobuf_offset = (<int64_t*>(data + python_payload_offset))[0]
     if protobuf_offset < 0:
         raise ValueError("The protobuf data offset should be positive."
                          "Got negative instead. "
                          "Maybe the buffer has been corrupted.")
-    protobuf_size = (<int64_t*>data)[1]
+    protobuf_size = (<int64_t*>(data + python_payload_offset))[1]
     if protobuf_size > INT32_MAX or protobuf_size < 0:
         raise ValueError("Incorrect protobuf size. "
                          "Maybe the buffer has been corrupted.")
@@ -190,7 +241,7 @@ def unpack_pickle5_buffers(Buffer buf):
         buffer.internal = NULL
         buffer.suboffsets = NULL
         pickled_buffers.append(buffer)
-    return inband_data, pickled_buffers
+    return msgpack_bytes, inband_data, pickled_buffers
 
 
 cdef class Pickle5Writer:
@@ -240,14 +291,18 @@ cdef class Pickle5Writer:
         self._curr_buffer_addr += view.len
         self.buffers.push_back(view)
 
-    def get_total_bytes(self, const c_string &inband):
+    # DO NOT declare arguments as c_string which will copy data from Python to C++
+    def get_total_bytes(self, msgpack_bytes, inband):
+        if inband is None:
+            self._total_bytes = kMessagePackOffset + len(msgpack_bytes)
+            return self._total_bytes
         cdef:
             size_t protobuf_bytes = 0
-            uint64_t inband_data_offset = sizeof(int64_t) * 2
+            uint64_t inband_data_offset = kMessagePackOffset + len(msgpack_bytes) + sizeof(int64_t) * 2
             uint64_t raw_buffers_offset = padded_length_u64(
-                inband_data_offset + inband.length(), kMajorBufferAlign)
+                inband_data_offset + len(inband), kMajorBufferAlign)
         self.python_object.set_inband_data_offset(inband_data_offset)
-        self.python_object.set_inband_data_size(inband.length())
+        self.python_object.set_inband_data_size(len(inband))
         self.python_object.set_raw_buffers_offset(raw_buffers_offset)
         self.python_object.set_raw_buffers_size(self._curr_buffer_addr)
         # Since calculating the output size is expensive, we will
@@ -265,26 +320,36 @@ cdef class Pickle5Writer:
         self._total_bytes = self._protobuf_offset + protobuf_bytes
         return self._total_bytes
 
-    cdef void write_to(self, const c_string &inband, shared_ptr[CBuffer] data,
-                       int memcopy_threads):
+    # DO NOT declare arguments as c_string which will copy data from Python to C++
+    cdef void write_to(self, msgpack_bytes, inband,
+                       shared_ptr[CBuffer] data, int memcopy_threads):
         cdef uint8_t *ptr = data.get().Data()
         cdef int32_t protobuf_size
+        cdef int64_t python_payload_offset
         cdef uint64_t buffer_addr
         cdef uint64_t buffer_len
         cdef int i
         if self._total_bytes < 0:
             raise ValueError("Must call 'get_total_bytes()' first "
                              "to get the actual size")
+        # Write msgpack data first.
+        msgpack_bytes_length = len(msgpack_bytes)
+        header_bytes = msgpack.dumps(msgpack_bytes_length)
+        memcpy(ptr, <char*>header_bytes, len(header_bytes))
+        memcpy(ptr + kMessagePackOffset, <char*>msgpack_bytes, msgpack_bytes_length)
+        if inband is None:
+            return
         # Write protobuf size for deserialization.
+        python_payload_offset = kMessagePackOffset + msgpack_bytes_length
         protobuf_size = self.python_object.GetCachedSize()
-        (<int64_t*>ptr)[0] = self._protobuf_offset
-        (<int64_t*>ptr)[1] = protobuf_size
+        (<int64_t*>(ptr + python_payload_offset))[0] = self._protobuf_offset
+        (<int64_t*>(ptr + python_payload_offset))[1] = protobuf_size
         # Write protobuf data.
         self.python_object.SerializeWithCachedSizesToArray(
             ptr + self._protobuf_offset)
         # Write inband data.
         memcpy(ptr + self.python_object.inband_data_offset(),
-               inband.data(), inband.length())
+               <char*>inband, len(inband))
         # Write buffer data.
         ptr += self.python_object.raw_buffers_offset()
         for i in range(self.python_object.buffer_size()):

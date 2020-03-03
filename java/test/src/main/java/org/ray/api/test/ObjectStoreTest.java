@@ -25,6 +25,6 @@ public class ObjectStoreTest extends BaseTest {
     List<Integer> ints = ImmutableList.of(1, 2, 3, 4, 5);
     List<ObjectId> ids = ints.stream().map(obj -> Ray.put(obj).getId())
         .collect(Collectors.toList());
-    Assert.assertEquals(ints, Ray.get(ids));
+    Assert.assertEquals(ints, Ray.get(ids, Integer.class));
   }
 }

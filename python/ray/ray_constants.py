@@ -174,13 +174,12 @@ PROCESS_TYPE_GCS_SERVER = "gcs_server"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
-# A constant used as object metadata to indicate the object is raw binary.
-RAW_BUFFER_METADATA = b"RAW"
-# A constant used as object metadata to indicate the object is pickled. This
-# format is only ever used for Python inline task argument values.
-PICKLE_BUFFER_METADATA = b"PICKLE"
-# A constant used as object metadata to indicate the object is pickle5 format.
-PICKLE5_BUFFER_METADATA = b"PICKLE5"
+# A constant used as object metadata to indicate the object is cross language.
+OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"Cross"
+# A constant used as object metadata to indicate the object is python specific.
+OBJECT_METADATA_TYPE_PYTHON = b"Python"
+# A constant used as object metadata to indicate the object is raw bytes.
+OBJECT_METADATA_TYPE_RAW = b"Raw"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 

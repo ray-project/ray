@@ -67,8 +67,8 @@ public final class Ray extends RayCall {
    * @param objectId The ID of the object to get.
    * @return The Java object.
    */
-  public static <T> T get(ObjectId objectId) {
-    return runtime.get(objectId);
+  public static <T> T get(ObjectId objectId, Class<?> objectType) {
+    return runtime.get(objectId, objectType);
   }
 
   /**
@@ -77,8 +77,8 @@ public final class Ray extends RayCall {
    * @param objectIds The list of object IDs.
    * @return A list of Java objects.
    */
-  public static <T> List<T> get(List<ObjectId> objectIds) {
-    return runtime.get(objectIds);
+  public static <T> List<T> get(List<ObjectId> objectIds, Class<?> elementType) {
+    return runtime.get(objectIds, elementType);
   }
 
   /**

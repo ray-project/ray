@@ -45,7 +45,7 @@ public class DynamicResourceTest extends BaseTest {
     // Assert ray call result.
     result = Ray.wait(ImmutableList.of(obj), 1, 1000);
     Assert.assertEquals(result.getReady().size(), 1);
-    Assert.assertEquals(Ray.get(obj.getId()), "hi");
+    Assert.assertEquals(Ray.get(obj.getId(), obj.getType()), "hi");
 
   }
 
