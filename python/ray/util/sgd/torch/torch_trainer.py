@@ -12,9 +12,9 @@ import ray
 from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.pytorch.distributed_pytorch_runner import (
-    DistributedPyTorchRunner)
+    DistributedTorchRunner)
 from ray.util.sgd import utils
-from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.util.sgd.pytorch.pytorch_runner import TorchRunner
 from ray.util.sgd.pytorch.constants import VALID_SCHEDULER_STEP
 
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ class TorchTrainer:
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(PyTorchRunner)
+                num_cpus=1, num_gpus=int(self.use_gpu))(TorchRunner)
             # Start workers
             self.workers = [
                 Runner.remote(
@@ -221,7 +221,7 @@ class TorchTrainer:
             # Generate actor class
             Runner = ray.remote(
                 num_cpus=1,
-                num_gpus=int(self.use_gpu))(DistributedPyTorchRunner)
+                num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Compute batch size per replica
             batch_size_per_replica = self.batch_size // num_replicas
             if self.batch_size % num_replicas > 0:

@@ -23,7 +23,7 @@ except ImportError:
     pass
 
 
-class PyTorchRunner:
+class TorchRunner:
     """Manages a PyTorch model for training.
 
     Args:
