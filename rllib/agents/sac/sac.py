@@ -42,10 +42,6 @@ DEFAULT_CONFIG = with_common_config({
     # N-step target updates.
     "n_step": 1,
 
-    ## The GumbelSoftmax temperature parameter to use, iff action space is
-    ## discrete and SAC uses GumbelSoftmax to sample.
-    #"gumbel_softmax_temperature": 1.0,
-
     # === Evaluation ===
     # The evaluation stats will be reported under the "evaluation" metric key.
     "evaluation_interval": 1,
@@ -111,7 +107,6 @@ DEFAULT_CONFIG = with_common_config({
 })
 # __sphinx_doc_end__
 # yapf: enable
-
 
 SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",

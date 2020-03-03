@@ -13,7 +13,7 @@ class TestSAC(unittest.TestCase):
         ray.init()
         config = sac.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        num_iterations = 20
+        num_iterations = 2
 
         # eager (discrete and cont. actions).
         for fw in ["eager", "tf", "torch"]:
@@ -22,7 +22,10 @@ class TestSAC(unittest.TestCase):
                 continue
             config["eager"] = fw == "eager"
             config["use_pytorch"] = fw == "torch"
-            for env in ["CartPole-v0", "Pendulum-v0", ]:
+            for env in [
+                    "CartPole-v0",
+                    "Pendulum-v0",
+            ]:
                 print("Env={}".format(env))
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):

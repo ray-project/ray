@@ -7,8 +7,7 @@ import unittest
 from ray.rllib.models.tf.tf_action_dist import Categorical, SquashedGaussian, \
     GumbelSoftmax
 from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.numpy import softmax, one_hot, \
-    MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
+from ray.rllib.utils.numpy import softmax, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.test_utils import check
 
 tf = try_import_tf()
@@ -108,8 +107,8 @@ class TestDistributions(unittest.TestCase):
         """Tests the GumbelSoftmax ActionDistribution (tf-eager only)."""
         with eager_mode():
             batch_size = 1000
-            input_space = Box(-1.0, 1.0, shape=(batch_size, 5))
-            value_space = Box(0, 5, shape=(batch_size,), dtype=np.int32)
+            num_categories = 5
+            input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))
 
             # Batch of size=n and deterministic.
             inputs = input_space.sample()
@@ -127,24 +126,6 @@ class TestDistributions(unittest.TestCase):
             expected_mean = np.mean(np.argmax(inputs, -1)).astype(np.float32)
             outs = gumbel_softmax.sample()
             check(np.mean(np.argmax(outs, -1)), expected_mean, rtol=0.08)
-
-            return  # TODO: Figure out Gumbel Softmax log-prob calculation (our current implementation does not correspond with paper's formula).
-    
-            def gumbel_log_density(y, probs, num_categories, temperature=1.0):
-                # https://arxiv.org/pdf/1611.01144.pdf.
-                density = np.math.factorial(num_categories - 1) * np.math.pow(temperature, num_categories - 1) * \
-                    (np.sum(probs / np.power(y, temperature), axis=-1) ** -num_categories) * \
-                    np.prod(probs / np.power(y, temperature + 1.0), axis=-1)
-                return np.log(density)
-    
-            # Test log-likelihood outputs.
-            inputs = input_space.sample()
-            values = values_space.sample()
-            expected = gumbel_log_density(
-                values, softmax(inputs), num_categories=input_space.shape[1])
-    
-            out = gumble_softmax.logp(inputs, values)
-            check(out, expected)
 
 
 if __name__ == "__main__":

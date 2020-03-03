@@ -46,8 +46,6 @@ class TFRunBuilder:
                 logger.exception("Error fetching: {}, feed_dict={}".format(
                     self.fetches, self.feed_dict))
                 raise e
-                #raise ValueError("Error fetching: {}, feed_dict={}".format(
-                #    self.fetches, self.feed_dict))
         if isinstance(to_fetch, int):
             return self._executed[to_fetch]
         elif isinstance(to_fetch, list):

@@ -190,7 +190,7 @@ def actor_critic_loss(policy, model, _, train_batch):
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
                 model_out_t, train_batch[SampleBatch.ACTIONS])
-    
+
         # Q-values for current policy in given current state.
         q_t_det_policy = model.get_q_values(model_out_t, policy_t)
         if policy.config["twin_q"]:
@@ -198,23 +198,23 @@ def actor_critic_loss(policy, model, _, train_batch):
                 model_out_t, policy_t)
             q_t_det_policy = tf.reduce_min(
                 (q_t_det_policy, twin_q_t_det_policy), axis=0)
-    
+
         # target q network evaluation
-        q_tp1 = policy.target_model.get_q_values(
-            target_model_out_tp1, policy_tp1)
+        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
+                                                 policy_tp1)
         if policy.config["twin_q"]:
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
-    
+
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if policy.config["twin_q"]:
             twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
             q_tp1 = tf.reduce_min((q_tp1, twin_q_tp1), axis=0)
         q_tp1 -= model.alpha * log_pis_tp1
-    
+
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
-        q_tp1_best_masked = (
-            1.0 - tf.cast(train_batch[SampleBatch.DONES], tf.float32)) * q_tp1_best
+        q_tp1_best_masked = (1.0 - tf.cast(train_batch[SampleBatch.DONES],
+                                           tf.float32)) * q_tp1_best
 
     assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
 
@@ -256,15 +256,20 @@ def actor_critic_loss(policy, model, _, train_batch):
     # Discrete case: Multiply the action probs as weights with the original
     # loss terms (no expectations needed).
     if model.discrete:
-        alpha_loss = tf.reduce_mean(tf.reduce_sum(tf.multiply(
-            tf.stop_gradient(policy_t),
-            -model.log_alpha * tf.stop_gradient(log_pis_t + target_entropy)),
-            axis=-1))
-        actor_loss = tf.reduce_mean(tf.reduce_sum(tf.multiply(
-            # NOTE: No stop_grad around policy output here
-            # (compare with q_t_det_policy for continuous case).
-            policy_t,
-            model.alpha * log_pis_t - tf.stop_gradient(q_t)), axis=-1))
+        alpha_loss = tf.reduce_mean(
+            tf.reduce_sum(
+                tf.multiply(
+                    tf.stop_gradient(policy_t), -model.log_alpha *
+                    tf.stop_gradient(log_pis_t + target_entropy)),
+                axis=-1))
+        actor_loss = tf.reduce_mean(
+            tf.reduce_sum(
+                tf.multiply(
+                    # NOTE: No stop_grad around policy output here
+                    # (compare with q_t_det_policy for continuous case).
+                    policy_t,
+                    model.alpha * log_pis_t - tf.stop_gradient(q_t)),
+                axis=-1))
     else:
         alpha_loss = -tf.reduce_mean(
             model.log_alpha * tf.stop_gradient(log_pis_t + target_entropy))

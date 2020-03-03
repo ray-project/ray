@@ -157,8 +157,6 @@ class Policy(metaclass=ABCMeta):
             explore=explore,
             timestep=timestep)
 
-        #if argmax_actions:
-        #    action = argmax_action(action, self.action_space)
         if clip_actions:
             action = clip_action(action, self.action_space)
 
@@ -421,19 +419,3 @@ def clip_action(action, space):
         return out
     else:
         return action
-
-
-#def argmax_action(action, space):
-#    if isinstance(space, gym.spaces.Box):
-#        return np.argmax(action, axis=-1)
-#    elif isinstance(space, gym.spaces.Tuple):
-#        if type(action) not in (tuple, list):
-#            raise ValueError("Expected tuple space for actions {}: {}".format(
-#                action, space))
-#        out = []
-#        for a, s in zip(action, space.spaces):
-#            out.append(argmax_action(a, s))
-#        return out
-
-#    raise ValueError(
-#        "Expected Box or Tuple space to argmax_action, not {}".format(space))

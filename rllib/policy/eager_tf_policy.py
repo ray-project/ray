@@ -543,9 +543,6 @@ def build_eager_tf_policy(name,
                 SampleBatch.NEXT_OBS: np.array(
                     [self.observation_space.sample()]),
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
-                #SampleBatch.ACTIONS: np.zeros(
-                #        (1, ) + action_shape[1:],
-                #        dtype=action_dtype.as_numpy_dtype()),
                 SampleBatch.ACTIONS: tf.nest.map_structure(
                     lambda c: np.array([c]), self.action_space.sample()),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),

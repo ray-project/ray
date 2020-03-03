@@ -57,7 +57,6 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def logp(self, x):
-        #x = tf.minimum(x, self.n - 1)
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=self.inputs, labels=tf.cast(x, tf.int32))
 
@@ -165,8 +164,9 @@ class GumbelSoftmax(TFActionDistribution):
         """Initializes a GumbelSoftmax distribution.
 
         Args:
-            temperature (float): Temperature parameter. For low temperatures, the expected value approaches
-                a categorical random variable. For high temperatures, the expected value approaches a uniform
+            temperature (float): Temperature parameter. For low temperatures,
+                the expected value approaches a categorical random variable.
+                For high temperatures, the expected value approaches a uniform
                 distribution.
         """
         # Clamp for stability reasons.
@@ -185,8 +185,10 @@ class GumbelSoftmax(TFActionDistribution):
         # Override since the implementation of tfp.RelaxedOneHotCategorical
         # yields positive values.
         if x.shape != self.dist.logits.shape:
-            values = tf.cast(tf.one_hot(
-                x, self.dist.logits.shape.as_list()[-1]), dtype=tf.float32)
+            values = tf.cast(
+                tf.one_hot(x,
+                           self.dist.logits.shape.as_list()[-1]),
+                dtype=tf.float32)
             assert values.shape == self.dist.logits.shape
 
         # [0]'s implementation (see line below) seems to be an approximation
