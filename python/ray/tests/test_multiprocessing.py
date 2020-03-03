@@ -71,8 +71,6 @@ def test_ray_init(shutdown_only):
     with pytest.raises(ValueError):
         Pool(processes=2)
     assert int(ray.state.cluster_resources()["CPU"]) == 1
-    pool.terminate()
-    pool.join()
     ray.shutdown()
 
 
@@ -134,8 +132,6 @@ def test_connect_to_ray(ray_start_cluster):
     with pytest.raises(Exception):
         Pool(processes=start_cpus + 1)
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
-    pool.terminate()
-    pool.join()
     ray.shutdown()
 
 
