@@ -14,71 +14,83 @@ class Namespace:
 _default_interval_names = ["log", "checkpoint", "backup"]
 class _TrainingOperator(TrainingOperator):
     def setup(self, config):
-        sysconfig = config._system_config
-        self.logger = sysconfig.logging_cls()
+        sysconfig = config.system_config
+        self.logger = sysconfig.logging_cls(sysconfig)
+
+        self.head_cb_actor = sysconfig.head_cb_actor
+
+        if self.world_rank == 0:
+            self.batch_logs = Namespace()
+            self.batch_logs.packet_type = "batch_logs"
 
     def train_epoch(self, iterator, info):
-        myinfo = info["_system_info"]
-        myinfo.progress_bar = None
+        self.sysinfo = info["_system_training_op_info"]
 
         if self.world_rank == 0:
             num_steps = info.get("num_steps", len(self.train_loader))
 
-            iterator = tqdm(
-                iterator,
-                total=num_steps,
-                desc="{}/{}e".format(info["train_steps"]+1, myinfo.args.num_epochs),
-                unit="batch")
-            myinfo.progress_bar = iterator
+            tqdm_setup = Namespace()
+            tqdm_setup.packet_type = "tqdm_setup"
+            tqdm_setup.kwargs = {
+                "total": num_steps,
+                "desc": "{}/{}e".format(info["train_steps"]+1, self.sysinfo.args.num_epochs),
+                "unity": "batch"
+            }
 
-        logs = super().train_epoch(iterator, info)
-        # logs["_system_info"].update(myinfo) # return things if needed
-        return logs
+            self.head_cb_actor.send_packet.remote(tqdm_setup)
 
+        return super().train_epoch(iterator, info)
+
+    # todo: this is specific to neural compression and needs to be customizable
     def forward(self, features, target):
         self.output = self.model(features)
         loss = self.criterion(self.output, target)
         return loss
 
     def train_batch(self, batch, batch_info):
-        myinfo = batch_info["_system_info"]
-
         # todo: still support user-defined training ops
         logs = super().train_batch(batch, batch_info)
-
-        batch_idx = batch_info["batch_idx"]
-        # todo: maybe do not recreate this function every time? is this expensive?
-        def run_intervals(intervals_key, f):
-            for (unit, duration) in myinfo.intervals[intervals_key]:
-                if unit != "b":
-                    continue
-                if batch_idx - myinfo.last_action_batches[intervals_key] < duration:
-                    continue
-
-                f()
-                myinfo.last_action_batches[intervals_key] = batch_idx
-
-        def log_fn():
-            wandb.log({"Output examples": [wandb.Image(self.output, caption="Batch {}".format(batch_idx))]})
 
         # todo: deal with log merging for workers
         # todo: ideally we want to callback into the System instance somehow?
         # seems to be impossible
+        # todo: this only supports synchronous training
         if self.world_rank == 0:
-            # todo: this only supports synchronous training
+            batch_idx = batch_info["batch_idx"]
+            # todo: maybe do not recreate this function every time? is this expensive?
+            def run_intervals(intervals_key, f):
+                for (unit, duration) in self.sysinfo.intervals[intervals_key]:
+                    if unit != "b":
+                        continue
+                    if batch_idx - self.sysinfo.last_action_batches[intervals_key] < duration:
+                        continue
+
+                    f()
+                    self.sysinfo.last_action_batches[intervals_key] = batch_idx
+
+            def log_fn():
+                # todo: this is specific to neural compression and needs to be customizable
+                wandb.log({"Output examples": [wandb.Image(self.output, caption="Batch {}".format(batch_idx))]})
+
             run_intervals("log", log_fn)
             run_intervals("checkpoint", lambda: print("Checkpoint mock executed"))
             run_intervals("backup", lambda: print("Debug mock executed"))
 
-        if myinfo.progress_bar is not None:
+            # todo: allow custom pbar metrics
             pbar_logs = {
                 k: logs[k] for k in ["loss"]
             }
-            myinfo.progress_bar.set_postfix(pbar_logs)
 
-        wandb.log({"Train loss": logs["loss"]})
+            # we are being somewhat dangerous here,
+            # since this relies on the train_epoch code initiating a
+            # send_to_head before we start batches
+            self.batch_logs.batch_idx = batch_idx
+            self.batch_logs.pbar_logs = pbar_logs
 
-        # logs.update(dict(_system_info=myinfo)) # return things if needed
+            self.head_cb_actor.send_packet.remote(self.batch_logs)
+
+            wandb.log({"Train loss": logs["loss"]})
+
         return logs
 
 class System():
@@ -137,23 +149,37 @@ class System():
             unit='epoch')
         for i in iterator:
             # todo: load checkpoints from mid-epoch properly
-            myinfo = Namespace()
-            myinfo.intervals = self.intervals
-            myinfo.args = self.args
+            training_op_info = Namespace()
+            training_op_info.intervals = self.intervals
+            training_op_info.args = self.args
 
-            myinfo.last_action_batches = {}
+            training_op_info.last_action_batches = {}
             for k in self.intervals:
-                if not k in myinfo.last_action_batches:
+                if not k in training_op_info.last_action_batches:
                     # we run actions after batches, so the last batch we ran the
                     # action after was -1
-                    myinfo.last_action_batches[k] = -1
+                    training_op_info.last_action_batches[k] = -1
 
-            info = dict(_system_info=myinfo)
+            info = dict(_system_training_op_info=training_op_info)
             if "info" in kwargs:
                 info.update(kwargs["info"])
                 kwargs["info"] = info
 
+
+            self._batch_pbar = None
+            def handle_head_packet(packet):
+                if packet.packet_type == "tqdm_setup":
+                    batch_pbar = tqdm(**packet.kwargs)
+                    return
+
+                if packet.packet_type == "batch_logs":
+                    tqdm.n = packet.batch_idx
+                    # tqdm.refresh() # may be needed
+                    tqdm.set_postfix(packet.pbar_logs)
+
             logs = self.trainer.train(*args, **kwargs)
+
+
 
             pbar_logs = {
                 "loss": logs["mean_train_loss"]
@@ -161,7 +187,7 @@ class System():
             iterator.set_postfix(pbar_logs)
 
             # todo: only the first worker's version is returned
-            # myinfo = logs["_system_info"]
+            # myinfo = logs["_system_training_op_info"]
             # we can retrieve things too
 
             epoch_end = time.monotonic()
@@ -210,12 +236,28 @@ class System():
             optimizer_creator,
             loss_creator,
             **kwargs):
-        from logging import WandbLogger
-        system_config.logging_cls = WandbLogger
+        system_config = Namespace()
 
-        self._trainer_params["config"] = dict(
-            user_config=self.config,
-            system_config=system_config)
+
+        @ray.remote(num_cpus=0)
+        class HeadCBActor():
+            def get_last_packet(self):
+                return self.last_packet
+
+            def send_packet(packet):
+                print("Received on head cb actor:", packet)
+                self.last_packet = packet
+
+        system_config.head_cb_actor = HeadCBActor.remote()
+
+        from ml_logging import WandbLogger, Logger
+        system_config.logging_cls = Logger
+
+        trainer_config = Namespace()
+        trainer_config.user_config = self.config
+        trainer_config.system_config = system_config
+
+        self._trainer_params["config"] = trainer_config
         self._trainer_params["training_operator_cls"] = _TrainingOperator
 
         params = self._trainer_params.copy()
