@@ -2,9 +2,9 @@
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
 <suite name="RAY suite" verbose="2">
     <test name = "RAY test">
-        <classes>
-            <class name="org.ray.api.test.MultiThreadingTest"/>
-        </classes>
+        <packages>
+            <package name = "org.ray.api.test.*" />
+        </packages>
     </test>
     <listeners>
         <listener class-name="org.ray.api.TestProgressListener" />
