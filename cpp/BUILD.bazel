@@ -10,7 +10,8 @@ cc_library(
     ]),
     strip_include_prefix = "include",
     deps = [
-        "@plasma//:plasma_client"
+        "@plasma//:plasma_client",
+        "@msgpack//:msgpack",
     ],
 )
 
@@ -37,6 +38,7 @@ cc_binary(
         "libray_api_hdr",
         "@boost//:asio",
         "@boost//:thread",
+        "@msgpack//:msgpack",
     ],
     linkshared = 1,
     linkstatic = 1,

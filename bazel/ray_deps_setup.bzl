@@ -237,3 +237,11 @@ def ray_deps_setup():
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
     )
+
+    github_repository(
+        name = "msgpack",
+        build_file = True,
+        tag = "cpp-3.2.1",
+        remote = "https://github.com/msgpack/msgpack-c",
+        sha256 = "149ff1107ff133db5778a8b4e29fff30b6237cf2bf084afb35c2928c582d8fbd",
+    )
