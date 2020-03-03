@@ -5,7 +5,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayActorException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -13,7 +12,6 @@ import org.testng.annotations.Test;
 @Test
 public class KillActorTest extends BaseTest {
 
-  @RayRemote
   public static class HangActor {
 
     public boolean alive() {

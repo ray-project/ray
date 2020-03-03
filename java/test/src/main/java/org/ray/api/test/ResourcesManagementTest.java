@@ -7,7 +7,6 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.testng.Assert;
@@ -30,12 +29,10 @@ public class ResourcesManagementTest extends BaseTest {
     System.clearProperty("ray.resources");
   }
 
-  @RayRemote
   public static Integer echo(Integer number) {
     return number;
   }
 
-  @RayRemote
   public static class Echo {
 
     public Integer echo(Integer number) {

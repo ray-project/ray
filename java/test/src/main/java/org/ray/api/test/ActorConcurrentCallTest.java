@@ -7,7 +7,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -16,7 +15,6 @@ import org.testng.annotations.Test;
 @Test
 public class ActorConcurrentCallTest extends BaseTest {
 
-  @RayRemote
   public static class ConcurrentActor {
     private final CountDownLatch countDownLatch = new CountDownLatch(3);
 

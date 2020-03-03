@@ -9,7 +9,6 @@ import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc0;
 import org.ray.api.function.RayFunc1;
 import org.ray.api.id.JobId;
@@ -23,12 +22,10 @@ import org.testng.annotations.Test;
  */
 public class FunctionManagerTest {
 
-  @RayRemote
   public static Object foo() {
     return null;
   }
 
-  @RayRemote
   public static class Bar {
 
     public Bar() {

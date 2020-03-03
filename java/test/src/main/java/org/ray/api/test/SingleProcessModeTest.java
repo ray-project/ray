@@ -8,7 +8,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -19,7 +18,6 @@ public class SingleProcessModeTest extends BaseTest {
 
   private static final int TIMES_TO_CALL_PER_ACTOR = 10;
 
-  @RayRemote
   static class MyActor {
     public MyActor() {
     }

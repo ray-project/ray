@@ -3,7 +3,6 @@ package org.ray.api.benchmark;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.testng.annotations.Test;
 
 public class RateLimiterPressureTest extends RayBenchmarkTest {
@@ -13,7 +12,6 @@ public class RateLimiterPressureTest extends RayBenchmarkTest {
   public static final int duration = 10;
   private static final long serialVersionUID = 6616958120966144235L;
 
-  @RayRemote
   public static RemoteResult<Integer> currentTime() {
     RemoteResult<Integer> remoteResult = new RemoteResult<>();
     remoteResult.setFinishTime(System.nanoTime());

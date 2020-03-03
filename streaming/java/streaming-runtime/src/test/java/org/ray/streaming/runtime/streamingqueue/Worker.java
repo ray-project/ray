@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.Random;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.actor.NativeRayActor;
@@ -59,7 +58,6 @@ public class Worker {
   }
 }
 
-@RayRemote
 class ReaderWorker extends Worker {
   private static final Logger LOGGER = LoggerFactory.getLogger(ReaderWorker.class);
 
@@ -176,7 +174,6 @@ class ReaderWorker extends Worker {
   }
 }
 
-@RayRemote
 class WriterWorker extends Worker {
   private static final Logger LOGGER = LoggerFactory.getLogger(WriterWorker.class);
 

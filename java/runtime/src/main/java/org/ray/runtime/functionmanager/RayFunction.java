@@ -3,7 +3,6 @@ package org.ray.runtime.functionmanager;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
-import org.ray.api.annotation.RayRemote;
 
 /**
  * Represents a Ray function (either a Method or a Constructor in Java) and its metadata.

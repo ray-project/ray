@@ -10,7 +10,6 @@ import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
@@ -20,7 +19,6 @@ import org.testng.annotations.Test;
 @Test
 public class ActorTest extends BaseTest {
 
-  @RayRemote
   public static class Counter {
 
     private int value;
@@ -86,7 +84,6 @@ public class ActorTest extends BaseTest {
         actor.call(Counter::accessLargeObject, largeObject).get());
   }
 
-  @RayRemote
   static Counter factory(int initValue) {
     return new Counter(initValue);
   }
@@ -99,19 +96,16 @@ public class ActorTest extends BaseTest {
     Assert.assertEquals(Integer.valueOf(1), actor.call(Counter::getValue).get());
   }
 
-  @RayRemote
   static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
     RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
-  @RayRemote
   static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
     RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
-  @RayRemote
   static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
     RayObject<Integer> res = actor.get(0).call(Counter::increaseAndGet, delta);
     return res.get();

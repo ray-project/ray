@@ -3,7 +3,6 @@ package org.ray.exercise;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 
 /**
  * Show usage of actors.
@@ -30,8 +29,6 @@ public class Exercise05 {
   /**
    * An example actor.
    */
-  // `@RayRemote` annotation also converts a normal class to an actor.
-  @RayRemote
   public static class Adder {
 
     public Adder(int initValue) {

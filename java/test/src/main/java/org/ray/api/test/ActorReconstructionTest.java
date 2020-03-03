@@ -9,7 +9,6 @@ import org.ray.api.Checkpointable;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
@@ -20,7 +19,6 @@ import org.testng.annotations.Test;
 @Test
 public class ActorReconstructionTest extends BaseTest {
 
-  @RayRemote()
   public static class Counter {
 
     protected int value = 0;

@@ -4,14 +4,12 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class WorkerJvmOptionsTest extends BaseTest {
 
-  @RayRemote
   public static class Echo {
     String getOptions() {
       return System.getProperty("test.suffix");
