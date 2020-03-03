@@ -660,7 +660,7 @@ class Pool:
         if not self._closed:
             self.close()
         for actor, _ in self._actor_pool:
-            actor.__ray_kill__()
+            ray.kill(actor)
 
     def join(self):
         """Wait for the actors in a closed pool to exit.
