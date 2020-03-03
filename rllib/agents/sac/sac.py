@@ -12,9 +12,8 @@ OPTIMIZER_SHARED_CONFIGS = [
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    "twin_q": False,
+    "twin_q": True,
     "use_state_preprocessor": False,
-    #"policy": "GaussianLatentSpacePolicy",
     # RLlib model options for the Q function
     "Q_model": {
         "hidden_activation": "relu",
@@ -31,15 +30,15 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Learning ===
     # Update the target by \tau * policy + (1-\tau) * target_policy.
-    "tau": 1.0,  # 5e-3,
+    "tau": 5e-3,
     # Initial value to use for the entropy weight alpha.
-    "initial_alpha": 10.0,
+    "initial_alpha": 1.0,
     # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
     # Discrete(2), -3.0 for Box(shape=(3,))).
     # This is the inverse of reward scale, and will be optimized automatically.
     "target_entropy": "auto",
     # Disable setting done=True at end of episode.
-    "no_done_at_end": False,
+    "no_done_at_end": True,
     # N-step target updates.
     "n_step": 1,
 
@@ -63,7 +62,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": 1000000,
+    "buffer_size": int(1e6),
     # If True prioritized replay buffer will be used.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
@@ -77,11 +76,11 @@ DEFAULT_CONFIG = with_common_config({
     # === Optimization ===
     "optimization": {
         "actor_learning_rate": 3e-4,
-        "critic_learning_rate": 5e-4,
-        "entropy_learning_rate": 1e-4,
+        "critic_learning_rate": 3e-4,
+        "entropy_learning_rate": 3e-4,
     },
     # If not None, clip gradients during optimization at this value.
-    "grad_norm_clipping": 2.0,
+    "grad_norm_clipping": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
@@ -90,9 +89,9 @@ DEFAULT_CONFIG = with_common_config({
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
-    "train_batch_size": 128,
+    "train_batch_size": 256,
     # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 128,
+    "target_network_update_freq": 0,
 
     # === Parallelism ===
     # Whether to use a GPU for local optimization.

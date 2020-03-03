@@ -4,55 +4,16 @@ cartpole-sac:
     stop:
         episode_reward_mean: 150
     config:
-        #evaluation_interval: 1  # logged under evaluation/* metric keys
-        #gumbel_softmax_temperature: 0.5
-        no_done_at_end:
-            grid_search:
-                - false
-                - true
-        prioritized_replay: false
-        prioritized_replay_alpha: 0.5
-        initial_alpha:
-            grid_search:
-                - 1.0
-                - 5.0
-                - 10.0
-                - 20.0
-        train_batch_size:
-            grid_search:
-                - 1024
-                - 512
-                - 256
-                - 128
-                - 64
+        gamma: 0.95
+        no_done_at_end: false
+        target_network_update_freq: 32
+        tau: 1.0
+        # initial_alpha: 0.5
+        train_batch_size: 32
         optimization:
-            actor_learning_rate:
-                grid_search:
-                    - 0.0003
-                    - 0.00003
-                    - 0.003
-            critic_learning_rate:
-                grid_search:
-                    - 0.0003
-                    - 0.00003
-                    - 0.003
-            entropy_learning_rate:
-                grid_search:
-                    - 0.0003
-                    - 0.00003
-                    - 0.003
+            actor_learning_rate: 0.005
+            critic_learning_rate: 0.005
+            entropy_learning_rate: 0.0001
+        # grad_norm_clipping: 40.0
         evaluation_config:
             explore: true
-        target_network_update_freq:
-            grid_search:
-                - 1000
-                - 16
-                - 128
-                - 2000
-                - 512
-        grad_norm_clipping:
-            grid_search:
-                - 1.0
-                - 5.0
-                - 10.0
-                - 40.0
