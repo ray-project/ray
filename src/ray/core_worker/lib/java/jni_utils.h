@@ -244,9 +244,10 @@ template <typename NativeT>
 inline void JavaListToNativeVector(
     JNIEnv *env, jobject java_list, std::vector<NativeT> *native_vector,
     std::function<NativeT(JNIEnv *, jobject)> element_converter) {
-  int size = env->CallIntMethod(java_list, java_list_size);
   RAY_CHECK_JAVA_EXCEPTION(env);
   native_vector->clear();
+  if (java_list == nullptr) return;
+  int size = env->CallIntMethod(java_list, java_list_size);
   for (int i = 0; i < size; i++) {
     auto element = env->CallObjectMethod(java_list, java_list_get, (jint)i);
     RAY_CHECK_JAVA_EXCEPTION(env);
@@ -377,7 +378,7 @@ inline std::shared_ptr<JavaByteArrayBuffer> JavaByteArrayToNativeBuffer(
 /// Convert a Java NativeRayObject to a C++ ray::RayObject.
 /// NOTE: the returned ray::RayObject cannot be used across threads.
 inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
-    JNIEnv *env, const jobject &java_obj) {
+    JNIEnv *env, const jobject &java_obj, jobject innerIds) {
   if (!java_obj) {
     return nullptr;
   }
@@ -393,9 +394,12 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
-  // TODO: Support nested IDs for Java.
-  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
-                                          std::vector<ray::ObjectID>());
+  std::vector<ray::ObjectID> inner_ids;
+  JavaListToNativeVector<ray::ObjectID>(
+      env, innerIds, &inner_ids, [](JNIEnv *env, jobject id) {
+        return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
+      });
+  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer, inner_ids);
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.

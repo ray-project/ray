@@ -3,6 +3,7 @@ package org.ray.runtime.util;
 import org.nustaq.serialization.FSTConfiguration;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.actor.NativeRayActorSerializer;
+import org.ray.runtime.object.RayObjectImpl;
 
 /**
  * Java object serialization TODO: use others (e.g. Arrow) for higher performance
@@ -12,6 +13,7 @@ public class Serializer {
   private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal.withInitial(() -> {
     FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
     conf.registerSerializer(NativeRayActor.class, new NativeRayActorSerializer(), true);
+    conf.registerSerializer(RayObjectImpl.class, new RayObjectImpl.Serializer(), true);
     return conf;
   });
 

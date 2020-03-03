@@ -3,6 +3,14 @@ package org.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import org.nustaq.serialization.FSTBasicObjectSerializer;
+import org.nustaq.serialization.FSTClazzInfo;
+import org.nustaq.serialization.FSTObjectOutput;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
@@ -68,5 +76,24 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
       runtime.getObjectStore().removeLocalReference(id);
     }
     runtime = null;
+  }
+
+  public static class Serializer extends FSTBasicObjectSerializer {
+
+    static ThreadLocal<Set<ObjectId>> innerIds = ThreadLocal.withInitial(HashSet::new);
+
+    @Override
+    public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo, FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
+      out.writeObject(toWrite);
+      RayObjectImpl object = (RayObjectImpl) toWrite;
+      innerIds.get().add(object.getId());
+    }
+
+    public static List<ObjectId> getInnerObjectIds() {
+      List<ObjectId> ids = new ArrayList<>();
+      ids.addAll(innerIds.get());
+      innerIds.get().clear();
+      return ids;
+    }
   }
 }

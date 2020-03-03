@@ -10,20 +10,18 @@ extern "C" {
 /*
  * Class:     org_ray_runtime_object_NativeObjectStore
  * Method:    nativePut
- * Signature: (JLorg/ray/runtime/object/NativeRayObject;)[B
+ * Signature: (JLorg/ray/runtime/object/NativeRayObject;Ljava/util/List;)[B
  */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jlong, jobject);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_object_NativeRayObject_2Ljava_util_List_2
+    (JNIEnv *, jclass, jlong, jobject, jobject);
 
 /*
  * Class:     org_ray_runtime_object_NativeObjectStore
  * Method:    nativePut
- * Signature: (J[BLorg/ray/runtime/object/NativeRayObject;)V
+ * Signature: (J[BLorg/ray/runtime/object/NativeRayObject;Ljava/util/List;)V
  */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *, jclass, jlong, jbyteArray, jobject);
+JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_object_NativeRayObject_2Ljava_util_List_2
+    (JNIEnv *, jclass, jlong, jbyteArray, jobject, jobject);
 
 /*
  * Class:     org_ray_runtime_object_NativeObjectStore

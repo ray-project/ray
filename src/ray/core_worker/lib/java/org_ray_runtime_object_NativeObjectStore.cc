@@ -10,9 +10,9 @@ extern "C" {
 #endif
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject obj) {
-  auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
+Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_object_NativeRayObject_2Ljava_util_List_2(
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject obj, jobject innerIds) {
+  auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj, innerIds);
   RAY_CHECK(ray_object != nullptr);
   ray::ObjectID object_id;
   auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
@@ -22,11 +22,11 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_objec
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_object_NativeRayObject_2(
+Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_object_NativeRayObject_2Ljava_util_List_2(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray objectId,
-    jobject obj) {
+    jobject obj, jobject innerIds) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
-  auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
+  auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj, innerIds);
   RAY_CHECK(ray_object != nullptr);
   auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
                     ->Put(*ray_object, {}, object_id);

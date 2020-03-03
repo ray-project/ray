@@ -29,7 +29,7 @@ public abstract class ObjectStore {
    * @param obj The ray object.
    * @return Generated ID of the object.
    */
-  public abstract ObjectId putRaw(NativeRayObject obj);
+  public abstract ObjectId putRaw(NativeRayObject obj, List<ObjectId> innerObjectIds);
 
   /**
    * Put a raw object with specified ID into object store.
@@ -37,7 +37,7 @@ public abstract class ObjectStore {
    * @param obj The ray object.
    * @param objectId Object ID specified by user.
    */
-  public abstract void putRaw(NativeRayObject obj, ObjectId objectId);
+  public abstract void putRaw(NativeRayObject obj, ObjectId objectId, List<ObjectId> innerObjectIds);
 
   /**
    * Serialize and put an object to the object store.
@@ -50,7 +50,9 @@ public abstract class ObjectStore {
       throw new IllegalArgumentException(
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
-    return putRaw(ObjectSerializer.serialize(object));
+    NativeRayObject serialized = ObjectSerializer.serialize(object);
+    List<ObjectId> innerObjectIds = RayObjectImpl.Serializer.getInnerObjectIds();
+    return putRaw(serialized, innerObjectIds);
   }
 
   /**
@@ -66,7 +68,9 @@ public abstract class ObjectStore {
       throw new IllegalArgumentException(
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
-    putRaw(ObjectSerializer.serialize(object), objectId);
+    NativeRayObject serialized = ObjectSerializer.serialize(object);
+    List<ObjectId> innerObjectIds = RayObjectImpl.Serializer.getInnerObjectIds();
+    putRaw(serialized, objectId, innerObjectIds);
   }
 
   /**

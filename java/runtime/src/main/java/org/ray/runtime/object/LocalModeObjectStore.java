@@ -37,14 +37,14 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public ObjectId putRaw(NativeRayObject obj) {
+  public ObjectId putRaw(NativeRayObject obj, List<ObjectId> innerObjectIds) {
     ObjectId objectId = ObjectId.fromRandom();
-    putRaw(obj, objectId);
+    putRaw(obj, objectId, innerObjectIds);
     return objectId;
   }
 
   @Override
-  public void putRaw(NativeRayObject obj, ObjectId objectId) {
+  public void putRaw(NativeRayObject obj, ObjectId objectId, List<ObjectId> innerObjectIds) {
     Preconditions.checkNotNull(obj);
     Preconditions.checkNotNull(objectId);
     pool.putIfAbsent(objectId, obj);

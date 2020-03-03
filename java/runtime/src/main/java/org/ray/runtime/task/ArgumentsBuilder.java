@@ -7,6 +7,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectSerializer;
+import org.ray.runtime.object.RayObjectImpl;
 import org.ray.runtime.util.RuntimeUtil;
 
 /**
@@ -42,8 +43,9 @@ public class ArgumentsBuilder {
         id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
+        List<ObjectId> innerObjectIds = RayObjectImpl.Serializer.getInnerObjectIds();
         if (!isDirectCall && value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = RuntimeUtil.getRuntime().getObjectStore().putRaw(value);
+          id = RuntimeUtil.getRuntime().getObjectStore().putRaw(value, innerObjectIds);
           value = null;
         }
       }
