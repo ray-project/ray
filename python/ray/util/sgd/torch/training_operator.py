@@ -26,7 +26,7 @@ class TrainingOperator:
 
     The scheduler will only be called at a batch or epoch frequency, depending
     on the user parameter. Be sure to set ``scheduler_step_freq`` in
-    ``PyTorchTrainer`` to either "batch" or "epoch" to increment the scheduler
+    ``TorchTrainer`` to either "batch" or "epoch" to increment the scheduler
     correctly during training. If using a learning rate scheduler
     that depends on validation loss, you can use ``trainer.update_scheduler``.
 
@@ -290,7 +290,7 @@ class TrainingOperator:
 
     @property
     def config(self):
-        """Dictionary as provided into PyTorchTrainer."""
+        """Dictionary as provided into TorchTrainer."""
         return self._config
 
     @property

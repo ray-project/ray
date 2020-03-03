@@ -8,7 +8,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 import ray
-from ray.util.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
+from ray.util.sgd.pytorch import (TorchTrainer, PyTorchTrainable)
 from ray.util.sgd.pytorch.resnet import ResNet18
 
 
@@ -62,7 +62,7 @@ def train_example(num_replicas=1,
                   use_gpu=False,
                   use_fp16=False,
                   test_mode=False):
-    trainer1 = PyTorchTrainer(
+    trainer1 = TorchTrainer(
         ResNet18,
         cifar_creator,
         optimizer_creator,

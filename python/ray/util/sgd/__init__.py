@@ -1,7 +1,7 @@
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.tf import TFTrainer
 
-__all__ = ["PyTorchTrainer", "TFTrainer"]
+__all__ = ["TorchTrainer", "TFTrainer"]
 
 def PyTorchTrainer(**kwargs):
     raise DeprecationError(

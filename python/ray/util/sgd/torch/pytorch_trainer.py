@@ -29,7 +29,7 @@ def _validate_scheduler_step_freq(scheduler_step_freq):
                     VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
-class PyTorchTrainer:
+class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
     Launches a set of actors which connect via distributed PyTorch and
@@ -49,7 +49,7 @@ class PyTorchTrainer:
         def data_creator(config):
             return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
-        trainer = PyTorchTrainer(
+        trainer = TorchTrainer(
             model_creator,
             data_creator,
             optimizer_creator,
@@ -285,7 +285,7 @@ class PyTorchTrainer:
                 in case of shared cluster usage.
             checkpoint (str): Path to checkpoint to restore from if retrying.
                 If max_retries is set and ``checkpoint == "auto"``,
-                PyTorchTrainer will save a checkpoint before starting to train.
+                TorchTrainer will save a checkpoint before starting to train.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
 
@@ -497,7 +497,7 @@ class PyTorchTrainable(Trainable):
             extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
 
     def _setup(self, config):
-        self._trainer = PyTorchTrainer(**config)
+        self._trainer = TorchTrainer(**config)
 
     def _train(self):
         train_stats = self._trainer.train()

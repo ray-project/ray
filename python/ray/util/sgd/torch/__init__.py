@@ -1,18 +1,18 @@
 import logging
 logger = logging.getLogger(__name__)
 
-PyTorchTrainer = None
+TorchTrainer = None
 PyTorchTrainable = None
 TrainingOperator = None
 
 try:
     import torch  # noqa: F401
 
-    from ray.util.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
+    from ray.util.sgd.pytorch.pytorch_trainer import (TorchTrainer,
                                                       PyTorchTrainable)
 
     from ray.util.sgd.pytorch.training_operator import TrainingOperator
 
-    __all__ = ["PyTorchTrainer", "PyTorchTrainable", "TrainingOperator"]
+    __all__ = ["TorchTrainer", "PyTorchTrainable", "TrainingOperator"]
 except ImportError:
-    logger.warning("PyTorch not found. PyTorchTrainer will not be available")
+    logger.warning("PyTorch not found. TorchTrainer will not be available")
