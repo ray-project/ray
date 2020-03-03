@@ -41,11 +41,28 @@ fi
 if [ "${TRAVIS-}" = true ]; then
   # Use bazel disk cache if this script is running in Travis.
   mkdir -p "${HOME}/ray-bazel-cache"
-  echo "build --disk_cache=${HOME}/ray-bazel-cache" >> "${HOME}/.bazelrc"
+  cat <<EOF >> "${HOME}/.bazelrc"
+build --disk_cache="${HOME}/ray-bazel-cache"
+build --show_timestamps  # Travis doesn't have an option to show timestamps, but GitHub Actions does
+EOF
 fi
-if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
-  # Use ray google cloud cache
-  echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> "${HOME}/.bazelrc"
+if [ -n "${GITHUB_WORKFLOW-}" ]; then
+  cat <<EOF >> "${HOME}/.bazelrc"
+--output_base=".bazel-out"  # On GitHub Actions, staying on the same volume seems to be faster
+EOF
+fi
+if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+  cat <<EOF >> "${HOME}/.bazelrc"
+# CI output doesn't scroll, so don't use curses
+build --curses=no
+build --progress_report_interval=60
+# Use ray google cloud cache
+build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
+build --show_progress_rate_limit=15
+build --show_task_finish
+build --ui_actions_shown=1024
+build --verbose_failures
+EOF
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
@@ -71,9 +88,13 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
     if [ "${OSTYPE}" = msys ]; then  # On Windows, we need path translation
       translated_path="$(cygpath -m -- "${translated_path}")"
     fi
-    echo "build --google_credentials=\"${translated_path}\"" >> "${HOME}/.bazelrc"
+    cat <<EOF >> "${HOME}/.bazelrc"
+build --google_credentials="${translated_path}"
+EOF
   else
     echo "Using remote build cache in read-only mode." 1>&2
-    echo "build --remote_upload_local_results=false" >> "${HOME}/.bazelrc"
+    cat <<EOF >> "${HOME}/.bazelrc"
+build --remote_upload_local_results=false
+EOF
   fi
 fi

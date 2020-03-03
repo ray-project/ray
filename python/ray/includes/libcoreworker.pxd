@@ -97,6 +97,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_vector[shared_ptr[CRayObject]] *returns,
                         const CWorkerID &worker_id) nogil,
                     CRayStatus() nogil,
+                    void() nogil,
                     c_bool ref_counting_enabled)
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
@@ -150,9 +151,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 const CObjectID &outer_object_id,
                 const CTaskID &owner_id,
                 const CAddress &owner_address)
-        void AddContainedObjectIDs(
-            const CObjectID &object_id,
-            const c_vector[CObjectID] &contained_object_ids)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
@@ -177,6 +175,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         int64_t timeout_ms, c_vector[c_bool] *results)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only, c_bool delete_creating_tasks)
+        CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()
@@ -199,4 +198,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CClientID &client_Id)
 
-        void SubscribeToAsyncPlasma(plasma_callback_function callback)
+        void SetPlasmaAddedCallback(plasma_callback_function callback)
+
+        void SubscribeToPlasmaAdd(const CObjectID &object_id)

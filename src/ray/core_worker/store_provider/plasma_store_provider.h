@@ -21,7 +21,8 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 const std::shared_ptr<raylet::RayletClient> raylet_client,
-                                std::function<Status()> check_signals);
+                                std::function<Status()> check_signals,
+                                std::function<void()> on_store_full = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -119,6 +120,7 @@ class CoreWorkerPlasmaStoreProvider {
   plasma::PlasmaClient store_client_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
+  std::function<void()> on_store_full_;
 };
 
 }  // namespace ray

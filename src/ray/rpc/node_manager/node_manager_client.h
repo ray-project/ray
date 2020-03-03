@@ -76,6 +76,9 @@ class NodeManagerWorkerClient
   /// Notify the raylet to pin the provided object IDs.
   RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
 
+  /// Trigger global GC across the cluster.
+  RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
+
  private:
   /// Constructor.
   ///

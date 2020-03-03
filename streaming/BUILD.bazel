@@ -120,7 +120,6 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        "core_worker_lib.so",
         "ray_common.so",
         "ray_util.so",
         ":streaming_config",
@@ -129,7 +128,15 @@ cc_library(
         ":streaming_util",
         "@boost//:asio",
         "@boost//:thread",
-    ],
+    ] + select({
+        "@bazel_tools//src/conditions:windows": [
+            # TODO(mehrdadn): This is to resolve symbols on Windows for now. Should remove this later. (See d7f8d18.)
+            "//:core_worker_lib",
+        ],
+        "//conditions:default": [
+            "core_worker_lib.so",
+        ],
+    }),
 )
 
 cc_library(
