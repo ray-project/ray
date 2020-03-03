@@ -35,7 +35,7 @@ def data_creator(config):
 
 
 class Generator(nn.Module):
-    def __init__(self, latent_vector_size=100, features=32, num_channels=1):
+    def __init__(self, latent_vector_size, features=32, num_channels=1):
         super(Generator, self).__init__()
         self.latent_vector_size = latent_vector_size
         self.main = nn.Sequential(
@@ -107,7 +107,8 @@ def model_creator(config):
     discriminator = Discriminator()
     discriminator.apply(weights_init)
 
-    generator = Generator()
+    generator = Generator(
+        latent_vector_size=config.get("latent_vector_size", 100))
     generator.apply(weights_init)
     return discriminator, generator
 
@@ -184,7 +185,11 @@ class GANOperator(TrainingOperator):
 
         # Compute a discriminator update for fake images
         noise = torch.randn(
-            batch_size, generator.latent_vector_size, 1, 1, device=self.device)
+            batch_size,
+            self.config.get("latent_vector_size", 100),
+            1,
+            1,
+            device=self.device)
         fake = generator(noise)
         label.fill_(fake_label)
         output = discriminator(fake.detach()).view(-1)
