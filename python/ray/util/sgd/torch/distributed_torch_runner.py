@@ -7,7 +7,7 @@ import torch.distributed as dist
 import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel
 
-from ray.util.sgd.pytorch.pytorch_runner import TorchRunner
+from ray.util.sgd.torch.torch_runner import TorchRunner
 
 logger = logging.getLogger(__name__)
 
