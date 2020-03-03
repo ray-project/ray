@@ -532,6 +532,22 @@ def test_actor_method_deletion(ray_start_regular):
     assert ray.get(Actor.remote().method.remote()) == 1
 
 
+def test_distributed_actor_handle_deletion(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def method(self):
+            return 1
+
+    @ray.remote
+    def f(actor):
+        return ray.get(actor.method.remote())
+
+    # Make sure that if we create an actor and call a method on it
+    # immediately, the actor doesn't get killed before the method is
+    # called.
+    assert ray.get(f.remote(Actor.remote())) == 1
+
+
 def test_multiple_actors(ray_start_regular):
     @ray.remote
     class Counter:

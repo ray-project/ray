@@ -80,6 +80,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   virtual ~CoreWorker();
 
+  void Exit(bool intentional);
+
   void Disconnect();
 
   WorkerType GetWorkerType() const { return worker_type_; }
@@ -386,7 +388,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id ID of the actor to kill.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id);
+  Status KillActor(const ActorID &actor_id, bool force_kill);
 
   /// Add an actor handle from a serialized string.
   ///
@@ -548,9 +550,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
+  /// \param is_owner_handle Whether this is the owner's handle to the actor.
+  /// The owner is the creator of the actor and is responsible for telling the
+  /// actor to disconnect once all handles are out of scope.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
@@ -783,6 +788,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Plasma notification manager
   std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
+
+  /// Whether we are shutting down and not running further tasks.
+  bool exiting_ = false;
 
   friend class CoreWorkerTest;
 };

@@ -112,20 +112,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     auto execute_task =
         std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    auto exit = [this](bool intentional) {
-      // Release the resources early in case draining takes a long time.
-      RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
-      task_manager_->DrainAndShutdown([this, intentional]() {
-        // To avoid problems, make sure shutdown is always called from the same
-        // event loop each time.
-        task_execution_service_.post([this, intentional]() {
-          if (intentional) {
-            Disconnect();  // Notify the raylet this is an intentional exit.
-          }
-          Shutdown();
-        });
-      });
-    };
+    auto exit = std::bind(&CoreWorker::Exit, this, std::placeholders::_1);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
@@ -276,6 +263,22 @@ void CoreWorker::Disconnect() {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     }
   }
+}
+
+void CoreWorker::Exit(bool intentional) {
+  exiting_ = true;
+  // Release the resources early in case draining takes a long time.
+  RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
+  task_manager_->DrainAndShutdown([this, intentional]() {
+    // To avoid problems, make sure shutdown is always called from the same
+    // event loop each time.
+    task_execution_service_.post([this, intentional]() {
+      if (intentional) {
+        Disconnect();  // Notify the raylet this is an intentional exit.
+      }
+      Shutdown();
+    });
+  });
 }
 
 void CoreWorker::RunIOService() {
@@ -767,25 +770,27 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.is_direct_call, actor_creation_options.max_concurrency,
       actor_creation_options.is_detached, actor_creation_options.is_asyncio);
 
-  *actor_object_id = return_ids[0];
-  std::unique_ptr<ActorHandle> actor_handle(
-      new ActorHandle(actor_id, job_id, /*actor_cursor=*/*actor_object_id,
-                      function.GetLanguage(), actor_creation_options.is_direct_call,
-                      function.GetFunctionDescriptor(), extension_data));
-  RAY_CHECK(AddActorHandle(std::move(actor_handle)))
-      << "Actor " << actor_id << " already exists";
-
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
+  Status status;
   if (actor_creation_options.is_direct_call) {
     task_manager_->AddPendingTask(
         GetCallerId(), rpc_address_, task_spec,
         std::max(RayConfig::instance().actor_creation_min_retries(),
                  actor_creation_options.max_reconstructions));
-    return direct_task_submitter_->SubmitTask(task_spec);
+    status = direct_task_submitter_->SubmitTask(task_spec);
   } else {
-    return local_raylet_client_->SubmitTask(task_spec);
+    status = local_raylet_client_->SubmitTask(task_spec);
   }
+
+  *actor_object_id = return_ids[0];
+  std::unique_ptr<ActorHandle> actor_handle(
+      new ActorHandle(actor_id, job_id, /*actor_cursor=*/*actor_object_id,
+                      function.GetLanguage(), actor_creation_options.is_direct_call,
+                      function.GetFunctionDescriptor(), extension_data));
+  RAY_CHECK(AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/true))
+      << "Actor " << actor_id << " already exists";
+  return status;
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -837,17 +842,17 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
-Status CoreWorker::KillActor(const ActorID &actor_id) {
+Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
   RAY_CHECK(actor_handle->IsDirectCallActor());
-  return direct_actor_submitter_->KillActor(actor_id);
+  return direct_actor_submitter_->KillActor(actor_id, force_kill);
 }
 
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();
-  RAY_UNUSED(AddActorHandle(std::move(actor_handle)));
+  RAY_UNUSED(AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false));
   return actor_id;
 }
 
@@ -861,16 +866,21 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
   return status;
 }
 
-bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
+bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle) {
+  const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = actor_handle->GetActorCreationReturnId();
-  RAY_CHECK(reference_counter_->SetDeleteCallback(actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
-        // Unsubscribe from the actor table.
+
+  RAY_CHECK(reference_counter_->SetDeleteCallback(actor_creation_return_id, [this, actor_id, is_owner_handle](const ObjectID &object_id) {
+        // TODO(swang): Unsubscribe from the actor table.
+        // TODO(swang): Remove the actor handle entry.
         // If we own the actor, also terminate the actor.
-        RAY_LOG(ERROR) << "Actor " << actor_id << " out of scope";
+        if (is_owner_handle) {
+          RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id << " has gone out of scope, sending message to actor " << actor_id << " to do a clean exit.";
+          KillActor(actor_id, /*intentional=*/true);
+        }
         }));
 
   absl::MutexLock lock(&actor_handles_mutex_);
-  const auto &actor_id = actor_handle->GetActorID();
 
   auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   if (inserted) {
@@ -1099,6 +1109,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     current_task_ = TaskSpecification();
   }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
+
+  if (status.IsSystemExit()) {
+    Exit(status.IsIntentionalSystemExit());
+  }
+
   return status;
 }
 
@@ -1207,6 +1222,9 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
 
   task_queue_length_ += 1;
   task_execution_service_.post([=] {
+    // We have posted an exit task onto the main event loop,
+    // so shouldn't bother executing any further work.
+    if (exiting_) return;
     direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
 }
@@ -1321,11 +1339,16 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
     return;
   }
-  RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
-  if (log_dir_ != "") {
-    RayLog::ShutDownRayLog();
+
+  if (request.force_kill()) {
+    RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
+    if (log_dir_ != "") {
+      RayLog::ShutDownRayLog();
+    }
+    exit(1);
+  } else {
+    Exit(/*intentional=*/true);
   }
-  exit(1);
 }
 
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,

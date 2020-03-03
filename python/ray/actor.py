@@ -763,38 +763,35 @@ class ActorHandle:
             self._ray_actor_creation_function_descriptor.class_name,
             self._actor_id.hex())
 
-    def __del__(self):
-        """Terminate the worker that is running this actor."""
-        # TODO(swang): Also clean up forked actor handles.
-        # Kill the worker if this is the original actor handle, created
-        # with Class.remote(). TODO(rkn): Even without passing handles around,
-        # this is not the right policy. the actor should be alive as long as
-        # there are ANY handles in scope in the process that created the actor,
-        # not just the first one.
-        worker = ray.worker.get_global_worker()
-        exported_in_current_session_and_job = (
-            self._ray_session_and_job == worker.current_session_and_job)
-        print("__del__")
-        if (worker.mode == ray.worker.SCRIPT_MODE
-                and not exported_in_current_session_and_job):
-            # If the worker is a driver and driver id has changed because
-            # Ray was shut down re-initialized, the actor is already cleaned up
-            # and we don't need to send `__ray_terminate__` again.
-            logger.warning(
-                "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.", self._ray_actor_id,
-                self._ray_actor_creation_function_descriptor.class_name)
-            return
-        print("worker connected?", worker.connected)
-        print("original handle?", self._ray_original_handle)
-        if worker.connected and self._ray_original_handle:
-            # Note: in py2 the weakref is destroyed prior to calling __del__
-            # so we need to set the hardref here briefly
-            try:
-                self.__ray_terminate__._actor_hard_ref = self
-                self.__ray_terminate__.remote()
-            finally:
-                self.__ray_terminate__._actor_hard_ref = None
+    #def __del__(self):
+    #    """Terminate the worker that is running this actor."""
+    #    # TODO(swang): Also clean up forked actor handles.
+    #    # Kill the worker if this is the original actor handle, created
+    #    # with Class.remote(). TODO(rkn): Even without passing handles around,
+    #    # this is not the right policy. the actor should be alive as long as
+    #    # there are ANY handles in scope in the process that created the actor,
+    #    # not just the first one.
+    #    worker = ray.worker.get_global_worker()
+    #    exported_in_current_session_and_job = (
+    #        self._ray_session_and_job == worker.current_session_and_job)
+    #    if (worker.mode == ray.worker.SCRIPT_MODE
+    #            and not exported_in_current_session_and_job):
+    #        # If the worker is a driver and driver id has changed because
+    #        # Ray was shut down re-initialized, the actor is already cleaned up
+    #        # and we don't need to send `__ray_terminate__` again.
+    #        logger.warning(
+    #            "Actor is garbage collected in the wrong driver." +
+    #            " Actor id = %s, class name = %s.", self._ray_actor_id,
+    #            self._ray_actor_creation_function_descriptor.class_name)
+    #        return
+    #    if worker.connected and self._ray_original_handle:
+    #        # Note: in py2 the weakref is destroyed prior to calling __del__
+    #        # so we need to set the hardref here briefly
+    #        try:
+    #            self.__ray_terminate__._actor_hard_ref = self
+    #            self.__ray_terminate__.remote()
+    #        finally:
+    #            self.__ray_terminate__._actor_hard_ref = None
 
     def __ray_kill__(self):
         """Kill the actor that this actor handle refers to immediately.

@@ -152,6 +152,8 @@ message WaitForObjectEvictionReply {
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
+  // Whether to force kill the actor.
+  bool force_kill = 2;
 }
 
 message KillActorReply {
