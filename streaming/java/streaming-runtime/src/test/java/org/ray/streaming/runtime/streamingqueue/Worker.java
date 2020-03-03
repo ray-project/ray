@@ -68,7 +68,7 @@ class ReaderWorker extends Worker {
   private List<ActorId> inputActorIds = new ArrayList<>();
   private DataReader dataReader = null;
   private long handler = 0;
-  private RayActor peerActor = null;
+  private RayActor<WriterWorker> peerActor = null;
   private int msgCount = 0;
   private int totalMsg = 0;
 
@@ -90,7 +90,7 @@ class ReaderWorker extends Worker {
     return "testRayCall";
   }
 
-  public boolean init(List<String> inputQueueList, RayActor peer, int msgCount) {
+  public boolean init(List<String> inputQueueList, RayActor<WriterWorker> peer, int msgCount) {
 
     this.inputQueueList = inputQueueList;
     this.peerActor = peer;
@@ -184,7 +184,7 @@ class WriterWorker extends Worker {
   private List<String> outputQueueList = null;
   private List<ActorId> outputActorIds = new ArrayList<>();
   DataWriter dataWriter = null;
-  RayActor peerActor = null;
+  RayActor<ReaderWorker> peerActor = null;
   int msgCount = 0;
 
   public WriterWorker(String name) {
@@ -200,12 +200,12 @@ class WriterWorker extends Worker {
   }
 
   public String testCallReader(RayActor readerActor) {
-    String name = (String) readerActor.call(ReaderWorker::getName).get();
+    String name = (String) Ray.call(ReaderWorker::getName, readerActor).get();
     LOGGER.info("testCallReader: {}", name);
     return name;
   }
 
-  public boolean init(List<String> outputQueueList, RayActor peer, int msgCount) {
+  public boolean init(List<String> outputQueueList, RayActor<ReaderWorker> peer, int msgCount) {
 
     this.outputQueueList = outputQueueList;
     this.peerActor = peer;
@@ -221,7 +221,7 @@ class WriterWorker extends Worker {
     LOGGER.info("Peer isDirectActorCall: {}", ((NativeRayActor) peer).isDirectCallActor());
     int count = 3;
     while (count-- != 0) {
-      peer.call(ReaderWorker::testRayCall).get();
+      pear.call(ReaderWorker::testRayCall).get();
     }
 
     try {
