@@ -613,7 +613,9 @@ def start_reaper(fate_share=None):
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
     process_info = start_ray_process(
-        command, ray_constants.PROCESS_TYPE_REAPER, pipe_stdin=True,
+        command,
+        ray_constants.PROCESS_TYPE_REAPER,
+        pipe_stdin=True,
         fate_share=fate_share)
     return process_info
 
