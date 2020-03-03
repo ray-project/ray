@@ -1152,7 +1152,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 
   // Local resource availability changed: invoke scheduling policy for local node.
   if (new_scheduler_enabled_) {
-    DispatchScheduledTasksToWorkers();
+    NewSchedulerSchedulePendingTasks();
   } else {
     cluster_resource_map_[self_node_id_].SetLoadResources(
         local_queues_.GetResourceLoad());
@@ -1308,7 +1308,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Since some resources may have been released, we can try to dispatch more tasks. YYY
     if (new_scheduler_enabled_) {
-      DispatchScheduledTasksToWorkers();
+      NewSchedulerSchedulePendingTasks();
     } else {
       DispatchTasks(local_queues_.GetReadyTasksByClass());
     }
@@ -1585,12 +1585,11 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     worker->AssignJobId(spec.JobId());
     worker->SetAssignedTask(task.second);
 
-    RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers -> SetAllocatedInstances 1";
     reply(worker, ClientID::Nil(), "", -1);
-    RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers -> SetAllocatedInstances 2  " << worker->WorkerId();
-    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers IsActorCreation/IsActorTask " << spec.IsActorCreationTask() << "/" << spec.IsActorTask();
-    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers " << PrintWorkerPool() << PrintLeasedWorkers();
-        
+
+    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers Assign task " 
+        << spec.TaskId() << " to worker " << worker->WorkerId();
+
     tasks_to_dispatch_.pop_front();    
   }
   RAY_LOG(WARNING) << "xxxx DispatchScheduledTasksToWorkers end";
@@ -1677,7 +1676,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
 
-  RAY_LOG(WARNING) << "xxxx HandleRequestWorkerLease";
+  RAY_LOG(WARNING) << "HandleRequestWorkerLease, task id = " << task.GetTaskSpecification().TaskId();
 
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
@@ -1702,9 +1701,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             reply->mutable_worker_address()->set_port(worker->Port());
             reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
             reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-            RAY_LOG(WARNING) << "leased_worker 2.0 = " << worker->WorkerId();
+            RAY_LOG(WARNING) << "leased_worker 2 = " << worker->WorkerId();
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
-            RAY_LOG(WARNING) << "leased_worker 2.1";
             leased_workers_[worker->WorkerId()] = worker;
           } else {
             reply->mutable_retry_at_raylet_address()->set_ip_address(address);
@@ -1715,6 +1713,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
           send_reply_callback(Status::OK(), nullptr, nullptr);
         },
         task);
+    RAY_LOG(WARNING) << "HandleRequestWorkerLease, push task id = " << work.second.GetTaskSpecification().TaskId();
     tasks_to_schedule_.push_back(work);
     RAY_LOG(WARNING) << "====x HandleRequestWorkerLease -> NewSchedulerSchedulePendingTasks ====";
     NewSchedulerSchedulePendingTasks();
@@ -2521,7 +2520,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     // direct actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
     worker.AssignTaskId(TaskID::Nil());
-    RAY_LOG(WARNING) << "FinishAssignTask 2, " << worker.WorkerId();
+    RAY_LOG(WARNING) << "FinishAssignedTask 2, " << worker.WorkerId();
     worker.SetOwnerAddress(rpc::Address());
   }
   // Direct actors will be assigned tasks via the core worker and therefore are
