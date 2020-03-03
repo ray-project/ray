@@ -155,7 +155,7 @@ cdef class DataWriter:
             ctx.get().MarkMockTest()
         if config_bytes:
             config_data = config_bytes
-            channel_logger.info("load config, config bytes size: %s", config_data.nbytes)
+            channel_logger.info("DataWriter load config, config bytes size: %s", config_data.nbytes)
             ctx.get().SetConfig(<uint8_t *>(&config_data[0]), config_data.nbytes)
         c_writer = new CDataWriter(ctx)
         cdef:
@@ -235,7 +235,7 @@ cdef class DataReader:
         cdef shared_ptr[CRuntimeContext] ctx = make_shared[CRuntimeContext]()
         if config_bytes:
             config_data = config_bytes
-            channel_logger.info("load config, config bytes size: %s", config_data.nbytes)
+            channel_logger.info("DataReader load config, config bytes size: %s", config_data.nbytes)
             ctx.get().SetConfig(<uint8_t *>(&(config_data[0])), config_data.nbytes)
         if is_mock:
             ctx.get().MarkMockTest()
@@ -289,7 +289,7 @@ cdef class DataReader:
                 msg_id = msg.get().GetMessageSeqId()
                 msgs.append((msg_bytes, msg_id, timestamp, qid_bytes))
             return msgs
-        elif  bundle_type == <uint32_t> libstreaming.BundleTypeEmpty:
+        elif bundle_type == <uint32_t> libstreaming.BundleTypeEmpty:
             return []
         else:
             raise Exception("Unsupported bundle type {}".format(bundle_type))

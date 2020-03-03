@@ -55,6 +55,9 @@ struct NodeManagerConfig {
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
   uint64_t debug_dump_period_ms;
+  /// The time between attempts to eagerly evict objects from plasma in
+  /// milliseconds, or -1 to disable.
+  int64_t free_objects_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
@@ -159,6 +162,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Write out debug state to a file.
   void DumpDebugState() const;
+
+  /// Flush objects that are out of scope in the application. This will attempt
+  /// to eagerly evict all plasma copies of the object from the cluster.
+  void FlushObjectsToFree();
 
   /// Get profiling information from the object manager and push it to the GCS.
   ///
@@ -531,6 +538,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
                         bool success);
 
+  /// Process worker subscribing to plasma.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return void.
+  void ProcessSubscribePlasmaReady(const std::shared_ptr<LocalClientConnection> &client,
+                                   const uint8_t *message_data);
+
+  /// Setup callback with Object Manager.
+  ///
+  /// \return Status indicating whether setup was successful.
+  ray::Status SetupPlasmaSubscription();
+
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,
@@ -555,6 +575,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                           rpc::GetNodeStatsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `GlobalGC` request.
+  void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
+                      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Trigger local GC on each worker of this raylet.
+  void DoLocalGC();
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
@@ -590,6 +617,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::chrono::milliseconds heartbeat_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
+  /// The period between attempts to eagerly evict objects from plasma.
+  int64_t free_objects_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
@@ -608,6 +637,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t last_heartbeat_at_ms_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
+  /// The time that we last sent a FreeObjects request to other nodes for
+  /// objects that have gone out of scope in the application.
+  uint64_t last_free_objects_at_ms_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
@@ -657,6 +689,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
 
+  /// Whether to trigger global GC in the next heartbeat. This will broadcast
+  /// a global GC message to all raylets except for this one.
+  bool should_global_gc_ = false;
+
+  /// Whether to trigger local GC in the next heartbeat. This will trigger gc
+  /// on all local workers of this raylet.
+  bool should_local_gc_ = false;
+
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
@@ -690,6 +730,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
+
+  /// Concurrency for the following map
+  mutable absl::Mutex plasma_object_notification_lock_;
+
+  /// Keeps track of workers waiting for objects
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
+      async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
+
+  /// Objects that are out of scope in the application and that should be freed
+  /// from plasma. The cache is flushed when it reaches the config's
+  /// free_objects_batch_size, or if objects have been in the cache for longer
+  /// than the config's free_objects_period, whichever occurs first.
+  std::vector<ObjectID> objects_to_free_;
 };
 
 }  // namespace raylet

@@ -10,8 +10,8 @@ mock
 numpy
 opencv-python-headless
 pandas
-pyarrow
 pygments
+psutil
 pyyaml
 recommonmark
 redis

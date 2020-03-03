@@ -23,9 +23,6 @@ class Schedule(metaclass=ABCMeta):
     """
 
     def __init__(self, framework=None):
-        # TODO(sven): replace with .tf_value() / torch_value() methods that
-        # can be applied late binding, so no need to set framework during
-        # construction.
         self.framework = check_framework(framework)
 
     @abstractmethod
@@ -42,11 +39,11 @@ class Schedule(metaclass=ABCMeta):
         raise NotImplementedError
 
     def value(self, t):
-        if self.framework == "tf" and tf.executing_eagerly() is False:
+        if self.framework == "tf":
             return tf.cast(
-                tf.py_func(self._value, [t], tf.float64),
+                tf.py_function(self._value, [t], tf.float64),
                 tf.float32,
-                name="schedule-value")
+                name="schedule_value")
         return self._value(t)
 
     def __call__(self, t):

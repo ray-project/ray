@@ -13,6 +13,9 @@ You can install the latest stable version of Ray as follows.
 
   pip install -U ray  # also recommended: ray[debug]
 
+
+.. _install-nightlies:
+
 Latest Snapshots (Nightlies)
 ----------------------------
 
@@ -39,6 +42,22 @@ master branch). To install these wheels, run the following command:
 .. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
 .. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
+
+Installing from a specific commit
+---------------------------------
+
+You can install the Ray wheels of any particular commit on ``master`` with the following template. You need to specify the commit hash, Ray version, Operating System, and Python version:
+
+.. code-block:: bash
+
+    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
+
+For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit ``a0ba4499ac645c9d3e82e68f3a281e48ad57f873``:
+
+.. code-block:: bash
+
+    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
+
 
 Installing Ray with Anaconda
 ----------------------------
@@ -149,7 +168,7 @@ If you are using Anaconda and have trouble installing ``psutil`` or
 The command ``ray.init()`` or ``ray start --head`` will print out the address of
 the dashboard. For example,
 
-.. code-block::
+.. code-block:: python
 
   >>> import ray
   >>> ray.init()

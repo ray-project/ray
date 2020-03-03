@@ -22,7 +22,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "sample_batch_size": 50,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
-        "per_worker_exploration": True,
+        "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
         "worker_side_prioritization": True,
         "min_iter_time_s": 30,
     },

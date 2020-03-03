@@ -17,7 +17,12 @@ std::string store_executable;
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() { RAY_LOG(INFO) << "TestObjectManagerBase: started."; }
+  TestObjectManagerBase() {
+    RAY_LOG(INFO) << "TestObjectManagerBase: started.";
+#ifdef _WIN32
+    RAY_CHECK(false) << "port system() calls to Windows before running this test";
+#endif
+  }
 
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";

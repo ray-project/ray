@@ -91,14 +91,14 @@ public class FailureTest extends BaseTest {
     assertTaskFailedWithRayTaskException(Ray.call(FailureTest::badFunc));
   }
 
-  @Test(groups = {"directCall"})
+  @Test
   public void testActorCreationFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, true);
     assertTaskFailedWithRayTaskException(Ray.call(BadActor::badMethod, actor));
   }
 
-  @Test(groups = {"directCall"})
+  @Test
   public void testActorTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
@@ -117,7 +117,7 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test(groups = {"directCall"})
+  @Test
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
     // This test case hangs if the worker to worker connection is implemented with grpc.

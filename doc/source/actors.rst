@@ -147,7 +147,7 @@ collected. The ``ObjectID`` resulting from the task can be waited on to wait
 for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 Note that this method of termination will wait until any previously submitted
 tasks finish executing. If you want to terminate an actor immediately, you can
-call ``actor_handle.__ray_kill__()``. This will cause the actor to exit immediately
+call ``ray.kill(actor_handle)``. This will cause the actor to exit immediately
 and any pending tasks to fail. Any exit handlers installed in the actor using
 ``atexit`` will be called.
 
@@ -197,19 +197,19 @@ If we instantiate an actor, we can pass the handle around to various tasks.
       print(ray.get(counter.get_counter.remote()))
 
 
-Actor Pool (Experimental)
--------------------------
+Actor Pool
+----------
 
-The ``ray.experimental`` module contains a utility class, ``ActorPool``.
+The ``ray.util`` module contains a utility class, ``ActorPool``.
 This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
 
 .. code-block::
 
-  from ray.experimental import ActorPool
+  from ray.util import ActorPool
 
   a1, a2 = Actor.remote(), Actor.remote()
   pool = ActorPool([a1, a2])
   print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
   # [2, 4, 6, 8]
 
-See the `package reference <package-ref.html#ray.experimental.ActorPool>`_ for more information.
+See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.

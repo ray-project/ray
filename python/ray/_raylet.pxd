@@ -3,6 +3,8 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
+from cpython.pystate cimport PyThreadState_Get
+
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
@@ -23,6 +25,19 @@ from ray.includes.unique_ids cimport (
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
+
+cdef extern from "Python.h":
+    # Note(simon): This is used to configure asyncio actor stack size.
+    # Cython made PyThreadState an opaque types. Saying that if the user wants
+    # specific attributes, they can be declared manually.
+
+    # You can find the cpython definition in Include/cpython/pystate.h#L59
+    ctypedef struct CPyThreadState "PyThreadState":
+        int recursion_depth
+
+    # From Include/ceveal.h#67
+    int Py_GetRecursionLimit()
+    void Py_SetRecursionLimit(int)
 
 cdef class Buffer:
     cdef:
@@ -60,6 +75,7 @@ cdef class CoreWorker:
         unique_ptr[CCoreWorker] core_worker
         object async_thread
         object async_event_loop
+        object plasma_event_handler
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,

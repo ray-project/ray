@@ -23,7 +23,6 @@ def collect_samples(agents, sample_batch_size, num_envs_per_worker,
         [fut_sample], _ = ray.wait(list(agent_dict))
         agent = agent_dict.pop(fut_sample)
         next_sample = ray_get_and_free(fut_sample)
-        assert next_sample.count >= sample_batch_size * num_envs_per_worker
         num_timesteps_so_far += next_sample.count
         trajectories.append(next_sample)
 

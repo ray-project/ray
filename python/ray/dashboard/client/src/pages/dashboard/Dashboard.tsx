@@ -6,13 +6,14 @@ import Tabs from "@material-ui/core/Tabs";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { connect } from "react-redux";
-import { getNodeInfo, getRayletInfo } from "../../api";
+import { getNodeInfo, getRayletInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
 import NodeInfo from "./node-info/NodeInfo";
 import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
+import Tune from "./Tune";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -31,7 +32,8 @@ const styles = (theme: Theme) =>
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  tab: state.dashboard.tab
+  tab: state.dashboard.tab,
+  tuneAvailability: state.dashboard.tuneAvailability
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -41,18 +43,22 @@ class Dashboard extends React.Component<
     ReturnType<typeof mapStateToProps> &
     typeof mapDispatchToProps
 > {
+  timeoutId = 0;
+
   refreshNodeAndRayletInfo = async () => {
     try {
-      const [nodeInfo, rayletInfo] = await Promise.all([
+      const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
         getNodeInfo(),
-        getRayletInfo()
+        getRayletInfo(),
+        getTuneAvailability()
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
+      this.props.setTuneAvailability({ tuneAvailability });
       this.props.setError(null);
     } catch (error) {
       this.props.setError(error.toString());
     } finally {
-      setTimeout(this.refreshNodeAndRayletInfo, 1000);
+      this.timeoutId = window.setTimeout(this.refreshNodeAndRayletInfo, 1000);
     }
   };
 
@@ -60,17 +66,28 @@ class Dashboard extends React.Component<
     await this.refreshNodeAndRayletInfo();
   }
 
+  componentWillUnmount() {
+    clearTimeout(this.timeoutId);
+  }
+
   handleTabChange = (event: React.ChangeEvent<{}>, value: number) => {
     this.props.setTab(value);
   };
 
   render() {
-    const { classes, tab } = this.props;
+    const { classes, tab, tuneAvailability } = this.props;
     const tabs = [
       { label: "Machine view", component: NodeInfo },
       { label: "Logical view", component: LogicalView },
-      { label: "Ray config", component: RayConfig }
+      { label: "Ray config", component: RayConfig },
+      { label: "Tune", component: Tune }
     ];
+
+    // if Tune information is not available, remove Tune tab from the dashboard
+    if (!tuneAvailability) {
+      tabs.splice(3);
+    }
+
     const SelectedComponent = tabs[tab].component;
     return (
       <div className={classes.root}>

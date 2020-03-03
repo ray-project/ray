@@ -269,8 +269,9 @@ def convert_to_experiment_list(experiments):
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:
-            logger.warning("All experiments will be "
-                           "using the same SearchAlgorithm.")
+            logger.info(
+                "Running with multiple concurrent experiments. "
+                "All experiments will be using the same SearchAlgorithm.")
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 

@@ -1,7 +1,16 @@
+"""
+This script ensures python files conform to ray's import ordering rules.
+In particular, we make sure psutil and setproctitle is imported _after_
+importing ray due to our bundling of the two libraries.
+
+Usage:
+$ python check_import_order.py SOURCE_DIR -s SKIP_DIR
+some/file/path.py:23 import psutil without explicitly import ray before it.
+"""
+
 import argparse
 import re
 import sys
-import tempfile
 from pathlib import Path
 
 exit_with_error = False
@@ -17,7 +26,17 @@ def check_import(file):
     with open(file) as f:
         for i, line in enumerate(f):
             for check in check_to_lines.keys():
-                if re.match(r"\s+" + check + r"(\s|$)", line):
+                # This regex will match the following case
+                # - the string itself: `import psutil`
+                # - white space/indentation + the string:`    import psutil`
+                # - the string and arbitrary whitespace: `import psutil    `
+                # - the string and the noqa flag to silent pylint
+                #   `import psutil # noqa F401 import-ordering`
+                # It will not match the following
+                # - submodule import: `import ray.constants as ray_constants`
+                # - submodule import: `from ray import xyz`
+                if re.search(r"^\s*" + check + r"(\s*|\s+# noqa F401.*)$",
+                             line):
                     check_to_lines[check] = i
 
     for import_lib in ["import psutil", "import setproctitle"]:
@@ -27,64 +46,17 @@ def check_import(file):
             if import_ray_line == -1 or import_ray_line > import_psutil_line:
                 print(
                     "{}:{}".format(str(file), import_psutil_line + 1),
-                    "{} without explicit import ray before it.".format(
+                    "{} without explicitly import ray before it.".format(
                         import_lib))
                 global exit_with_error
                 exit_with_error = True
 
 
-# Run the test with pytest file_name
-def test_check_import():
-    global exit_with_error
-    _, path = tempfile.mkstemp()
-
-    with open(path, "w") as f:
-        f.write("""
-        import psutil
-        import ray
-        """)
-    check_import(path)
-    assert exit_with_error
-    exit_with_error = False
-
-    with open(path, "w") as f:
-        f.write("""
-        import psutil
-        """)
-    check_import(path)
-    assert exit_with_error
-    exit_with_error = False
-
-    with open(path, "w") as f:
-        f.write("""
-        import random_lib
-        """)
-    check_import(path)
-    assert not exit_with_error
-    exit_with_error = False
-
-    with open(path, "w") as f:
-        f.write("""
-        import setproctitle
-        import ray
-        """)
-    check_import(path)
-    assert exit_with_error
-    exit_with_error = False
-
-    with open(path, "w") as f:
-        f.write("""
-        import ray
-        import psutil
-        """)
-    check_import(path)
-    assert not exit_with_error
-    exit_with_error = False
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help="File path to check. e.g. '.' or './src'")
+    # TODO(simon): For the future, consider adding a feature to explicitly
+    # white-list the path instead of skipping them.
     parser.add_argument(
         "-s", "--skip", action="append", help="Skip certian directory")
     args = parser.parse_args()

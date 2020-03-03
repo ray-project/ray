@@ -1,8 +1,9 @@
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
@@ -84,7 +85,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         except AssertionError as e:
             if false is False:
                 raise e
-    # Everything else (assume numeric).
+    # Everything else (assume numeric or tf/torch.Tensor).
     else:
         if tf is not None:
             # y should never be a Tensor (y=expected value).
@@ -95,17 +96,27 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 # In eager mode, numpyize tensors.
                 if tf.executing_eagerly():
                     x = x.numpy()
-                # Otherwise, ???
+                # Otherwise, use a quick tf-session.
                 else:
                     with tf.Session() as sess:
                         x = sess.run(x)
-                        check(
+                        return check(
                             x,
                             y,
                             decimals=decimals,
                             atol=atol,
                             rtol=rtol,
                             false=false)
+        if torch is not None:
+            # y should never be a Tensor (y=expected value).
+            if isinstance(y, torch.Tensor):
+                raise ValueError("`y` (expected value) must not be a Tensor. "
+                                 "Use numpy.ndarray instead")
+            if isinstance(x, torch.Tensor):
+                try:
+                    x = x.numpy()
+                except RuntimeError:
+                    x = x.detach().numpy()
 
         # Using decimals.
         if atol is None and rtol is None:

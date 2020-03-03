@@ -1,6 +1,6 @@
 import numpy as np
-from ray.rllib.evaluation import SampleBatch
 
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import MeanStdFilter
 
 

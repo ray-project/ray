@@ -30,6 +30,9 @@ message ActorHandle {
 
   // Whether direct actor call is used.
   bool is_direct_call = 7;
+
+  // An extension field that is used for storing app-language-specific data.
+  bytes extension_data = 8;
 }
 
 message AssignTaskRequest {
@@ -60,6 +63,8 @@ message ReturnObject {
   bytes data = 3;
   // Metadata of the object.
   bytes metadata = 4;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated bytes nested_inlined_ids = 5;
 }
 
 message PushTaskRequest {
@@ -90,6 +95,19 @@ message PushTaskReply {
   repeated ReturnObject return_objects = 1;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 2;
+  // The references that the worker borrowed during the task execution. A
+  // borrower is a process that is currently using the object ID, in one of 3 ways:
+  // 1. Has an ObjectID copy in Python.
+  // 2. Has submitted a task that depends on the object and that is still pending.
+  // 3. Owns another object that is in scope and whose value contains the
+  // ObjectID.
+  // This list includes the reference counts for any IDs that were passed to
+  // the worker in the task spec as an argument by reference, or an ObjectID
+  // that was serialized in an inlined argument. It also includes reference
+  // counts for any IDs that were nested inside these objects that the worker
+  // may now be borrowing. The reference counts also include any new borrowers
+  // that the worker created by passing a borrowed ID into a nested task.
+  repeated ObjectReferenceCount borrowed_refs = 3;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -147,6 +165,74 @@ message GetCoreWorkerStatsReply {
   CoreWorkerStats core_worker_stats = 1;
 }
 
+message ObjectReference {
+  // ObjectID that the worker has a reference to.
+  bytes object_id = 1;
+  // The task or actor ID of the object's owner.
+  bytes owner_id = 2;
+  // The address of the object's owner.
+  Address owner_address = 3;
+}
+
+message WaitForRefRemovedRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Object whose removal we are waiting for.
+  ObjectReference reference = 2;
+  // ObjectID that contains object_id. This is used when an ObjectID is stored
+  // inside another object ID that we do not own. Then, we must notify the
+  // outer ID's owner that the ID contains object_id.
+  bytes contained_in_id = 3;
+}
+
+message ObjectReferenceCount {
+  // The reference that the worker has or had a reference to.
+  ObjectReference reference = 1;
+  // Whether the worker is still using the ObjectID locally. This means that
+  // it has a copy of the ObjectID in the language frontend, has a pending task
+  // that depends on the object, and/or owns an ObjectID that is in scope and
+  // that contains the ObjectID.
+  bool has_local_ref = 2;
+  // Any other borrowers that the worker created (by passing the ID on to them).
+  repeated Address borrowers = 3;
+  // The borrower may have returned the object ID nested inside the return
+  // value of a task that it executed. This list contains all task returns that
+  // were owned by a process other than the borrower. Then, the process that
+  // owns the task's return value is also a borrower for as long as it has the
+  // task return ID in scope. Note that only the object ID and owner address
+  // are used for elements in this list.
+  repeated ObjectReference stored_in_objects = 4;
+  // The borrowed object ID that contained this object, if any. This is used
+  // for nested object IDs.
+  bytes contained_in_borrowed_id = 5;
+  // The object IDs that this object contains, if any. This is used for nested
+  // object IDs.
+  repeated bytes contains = 6;
+}
+
+message WaitForRefRemovedReply {
+  // The reference counts for the object that the worker was borrowing and
+  // any objects nested inside. The worker should no longer be using the object
+  // ID by the time it replies, but may have accumulated other borrowers or may
+  // still be borrowing an object ID that was nested inside.
+  repeated ObjectReferenceCount borrowed_refs = 1;
+}
+
+message LocalGCRequest {
+}
+
+message LocalGCReply {
+}
+
+message PlasmaObjectReadyRequest {
+  bytes object_id = 1;
+  int64 data_size = 2;
+  int64 metadata_size = 3;
+}
+
+message PlasmaObjectReadyReply {
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -165,4 +251,10 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
+  // Wait for a borrower to finish using an object. Sent by the object's owner.
+  rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
+  // Trigger local GC on the worker.
+  rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Notification from raylet that an object ID is available in local plasma.
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }

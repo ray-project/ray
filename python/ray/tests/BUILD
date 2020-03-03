@@ -7,6 +7,14 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_advanced",
+    size = "medium",
+    srcs = ["test_actor_advanced.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_pool",
     size = "small",
     srcs = ["test_actor_pool.py"],

@@ -4,6 +4,7 @@
 #include <list>
 
 #include "ray/common/ray_object.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 
@@ -14,7 +15,8 @@ class CoreWorkerRayletTaskReceiver {
   using TaskHandler =
       std::function<Status(const TaskSpecification &task_spec,
                            const std::shared_ptr<ResourceMappingType> &resource_ids,
-                           std::vector<std::shared_ptr<RayObject>> *return_objects)>;
+                           std::vector<std::shared_ptr<RayObject>> *return_objects,
+                           ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
   CoreWorkerRayletTaskReceiver(const WorkerID &worker_id,
                                std::shared_ptr<raylet::RayletClient> &raylet_client,

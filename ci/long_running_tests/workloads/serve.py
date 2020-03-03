@@ -5,9 +5,9 @@ from subprocess import PIPE
 import requests
 
 import ray
-from ray.experimental import serve
+from ray import serve
 from ray.cluster_utils import Cluster
-from ray.experimental.serve.kv_store_service import RayInternalKVStore
+from ray.serve.kv_store_service import RayInternalKVStore
 
 num_redis_shards = 1
 redis_max_memory = 10**8
@@ -32,16 +32,16 @@ subprocess.call([
     "chmod +x hey_linux_amd64"
 ])
 
-ray.init(address=cluster.address, include_webui=True, webui_host='0.0.0.0')
+ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
 serve.init(blocking=True, kv_store_connector=lambda ns: RayInternalKVStore(ns))
 
 
-@serve.route('/echo')
+@serve.route("/echo")
 @serve.accept_batch
 def echo(_):
     time.sleep(0.01)  # Sleep for 10ms
     ray.show_in_webui(str(serve.context.batch_size), key="Current batch size")
-    return ['hi {}'.format(i) for i in range(serve.context.batch_size)]
+    return ["hi {}".format(i) for i in range(serve.context.batch_size)]
 
 
 print("Scaling to 30 replicas")
@@ -57,15 +57,17 @@ for _ in range(5):
     time.sleep(0.5)
 
 connections = int(config.num_replicas * config.max_batch_size * 0.75)
-proc = subprocess.Popen(
-    [
-        "./hey_linux_amd64", "-c",
-        str(connections), "-z", "360m", "http://127.0.0.1:8000/echo"
-    ],
-    stdout=PIPE,
-    stderr=PIPE)
-print("started load testing")
-proc.wait()
-out, err = proc.communicate()
-print(out.decode())
-print(err.decode())
+
+while True:
+    proc = subprocess.Popen(
+        [
+            "./hey_linux_amd64", "-c",
+            str(connections), "-z", "60m", "http://127.0.0.1:8000/echo"
+        ],
+        stdout=PIPE,
+        stderr=PIPE)
+    print("started load testing")
+    proc.wait()
+    out, err = proc.communicate()
+    print(out.decode())
+    print(err.decode())

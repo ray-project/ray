@@ -1,7 +1,6 @@
 name: CI
 
 env:
-  LLVM_VERSION_WINDOWS: 9.0.0
   DEBIAN_FRONTEND: noninteractive
 
 on: [push, pull_request]
@@ -22,7 +21,7 @@ jobs:
             compiler: clang
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v1
+      uses: actions/checkout@v2
       with:
         fetch-depth: 1
     - name: Setup Bazel
@@ -42,31 +41,12 @@ jobs:
         CC: ${{ matrix.compiler }}
       run: |
         # TODO(mehrdadn): Replace this with the same build script as below, once we factor that out
-        set -euo pipefail
-        PATH="${HOME}/bin:${PATH}"
-        main() {
-          local startflags=()
-          startflags+=(--batch)
-          startflags+=(--nodeep_execroot)
-          local cmdflags=()
-          cmdflags+=(--attempt_to_print_relative_paths)
-          cmdflags+=(--color=yes)
-          cmdflags+=(--experimental_repository_cache_hardlinks)
-          cmdflags+=(--experimental_ui_deduplicate)
-          cmdflags+=(--incompatible_strict_action_env)
-          cmdflags+=(--keep_going)
-          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fansi-escape-codes')
-          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fcolor-diagnostics')
-          cmdflags+=(--show_progress_rate_limit=5)
-          cmdflags+=(--show_task_finish)
-          cmdflags+=(--show_timestamps)
-          cmdflags+=(--symlink_prefix=/)
-          cmdflags+=(--verbose_failures)
-          local packages=()
-          packages+=("//:ray_pkg")
-          bazel "${startflags[@]}" build "${cmdflags[@]}" "${packages[@]}" "$@"
-        }
-        main --compilation_mode=fastbuild --config=iwyu "$@"
+        . ./ci/travis/build-helper.sh prep_build_env
+        bazel --batch build \
+          --compilation_mode=fastbuild \
+          --config=iwyu \
+          --keep_going \
+          "//:*"
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -84,9 +64,7 @@ jobs:
             compiler: clang-cl
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v1
-      with:
-        fetch-depth: 1
+      uses: actions/checkout@v2
     - name: Setup Bazel
       shell: bash
       env:
@@ -96,26 +74,9 @@ jobs:
     - name: Install C/C++ toolchains
       if: matrix.compiler == 'clang' || matrix.compiler == 'clang-cl'
       shell: bash
-      run: |
-        set -euo pipefail
-        if [ "${OSTYPE}" = "msys" ]; then
-          export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
-          # Ideally we should be able to use the Chocolatey package manager:
-          #   choco install --no-progress llvm
-          # However, it frequently gives HTTP 503 errors, so we just download and install manually.
-          urldir="https://releases.llvm.org"
-          arch=64
-          if [ "${HOSTTYPE}" = "${HOSTTYPE%64}" ]; then arch=32; fi
-          target="./LLVM-${LLVM_VERSION_WINDOWS}-win${arch}.exe"
-          curl -s -L -R -o "${target}" "http://releases.llvm.org/${LLVM_VERSION_WINDOWS}/${target##*/}"
-          chmod +x "${target}"
-          "${target}" /S
-          rm -f -- "${target}"
-        elif 1>&- command -v pacman; then
-          sudo pacman -S --needed --noconfirm --noprogressbar clang
-        elif 1>&- command -v apt-get; then
-          sudo apt-get -q -y install clang
-        fi
+      env:
+        CC: ${{ matrix.compiler }}
+      run: ./ci/travis/install-toolchains.sh "${CC%%-*}"
     - name: Install MSYS2 (only needed if some shell commands are missing)
       if: false && runner.os == 'Windows'
       uses: numworks/setup-msys2@v1
@@ -124,50 +85,7 @@ jobs:
     - name: Perform build
       shell: bash
       run: |
-        set -euo pipefail
-        main() {
-          if [ "${OSTYPE}" = "msys" ]; then
-            export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
-            local latest_python_bin=""
-            for latest_python_bin in /proc/registry/HKEY_LOCAL_MACHINE/Software/Python/PythonCore/*/InstallPath/@; do
-              if [ -f "${latest_python_bin}" ]; then
-                latest_python_bin="$(tr -d '\0' < "${latest_python_bin}")"
-                latest_python_bin="${latest_python_bin}\\"
-              else
-                latest_python_bin=""
-              fi
-            done
-            latest_python_bin="${latest_python_bin}python.exe"
-            if [ -f "${latest_python_bin}" ]; then
-              export PYTHON2_BIN_PATH="${latest_python_bin}" PYTHON3_BIN_PATH="${latest_python_bin}"
-            fi
-          fi
-          # NOTE: Only options that are _user preferences_ (i.e. not repository-specific) should go here.
-          # These are options that people may disagree on having on their own machines, but which are useful for our builds.
-          bazel_output_root="${HOME}/bazel"
-          if [ "${OSTYPE}" = "msys" ]; then
-            bazel_output_root="$(cygpath -w -- "${bazel_output_root}")"
-          fi
-          local startflags=()
-          startflags+=(--batch)
-          startflags+=(--nodeep_execroot)
-          #startflags+=(--output_user_root="${bazel_output_root}")
-          local cmdflags=()
-          cmdflags+=(--attempt_to_print_relative_paths)
-          cmdflags+=(--color=yes)
-          cmdflags+=(--experimental_repository_cache_hardlinks)
-          cmdflags+=(--experimental_ui_deduplicate)
-          cmdflags+=(--incompatible_strict_action_env)
-          cmdflags+=(--keep_going)
-          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fansi-escape-codes')
-          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fcolor-diagnostics')
-          cmdflags+=(--show_progress_rate_limit=5)
-          cmdflags+=(--show_task_finish)
-          cmdflags+=(--show_timestamps)
-          cmdflags+=(--symlink_prefix=/)
-          cmdflags+=(--verbose_failures)
-          local packages=()
-          packages+=("//:ray_pkg")
-          bazel "${startflags[@]}" build "${cmdflags[@]}" "${packages[@]}" "$@"
-        }
-        main "$@"
+        . ./ci/travis/build-helper.sh prep_build_env
+        bazel --batch build \
+          --keep_going \
+          "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so

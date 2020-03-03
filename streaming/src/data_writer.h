@@ -9,6 +9,8 @@
 
 #include "channel.h"
 #include "config/streaming_config.h"
+#include "event_service.h"
+#include "flow_control.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
 
@@ -29,17 +31,39 @@ namespace streaming {
 /// accordingly. It will sleep for a short interval to save cpu if all ring
 /// buffers have no data in that moment.
 class DataWriter {
- private:
-  std::shared_ptr<std::thread> loop_thread_;
-  // One channel have unique identity.
-  std::vector<ObjectID> output_queue_ids_;
+ public:
+  explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
+  virtual ~DataWriter();
 
- protected:
-  // ProducerTransfer is middle broker for data transporting.
-  std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
-  std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> channel_map_;
-  std::shared_ptr<Config> transfer_config_;
-  std::shared_ptr<RuntimeContext> runtime_context_;
+  /// Streaming writer client initialization.
+  /// \param queue_id_vec queue id vector
+  /// \param channel_message_id_vec channel seq id is related with message checkpoint
+  /// \param queue_size queue size (memory size not length)
+  StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
+                       const std::vector<ActorID> &actor_ids,
+                       const std::vector<uint64_t> &channel_message_id_vec,
+                       const std::vector<uint64_t> &queue_size_vec);
+
+  ///  To increase throughout, we employed an output buffer for message transformation,
+  ///  which means we merge a lot of message to a message bundle and no message will be
+  ///  pushed into queue directly util daemon thread does this action.
+  ///  Additionally, writing will block when buffer ring is full intentionly.
+  ///  \param q_id, destination channel id
+  ///  \param data, pointer of raw data
+  ///  \param data_size, raw data size
+  ///  \param message_type
+  ///  \return message seq iq
+  uint64_t WriteMessageToBufferRing(
+      const ObjectID &q_id, uint8_t *data, uint32_t data_size,
+      StreamingMessageType message_type = StreamingMessageType::Message);
+
+  void Run();
+
+  void Stop();
+
+  /// Get offset information about channels for checkpoint.
+  ///  \param offset_map (return value)
+  void GetOffsetInfo(std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map);
 
  private:
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
@@ -52,16 +76,6 @@ class DataWriter {
   /// \\param buffer_remain
   StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
                                        uint64_t &buffer_remain);
-
-  /// Start the loop forward thread for collecting messages from all channels.
-  /// Invoking stack:
-  /// WriterLoopForward
-  ///   -- WriteChannelProcess
-  ///      -- WriteBufferToChannel
-  ///        -- CollectFromRingBuffer
-  ///        -- WriteTransientBufferToChannel
-  ///   -- WriteEmptyMessage(if WriteChannelProcess return empty state)
-  void WriterLoopForward();
 
   /// Push empty message when no valid message or bundle was produced each time
   /// interval.
@@ -80,35 +94,43 @@ class DataWriter {
   StreamingStatus InitChannel(const ObjectID &q_id, const ActorID &actor_id,
                               uint64_t channel_message_id, uint64_t queue_size);
 
- public:
-  explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
-  virtual ~DataWriter();
+  /// Write all messages to channel util ringbuffer is empty.
+  /// \param channel_info
+  bool WriteAllToChannel(ProducerChannelInfo *channel_info);
 
-  /// Streaming writer client initialization.
-  /// \param queue_id_vec queue id vector
-  /// \param channel_message_id_vec channel seq id is related with message checkpoint
-  /// \param queue_size queue size (memory size not length)
-  StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
-                       const std::vector<ActorID> &actor_ids,
-                       const std::vector<uint64_t> &channel_message_id_vec,
-                       const std::vector<uint64_t> &queue_size_vec);
+  /// Trigger an empty message for channel with no valid data.
+  /// \param channel_info
+  bool SendEmptyToChannel(ProducerChannelInfo *channel_info);
 
-  ///  To increase throughout, we employed an output buffer for message transformation,
-  ///  which means we merge a lot of message to a message bundle and no message will be
-  ///  pushed into queue directly util daemon thread does this action.
-  ///  Additionally, writing will block when buffer ring is full intentionly.
-  ///  \param q_id
-  ///  \param data
-  ///  \param data_size
-  ///  \param message_type
-  ///  \return message seq iq
-  uint64_t WriteMessageToBufferRing(
-      const ObjectID &q_id, uint8_t *data, uint32_t data_size,
-      StreamingMessageType message_type = StreamingMessageType::Message);
+  void EmptyMessageTimerCallback();
 
-  void Run();
+  /// Notify channel consumed  refreshing downstream queue stats.
+  void RefreshChannelAndNotifyConsumed(ProducerChannelInfo &channel_info);
 
-  void Stop();
+  /// Notify channel consumed by given offset.
+  void NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset);
+
+  void FlowControlTimer();
+
+ private:
+  std::shared_ptr<EventService> event_service_;
+
+  std::shared_ptr<std::thread> empty_message_thread_;
+
+  std::shared_ptr<std::thread> flow_control_thread_;
+  // One channel have unique identity.
+  std::vector<ObjectID> output_queue_ids_;
+  // Flow controller makes a decision when it's should be blocked and avoid
+  // unnecessary overflow.
+  std::shared_ptr<FlowControl> flow_controller_;
+
+ protected:
+  std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
+  /// ProducerChannel is middle broker for data transporting and all downstream
+  /// producer channels will be channel_map_.
+  std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> channel_map_;
+  std::shared_ptr<Config> transfer_config_;
+  std::shared_ptr<RuntimeContext> runtime_context_;
 };
 }  // namespace streaming
 }  // namespace ray

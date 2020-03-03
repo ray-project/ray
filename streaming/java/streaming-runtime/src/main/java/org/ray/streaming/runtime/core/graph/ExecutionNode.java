@@ -3,6 +3,7 @@ package org.ray.streaming.runtime.core.graph;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
 
@@ -10,7 +11,6 @@ import org.ray.streaming.operator.StreamOperator;
  * A node in the physical execution graph.
  */
 public class ExecutionNode implements Serializable {
-
   private int nodeId;
   private int parallelism;
   private NodeType nodeType;
@@ -59,7 +59,7 @@ public class ExecutionNode implements Serializable {
     this.outputEdges = outputEdges;
   }
 
-  public void addExecutionEdge(ExecutionEdge executionEdge) {
+  public void addOutputEdge(ExecutionEdge executionEdge) {
     this.outputEdges.add(executionEdge);
   }
 
@@ -79,6 +79,10 @@ public class ExecutionNode implements Serializable {
     this.streamOperator = streamOperator;
   }
 
+  public Language getLanguage() {
+    return streamOperator.getLanguage();
+  }
+
   public NodeType getNodeType() {
     return nodeType;
   }
@@ -92,7 +96,7 @@ public class ExecutionNode implements Serializable {
         this.nodeType = NodeType.SINK;
         break;
       default:
-        this.nodeType = NodeType.PROCESS;
+        this.nodeType = NodeType.TRANSFORM;
     }
   }
 
@@ -109,7 +113,7 @@ public class ExecutionNode implements Serializable {
 
   public enum NodeType {
     SOURCE,
-    PROCESS,
+    TRANSFORM,
     SINK,
   }
 }

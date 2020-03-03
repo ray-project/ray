@@ -88,6 +88,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t ArgMetadataSize(size_t arg_index) const;
 
+  /// Return the ObjectIDs that were inlined in this task argument.
+  const std::vector<ObjectID> ArgInlinedIds(size_t arg_index) const;
+
   /// Return the scheduling class of the task. The scheduler makes a best effort
   /// attempt to fairly dispatch tasks of different classes, preventing
   /// starvation of any single class of task.

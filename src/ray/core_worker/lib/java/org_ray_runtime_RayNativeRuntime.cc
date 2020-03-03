@@ -6,7 +6,6 @@
 #include "ray/core_worker/lib/java/jni_utils.h"
 
 thread_local JNIEnv *local_env = nullptr;
-thread_local jobject local_java_task_executor = nullptr;
 
 inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
                                                      jobject gcs_client_options) {
@@ -39,9 +38,23 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids,
-         std::vector<std::shared_ptr<ray::RayObject>> *results) {
+         std::vector<std::shared_ptr<ray::RayObject>> *results,
+         const ray::WorkerID &worker_id) {
         JNIEnv *env = local_env;
+        if (!env) {
+          // Attach the native thread to JVM.
+          auto status =
+              jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void **>(&env), nullptr);
+          RAY_CHECK(status == JNI_OK) << "Failed to get JNIEnv. Return code: " << status;
+          local_env = env;
+        }
+
         RAY_CHECK(env);
+
+        auto worker_id_bytes = IdToJavaByteArray<ray::WorkerID>(env, worker_id);
+        jobject local_java_task_executor = env->CallStaticObjectMethod(
+            java_task_executor_class, java_task_executor_get, worker_id_bytes);
+
         RAY_CHECK(local_java_task_executor);
         // convert RayFunction
         jobject ray_function_array_list = NativeRayFunctionDescriptorToJavaStringList(
@@ -87,13 +100,11 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(
-    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jobject javaTaskExecutor) {
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
   local_env = env;
-  local_java_task_executor = javaTaskExecutor;
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
   core_worker->StartExecutingTasks();
   local_env = nullptr;
-  local_java_task_executor = nullptr;
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(

@@ -668,8 +668,18 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--new", "-N", is_flag=True, help="Force creation of a new screen.")
-def attach(cluster_config_file, start, screen, tmux, cluster_name, new):
-    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new)
+@click.option(
+    "--port-forward",
+    "-p",
+    required=False,
+    multiple=True,
+    type=int,
+    help="Port to forward. Use this multiple times to forward multiple ports.")
+def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
+           port_forward):
+    port_forward = [(port, port) for port in list(port_forward)]
+    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
+                   port_forward)
 
 
 @cli.command()
@@ -696,8 +706,20 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def rsync_up(cluster_config_file, source, target, cluster_name):
-    rsync(cluster_config_file, source, target, cluster_name, down=False)
+@click.option(
+    "--all-nodes",
+    "-A",
+    is_flag=True,
+    required=False,
+    help="Upload to all nodes (workers and head).")
+def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
+    rsync(
+        cluster_config_file,
+        source,
+        target,
+        cluster_name,
+        down=False,
+        all_nodes=all_nodes)
 
 
 @cli.command(context_settings={"ignore_unknown_options": True})
@@ -732,6 +754,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward",
+    "-p",
     required=False,
     multiple=True,
     type=int,
@@ -809,6 +832,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     help="Override the configured cluster name.")
 @click.option(
     "--port-forward",
+    "-p",
     required=False,
     multiple=True,
     type=int,
@@ -953,7 +977,7 @@ cli.add_command(project_cli)
 cli.add_command(session_cli)
 
 try:
-    from ray.experimental.serve.scripts import serve_cli
+    from ray.serve.scripts import serve_cli
     cli.add_command(serve_cli)
 except Exception as e:
     logger.debug(

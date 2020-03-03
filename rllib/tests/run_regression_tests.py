@@ -2,38 +2,67 @@
 # Runs one or more regression tests. Retries tests up to 3 times.
 #
 # Example usage:
-#   ./run_regression_tests.sh regression-tests/cartpole-es.yaml
+# $ python run_regression_tests.py regression-tests/cartpole-es.yaml
+#
+# When using in BAZEL (with py_test), e.g. see in ray/rllib/BUILD:
+# py_test(
+#    name = "run_regression_tests",
+#    main = "tests/run_regression_tests.py",
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = glob(["tuned_examples/regression_tests/**"]),
+#    args = glob(["tuned_examples/regression_tests/**"])
+# )
 
-import yaml
+from pathlib import Path
 import sys
+import yaml
 
 import ray
 from ray.tune import run_experiments
 
 if __name__ == "__main__":
+    # Bazel regression test mode: Get path to look for yaml files from argv[2].
+    if sys.argv[1] == "BAZEL":
+        ray.init(num_cpus=5)
+        # Get the path to use.
+        rllib_dir = Path(__file__).parent.parent
+        print("rllib dir={}".format(rllib_dir))
+        yaml_files = rllib_dir.rglob(sys.argv[2] + "/*.yaml")
+        yaml_files = sorted(
+            map(lambda path: str(path.absolute()), yaml_files), reverse=True)
+    # Normal mode: Get yaml files to run from command line.
+    else:
+        ray.init()
+        yaml_files = sys.argv[1:]
 
-    ray.init()
+    print("Will run the following regression files:")
+    for yaml_file in yaml_files:
+        print("->", yaml_file)
 
-    for test in sys.argv[1:]:
-        experiments = yaml.load(open(test).read())
+    # Loop through all collected files.
+    for yaml_file in yaml_files:
+        experiments = yaml.load(open(yaml_file).read())
 
         print("== Test config ==")
         print(yaml.dump(experiments))
 
+        passed = False
         for i in range(3):
             trials = run_experiments(experiments, resume=False)
 
-            num_failures = 0
             for t in trials:
-                if (t.last_result["episode_reward_mean"] <
+                if (t.last_result["episode_reward_mean"] >=
                         t.stopping_criterion["episode_reward_mean"]):
-                    num_failures += 1
+                    passed = True
+                    break
 
-            if not num_failures:
+            if passed:
                 print("Regression test PASSED")
-                sys.exit(0)
+                break
+            else:
+                print("Regression test FAILED on attempt {}", i + 1)
 
-            print("Regression test flaked, retry", i)
-
-        print("Regression test FAILED")
-        sys.exit(1)
+        if not passed:
+            print("Overall regression FAILED: Exiting with Error.")
+            sys.exit(1)

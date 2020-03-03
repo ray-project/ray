@@ -1,9 +1,10 @@
+#include "ray/raylet/worker_pool.h"
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
-#include "ray/raylet/worker_pool.h"
+#include "ray/util/process.h"
 
 namespace ray {
 
@@ -16,17 +17,20 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  WorkerPoolMock()
+  WorkerPoolMock(boost::asio::io_service &io_service)
       : WorkerPoolMock(
+            io_service,
             {{Language::PYTHON,
               {"dummy_py_worker_command", "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}},
              {Language::JAVA,
               {"dummy_java_worker_command",
                "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}}) {}
 
-  explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
-      : WorkerPool(0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
-        last_worker_pid_(0) {
+  explicit WorkerPoolMock(boost::asio::io_service &io_service,
+                          const WorkerCommandMap &worker_commands)
+      : WorkerPool(io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands,
+                   []() {}),
+        last_worker_process_() {
     for (auto &entry : states_by_lang_) {
       entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;
     }
@@ -37,23 +41,22 @@ class WorkerPoolMock : public WorkerPool {
     states_by_lang_.clear();
   }
 
-  void StartWorkerProcess(const Language &language,
-                          const std::vector<std::string> &dynamic_options = {}) {
-    WorkerPool::StartWorkerProcess(language, dynamic_options);
-  }
+  using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
 
-  pid_t StartProcess(const std::vector<std::string> &worker_command_args) override {
-    last_worker_pid_ += 1;
-    worker_commands_by_pid[last_worker_pid_] = worker_command_args;
-    return last_worker_pid_;
+  Process StartProcess(const std::vector<std::string> &worker_command_args) override {
+    // Use a bogus process ID that won't conflict with those in the system
+    pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
+    last_worker_process_ = Process::FromPid(pid);
+    worker_commands_by_proc_[last_worker_process_] = worker_command_args;
+    return last_worker_process_;
   }
 
   void WarnAboutSize() override {}
 
-  pid_t LastStartedWorkerProcess() const { return last_worker_pid_; }
+  Process LastStartedWorkerProcess() const { return last_worker_process_; }
 
-  const std::vector<std::string> &GetWorkerCommand(int pid) {
-    return worker_commands_by_pid[pid];
+  const std::vector<std::string> &GetWorkerCommand(Process proc) {
+    return worker_commands_by_proc_[proc];
   }
 
   int NumWorkersStarting() const {
@@ -75,20 +78,19 @@ class WorkerPoolMock : public WorkerPool {
   }
 
  private:
-  int last_worker_pid_;
-  // The worker commands by pid.
-  std::unordered_map<int, std::vector<std::string>> worker_commands_by_pid;
+  Process last_worker_process_;
+  // The worker commands by process.
+  std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
 };
 
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest()
-      : worker_pool_(),
-        io_service_(),
+      : worker_pool_(io_service_),
         error_message_type_(1),
         client_call_manager_(io_service_) {}
 
-  std::shared_ptr<Worker> CreateWorker(pid_t pid,
+  std::shared_ptr<Worker> CreateWorker(Process proc,
                                        const Language &language = Language::PYTHON) {
     std::function<void(LocalClientConnection &)> client_handler =
         [this](LocalClientConnection &client) { HandleNewClient(client); };
@@ -101,18 +103,22 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(new Worker(WorkerID::FromRandom(), pid, language, -1,
-                                              client, client_call_manager_));
+    std::shared_ptr<Worker> worker = std::make_shared<Worker>(
+        WorkerID::FromRandom(), language, -1, client, client_call_manager_);
+    if (!proc.IsNull()) {
+      worker->SetProcess(proc);
+    }
+    return worker;
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
-    WorkerPoolMock worker_pool(worker_commands);
+    WorkerPoolMock worker_pool(io_service_, worker_commands);
     this->worker_pool_ = std::move(worker_pool);
   }
 
  protected:
-  WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
+  WorkerPoolMock worker_pool_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
 
@@ -142,12 +148,25 @@ static inline TaskSpecification ExampleTaskSpec(
   return TaskSpecification(std::move(message));
 }
 
+TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
+  typedef Process T;
+  T a(T::CreateNewDummy()), b(T::CreateNewDummy()), empty = T();
+  ASSERT_TRUE(empty.IsNull());
+  ASSERT_TRUE(!empty.IsValid());
+  ASSERT_TRUE(!a.IsNull());
+  ASSERT_TRUE(!a.IsValid());  // a dummy process is not a valid process!
+  ASSERT_TRUE(std::equal_to<T>()(a, a));
+  ASSERT_TRUE(!std::equal_to<T>()(a, b));
+  ASSERT_TRUE(!std::equal_to<T>()(b, a));
+  ASSERT_TRUE(!std::equal_to<T>()(empty, a));
+  ASSERT_TRUE(!std::equal_to<T>()(a, empty));
+}
+
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  worker_pool_.StartWorkerProcess(Language::PYTHON);
-  pid_t pid = worker_pool_.LastStartedWorkerProcess();
+  Process proc = worker_pool_.StartWorkerProcess(Language::PYTHON);
   std::vector<std::shared_ptr<Worker>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS; i++) {
-    workers.push_back(CreateWorker(pid));
+    workers.push_back(CreateWorker(Process()));
   }
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
@@ -155,7 +174,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
-    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker));
+    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker, proc.GetId()));
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
   }
@@ -181,20 +200,21 @@ TEST_F(WorkerPoolTest, StartupWorkerProcessCount) {
   ASSERT_TRUE(expected_worker_process_count <
               static_cast<int>(desired_initial_worker_process_count_per_language *
                                LANGUAGES.size()));
-  pid_t last_started_worker_process = 0;
+  Process last_started_worker_process;
   for (int i = 0; i < desired_initial_worker_process_count_per_language; i++) {
     for (size_t j = 0; j < LANGUAGES.size(); j++) {
       worker_pool_.StartWorkerProcess(LANGUAGES[j]);
       ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
-      if (last_started_worker_process != worker_pool_.LastStartedWorkerProcess()) {
-        last_started_worker_process = worker_pool_.LastStartedWorkerProcess();
+      Process prev = worker_pool_.LastStartedWorkerProcess();
+      if (!std::equal_to<Process>()(last_started_worker_process, prev)) {
+        last_started_worker_process = prev;
         const auto &real_command =
             worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
         ASSERT_EQ(real_command, worker_commands[j]);
       } else {
-        ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() ==
-                    expected_worker_process_count);
+        ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(),
+                  expected_worker_process_count);
         ASSERT_TRUE(static_cast<int>(i * LANGUAGES.size() + j) >=
                     expected_worker_process_count);
       }
@@ -224,8 +244,8 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
 
   // Create some workers.
   std::unordered_set<std::shared_ptr<Worker>> workers;
-  workers.insert(CreateWorker(1234));
-  workers.insert(CreateWorker(5678));
+  workers.insert(CreateWorker(Process::CreateNewDummy()));
+  workers.insert(CreateWorker(Process::CreateNewDummy()));
   // Add the workers to the pool.
   for (auto &worker : workers) {
     worker_pool_.PushWorker(worker);
@@ -244,7 +264,7 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
 
 TEST_F(WorkerPoolTest, PopActorWorker) {
   // Create a worker.
-  auto worker = CreateWorker(1234);
+  auto worker = CreateWorker(Process::CreateNewDummy());
   // Add the worker to the pool.
   worker_pool_.PushWorker(worker);
 
@@ -267,7 +287,7 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
 
 TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   // Create a Python Worker, and add it to the pool
-  auto py_worker = CreateWorker(1234, Language::PYTHON);
+  auto py_worker = CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
   worker_pool_.PushWorker(py_worker);
   // Check that no worker will be popped if the given task is a Java task
   const auto java_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA);
@@ -277,7 +297,7 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   ASSERT_NE(worker_pool_.PopWorker(py_task_spec), nullptr);
 
   // Create a Java Worker, and add it to the pool
-  auto java_worker = CreateWorker(1234, Language::JAVA);
+  auto java_worker = CreateWorker(Process::CreateNewDummy(), Language::JAVA);
   worker_pool_.PushWorker(java_worker);
   // Check that the worker will be popped now for Java task
   ASSERT_NE(worker_pool_.PopWorker(java_task_spec), nullptr);

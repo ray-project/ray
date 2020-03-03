@@ -33,6 +33,8 @@ Training APIs
 
    -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
 
+   -  `Customized Exploration Behavior (Training and Evaluation) <rllib-training.html#customized-exploration-behavior-training-and-evaluation>`__
+
    -  `Customized Evaluation During Training <rllib-training.html#customized-evaluation-during-training>`__
 
    -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
@@ -85,6 +87,8 @@ Algorithms
    -  |tensorflow| `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 
    -  |tensorflow| `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
+
+   -  |pytorch| `Decentralized Distributed Proximal Policy Optimization (DD-PPO) <rllib-algorithms.html#decentralized-distributed-proximal-policy-optimization-dd-ppo>`__
 
    -  |pytorch| `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
 

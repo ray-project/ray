@@ -5,19 +5,20 @@ import six.moves.queue as queue
 import threading
 import time
 
+from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.policy.policy import TupleActions
+from ray.rllib.policy.policy import clip_action
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.policy.policy import clip_action
 
 logger = logging.getLogger(__name__)
 
@@ -531,11 +532,16 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                         TFPolicy.compute_actions.__code__):
             rnn_in_cols = _to_column_format(rnn_in)
             # TODO(ekl): how can we make info batch available to TF code?
+            # TODO(sven): Return dict from _build_compute_actions.
+            # it's becoming more and more unclear otherwise, what's where in
+            # the return tuple.
             pending_fetches[policy_id] = policy._build_compute_actions(
-                builder, [t.obs for t in eval_data],
-                rnn_in_cols,
+                builder,
+                obs_batch=[t.obs for t in eval_data],
+                state_batches=rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
-                prev_reward_batch=[t.prev_reward for t in eval_data])
+                prev_reward_batch=[t.prev_reward for t in eval_data],
+                timestep=policy.global_timestep)
         else:
             # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
@@ -544,11 +550,12 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
             ]
             eval_results[policy_id] = policy.compute_actions(
                 [t.obs for t in eval_data],
-                rnn_in_cols,
+                state_batches=rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 info_batch=[t.info for t in eval_data],
-                episodes=[active_episodes[t.env_id] for t in eval_data])
+                episodes=[active_episodes[t.env_id] for t in eval_data],
+                timestep=policy.global_timestep)
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
@@ -578,7 +585,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id][:3]
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
@@ -650,6 +657,13 @@ def _to_column_format(rnn_state_rows):
 
 
 def _get_or_raise(mapping, policy_id):
+    """Returns a Policy object under key `policy_id` in `mapping`.
+
+    Throws an error if `policy_id` cannot be found.
+
+    Returns:
+        Policy: The found Policy object.
+    """
     if policy_id not in mapping:
         raise ValueError(
             "Could not find policy for agent: agent policy id `{}` not "

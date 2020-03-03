@@ -1,8 +1,11 @@
-import numpy as np
 import joblib
+import sys
+import time
+
+import numpy as np
+
 from sklearn.datasets import load_digits, load_iris
 from sklearn.model_selection import RandomizedSearchCV
-from time import time
 from sklearn.datasets import fetch_openml
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -16,7 +19,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import cross_val_score
 
-from ray.experimental.joblib import register_ray
+from ray.util.joblib import register_ray
 import ray
 
 
@@ -28,7 +31,7 @@ def test_register_ray():
 
 def test_ray_backend(shutdown_only):
     register_ray()
-    from ray.experimental.joblib.ray_backend import RayBackend
+    from ray.util.joblib.ray_backend import RayBackend
     with joblib.parallel_backend("ray"):
         assert type(joblib.parallel.get_active_backend()[0]) == RayBackend
 
@@ -142,9 +145,9 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
 
             if "n_jobs" in estimator_params:
                 estimator.set_params(n_jobs=num_jobs)
-            time_start = time()
+            time_start = time.time()
             estimator.fit(X_train, y_train)
-            train_time[name] = time() - time_start
+            train_time[name] = time.time() - time_start
             print("training", name, "took", train_time[name], "seconds")
 
 
@@ -157,3 +160,8 @@ def test_cross_validation(shutdown_only):
     assert len(accuracy) == 5
     for result in accuracy:
         assert result > 0.95
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

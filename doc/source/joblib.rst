@@ -1,12 +1,5 @@
-sklearn Ray Backend API (Experimental)
-=======================================
-
-.. warning::
-
-  Support for running scikit-learn on Ray is an experimental feature,
-  so it may be changed at any time without warning. If you encounter any
-  bugs/shortcomings/incompatibilities, please file an `issue on GitHub`_.
-  Contributions are always welcome!
+Distributed Scikit-learn / Joblib
+=================================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
@@ -15,6 +8,11 @@ implementing a Ray backend for `joblib`_ using `Ray Actors <actors.html>`__
 instead of local processes. This makes it easy to scale existing applications
 that use scikit-learn from a single node to a cluster.
 
+.. note::
+
+  This API is new and may be revised in future Ray releases. If you encounter
+  any bugs, please file an `issue on GitHub`_.
+
 .. _`joblib`: https://joblib.readthedocs.io
 .. _`scikit-learn`: https://scikit-learn.org
 
@@ -22,7 +20,7 @@ Quickstart
 ----------
 
 To get started, first `install Ray <installation.html>`__, then use 
-``from ray.experimental.joblib import register_ray`` and run ``register_ray()``.
+``from ray.util.joblib import register_ray`` and run ``register_ray()``.
 This will register Ray as a joblib backend for scikit-learn to use.
 Then run your original scikit-learn code inside 
 ``with joblib.parallel_backend('ray')``. This will start a local Ray cluster. 
@@ -46,7 +44,7 @@ a multi-node Ray cluster instead.
   search = RandomizedSearchCV(model, param_space, cv=5, n_iter=300, verbose=10)
 
   import joblib
-  from ray.experimental.joblib import register_ray
+  from ray.util.joblib import register_ray
   register_ray()
   with joblib.parallel_backend('ray'):
       search.fit(digits.data, digits.target)

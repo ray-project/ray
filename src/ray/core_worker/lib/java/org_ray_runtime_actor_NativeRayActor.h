@@ -9,6 +9,14 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
+ * Method:    nativeGetLanguage
+ * Signature: (J[B)I
+ */
+JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
+    JNIEnv *, jclass, jlong, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeIsDirectCallActor
  * Signature: (J[B)Z
  */

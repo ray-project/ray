@@ -1,3 +1,5 @@
+.. _ref-automatic-cluster:
+
 Automatic Cluster Setup
 =======================
 
@@ -35,6 +37,8 @@ Test that it works by running the following commands from your local machine:
     $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
 .. tip:: For the AWS node configuration, you can set ``"ImageId: latest_dlami"`` to automatically use the newest `Deep Learning AMI <https://aws.amazon.com/machine-learning/amis/>`_ for your region. For example, ``head_node: {InstanceType: c5.xlarge, ImageId: latest_dlami}``.
+
+.. note:: You may see a message like: ``bash: cannot set terminal process group (-1): Inappropriate ioctl for device bash: no job control in this shell`` This is a harmless error. If the cluster launcher fails, it is most likely due to some other factor.
 
 GCP
 ~~~

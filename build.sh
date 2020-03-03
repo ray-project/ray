@@ -117,28 +117,22 @@ fi
 
 pushd "$BUILD_DIR"
 
-# The following line installs pyarrow from S3, these wheels have been
-# generated from https://github.com/ray-project/arrow-build from
-# the commit listed in the command.
-if [ -z "$SKIP_PYARROW_INSTALL" ]; then
-    "$PYTHON_EXECUTABLE" -m pip install -q \
-        --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
-fi
 
 WORK_DIR=`mktemp -d`
 pushd $WORK_DIR
 git clone https://github.com/suquark/pickle5-backport
 pushd pickle5-backport
-  git checkout 43551fbb9add8ac2e8551b96fdaf2fe5a3b5997d
+  git checkout 8ffe41ceba9d5e2ce8a98190f6b3d2f3325e5a72
   "$PYTHON_EXECUTABLE" setup.py bdist_wheel
   unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
 popd
 popd
 
 
-"$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
-        --target="$ROOT_DIR/python/ray/thirdparty_files"
+if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
+    "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+            --target="$ROOT_DIR/python/ray/thirdparty_files"
+fi
 
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 

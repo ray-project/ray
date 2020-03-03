@@ -19,7 +19,7 @@ class PiecewiseSchedule(Schedule):
                 between two values.
                 E.g.
                 t=400 and endpoints=[(0, 20.0),(500, 30.0)]
-                output=20.0 + 0.8 * 10.0 = 28.0
+                output=20.0 + 0.8 * (30.0 - 20.0) = 28.0
                 NOTE: All the values for time must be sorted in an increasing
                 order.
 
@@ -28,7 +28,7 @@ class PiecewiseSchedule(Schedule):
                 (0.0=only left value, 1.0=only right value), which is the
                 fraction of distance from left endpoint to right endpoint.
 
-            outside_value (Optional[float]): If t_pct in call to `value` is
+            outside_value (Optional[float]): If t in call to `value` is
                 outside of all the intervals in `endpoints` this value is
                 returned. If None then an AssertionError is raised when outside
                 value is requested.
@@ -47,6 +47,6 @@ class PiecewiseSchedule(Schedule):
                 alpha = float(t - l_t) / (r_t - l_t)
                 return self.interpolation(l, r, alpha)
 
-        # t does not belong to any of the pieces, so doom.
+        # t does not belong to any of the pieces, return `self.outside_value`.
         assert self.outside_value is not None
         return self.outside_value
