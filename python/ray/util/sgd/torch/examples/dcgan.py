@@ -223,7 +223,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         "test_mode": test_mode,
         "classification_model_path": os.path.join(
             os.path.dirname(ray.__file__),
-            "util/sgd/pytorch/examples/mnist_cnn.pt")
+            "util/sgd/torch/examples/mnist_cnn.pt")
     }
     trainer = TorchTrainer(
         model_creator,
