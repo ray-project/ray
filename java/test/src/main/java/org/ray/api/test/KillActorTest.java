@@ -31,8 +31,8 @@ public class KillActorTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     TestUtils.skipTestIfDirectActorCallDisabled();
     RayActor<HangActor> actor = Ray.createActor(HangActor::new);
-    Assert.assertTrue(Ray.call(HangActor::alive, actor).get());
-    RayObject<Boolean> result = Ray.call(HangActor::hang, actor);
+    Assert.assertTrue(actor.call(HangActor::alive).get());
+    RayObject<Boolean> result = actor.call(HangActor::hang);
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
     Ray.killActor(actor);
     Assert.expectThrows(RayActorException.class, result::get);

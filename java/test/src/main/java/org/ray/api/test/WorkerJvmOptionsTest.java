@@ -27,7 +27,7 @@ public class WorkerJvmOptionsTest extends BaseTest {
         .setJvmOptions(" -Dtest.suffix=suffix -Dtest.suffix1=suffix1 ")
         .createActorCreationOptions();
     RayActor<Echo> actor = Ray.createActor(Echo::new, options);
-    RayObject<String> obj = Ray.call(Echo::getOptions, actor);
+    RayObject<String> obj = actor.call(Echo::getOptions);
     Assert.assertEquals(obj.get(), "suffix");
   }
 }

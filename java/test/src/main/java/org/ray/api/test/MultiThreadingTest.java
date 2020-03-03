@@ -86,7 +86,7 @@ public class MultiThreadingTest extends BaseTest {
     RayActor<Echo> echoActor = Ray.createActor(Echo::new);
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
-      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor, arg);
+      RayObject<Integer> obj = echoActor.call(Echo::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
@@ -101,7 +101,7 @@ public class MultiThreadingTest extends BaseTest {
       } catch (InterruptedException e) {
         LOGGER.warn("Got exception while sleeping.", e);
       }
-      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor1, arg);
+      RayObject<Integer> obj = echoActor1.call(Echo::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, 1);
 
@@ -137,7 +137,7 @@ public class MultiThreadingTest extends BaseTest {
   public void testGetCurrentActorId() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
-    ActorId actorId = Ray.call(ActorIdTester::getCurrentActorId, actorIdTester).get();
+    ActorId actorId = actorIdTester.call(ActorIdTester::getCurrentActorId).get();
     Assert.assertEquals(actorId, actorIdTester.getId());
   }
 

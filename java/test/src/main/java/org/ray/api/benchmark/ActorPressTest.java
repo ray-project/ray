@@ -45,7 +45,7 @@ public class ActorPressTest extends RayBenchmarkTest {
 
   @Override
   public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
-    return Ray.call(Adder::add, (RayActor<Adder>) rayActor, 10);
+    return ((RayActor<Adder>) rayActor).call(Adder::add, 10);
   }
 
   @Override

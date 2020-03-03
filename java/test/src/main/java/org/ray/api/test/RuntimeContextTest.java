@@ -64,7 +64,7 @@ public class RuntimeContextTest extends BaseTest {
   public void testRuntimeContextInActor() {
     RayActor<RuntimeContextTester> actor = Ray.createActor(RuntimeContextTester::new);
     Assert.assertEquals("ok",
-        Ray.call(RuntimeContextTester::testRuntimeContext, actor, actor.getId()).get());
+        actor.call(RuntimeContextTester::testRuntimeContext, actor.getId()).get());
   }
 
 }
