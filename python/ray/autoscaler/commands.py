@@ -351,7 +351,8 @@ def exec_cluster(config_file,
                  stop=False,
                  start=False,
                  override_cluster_name=None,
-                 port_forward=None):
+                 port_forward=None,
+                 with_output=False):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -408,7 +409,8 @@ def exec_cluster(config_file,
                     shutdown_cmd = wrap_docker(shutdown_cmd)
                 cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
 
-        result = _exec(updater, cmd, screen, tmux, port_forward=port_forward)
+        result = _exec(updater, cmd, screen, tmux,
+                       port_forward=port_forward, with_output=with_output)
 
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
@@ -429,7 +431,7 @@ def exec_cluster(config_file,
         provider.cleanup()
 
 
-def _exec(updater, cmd, screen, tmux, port_forward=None):
+def _exec(updater, cmd, screen, tmux, port_forward=None, with_output=False):
     if cmd:
         if screen:
             cmd = [
@@ -445,7 +447,8 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
             ]
             cmd = " ".join(cmd)
     return updater.cmd_runner.run(
-        cmd, allocate_tty=True, exit_on_fail=True, port_forward=port_forward)
+        cmd, allocate_tty=True, exit_on_fail=True,
+        port_forward=port_forward, with_output=with_output)
 
 
 def rsync(config_file,
