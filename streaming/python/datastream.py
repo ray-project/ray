@@ -165,6 +165,7 @@ class DataStream(Stream):
         Returns:
              A KeyDataStream
         """
+        self._check_partition_call()
         if not isinstance(func, function.KeyFunction):
             func = function.SimpleKeyFunction(func)
         j_func = self._gateway_client().create_py_func(
@@ -182,6 +183,7 @@ class DataStream(Stream):
         Returns:
             The DataStream with broadcast partitioning set.
         """
+        self._check_partition_call()
         self._gateway_client().call_method(self._j_stream, "broadcast")
         return self
 
@@ -198,6 +200,7 @@ class DataStream(Stream):
         Returns:
             The DataStream with specified partitioning set.
         """
+        self._check_partition_call()
         if not isinstance(partition_func, partition.Partition):
             partition_func = partition.SimplePartition(partition_func)
         j_partition = self._gateway_client().create_py_func(
@@ -205,6 +208,15 @@ class DataStream(Stream):
         self._gateway_client(). \
             call_method(self._j_stream, "partitionBy", j_partition)
         return self
+
+    def _check_partition_call(self):
+        """
+        If parent stream is a java stream, we can't call partition related
+        methods in the python stream
+        """
+        if self.input_stream.get_language() == function.Language.JAVA:
+            raise Exception("Partition related methods can't be called on a"
+                            "python stream if parent stream is a java stream.")
 
     def sink(self, func):
         """
@@ -261,19 +273,19 @@ class JavaDataStream(Stream):
 
     def key_by(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.keyBy"""
-        self.check_partition_call()
+        self._check_partition_call()
         return JavaKeyDataStream(self, self._unary_call("keyBy",
                                                         java_func_class))
 
     def broadcast(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.broadcast"""
-        self.check_partition_call()
+        self._check_partition_call()
         return JavaDataStream(self, self._unary_call("broadcast",
                                                      java_func_class))
 
     def partition_by(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.partitionBy"""
-        self.check_partition_call()
+        self._check_partition_call()
         return JavaDataStream(self, self._unary_call("partitionBy",
                                                      java_func_class))
 
@@ -287,12 +299,14 @@ class JavaDataStream(Stream):
             call_method(self._j_stream, "asPythonStream")
         return DataStream(self, j_stream)
 
-    def check_partition_call(self):
-        if isinstance(self.input_stream, DataStream):
-            # If parent stream is a python stream, we can't call partition
-            # related methods in the java stream
-            raise Exception("Partition related methods can't be called on"
-                            "a java stream before we apply a transformation.")
+    def _check_partition_call(self):
+        """
+        If parent stream is a python stream, we can't call partition related
+        methods in the java stream
+        """
+        if self.input_stream.get_language() == function.Language.JAVA:
+            raise Exception("Partition related methods can't be called on a"
+                            "java stream if parent stream is a python stream.")
 
     def _unary_call(self, func_name, java_func_class):
         j_func = self._gateway_client().new_instance(java_func_class)

@@ -44,9 +44,9 @@ public abstract class Stream<T> implements Serializable {
   private Partition<T> selectPartition() {
     switch (operator.getLanguage()) {
       case PYTHON:
-        this.partition = PythonPartition.RoundRobinPartition;
+        return PythonPartition.RoundRobinPartition;
       case JAVA:
-        this.partition = new RoundRobinPartition<>();
+        return new RoundRobinPartition<>();
       default:
         throw new UnsupportedOperationException(
           "Unsupported language " + operator.getLanguage());
