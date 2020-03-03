@@ -13,7 +13,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object
+from ray.test_utils import SignalActor, put_object, wait_for_condition
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
@@ -107,9 +107,12 @@ def test_global_gc(shutdown_only):
 
         # GC should be triggered for all workers, including the local driver.
         global_gc()
-        time.sleep(1)
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
     finally:
         gc.enable()
 
@@ -156,16 +159,24 @@ def test_global_gc_when_full(shutdown_only):
         # object store. This should cause the captured ObjectIDs' numpy arrays
         # to be evicted.
         ray.put(np.zeros(80 * 1024 * 1024, dtype=np.uint8))
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
 
         # Local driver.
         local_ref = weakref.ref(LargeObjectWithCyclicRef())
 
         # Remote workers.
         actors = [GarbageHolder.remote() for _ in range(2)]
-        assert local_ref() is not None
-        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
 
         # GC should be triggered for all workers, including the local driver,
         # when a remote task tries to put a return value that doesn't fit in
