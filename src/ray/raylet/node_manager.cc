@@ -917,23 +917,7 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::TaskDone: {
     RAY_LOG(WARNING) << "TaskDone message type";
-    // XXX
-    RAY_LOG(WARNING) << "ProcessClientMessage -> GetRegisteredWorker " << PrintWorkerPool();    
-    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    RAY_LOG(WARNING) << "ProcessClientMessage -> GetRegisteredWorker result = " << worker->WorkerId();    
-    RAY_CHECK(worker);
-    leased_workers_.erase(worker->WorkerId());
-    if (new_scheduler_enabled_) {
-      if (worker->GetAllocatedInstances().predefined_resources.size() > 0) {
-        new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
-        new_resource_scheduler_->SubtractCPUResourceInstances(worker->GetBorrowedCPUInstances());
-        worker->ClearAllocatedInstances();
-      }
-    }
-    RAY_LOG(WARNING) << "TaskDone 3 -> HandleWorkerAvailable()";
-    HandleWorkerAvailable(worker);
-    RAY_LOG(WARNING) << "TaskDone 4";
-    // HandleWorkerAvailable(client);
+    HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
     RAY_LOG(WARNING) << "MessageType::DisconnectClient -> ProcessDisconnectClientMessage";
@@ -2480,11 +2464,17 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   RAY_LOG(DEBUG) << "Finished task " << task_id;
   RAY_LOG(WARNING) << "FinishAssignedTask " << task_id;
 
-  // (See design_docs/task_states.rst for the state transition diagram.)
   Task task;
   if (new_scheduler_enabled_) {
     task = worker.GetAssignedTask();
+    leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ???
+    if (worker.GetAllocatedInstances().predefined_resources.size() > 0) {
+      new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
+      new_resource_scheduler_->SubtractCPUResourceInstances(worker.GetBorrowedCPUInstances());
+      worker.ClearAllocatedInstances();
+    }
   } else {
+    // (See design_docs/task_states.rst for the state transition diagram.)
     RAY_CHECK(local_queues_.RemoveTask(task_id, &task));
 
     // Release task's resources. The worker's lifetime resources are still held.
