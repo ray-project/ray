@@ -3093,7 +3093,6 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
           absl::MutexLock guard(&plasma_object_notification_lock_);
           auto waiting = this->async_plasma_objects_notification_.extract(object_id);
           if (!waiting.empty()) {
-            RAY_LOG(ERROR) << "This is a subscribed object";
             waiting_workers.swap(waiting.mapped());
           }
         }
@@ -3109,8 +3108,6 @@ ray::Status NodeManager::SetupPlasmaSubscription() {
                   RAY_LOG(INFO)
                       << "Problem with telling worker that plasma object is ready"
                       << status.ToString();
-                } else {
-                  RAY_LOG(ERROR) << "DID WORK";
                 }
               }));
         }
