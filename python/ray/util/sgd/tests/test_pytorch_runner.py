@@ -4,6 +4,7 @@ import torch.nn as nn
 import unittest
 from unittest.mock import MagicMock
 
+from ray.util.sgd.pytorch.training_operator import TrainingOperator
 from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 
@@ -46,39 +47,55 @@ def create_dataloaders(config):
 
 class TestPyTorchRunner(unittest.TestCase):
     def testValidate(self):
-        mock_function = MagicMock(returns=dict(mean_accuracy=10))
+        class MockOperator(TrainingOperator):
+            def setup(self, config):
+                self.train_epoch = MagicMock(returns=dict(mean_accuracy=10))
+                self.validate = MagicMock(returns=dict(mean_accuracy=10))
+
         runner = PyTorchRunner(
             model_creator,
             create_dataloaders,
             optimizer_creator,
             loss_creator,
-            validation_function=mock_function)
+            training_operator_cls=MockOperator)
         runner.setup()
-        runner.step()
-        runner.step()
-        runner.step()
-        self.assertEqual(mock_function.call_count, 0)
+        runner.train_epoch()
+        runner.train_epoch()
+        runner.train_epoch()
+        self.assertEqual(runner.training_operator.validate.call_count, 0)
         runner.validate()
-        self.assertTrue(mock_function.called)
+        self.assertTrue(runner.training_operator.validate.called)
         self.assertEqual(runner.stats()["epoch"], 3)
 
-    def testStep(self):
-        mock_function = MagicMock(return_value=dict(mean_accuracy=10))
+    def testtrain_epoch(self):
+        class MockOperator(TrainingOperator):
+            def setup(self, config):
+                self.count = 0
+
+            def train_epoch(self, *args, **kwargs):
+                self.count += 1
+                return {"count": self.count}
+
         runner = PyTorchRunner(
             model_creator,
             create_dataloaders,
             optimizer_creator,
             loss_creator,
-            train_function=mock_function)
+            training_operator_cls=MockOperator)
         runner.setup()
-        runner.step()
-        runner.step()
-        result = runner.step()
-        self.assertEqual(mock_function.call_count, 3)
-        self.assertEqual(result["epoch"], 3)
+        runner.train_epoch(num_steps=1)
+        runner.train_epoch(num_steps=1)
+        result = runner.train_epoch()
+        self.assertEqual(runner.training_operator.count, 3)
+        self.assertEqual(result["count"], 3)
         self.assertEqual(runner.stats()["epoch"], 3)
 
     def testGivens(self):
+        class MockOperator(TrainingOperator):
+            def setup(self, config):
+                self.train_epoch = MagicMock(returns=dict(mean_accuracy=10))
+                self.validate = MagicMock(returns=dict(mean_accuracy=10))
+
         def three_model_creator(config):
             return nn.Linear(1, 1), nn.Linear(1, 1), nn.Linear(1, 1)
 
@@ -88,8 +105,12 @@ class TestPyTorchRunner(unittest.TestCase):
             ]
             return opts[0], opts[1], opts[2]
 
-        runner = PyTorchRunner(three_model_creator, single_loader,
-                               three_optimizer_creator, loss_creator)
+        runner = PyTorchRunner(
+            three_model_creator,
+            single_loader,
+            three_optimizer_creator,
+            loss_creator,
+            training_operator_cls=MockOperator)
         runner.setup()
 
         self.assertEqual(len(runner.given_models), 3)
@@ -121,7 +142,7 @@ class TestPyTorchRunner(unittest.TestCase):
         runner = PyTorchRunner(model_creator, single_loader, optimizer_creator,
                                loss_creator)
         runner.setup()
-        runner.step()
+        runner.train_epoch()
         with self.assertRaises(ValueError):
             runner.validate()
 
@@ -132,7 +153,7 @@ class TestPyTorchRunner(unittest.TestCase):
             optimizer_creator,
             loss_creator=nn.MSELoss)
         runner.setup()
-        runner.step()
+        runner.train_epoch()
 
     def testMultiModel(self):
         def multi_model_creator(config):
@@ -146,6 +167,6 @@ class TestPyTorchRunner(unittest.TestCase):
 
         runner = PyTorchRunner(multi_model_creator, single_loader,
                                multi_optimizer_creator, loss_creator)
-        runner.setup()
+
         with self.assertRaises(ValueError):
-            runner.step()
+            runner.setup()

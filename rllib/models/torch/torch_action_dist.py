@@ -71,7 +71,15 @@ class TorchDiagGaussian(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def logp(self, actions):
-        return TorchDistributionWrapper.logp(self, actions).sum(-1)
+        return super().logp(actions).sum(-1)
+
+    @override(TorchDistributionWrapper)
+    def entropy(self):
+        return super().entropy().sum(-1)
+
+    @override(TorchDistributionWrapper)
+    def kl(self, other):
+        return super().kl(other).sum(-1)
 
     @staticmethod
     @override(ActionDistribution)
