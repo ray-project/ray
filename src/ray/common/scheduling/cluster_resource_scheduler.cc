@@ -160,6 +160,26 @@ std::string TaskRequest::DebugString() {
   return buffer.str();
 }
 
+bool TaskResourceInstances::IsEmpty() {
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    for (size_t j = 0; j < this->predefined_resources[i].size(); j++) {
+      if (this->predefined_resources[i][j] != 0) {
+        return false;
+      }
+    }
+  }
+ 
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
+    for (size_t j = 0; j < it->second.size(); j++) {
+      if (it->second[j] != 0) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 std::string TaskResourceInstances::DebugString() {
   std::stringstream buffer;
   buffer << std::endl << "  Allocation: {";
@@ -753,6 +773,7 @@ std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
     } 
   }
 
+  RAY_LOG(WARNING) << "\n AddAvailableResourceInstances " << VectorToString(available);                                    
   RAY_LOG(WARNING) << "\n AddAvailableResourceInstances " << DebugString();                                     
   RAY_LOG(WARNING) << "\n AddAvailableResourceInstances overflow = " << VectorToString(overflow);                                     
 
@@ -923,6 +944,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
 void ClusterResourceScheduler::FreeTaskResourceInstances(
     TaskResourceInstances &task_allocation) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    RAY_LOG(WARNING) << "FreeTaskResourceInstances idx = " << i;
     AddAvailableResourceInstances(task_allocation.predefined_resources[i],
                                   &local_resources_.predefined_resources[i]);
   }
@@ -931,6 +953,7 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
        it != task_allocation.custom_resources.end(); it++) {
     auto it_local = local_resources_.custom_resources.find(it->first);
     if (it_local != local_resources_.custom_resources.end()) {
+      RAY_LOG(WARNING) << "FreeTaskResourceInstances (cust) " << it->first;
       AddAvailableResourceInstances(it->second, &it_local->second);
     }
   }
@@ -1022,8 +1045,11 @@ void ClusterResourceScheduler::AllocateRemoteTaskResources(
 
 
 void ClusterResourceScheduler::FreeLocalTaskResources(TaskResourceInstances &task_allocation) {
-  RAY_LOG(WARNING) << "=== FreeLocalTaskResources 0 " << DebugString();
-  AddNodeAvailableResources(local_node_id_, task_allocation.ToTaskRequest());     
-  FreeTaskResourceInstances(task_allocation);
+  RAY_LOG(WARNING) << "=== FreeLocalTaskResources 0 " << DebugString() << " - " << task_allocation.DebugString();
+  RAY_LOG(WARNING) << "=== FreeLocalTaskResources IsEmpty() = " << task_allocation.IsEmpty() << task_allocation.DebugString();
+  if (!task_allocation.IsEmpty()) {
+    AddNodeAvailableResources(local_node_id_, task_allocation.ToTaskRequest());  
+    FreeTaskResourceInstances(task_allocation);
+  }
   RAY_LOG(WARNING) << "=== FreeLocalTaskResources 1 " << DebugString();
 }

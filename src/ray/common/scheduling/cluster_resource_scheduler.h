@@ -73,6 +73,8 @@ class TaskResourceInstances {
   TaskRequest ToTaskRequest();
   /// Get CPU instances only.
   std::vector<double> GetCPUInstances() { return this->predefined_resources[CPU]; };
+  /// Check whether there are no resource instances.
+  bool IsEmpty();
   /// Returns human-readable string for these resources.
   std::string DebugString();
 };

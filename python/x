@@ -1,3 +1,91 @@
+
+HandleWorkerAvailable -> FinishAssignedTask -> FinishAssignedActorTask
+
+/// The worker's ID.
+  WorkerID worker_id_;
+  /// The worker's PID.
+  pid_t pid_;
+  /// The language type of this worker.
+  Language language_;
+  /// Port that this worker listens on.
+  /// If port <= 0, this indicates that the worker will not listen to a port.
+  int port_;
+  /// Connection state of a worker.
+  std::shared_ptr<LocalClientConnection> connection_;
+  /// The worker's currently assigned task.
+  TaskID assigned_task_id_;
+  /// Job ID for the worker's current assigned task.
+  JobID assigned_job_id_;
+  /// The worker's actor ID. If this is nil, then the worker is not an actor.
+  ActorID actor_id_;
+  /// Whether the worker is dead.
+  bool dead_;
+  /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
+  /// they require a data dependency while executing a task.
+  bool blocked_;
+  /// The specific resource IDs that this worker owns for its lifetime. This is
+  /// only used for actors.
+  ResourceIdSet lifetime_resource_ids_;
+  /// The specific resource IDs that this worker currently owns for the duration
+  // of a task.
+  ResourceIdSet task_resource_ids_;
+  std::unordered_set<TaskID> blocked_task_ids_;
+  /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
+  /// workers.
+  rpc::ClientCallManager &client_call_manager_;
+  /// The rpc client to send tasks to this worker.
+  std::unique_ptr<rpc::CoreWorkerClient> rpc_client_;
+  /// Whether the worker is detached. This is applies when the worker is actor.
+  /// Detached actor means the actor's creator can exit without killing this actor.
+  bool is_detached_actor_;
+  /// The address of this worker's owner. The owner is the worker that
+  /// currently holds the lease on this worker, if any.
+  rpc::Address owner_address_;
+
+
+int64_t expected_task_counter =
+        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
+    RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
+
+
+FinishAssignTask()
+
+worker->AssignTaskId(spec.TaskId());
+worker->SetOwnerAddress(spec.CallerAddress());
+worker->AssignJobId(spec.JobId());
+
+    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
+
+
+Bugs:
+P0:
+- Serialization of certain objects not handled correctly after 0.8.1 (https://github.com/ray-project/ray/issues/7376) - Ryans
+- PBT's training_iteration is larger than the stop setting (https://github.com/ray-project/ray/issues/7356) - Richard
+- ValueError: Argument must be a dense tensor: ... - got shape [1, 41], but wanted (https://github.com/ray-project/ray/issues/7359) - Sven
+- [tune] Hyperparameter tuning of DDPG model/trainer (https://github.com/ray-project/ray/issues/7352) - Richard
+- "Cannot perform an interactive login from a non TTY device" when trying to use a private docker registry #7339 - Edward/Alex
+- ray object exists in head node, but it cannot be loaded by a remote worker node #7330 - Stephanie
+
+P1:
+- PPO PyTorch Bool Multiply Float type Issue (https://github.com/ray-project/ray/issues/7370) - Sven
+- [docs] Issue on `rllib.rst` #7345 - Sven/Eric
+
+Features:
+P0:
+- Do not suggest calling __ray_terminate__ directly (https://github.com/ray-project/ray/issues/7382) - Edward
+- ray.services.get_node_ip_address doesn't work well if there is a local proxy #7316 - Edward
+
+P1:
+- Ray dashbaord integration (https://github.com/ray-project/ray/issues/7383) - Mitchell
+- Actor process leaked after handle is passed to a different task #7326 - Stephani
+ 
+Questions:
+- ray logging_monitor steadily increases CPU utilization #7317 -- Philipp
+
+
+
+
+
 test_args_starkwargs
 test_args_named_and_star
 test_args_stars_after
@@ -5,6 +93,16 @@ test_redefining_remote_functions
 test_submit_api
 test_many_fractional_resources
 test_direct_call_simple
+test_call_actors_indirect_through_tasks
+test_direct_call_matrix
+test_direct_inline_arg_memory_corruption
+test_direct_actor_enabled
+test_direct_actor_order
+test_direct_actor_large_objects
+test_direct_actor_pass_by_ref
+test_direct_actor_pass_by_ref_order_optimization
+test_direct_actor_concurrent
+test_wait
 
 
 DispatchTasks

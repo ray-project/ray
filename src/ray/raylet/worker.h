@@ -77,7 +77,6 @@ class Worker {
   /// TODO (ion): Add methods to access this variable.
   /// TODO (ion): Investigate a more intuitive alternative to track these Cpus.
   /// XXX
-  ResourceSet borrowed_cpu_resources_;
   TaskResourceInstances allocated_instances_;
   void SetAllocatedInstances(TaskResourceInstances &allocated_instances) { 
       allocated_instances_ = allocated_instances;
@@ -86,6 +85,15 @@ class Worker {
   void ClearAllocatedInstances() {
     TaskResourceInstances nothing;  
     allocated_instances_ = nothing; // Clear allocated instances.
+  };    
+  TaskResourceInstances lifetime_allocated_instances_;
+  void SetLifetimeAllocatedInstances(TaskResourceInstances &allocated_instances) { 
+      lifetime_allocated_instances_ = allocated_instances;
+  };                                                   
+  TaskResourceInstances &GetLifetimeAllocatedInstances() {return lifetime_allocated_instances_; };    
+  void ClearLifetimeAllocatedInstances() {
+    TaskResourceInstances nothing;  
+    lifetime_allocated_instances_ = nothing; // Clear allocated instances.
   };    
   std::vector<double> borrowed_cpu_instances_;
   void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) { 
