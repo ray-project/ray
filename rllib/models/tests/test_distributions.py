@@ -4,13 +4,15 @@ from scipy.stats import norm
 from tensorflow.python.eager.context import eager_mode
 import unittest
 
-from ray.rllib.models.tf.tf_action_dist import Categorical, SquashedGaussian, \
-    GumbelSoftmax
-from ray.rllib.utils import try_import_tf
-from ray.rllib.utils.numpy import softmax, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
+from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
+    SquashedGaussian, GumbelSoftmax
+from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical
+from ray.rllib.utils import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, softmax
 from ray.rllib.utils.test_utils import check
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class TestDistributions(unittest.TestCase):
@@ -32,6 +34,70 @@ class TestDistributions(unittest.TestCase):
             counts[sample] += 1.0
         probs = np.exp(z) / np.sum(np.exp(z))
         self.assertTrue(np.sum(np.abs(probs - counts / num_samples)) <= 0.01)
+
+    def test_multi_categorical(self):
+        batch_size = 100
+        num_categories = 3
+        num_sub_distributions = 5
+        # Create 5 categorical distributions of 3 categories each.
+        inputs_space = Box(
+            -1.0,
+            2.0,
+            shape=(batch_size, num_sub_distributions * num_categories))
+        values_space = Box(
+            0,
+            num_categories - 1,
+            shape=(num_sub_distributions, batch_size),
+            dtype=np.int32)
+
+        # The Component to test.
+        inputs = inputs_space.sample()
+        input_lengths = [num_categories] * num_sub_distributions
+        inputs_split = np.split(inputs, num_sub_distributions, axis=1)
+
+        for fw in ["tf", "eager", "torch"]:
+            print("framework={}".format(fw))
+
+            cls = MultiCategorical if fw != "torch" else TorchMultiCategorical
+            multi_categorical = cls(inputs, None, input_lengths)
+
+            # Batch of size=3 and deterministic (True).
+            expected = np.transpose(np.argmax(inputs_split, axis=-1))
+            # Sample, expect always max value
+            # (max likelihood for deterministic draw).
+            out = multi_categorical.deterministic_sample()
+            check(out, expected)
+
+            # Batch of size=3 and non-deterministic -> expect roughly the mean.
+            out = multi_categorical.sample()
+            check(
+                tf.reduce_mean(out)
+                if fw != "torch" else torch.mean(out.float()),
+                1.0,
+                decimals=0)
+
+            # Test log-likelihood outputs.
+            probs = softmax(inputs_split)
+            values = values_space.sample()
+
+            out = multi_categorical.logp(values if fw != "torch" else [
+                torch.Tensor(values[i]) for i in range(num_sub_distributions)
+            ])  # v in np.stack(values, 1)])
+            expected = []
+            for i in range(batch_size):
+                expected.append(
+                    np.sum(
+                        np.log(
+                            np.array([
+                                probs[j][i][values[j][i]]
+                                for j in range(num_sub_distributions)
+                            ]))))
+            check(out, expected, decimals=4)
+
+            # Test entropy outputs.
+            out = multi_categorical.entropy()
+            expected_entropy = -np.sum(np.sum(probs * np.log(probs), 0), -1)
+            check(out, expected_entropy)
 
     def test_squashed_gaussian(self):
         """Tests the SquashedGaussia ActionDistribution (tf-eager only)."""

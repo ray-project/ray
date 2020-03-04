@@ -103,11 +103,13 @@ class MultiCategorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return tf.math.argmax(self.inputs, axis=-1)
+        return tf.stack(
+            [cat.deterministic_sample() for cat in self.cats],
+            axis=1)
 
     @override(ActionDistribution)
     def logp(self, actions):
-        # If tensor is provided, unstack it into list
+        # If tensor is provided, unstack it into list.
         if isinstance(actions, tf.Tensor):
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
         logps = tf.stack(
