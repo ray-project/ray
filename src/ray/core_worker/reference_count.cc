@@ -209,6 +209,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
+  // RAY_LOG(ERROR) << "NOPE NOPE NOPE";
+  // return;
   if (distributed_ref_counting_enabled_ && it->second.RefCount() == 0 &&
       it->second.on_ref_removed) {
     RAY_LOG(DEBUG) << "Calling on_ref_removed for object " << id;

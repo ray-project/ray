@@ -711,7 +711,7 @@ def init(address=None,
         node_ip_address = services.address_to_ip(node_ip_address)
 
     global _global_node
-    if driver_mode == LOCAL_MODE:
+    if driver_mode == LOCAL_MODE and False:
         # If starting Ray in LOCAL_MODE, don't start any other processes.
         _global_node = ray.node.LocalNode(use_pickle=use_pickle)
     elif redis_address is None:
@@ -721,7 +721,7 @@ def init(address=None,
             redis_port=redis_port,
             node_ip_address=node_ip_address,
             object_id_seed=object_id_seed,
-            local_mode=local_mode,
+            local_mode=False,
             driver_mode=driver_mode,
             redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
@@ -742,7 +742,7 @@ def init(address=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
+            load_code_from_local=True,  #load_code_from_local,
             use_pickle=use_pickle,
             _internal_config=_internal_config,
         )
@@ -804,7 +804,7 @@ def init(address=None,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
+            load_code_from_local=True,
             use_pickle=use_pickle)
         _global_node = ray.node.Node(
             ray_params,
@@ -1126,7 +1126,7 @@ def connect(node,
 
     ray._raylet.set_internal_config(internal_config)
 
-    if mode is not LOCAL_MODE:
+    if mode:  #is not LOCAL_MODE :
         # Create a Redis client to primary.
         # The Redis client can safely be shared between threads. However,
         # that is not true of Redis pubsub clients. See the documentation at
@@ -1134,7 +1134,7 @@ def connect(node,
         worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode is WORKER_MODE:
+    if mode is WORKER_MODE or LOCAL_MODE:
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1190,7 +1190,7 @@ def connect(node,
     worker.lock = threading.RLock()
 
     # Create an object for interfacing with the global state.
-    if mode != LOCAL_MODE:
+    if mode:  # != LOCAL_MODE:
         ray.state.state._initialize_global_state(
             node.redis_address, redis_password=node.redis_password)
     # Register the worker with Redis.

@@ -106,7 +106,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
-  if (!local_mode) {
+  if (!local_mode || true) {
     gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
     actor_manager_ =
@@ -146,7 +146,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   RAY_LOG(INFO) << "BOUTTA RUN GRPC SERVICE";
   // Start RPC server after all the task receivers are properly initialized.
 
-  if (!local_mode) {
+  if (!local_mode || true) {
     core_worker_server_.RegisterService(grpc_service_);
     core_worker_server_.Run();
 
@@ -188,7 +188,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
-  if (!local_mode) {
+  if (!local_mode || true) {
     plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
         store_socket, local_raylet_client_, check_signals_));
   }
@@ -261,6 +261,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
+  RAY_LOG(ERROR) << "Local mode is: " << local_mode_enabled_;
   if (!local_mode) {
     plasma_notifier_.reset(new ObjectStoreNotificationManager(io_service_, store_socket,
                                                               /*exit_on_error*/ false));
@@ -488,6 +489,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   if (pin_object) {
     RAY_LOG(ERROR) << "Pinning does not work in LocalMode";
   }
+  RAY_LOG(INFO) << "Putting object: " << object_id << " into local storage";
   return memory_store_->Put(RayObject(data, metadata, contained_object_ids, false),
                             object_id);
   // return Seal(object_id, pin_object);
@@ -719,6 +721,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
+  RAY_LOG(INFO) << "Coreworker delete called... :(";
   // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
   // Should we just delete locally or ping the owner and delete globally?
   reference_counter_->DeleteReferences(object_ids);
@@ -780,16 +783,16 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-
   const std::unordered_map<std::string, double> required_resources;
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(
-      builder, worker_context_.GetCurrentJobID(), task_id,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, task_options.num_returns, task_options.resources,
-      required_resources,
-      task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
-      return_ids);
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, task_options.num_returns,
+                      task_options.resources, required_resources,
+                      task_options.is_direct_call || local_mode_enabled_
+                          ? TaskTransportType::DIRECT
+                          : TaskTransportType::RAYLET,
+                      return_ids);
   TaskSpecification task_spec = builder.Build();
   if (local_mode_enabled_) {
     RAY_LOG(INFO) << "DAS: " << direct_task_receiver_.get();
@@ -814,12 +817,14 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
     auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
     // RAY_CHECK(!worker_context_.GetCurrentTaskID().IsNil) << "Zero'd out current task
     // id";
-    auto null_task_spec = TaskSpecification();
-    worker_context_.ResetCurrentTask(null_task_spec);
+    RAY_LOG(ERROR) << "Task ID is " << task_id << " AND NEXT IS :" << next_task_index;
+    // auto null_task_spec = TaskSpecification();
+    // worker_context_.ResetCurrentTask(null_task_spec);
     RAY_RETURN_NOT_OK(
         this->ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs));
-
-    return Status::NotImplemented("No core worker submit");
+    // Restore worker_context here
+    return Status::OK();
+    // return Status::NotImplemented("No core worker submit");
   } else if (task_options.is_direct_call) {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
     return direct_task_submitter_->SubmitTask(task_spec);
@@ -1026,11 +1031,18 @@ Status CoreWorker::AllocateReturnObjects(
   RAY_CHECK(object_ids.size() == data_sizes.size());
   return_objects->resize(object_ids.size(), nullptr);
 
-  absl::optional<rpc::Address> owner_address(
-      worker_context_.GetCurrentTask()->CallerAddress());
-  bool owned_by_us = owner_address->worker_id() == rpc_address_.worker_id();
-  if (owned_by_us) {
-    owner_address.reset();
+  absl::optional<rpc::Address> owner_address;
+  if (!worker_context_.GetCurrentTask()) {
+    owner_address = rpc::Address();
+    RAY_LOG(ERROR) << "None existed";
+  } else {
+    absl::optional<rpc::Address> owner_address(
+        worker_context_.GetCurrentTask()->CallerAddress());
+    bool owned_by_us = owner_address->worker_id() == rpc_address_.worker_id();
+    if (owned_by_us) {
+      owner_address.reset();
+    }
+    RAY_LOG(ERROR) << "survived some dangers";
   }
 
   for (size_t i = 0; i < object_ids.size(); i++) {
@@ -1046,9 +1058,10 @@ Status CoreWorker::AllocateReturnObjects(
       }
 
       // Allocate a buffer for the return object.
-      if (worker_context_.CurrentTaskIsDirectCall() &&
-          static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size()) {
+      if (this->local_mode_enabled_ ||
+          (worker_context_.CurrentTaskIsDirectCall() &&
+           static_cast<int64_t>(data_sizes[i]) <
+               RayConfig::instance().max_direct_call_object_size())) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(
@@ -1079,8 +1092,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
   }
-  worker_context_.SetCurrentTask(task_spec);
-  SetCurrentTaskId(task_spec.TaskId());
+  // Remove Importance of
+  // worker_context_.SetCurrentTask(task_spec);
+  // SetCurrentTaskId(task_spec.TaskId());
   RAY_LOG(INFO) << "in execute task1.2";
   {
     absl::MutexLock lock(&mutex_);
@@ -1103,9 +1117,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     reference_counter_->AddLocalReference(borrowed_id);
   }
 
-  const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
-                                  ? TaskTransportType::DIRECT
-                                  : TaskTransportType::RAYLET;
+  const auto transport_type =
+      worker_context_.CurrentTaskIsDirectCall() || local_mode_enabled_
+          ? TaskTransportType::DIRECT
+          : TaskTransportType::RAYLET;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_ids.push_back(task_spec.ReturnId(i, transport_type));
@@ -1129,9 +1144,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
   RAY_LOG(INFO) << "in execute task3.5";
-  absl::optional<rpc::Address> caller_address(
-      worker_context_.GetCurrentTask()->CallerAddress());
-
+  absl::optional<rpc::Address> caller_address;
+  if (!worker_context_.GetCurrentTask()) {
+    caller_address = absl::optional<rpc::Address>();
+  } else {
+    absl::optional<rpc::Address> caller_address(
+        worker_context_.GetCurrentTask()->CallerAddress());
+  }
   RAY_LOG(INFO) << "in execute task4";
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
@@ -1177,8 +1196,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
            "reference counting, and may cause problems in the object store.";
   }
 
-  SetCurrentTaskId(TaskID::Nil());
-  worker_context_.ResetCurrentTask(task_spec);
+  // SetCurrentTaskId(TaskID::Nil());
+  // worker_context_.ResetCurrentTask(task_spec);
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = TaskSpecification();

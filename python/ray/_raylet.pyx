@@ -355,9 +355,11 @@ cdef execute_task(
                 num_tasks_since_last_checkpoint=0,
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
-
+    print("SOMEWHERE 32c")
     execution_info = execution_infos.get(function_descriptor)
+    print("SOMEWHERE 32d")
     if not execution_info:
+        print("other execution info")
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
         execution_infos[function_descriptor] = execution_info
@@ -458,6 +460,7 @@ cdef execute_task(
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
                     worker, outputs, c_return_ids, returns)
+                print("OUTTA store task outputs")
         except Exception as error:
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
@@ -492,8 +495,9 @@ cdef execute_task(
         # Reset signal counters so that the next task can get
         # all past signals.
         ray_signal.reset()
-
+    print("PAS WEIRD SIGNAL")
     if execution_info.max_calls != 0:
+        print("IN IF Stment")
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(job_id, function_descriptor)
@@ -524,6 +528,7 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, ray_function, c_resources, c_args,
                              c_arg_reference_ids, c_return_ids, returns)
+                print("FINISHED EXECUTE_TASK")
             except Exception as e:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
@@ -1056,7 +1061,6 @@ cdef class CoreWorker:
 
         check_status(self.core_worker.get().AllocateReturnObjects(
             return_ids, data_sizes, metadatas, contained_ids, returns))
-
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
             if returns[0][i].get() == NULL:
@@ -1064,8 +1068,21 @@ cdef class CoreWorker:
             if serialized_object is NoReturn:
                 returns[0][i].reset()
             else:
+                print("Writing serialized object?")
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
+                if self.local_mode:
+                    print()
+                    # Pint object is the true value
+                    print("TRY 1")
+                    return_ids[1]
+                    print("TRY 2")
+                    returns[0][i]
+                    print("TRY 3")
+                    
+                    check_status(self.core_worker.get().Seal(return_ids[i], False,
+                                                returns[0][i].get().GetData(),returns[0][i].get().GetMetadata()))
+                    print("TRY 4")
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:

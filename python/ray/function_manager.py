@@ -227,7 +227,9 @@ class FunctionActorManager:
         Returns:
             A FunctionExecutionInfo object.
         """
+        print(job_id)
         if self._worker.load_code_from_local:
+            print("LOCAL CODE?")
             # Load function from local code.
             # Currently, we don't support isolating code by jobs,
             # thus always set job ID to NIL here.
@@ -235,6 +237,7 @@ class FunctionActorManager:
             if not function_descriptor.is_actor_method():
                 self._load_function_from_local(job_id, function_descriptor)
         else:
+            print("GCS?")
             # Load function from GCS.
             # Wait until the function to be executed has actually been
             # registered on this worker. We will push warnings to the user if
@@ -243,6 +246,7 @@ class FunctionActorManager:
             # the function from GCS.
             with profiling.profile("wait_for_function"):
                 self._wait_for_function(function_descriptor, job_id)
+            print("GCS222?")
         try:
             function_id = function_descriptor.function_id
             info = self._function_execution_info[job_id][function_id]
