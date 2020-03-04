@@ -44,14 +44,16 @@ Using a local repository for dependencies
 If you'd like to build Ray with custom dependencies (for example, with a
 different version of Cython), you can modify your ``.bzl`` file as follows:
 
-     http_archive(
-         name = "cython",
-         ...,
-     ) if False else native.new_local_repository(
-         name = "cython",
-         build_file = "bazel/BUILD.cython",
-         path = "../cython",
-     )
+.. code-block:: text
+
+  http_archive(
+    name = "cython",
+    ...,
+  ) if False else native.new_local_repository(
+    name = "cython",
+    build_file = "bazel/BUILD.cython",
+    path = "../cython",
+  )
 
 This replaces the existing ``http_archive`` rule with one that references a
 sibling of your Ray directory (named ``cython``) using the build file
