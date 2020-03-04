@@ -10,31 +10,6 @@ namespace gcs {
 
 class ServiceBasedGcsClient;
 
-/// \class Executor
-/// Executor guarantees that when GCS service is abnormal, it reconnects and executes the
-/// operation again.
-class Executor {
- public:
-  Executor(ServiceBasedGcsClient *client_impl) : reconnect_count_(0) {
-    client_impl_ = client_impl;
-  }
-
-  /// This function is used to execute the given operation.
-  ///
-  /// \param operation The operation to be executed.
-  void Execute(std::function<void()> operation);
-
-  /// This function should be used after the operation execution is completed.
-  ///
-  /// \param status The status of operation execution.
-  void PostExecute(Status status);
-
- private:
-  std::function<void()> operation_;
-  ServiceBasedGcsClient *client_impl_;
-  uint64_t reconnect_count_;
-};
-
 /// \class ServiceBasedJobInfoAccessor
 /// ServiceBasedJobInfoAccessor is an implementation of `JobInfoAccessor`
 /// that uses GCS Service as the backend.

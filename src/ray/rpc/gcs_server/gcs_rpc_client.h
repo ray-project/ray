@@ -35,6 +35,34 @@ class GcsRpcClient {
         new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
   };
 
+  GcsRpcClient(const std::string &address, const int port,
+               ClientCallManager &client_call_manager,
+               const std::function<std::pair<std::string, int>()> &get_address) {
+    job_info_grpc_client_ =
+        std::unique_ptr<GrpcClient<JobInfoGcsService>>(new GrpcClient<JobInfoGcsService>(
+            address, port, client_call_manager, get_address));
+    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
+        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager,
+                                            get_address));
+    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
+        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager,
+                                           get_address));
+    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
+        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager,
+                                             get_address));
+    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
+        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager,
+                                           get_address));
+    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
+        new GrpcClient<StatsGcsService>(address, port, client_call_manager, get_address));
+    error_info_grpc_client_ = std::unique_ptr<GrpcClient<ErrorInfoGcsService>>(
+        new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager,
+                                            get_address));
+    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
+        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager,
+                                             get_address));
+  };
+
   /// Add job info to gcs server.
   VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, job_info_grpc_client_, )
 

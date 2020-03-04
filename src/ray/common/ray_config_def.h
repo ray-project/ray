@@ -239,10 +239,10 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
 RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
 
-/// Whether to enable auto reconnect gcs rpc service.
-RAY_CONFIG(bool, gcs_service_rpc_auto_reconnect_enabled, true)
+/// Whether to enable auto reconnect rpc service.
+RAY_CONFIG(bool, rpc_auto_reconnect_enabled, false)
 /// Note: this only takes effect when auto reconnect gcs rpc service is enabled.
-RAY_CONFIG(int64_t, internal_gcs_service_rpc_connect_wait_milliseconds, 100)
+RAY_CONFIG(int64_t, internal_rpc_connect_wait_milliseconds, 100)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
