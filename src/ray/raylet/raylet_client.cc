@@ -375,4 +375,11 @@ Status raylet::RayletClient::GlobalGC(
   return grpc_client_->GlobalGC(request, callback);
 }
 
+Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
+}
+
 }  // namespace ray

@@ -635,9 +635,12 @@ cdef class CoreWorker:
     def set_actor_title(self, title):
         self.core_worker.get().SetActorTitle(title)
 
-    def subscribe_to_plasma(self, plasma_event_handler):
+    def set_plasma_added_callback(self, plasma_event_handler):
         self.plasma_event_handler = plasma_event_handler
-        self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback)
+        self.core_worker.get().SetPlasmaAddedCallback(async_plasma_callback)
+
+    def subscribe_to_plasma_object(self, ObjectID object_id):
+        self.core_worker.get().SubscribeToPlasmaAdd(object_id.native())
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
