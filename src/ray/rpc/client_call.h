@@ -162,8 +162,11 @@ class ClientCallManager {
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
   explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1,
-      bool auto_reconnect_enabled = false)
-      : main_service_(main_service), num_threads_(num_threads), shutdown_(false), auto_reconnect_enabled_(auto_reconnect_enabled) {
+                             bool auto_reconnect_enabled = false)
+      : main_service_(main_service),
+        num_threads_(num_threads),
+        shutdown_(false),
+        auto_reconnect_enabled_(auto_reconnect_enabled) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -219,10 +222,10 @@ class ClientCallManager {
     auto tag = new ClientCallTag(call);
     if (auto_reconnect_enabled_) {
       auto operation = [this, grpc_client, prepare_async_function, request,
-          callback](ClientCallTag *tag) {
+                        callback](ClientCallTag *tag) {
         auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
         call->response_reader_ =
-            (grpc_client->GetStubWithReconnect().get()->*prepare_async_function)(
+            (grpc_client->Reconnect().get()->*prepare_async_function)(
                 &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
         call->response_reader_->StartCall();
         auto new_tag = new ClientCallTag(call);
@@ -262,7 +265,6 @@ class ClientCallManager {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
         tag->GetCall()->SetReturnStatus();
         if (tag->GetCall()->GetStatus().IsIOError()) {
-          RAY_LOG(INFO) << "#############################";
           // Reconnect gcs server
           // Retry operation
           if (!tag->GetOperation()) {

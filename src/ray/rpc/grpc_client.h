@@ -37,7 +37,9 @@ namespace rpc {
 template <class GrpcService>
 class GrpcClient {
  public:
-  GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager)
+  GrpcClient(
+      const std::string &address, const int port, ClientCallManager &call_manager,
+      const std::function<std::pair<std::string, int>()> &get_server_address = nullptr)
       : client_call_manager_(call_manager) {
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
@@ -48,23 +50,14 @@ class GrpcClient {
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument_);
     stub_ = GrpcService::NewStub(channel);
-  }
-
-  GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
-             const std::function<std::pair<std::string, int>()> &get_server_address)
-      : client_call_manager_(call_manager) {
-    argument_.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument_.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument_.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
-    std::shared_ptr<grpc::Channel> channel =
-        grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                  grpc::InsecureChannelCredentials(), argument_);
-    stub_ = GrpcService::NewStub(channel);
+    address_ = std::make_pair(address, port);
     get_server_address_ = get_server_address;
   }
 
-  GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
-             int num_threads)
+  GrpcClient(
+      const std::string &address, const int port, ClientCallManager &call_manager,
+      int num_threads,
+      const std::function<std::pair<std::string, int>()> &get_server_address = nullptr)
       : client_call_manager_(call_manager) {
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
@@ -76,6 +69,8 @@ class GrpcClient {
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument_);
     stub_ = GrpcService::NewStub(channel);
+    address_ = std::make_pair(address, port);
+    get_server_address_ = get_server_address;
   }
 
   /// Create a new `ClientCall` and send request.
@@ -98,17 +93,20 @@ class GrpcClient {
     return call->GetStatus();
   }
 
-  std::unique_ptr<typename GrpcService::Stub> &GetStub() {
-    return stub_;
-  }
+  std::unique_ptr<typename GrpcService::Stub> &GetStub() { return stub_; }
 
-  std::unique_ptr<typename GrpcService::Stub> &GetStubWithReconnect() {
+  /// Reconnect rpc server.
+  ///
+  /// \return GrpcService Stub.
+  std::unique_ptr<typename GrpcService::Stub> &Reconnect() {
     std::pair<std::string, int> address = get_server_address_();
-    RAY_LOG(INFO) << "GetStub address = " << address.first << ", port = " << address.second;
-    std::shared_ptr<grpc::Channel> channel =
-        grpc::CreateCustomChannel(address.first + ":" + std::to_string(address.second),
-                                  grpc::InsecureChannelCredentials(), argument_);
-    stub_ = GrpcService::NewStub(channel);
+    if (address_ != address) {
+      address_ = address;
+      std::shared_ptr<grpc::Channel> channel =
+          grpc::CreateCustomChannel(address.first + ":" + std::to_string(address.second),
+                                    grpc::InsecureChannelCredentials(), argument_);
+      stub_ = GrpcService::NewStub(channel);
+    }
     return stub_;
   }
 
@@ -118,8 +116,10 @@ class GrpcClient {
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
 
-  /// This function is used to get rpc server address. Called only when reconnecting RPC server.
+  /// This function is used to get rpc server address. Called only when reconnecting RPC
+  /// server.
   std::function<std::pair<std::string, int>()> get_server_address_;
+  std::pair<std::string, int> address_;
 };
 
 }  // namespace rpc

@@ -22,18 +22,18 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
 
   // Get gcs service address
-  auto get_address = [this]() {
+  auto get_server_address = [this]() {
     std::pair<std::string, int> address;
     GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
                                  &address);
     return address;
   };
-  std::pair<std::string, int> address = get_address();
+  std::pair<std::string, int> address = get_server_address();
 
   // Connect to gcs service
   client_call_manager_.reset(new rpc::ClientCallManager(io_service, 1, true));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
-                                              *client_call_manager_, get_address));
+                                              *client_call_manager_, get_server_address));
 
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));

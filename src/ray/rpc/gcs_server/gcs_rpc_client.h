@@ -15,52 +15,35 @@ class GcsRpcClient {
   /// \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  GcsRpcClient(const std::string &address, const int port,
-               ClientCallManager &client_call_manager) {
-    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
-        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
-    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
-        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
-    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
-        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
-    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
-        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
-    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
-        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
-    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
-        new GrpcClient<StatsGcsService>(address, port, client_call_manager));
-    error_info_grpc_client_ = std::unique_ptr<GrpcClient<ErrorInfoGcsService>>(
-        new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
-    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
-        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
-  };
-
-  GcsRpcClient(const std::string &address, const int port,
-               ClientCallManager &client_call_manager,
-               const std::function<std::pair<std::string, int>()> &get_address) {
+  /// \param[in] get_server_address The function used for getting address when reconnect
+  /// rpc server.
+  GcsRpcClient(
+      const std::string &address, const int port, ClientCallManager &client_call_manager,
+      const std::function<std::pair<std::string, int>()> &get_server_address = nullptr) {
     job_info_grpc_client_ =
         std::unique_ptr<GrpcClient<JobInfoGcsService>>(new GrpcClient<JobInfoGcsService>(
-            address, port, client_call_manager, get_address));
+            address, port, client_call_manager, get_server_address));
     actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
         new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager,
-                                            get_address));
+                                            get_server_address));
     node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
         new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager,
-                                           get_address));
+                                           get_server_address));
     object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager,
-                                             get_address));
+                                             get_server_address));
     task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
         new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager,
-                                           get_address));
-    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
-        new GrpcClient<StatsGcsService>(address, port, client_call_manager, get_address));
+                                           get_server_address));
+    stats_grpc_client_ =
+        std::unique_ptr<GrpcClient<StatsGcsService>>(new GrpcClient<StatsGcsService>(
+            address, port, client_call_manager, get_server_address));
     error_info_grpc_client_ = std::unique_ptr<GrpcClient<ErrorInfoGcsService>>(
         new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager,
-                                            get_address));
+                                            get_server_address));
     worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
         new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager,
-                                             get_address));
+                                             get_server_address));
   };
 
   /// Add job info to gcs server.
