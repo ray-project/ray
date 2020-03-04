@@ -459,7 +459,7 @@ You often will want to compute a large object (e.g., training data, model weight
 
     import ray
     from ray import tune
-    from ray.tune.utils.util import pin_in_object_store, get_pinned_object
+    from ray.tune.utils import pin_in_object_store, get_pinned_object
 
     import numpy as np
 
