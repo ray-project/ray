@@ -45,4 +45,19 @@ public class PythonPartition implements Partition {
     throw new UnsupportedOperationException(msg);
   }
 
+  public byte[] getPartition() {
+    return partition;
+  }
+
+  public String getModuleName() {
+    return moduleName;
+  }
+
+  public String getClassName() {
+    return className;
+  }
+
+  public String getFunctionName() {
+    return functionName;
+  }
 }

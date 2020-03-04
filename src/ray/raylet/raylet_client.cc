@@ -178,14 +178,6 @@ raylet::RayletClient::RayletClient(
 }
 
 Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    if (task_spec.ArgByRef(i)) {
-      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
-            << "Passing direct call objects to non-direct tasks is not allowed.";
-      }
-    }
-  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
@@ -366,14 +358,28 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
       });
 }
 
-Status raylet::RayletClient::PinObjectIDs(const rpc::Address &caller_address,
-                                          const std::vector<ObjectID> &object_ids) {
+Status raylet::RayletClient::PinObjectIDs(
+    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  return grpc_client_->PinObjectIDs(request, nullptr);
+  return grpc_client_->PinObjectIDs(request, callback);
+}
+
+Status raylet::RayletClient::GlobalGC(
+    const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
+  rpc::GlobalGCRequest request;
+  return grpc_client_->GlobalGC(request, callback);
+}
+
+Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
 }
 
 }  // namespace ray

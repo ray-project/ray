@@ -96,7 +96,7 @@ class Dashboard extends React.Component<
       { label: "Tune", component: Tune }
     ];
 
-    // if Tune information is not avaliable, remove Tune tab from the dashboard
+    // if Tune information is not available, remove Tune tab from the dashboard
     if (!tuneAvailability) {
       tabs.splice(3);
     }

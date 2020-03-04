@@ -1,7 +1,11 @@
 import logging
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Represents a generic tensor type.
+TensorType = Any
 
 
 def check_framework(framework="tf"):
@@ -65,7 +69,7 @@ def tf_function(tf_module):
     # The actual decorator to use (pass in `tf` (which could be None)).
     def decorator(func):
         # If tf not installed -> return function as is (won't be used anyways).
-        if tf_module is None:
+        if tf_module is None or tf_module.executing_eagerly():
             return func
         # If tf installed, return @tf.function-decorated function.
         return tf_module.function(func)

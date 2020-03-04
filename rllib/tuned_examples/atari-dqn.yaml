@@ -23,7 +23,7 @@ atari-basic-dqn:
         buffer_size: 1000000
         sample_batch_size: 4
         train_batch_size: 32
-        exploration:
+        exploration_config:
           epsilon_timesteps: 200000
           final_epsilon: 0.01
         prioritized_replay_alpha: 0.5

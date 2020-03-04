@@ -1,6 +1,7 @@
 package org.ray.streaming.operator;
 
 import java.util.List;
+import org.ray.streaming.api.Language;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.context.RuntimeContext;
 import org.ray.streaming.api.function.Function;
@@ -8,7 +9,6 @@ import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
-
   protected String name;
   protected F function;
   protected List<Collector> collectorList;
@@ -33,6 +33,16 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   @Override
   public void close() {
 
+  }
+
+  @Override
+  public Function getFunction() {
+    return function;
+  }
+
+  @Override
+  public Language getLanguage() {
+    return Language.JAVA;
   }
 
   protected void collect(Record record) {

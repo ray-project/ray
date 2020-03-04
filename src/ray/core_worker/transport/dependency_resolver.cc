@@ -44,9 +44,9 @@ void InlineDependencies(
             const auto &metadata = it->second->GetMetadata();
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
-          for (const auto &inlined_id : it->second->GetInlinedIds()) {
-            mutable_arg->add_nested_inlined_ids(inlined_id.Binary());
-            contained_ids->push_back(inlined_id);
+          for (const auto &nested_id : it->second->GetNestedIds()) {
+            mutable_arg->add_nested_inlined_ids(nested_id.Binary());
+            contained_ids->push_back(nested_id);
           }
           inlined_dependency_ids->push_back(id);
         }

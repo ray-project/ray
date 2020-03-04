@@ -130,7 +130,7 @@ export interface RayletInfoResponse {
           actorTitle: string;
           requiredResources: { [key: string]: number };
           state: -1;
-          invalidStateType?: 'infeasibleActor' | 'pendingActor';
+          invalidStateType?: "infeasibleActor" | "pendingActor";
         };
   };
 }

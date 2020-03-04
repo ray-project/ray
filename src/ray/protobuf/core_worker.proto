@@ -63,8 +63,8 @@ message ReturnObject {
   bytes data = 3;
   // Metadata of the object.
   bytes metadata = 4;
-  // ObjectIDs that were inlined in the data field.
-  repeated bytes inlined_ids = 5;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated bytes nested_inlined_ids = 5;
 }
 
 message PushTaskRequest {
@@ -195,12 +195,19 @@ message ObjectReferenceCount {
   bool has_local_ref = 2;
   // Any other borrowers that the worker created (by passing the ID on to them).
   repeated Address borrowers = 3;
+  // The borrower may have returned the object ID nested inside the return
+  // value of a task that it executed. This list contains all task returns that
+  // were owned by a process other than the borrower. Then, the process that
+  // owns the task's return value is also a borrower for as long as it has the
+  // task return ID in scope. Note that only the object ID and owner address
+  // are used for elements in this list.
+  repeated ObjectReference stored_in_objects = 4;
   // The borrowed object ID that contained this object, if any. This is used
   // for nested object IDs.
-  bytes contained_in_borrowed_id = 4;
+  bytes contained_in_borrowed_id = 5;
   // The object IDs that this object contains, if any. This is used for nested
   // object IDs.
-  repeated bytes contains = 5;
+  repeated bytes contains = 6;
 }
 
 message WaitForRefRemovedReply {
@@ -209,6 +216,21 @@ message WaitForRefRemovedReply {
   // ID by the time it replies, but may have accumulated other borrowers or may
   // still be borrowing an object ID that was nested inside.
   repeated ObjectReferenceCount borrowed_refs = 1;
+}
+
+message LocalGCRequest {
+}
+
+message LocalGCReply {
+}
+
+message PlasmaObjectReadyRequest {
+  bytes object_id = 1;
+  int64 data_size = 2;
+  int64 metadata_size = 3;
+}
+
+message PlasmaObjectReadyReply {
 }
 
 service CoreWorkerService {
@@ -231,4 +253,8 @@ service CoreWorkerService {
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Wait for a borrower to finish using an object. Sent by the object's owner.
   rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
+  // Trigger local GC on the worker.
+  rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Notification from raylet that an object ID is available in local plasma.
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }

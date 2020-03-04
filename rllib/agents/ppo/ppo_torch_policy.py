@@ -67,9 +67,15 @@ class PPOLoss:
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
+        if valid_mask is not None:
 
-        def reduce_mean_valid(t):
-            return torch.mean(t * valid_mask)
+            def reduce_mean_valid(t):
+                return torch.mean(t * valid_mask)
+
+        else:
+
+            def reduce_mean_valid(t):
+                return torch.mean(t)
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -109,13 +115,11 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
+    mask = None
     if state:
         max_seq_len = torch.max(train_batch["seq_lens"])
         mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = torch.reshape(mask, [-1])
-    else:
-        mask = torch.ones_like(
-            train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
 
     policy.loss_obj = PPOLoss(
         dist_class,
@@ -144,15 +148,15 @@ def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
+        "total_loss": policy.loss_obj.loss,
+        "policy_loss": policy.loss_obj.mean_policy_loss,
+        "vf_loss": policy.loss_obj.mean_vf_loss,
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
-            framework="torch").cpu().detach().numpy(),
-        "kl": policy.loss_obj.mean_kl.cpu().detach().numpy(),
-        "entropy": policy.loss_obj.mean_entropy.cpu().detach().numpy(),
+            framework="torch"),
+        "kl": policy.loss_obj.mean_kl,
+        "entropy": policy.loss_obj.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
     }
 
@@ -161,8 +165,8 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function().cpu().numpy(),
-        BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
+        SampleBatch.VF_PREDS: policy.model.value_function(),
+        BEHAVIOUR_LOGITS: policy.model.last_output(),
     }
 
 

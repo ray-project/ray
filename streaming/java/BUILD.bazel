@@ -102,6 +102,7 @@ define_java_module(
         ":org_ray_ray_streaming-runtime",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
@@ -117,6 +118,7 @@ define_java_module(
         "@ray_streaming_maven//:com_google_protobuf_protobuf_java",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
     ],
@@ -143,9 +145,15 @@ java_proto_compile(
     deps = ["//streaming:streaming_proto"],
 )
 
+java_proto_compile(
+    name = "remote_call_java_proto",
+    deps = ["//streaming:remote_call_proto"],
+)
+
 filegroup(
     name = "all_java_proto",
     srcs = [
+        ":remote_call_java_proto",
         ":streaming_java_proto",
     ],
 )
@@ -183,7 +191,7 @@ genrule(
         mkdir -p "$$GENERATED_DIR"
         # Copy protobuf-generated files.
         for f in $(locations //streaming/java:all_java_proto); do
-            unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
+            unzip -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
         done
         date > $@
     """,
@@ -214,4 +222,5 @@ genrule(
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:public"],
 )

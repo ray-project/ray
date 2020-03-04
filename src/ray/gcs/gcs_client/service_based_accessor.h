@@ -1,8 +1,9 @@
 #ifndef RAY_GCS_SERVICE_BASED_ACCESSOR_H
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
-#include "src/ray/gcs/accessor.h"
-#include "src/ray/gcs/subscription_executor.h"
+#include "ray/gcs/accessor.h"
+#include "ray/gcs/subscription_executor.h"
+#include "ray/util/sequencer.h"
 
 namespace ray {
 namespace gcs {
@@ -82,6 +83,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
+
+  Sequencer<ActorID> sequencer_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor
@@ -165,6 +168,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   GcsNodeInfo local_node_info_;
   ClientID local_node_id_;
+
+  Sequencer<ClientID> sequencer_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
@@ -255,6 +260,8 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
   ObjectSubscriptionExecutor object_sub_executor_;
+
+  Sequencer<ObjectID> sequencer_;
 };
 
 /// \class ServiceBasedStatsInfoAccessor

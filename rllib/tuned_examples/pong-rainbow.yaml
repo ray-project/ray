@@ -13,7 +13,7 @@ pong-deterministic-rainbow:
         buffer_size: 50000
         sample_batch_size: 4
         train_batch_size: 32
-        exploration:
+        exploration_config:
           epsilon_timesteps: 2
           final_epsilon: 0.0
         target_network_update_freq: 500

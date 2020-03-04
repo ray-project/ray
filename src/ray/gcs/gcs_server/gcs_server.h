@@ -38,6 +38,9 @@ class GcsServer {
   /// Get the port of this gcs server.
   int GetPort() const { return rpc_server_.GetPort(); }
 
+  /// Check if gcs server is started
+  bool IsStarted() const { return is_started_; }
+
  protected:
   /// Initialize the backend storage client
   /// The gcs server is just the proxy between the gcs client and reliable storage
@@ -108,6 +111,8 @@ class GcsServer {
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
+  /// Gcs service init flag
+  bool is_started_ = false;
 };
 
 }  // namespace gcs

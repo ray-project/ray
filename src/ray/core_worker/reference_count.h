@@ -23,9 +23,11 @@ class ReferenceCounter {
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
 
-  ReferenceCounter(bool distributed_ref_counting_enabled = true,
+  ReferenceCounter(const rpc::WorkerAddress &rpc_address,
+                   bool distributed_ref_counting_enabled = true,
                    rpc::ClientFactoryFn client_factory = nullptr)
-      : distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
+      : rpc_address_(rpc_address),
+        distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         client_factory_(client_factory) {}
 
   ~ReferenceCounter() {}
@@ -48,8 +50,10 @@ class ReferenceCounter {
   /// dependencies to a submitted task.
   ///
   /// \param[in] object_ids The object IDs to add references for.
-  void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids)
-      LOCKS_EXCLUDED(mutex_);
+  void UpdateSubmittedTaskReferences(
+      const std::vector<ObjectID> &argument_ids_to_add,
+      const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
+      std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
@@ -64,10 +68,10 @@ class ReferenceCounter {
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
-                                     const rpc::Address &worker_addr,
-                                     const ReferenceTableProto &borrowed_refs,
-                                     std::vector<ObjectID> *deleted)
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                    const rpc::Address &worker_addr,
+                                    const ReferenceTableProto &borrowed_refs,
+                                    std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -182,18 +186,25 @@ class ReferenceCounter {
   void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
                                  ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
 
-  /// Wrap ObjectIDs inside another object ID.
+  /// Mark that this ObjectID contains another ObjectID(s). This should be
+  /// called in two cases:
+  /// 1. We are storing the value of an object and the value contains
+  /// serialized copies of other ObjectIDs. If the outer object is owned by a
+  /// remote process, then they are now a borrower of the nested IDs.
+  /// 2. We submitted a task that returned an ObjectID(s) in its return values
+  /// and we are processing the worker's reply. In this case, we own the task's
+  /// return objects and are borrowing the nested IDs.
   ///
-  /// \param[in] object_id The object ID whose value we are storing.
-  /// \param[in] inner_ids The object IDs that we are storing in object_id.
+  /// \param[in] object_id The ID of the object that contains other ObjectIDs.
+  /// \param[in] inner_ids The object IDs are nested in object_id's value.
   /// \param[in] owner_address The owner address of the outer object_id. If
   /// this is not provided, then the outer object ID must be owned by us. the
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  void WrapObjectIds(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-                     const absl::optional<rpc::WorkerAddress> &owner_address)
-      LOCKS_EXCLUDED(mutex_);
+  void AddNestedObjectIds(const ObjectID &object_id,
+                          const std::vector<ObjectID> &inner_ids,
+                          const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Whether we have a reference to a particular ObjectID.
   ///
@@ -234,7 +245,9 @@ class ReferenceCounter {
       bool in_scope = RefCount() > 0;
       bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
       bool has_borrowers = borrowers.size() > 0;
-      return !(in_scope || was_contained_in_borrowed_id || has_borrowers);
+      bool was_stored_in_objects = stored_in_objects.size() > 0;
+      return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
+               was_stored_in_objects);
     }
 
     /// Whether we own the object. If we own the object, then we are
@@ -293,6 +306,13 @@ class ReferenceCounter {
     ///     borrowers. A borrower is removed from the list when it responds
     ///     that it is no longer using the reference.
     absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+    /// When a process that is borrowing an object ID stores the ID inside the
+    /// return value of a task that it executes, the caller of the task is also
+    /// considered a borrower for as long as its reference to the task's return
+    /// ID stays in scope. Thus, the borrower must notify the owner that the
+    /// task's caller is also a borrower. The key is the task's return ID, and
+    /// the value is the task ID and address of the task's caller.
+    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.
@@ -311,18 +331,26 @@ class ReferenceCounter {
   static void ReferenceTableToProto(const ReferenceTable &table,
                                     ReferenceTableProto *proto);
 
-  /// Helper method to wrap an ObjectID(s) inside another object ID.
+  /// Remove references for the provided object IDs that correspond to them
+  /// being dependencies to a submitted task. This should be called when
+  /// inlined dependencies are inlined or when the task finishes for plasma
+  /// dependencies.
+  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
+                                     std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Helper method to mark that this ObjectID contains another ObjectID(s).
   ///
-  /// \param[in] object_id The object ID whose value we are storing.
-  /// \param[in] inner_ids The object IDs that we are storing in object_id.
+  /// \param[in] object_id The ID of the object that contains other ObjectIDs.
+  /// \param[in] inner_ids The object IDs are nested in object_id's value.
   /// \param[in] owner_address The owner address of the outer object_id. If
   /// this is not provided, then the outer object ID must be owned by us. the
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
-  void WrapObjectIdsInternal(const ObjectID &object_id,
-                             const std::vector<ObjectID> &inner_ids,
-                             const absl::optional<rpc::WorkerAddress> &owner_address)
+  void AddNestedObjectIdsInternal(const ObjectID &object_id,
+                                  const std::vector<ObjectID> &inner_ids,
+                                  const rpc::WorkerAddress &owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still
@@ -393,6 +421,11 @@ class ReferenceCounter {
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Address of our RPC server. This is used to determine whether we own a
+  /// given object or not, by comparing our WorkerID with the WorkerID of the
+  /// object's owner.
+  rpc::WorkerAddress rpc_address_;
 
   /// Feature flag for distributed ref counting. If this is false, then we will
   /// keep the distributed ref count, but only the local ref count will be used
