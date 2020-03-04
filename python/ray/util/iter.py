@@ -437,9 +437,8 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
-        metrics = MetricsContext()
-
         def base_iterator(timeout=None):
+            metrics = LocalIterator.get_metrics()
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
@@ -462,7 +461,7 @@ class ParallelIterator(Generic[T]):
                 for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
-                        metrics.cur_actor = actor
+                        metrics.current_actor = actor
                         yield ray.get(obj_id)
                         futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
@@ -472,7 +471,7 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, metrics, name=name)
+        return LocalIterator(base_iterator, MetricsContext(), name=name)
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -759,6 +758,17 @@ class LocalIterator(Generic[T]):
     def combine(self, fn: Callable[[T], List[U]]) -> "LocalIterator[U]":
         it = self.for_each(fn).flatten()
         it.name = self.name + ".combine()"
+        return it
+
+    def zip_with_source_actor(self):
+        def zip_with_source(item):
+            metrics = LocalIterator.get_metrics()
+            if metrics.current_actor is None:
+                raise ValueError("Could not identify source actor of item")
+            return metrics.current_actor, item
+
+        it = self.for_each(zip_with_source)
+        it.name = self.name + ".zip_with_source_actor()"
         return it
 
     def take(self, n: int) -> List[T]:

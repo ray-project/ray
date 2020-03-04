@@ -5,11 +5,12 @@ TODO(ekl): describe the concepts."""
 import logging
 from typing import List, Any, Tuple, Union
 import numpy as np
+import queue
 import random
 import time
 
 import ray
-from ray.util.iter import from_actors, LocalIterator
+from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import MetricsContext
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer, \
     ReplayBuffer
@@ -439,13 +440,13 @@ class ApplyGradients:
                     for e in self.workers.remote_workers():
                         e.set_weights.remote(weights, _get_global_vars())
         else:
-            if metrics.cur_actor is None:
+            if metrics.current_actor is None:
                 raise ValueError("Could not find actor to update. When "
-                                 "update_all=False, `cur_actor` must be set "
+                                 "update_all=False, `current_actor` must be set "
                                  "in the iterator context.")
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = self.workers.local_worker().get_weights()
-                metrics.cur_actor.set_weights.remote(weights,
+                metrics.current_actor.set_weights.remote(weights,
                                                      _get_global_vars())
 
 
@@ -615,3 +616,31 @@ class UpdateTargetNetwork:
                 lambda p, _: p.update_target())
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+class Enqueue:
+    def __init__(self, output_queue):
+        if not isinstance(output_queue, queue.Queue):
+            raise ValueError("Expected queue.Queue, got {}".format(type(output_queue)))
+        self.queue = output_queue
+
+    def __call__(self, x):
+        try:
+            self.queue.put_nowait(x)
+        except queue.Full:
+            return _NextValueNotReady()
+
+
+def Dequeue(input_queue, check=lambda: True):
+    if not isinstance(input_queue, queue.Queue):
+        raise ValueError("Expected queue.Queue, got {}".format(type(input_queue)))
+
+    def base_iterator(timeout=None):
+        while check():
+            try:
+                item = input_queue.get_nowait()
+                yield item
+            except queue.Empty:
+                yield _NextValueNotReady()
+        raise RuntimeError("Error raised reading from queue")
+
+    return LocalIterator(base_iterator, MetricsContext())

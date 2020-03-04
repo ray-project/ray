@@ -7,8 +7,10 @@ from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.experimental_dsl import (
     ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
     ParallelReplay, TrainOneStep, StandardMetricsReporting,
-    StoreToReplayActors,
-    UpdateTargetNetwork)
+    StoreToReplayActors, UpdateTargetNetwork, Enqueue, Dequeue,
+    STEPS_TRAINED_COUNTER)
+from ray.rllib.optimizers.async_replay_optimizer import LearnerThread
+from ray.util.iter import LocalIterator
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -80,6 +82,7 @@ def update_target_based_on_num_steps_trained(trainer, fetches):
 
 # Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
 def training_pipeline(workers, config):
+    # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [
         num_replay_buffer_shards,
@@ -91,23 +94,37 @@ def training_pipeline(workers, config):
         config["prioritized_replay_eps"],
     ], num_replay_buffer_shards)
 
-    # (1) Store experiences into the local replay buffer.
+    def update_prio_and_stats(item):
+        actor, prio_dict, count = item
+        actor.update_priorities.remote(prio_dict)
+        metrics = LocalIterator.get_metrics()
+        metrics.counters[STEPS_TRAINED_COUNTER] += count
+
+    # Start the learner thread.
+    learner_thread = LearnerThread(workers.local_worker())
+    learner_thread.start()
+
+    # We execute the following steps concurrently:
+    # (1) Generate rollouts and store them in our replay buffer actors.
     rollouts = ParallelRollouts(workers)
     store_op = rollouts.for_each(StoreToReplayActors(replay_actors))
 
-    # (2) Replay and train on selected experiences.
+    # (2) Read experiences from the replay buffer actors and send to the
+    # learner thread via its in-queue.
     replay_op = ParallelReplay(replay_actors) \
-        .for_each(Enqueue(in_queue)) \
+        .zip_with_source_actor() \
+        .for_each(Enqueue(learner_thread.inqueue))
 
-    LearnerThread(in_queue, out_queue).start()
-    
-    stats_op = Dequeue(out_queue) \
+    # (3) Get priorities get back from learner thread and apply them to the
+    # replay buffer actors.
+    update_op = Dequeue(learner_thread.outqueue, check=learner_thread.is_alive) \
+        .for_each(update_prio_and_stats) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"],
             by_steps_trained=True))
 
-    # Alternate deterministically between (1) and (2).
-    train_op = Concurrently([store_op, replay_op], mode="async")
+    # Execute (1), (2), (3) asynchronously as fast as possible.
+    train_op = Concurrently([store_op, replay_op, update_op], mode="async")
 
     return StandardMetricsReporting(train_op, workers, config)
 
