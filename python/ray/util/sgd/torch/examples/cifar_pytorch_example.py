@@ -8,8 +8,8 @@ import torchvision
 import torchvision.transforms as transforms
 
 import ray
-from ray.util.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
-from ray.util.sgd.pytorch.resnet import ResNet18
+from ray.util.sgd.torch import (TorchTrainer, TorchTrainable)
+from ray.util.sgd.torch.resnet import ResNet18
 
 
 def initialization_hook():
@@ -62,7 +62,7 @@ def train_example(num_replicas=1,
                   use_gpu=False,
                   use_fp16=False,
                   test_mode=False):
-    trainer1 = PyTorchTrainer(
+    trainer1 = TorchTrainer(
         ResNet18,
         cifar_creator,
         optimizer_creator,
@@ -108,7 +108,7 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
     }
 
     analysis = tune.run(
-        PyTorchTrainable,
+        TorchTrainable,
         num_samples=2,
         config=config,
         stop={"training_iteration": 2},

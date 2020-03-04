@@ -40,8 +40,9 @@ class PlasmaEventHandler:
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
-                # This must be asynchronous to allow objects to be locally
-                # received
+                # This must be asynchronous because it runs on the main IO
+                # thread in the worker. If this is blocked, other messages
+                # won't be received.
                 self._loop.call_soon_threadsafe(_complete_future, self,
                                                 object_id)
 
@@ -71,6 +72,8 @@ class PlasmaEventHandler:
 
         future = PlasmaObjectFuture(loop=self._loop)
         self._waiting_dict[object_id].append(future)
-        self.check_immediately(object_id)
-
+        if not self.check_immediately(object_id) and len(
+                self._waiting_dict[object_id]) == 1:
+            # Only subscribe once
+            self._worker.core_worker.subscribe_to_plasma_object(object_id)
         return future

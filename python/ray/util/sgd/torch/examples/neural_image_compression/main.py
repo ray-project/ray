@@ -7,7 +7,7 @@
 
 # todo: add a flag that does this
 import logging
-logging.getLogger("ray.util.sgd.pytorch.pytorch_runner").setLevel(logging.DEBUG)
+logging.getLogger("ray.util.sgd.torch.torch_runner").setLevel(logging.DEBUG)
 
 def model_creator(config):
     from model import Net

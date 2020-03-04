@@ -5,8 +5,8 @@ import sys
 from tqdm import tqdm, trange
 
 import ray
-from ray.util.sgd import PyTorchTrainer
-from ray.util.sgd.pytorch import TrainingOperator
+from ray.util.sgd import TorchTrainer
+from ray.util.sgd.torch import TrainingOperator
 
 class Namespace:
     pass
@@ -96,7 +96,7 @@ class _TrainingOperator(TrainingOperator):
 class System():
     def __init__(self):
         # custom config, can be modified by user to pass info to
-        # the PyTorchTrainer
+        # the TorchTrainer
         self.config = Namespace()
 
         self.intervals = {}
@@ -270,7 +270,7 @@ class System():
                 res = torch.utils.data.Subset([0])
             return res
 
-        self.trainer = PyTorchTrainer(
+        self.trainer = TorchTrainer(
             lambda c: model_creator(c.user_config),
             lambda c: possibly_truncated_data_creator(c.user_config),
             lambda model, c: optimizer_creator(model, c.user_config),
@@ -289,7 +289,7 @@ class System():
         if self.args.mode == "train":
             self._trainer_params["num_replicas"] = self.args.number_of_workers
             # todo: we cannot require GPU for now, that would require changing
-            # PyTorchTrainer
+            # TorchTrainer
             self._trainer_params["use_gpu"] = not self.args.no_gpu
             self._trainer_params["batch_size"] = self.args.total_batch_size // self.args.number_of_workers
             self._trainer_params["use_fp16"] = self.args.mixed_precision

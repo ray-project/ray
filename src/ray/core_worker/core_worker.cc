@@ -250,15 +250,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
-  plasma_notifier_.reset(new ObjectStoreNotificationManager(io_service_, store_socket,
-                                                            /*exit_on_error*/ false));
 }
 
 CoreWorker::~CoreWorker() {
-  // ObjectStoreNotificationManager depends on io_service_ so we need to shut it down
-  // first.
-  plasma_notifier_->Shutdown();
-
   io_service_.stop();
   io_thread_.join();
   if (log_dir_ != "") {
@@ -396,7 +390,7 @@ Status CoreWorker::Put(const RayObject &object,
                        ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+                                static_cast<uint8_t>(TaskTransportType::DIRECT));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                      rpc_address_);
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
@@ -425,7 +419,7 @@ Status CoreWorker::Put(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  return Status::OK();
+  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -433,7 +427,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+                                static_cast<uint8_t>(TaskTransportType::DIRECT));
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   // Only add the object to the reference counter if it didn't already exist.
@@ -468,7 +462,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
-  return Status::OK();
+  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
@@ -544,13 +538,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
-  if (object_id.IsDirectCallType()) {
-    bool in_plasma = false;
-    found = memory_store_->Contains(object_id, &in_plasma);
-    if (in_plasma) {
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
-    }
-  } else {
+  bool in_plasma = false;
+  found = memory_store_->Contains(object_id, &in_plasma);
+  if (in_plasma) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
@@ -673,14 +663,9 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects are always handled by ref counting only.
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
-  for (const auto &obj_id : object_ids) {
-    plasma_object_ids.insert(obj_id);
-  }
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
-                                                   delete_creating_tasks));
-
-  return Status::OK();
+  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only,
+                                        delete_creating_tasks);
 }
 
 void CoreWorker::TriggerGlobalGC() {
@@ -1401,13 +1386,25 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
-  plasma_notifier_->SubscribeObjAdded(
-      [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
-        // This callback must be asynchronous to allow plasma to receive objects
-        subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
-                           info.metadata_size);
-      });
+void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback) {
+  plasma_done_callback_ = subscribe_callback;
+}
+
+void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
+  RAY_CHECK_OK(local_raylet_client_->SubscribeToPlasma(object_id));
+}
+
+void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+                                         rpc::PlasmaObjectReadyReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
+  // This callback needs to be asynchronous because it runs on the io_service_, so no
+  // RPCs can be processed while it's running. This can easily lead to deadlock (for
+  // example if the callback calls ray.get() on an object that is dependent on an RPC
+  // to be ready).
+  plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
+                        request.metadata_size());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {

@@ -3,7 +3,6 @@ package org.ray.api.benchmark;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.testng.annotations.Test;
 
 public class SingleLatencyTest extends RayBenchmarkTest {
@@ -11,7 +10,6 @@ public class SingleLatencyTest extends RayBenchmarkTest {
   public static final int totalNum = 10;
   private static final long serialVersionUID = 3559601273941694468L;
 
-  @RayRemote
   public static RemoteResult<Integer> doFunc() {
     RemoteResult<Integer> remoteResult = new RemoteResult<>();
     remoteResult.setResult(1);
