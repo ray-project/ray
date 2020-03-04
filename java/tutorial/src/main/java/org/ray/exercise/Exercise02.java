@@ -2,21 +2,18 @@ package org.ray.exercise;
 
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 
 /**
  * Execute remote functions in parallel with some dependencies.
  */
 public class Exercise02 {
 
-  @RayRemote
   public static String sayHello() {
     String ret = "hello";
     System.out.println(ret);
     return ret;
   }
 
-  @RayRemote
   public static String sayWorld() {
     String ret = "world!";
     System.out.println(ret);
@@ -26,7 +23,6 @@ public class Exercise02 {
   /**
    * A remote function with dependency.
    */
-  @RayRemote
   public static String merge(String hello, String world) {
     return hello + "," + world;
   }

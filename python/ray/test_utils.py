@@ -235,3 +235,15 @@ class RemoteSignal:
 
     def wait(self):
         ray.get(self.signal_actor.wait.remote())
+
+
+@ray.remote
+def _put(obj):
+    return obj
+
+
+def put_object(obj, use_ray_put):
+    if use_ray_put:
+        return ray.put(obj)
+    else:
+        return _put.remote(obj)

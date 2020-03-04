@@ -116,7 +116,7 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
 
     policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
-            distribution_inputs, action_dist_class, model, explore, timestep)
+            distribution_inputs, action_dist_class, model, timestep, explore)
 
     return policy.output_actions, policy.sampled_action_logp
 
