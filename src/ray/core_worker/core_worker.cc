@@ -1398,7 +1398,10 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
-  // This callback must be asynchronous to allow plasma to receive objects
+  // This callback needs to be asynchronous because it runs on the io_service_, so no
+  // RPCs can be processed while it's running. This can easily lead to deadlock (for
+  // example if the callback calls ray.get() on an object that is dependent on an RPC
+  // to be ready).
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
