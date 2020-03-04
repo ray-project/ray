@@ -98,9 +98,9 @@ matrix:
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
-        - pip install -q -r requirements-doc.txt
-        - pip install -q yapf==0.23.0
-        - sphinx-build -W -b html -d _build/doctrees source _build/html
+        - pip install -r requirements-doc.txt
+        - pip install yapf==0.23.0
+        - sphinx-build -q -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
         - flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
@@ -110,7 +110,7 @@ matrix:
         - python setup.py check --restructuredtext --strict --metadata
         - cd ..
         # Run Bazel linter Buildifier.
-        - wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
+        - wget -q https://dl.google.com/go/go1.11.linux-amd64.tar.gz
         - tar -xf go1.11.linux-amd64.tar.gz
         - mkdir $HOME/go_dir
         - export GOROOT=`pwd`/go
