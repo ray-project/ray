@@ -223,7 +223,7 @@ class ActorClassMetadata:
     Attributes:
         language: The actor language, e.g. Python, Java.
         modified_class: The original class that was decorated (with some
-            additional methods added like __ray_terminate__).
+            additional methods added like __ray_checkpoint__).
         actor_creation_function_descriptor: The function descriptor for
             the actor creation task.
         class_id: The ID of this actor class.
@@ -721,7 +721,7 @@ class ActorHandle:
         if not self._ray_is_cross_language:
             raise AttributeError("'{}' object has no attribute '{}'".format(
                 type(self).__name__, item))
-        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+        if item in ["__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
@@ -755,36 +755,6 @@ class ActorHandle:
             self._ray_actor_creation_function_descriptor.class_name,
             self._actor_id.hex())
 
-    #def __del__(self):
-    #    """Terminate the worker that is running this actor."""
-    #    # TODO(swang): Also clean up forked actor handles.
-    #    # Kill the worker if this is the original actor handle, created
-    #    # with Class.remote(). TODO(rkn): Even without passing handles around,
-    #    # this is not the right policy. the actor should be alive as long as
-    #    # there are ANY handles in scope in the process that created the actor,
-    #    # not just the first one.
-    #    worker = ray.worker.get_global_worker()
-    #    exported_in_current_session_and_job = (
-    #        self._ray_session_and_job == worker.current_session_and_job)
-    #    if (worker.mode == ray.worker.SCRIPT_MODE
-    #            and not exported_in_current_session_and_job):
-    #        # If the worker is a driver and driver id has changed because
-    #        # Ray was shut down re-initialized, the actor is already cleaned up
-    #        # and we don't need to send `__ray_terminate__` again.
-    #        logger.warning(
-    #            "Actor is garbage collected in the wrong driver." +
-    #            " Actor id = %s, class name = %s.", self._ray_actor_id,
-    #            self._ray_actor_creation_function_descriptor.class_name)
-    #        return
-    #    if worker.connected and self._ray_original_handle:
-    #        # Note: in py2 the weakref is destroyed prior to calling __del__
-    #        # so we need to set the hardref here briefly
-    #        try:
-    #            self.__ray_terminate__._actor_hard_ref = self
-    #            self.__ray_terminate__.remote()
-    #        finally:
-    #            self.__ray_terminate__._actor_hard_ref = None
-
     def __ray_kill__(self):
         """Deprecated - use ray.kill() instead."""
         logger.warning("actor.__ray_kill__() is deprecated and will be removed"
@@ -810,7 +780,7 @@ class ActorHandle:
 
         if hasattr(worker, "core_worker"):
             # Non-local mode
-            state = worker.core_worker.serialize_actor_handle(self)
+            state = worker.core_worker.serialize_actor_handle(self._ray_actor_id)
             state = (state, self._ray_actor_creation_return_id)
         else:
             # Local mode
@@ -886,12 +856,6 @@ def modify_class(cls):
     # terminating the worker.
     class Class(cls):
         __ray_actor_class__ = cls  # The original actor class
-
-        def __ray_terminate__(self):
-            print("RAY TERMINATE")
-            worker = ray.worker.get_global_worker()
-            if worker.mode != ray.LOCAL_MODE:
-                ray.actor.exit_actor()
 
         def __ray_checkpoint__(self):
             """Save a checkpoint.

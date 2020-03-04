@@ -964,10 +964,8 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
 
-    def serialize_actor_handle(self, actor_handle):
-        assert isinstance(actor_handle, ray.actor.ActorHandle)
+    def serialize_actor_handle(self, ActorID actor_id):
         cdef:
-            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
         check_status(self.core_worker.get().SerializeActorHandle(
             actor_id.native(), &output))
