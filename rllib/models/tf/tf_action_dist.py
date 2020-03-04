@@ -189,7 +189,8 @@ class GumbelSoftmax(TFActionDistribution):
                 tf.one_hot(x,
                            self.dist.logits.shape.as_list()[-1]),
                 dtype=tf.float32)
-            assert values.shape == self.dist.logits.shape
+            assert values.shape == self.dist.logits.shape, (
+                values.shape, self.dist.logits.shape)
 
         # [0]'s implementation (see line below) seems to be an approximation
         # to the actual Gumbel Softmax density.
