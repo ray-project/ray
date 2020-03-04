@@ -10,6 +10,8 @@
 #include "ray/common/task/task_common.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/cluster_resource_scheduler.h"
 
 namespace ray {
 
@@ -75,7 +77,36 @@ class Worker {
   /// and the worker does not get back the cpu resources when unblocked.
   /// TODO (ion): Add methods to access this variable.
   /// TODO (ion): Investigate a more intuitive alternative to track these Cpus.
-  ResourceSet borrowed_cpu_resources_;
+  /// XXX
+  TaskResourceInstances allocated_instances_;
+  void SetAllocatedInstances(TaskResourceInstances &allocated_instances) { 
+      allocated_instances_ = allocated_instances;
+  };                                                   
+  TaskResourceInstances &GetAllocatedInstances() {return allocated_instances_; };    
+  void ClearAllocatedInstances() {
+    TaskResourceInstances nothing;  
+    allocated_instances_ = nothing; // Clear allocated instances.
+  };    
+  TaskResourceInstances lifetime_allocated_instances_;
+  void SetLifetimeAllocatedInstances(TaskResourceInstances &allocated_instances) { 
+      lifetime_allocated_instances_ = allocated_instances;
+  };                                                   
+  TaskResourceInstances &GetLifetimeAllocatedInstances() {return lifetime_allocated_instances_; };    
+  void ClearLifetimeAllocatedInstances() {
+    TaskResourceInstances nothing;  
+    lifetime_allocated_instances_ = nothing; // Clear allocated instances.
+  };    
+  std::vector<double> borrowed_cpu_instances_;
+  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) { 
+    borrowed_cpu_instances_ = cpu_instances; 
+  };
+  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }; 
+  void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };   
+
+  Task assigned_task_;
+  Task &GetAssignedTask() { return assigned_task_; };
+  void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
+  /// XXX                                               
 
   rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
 

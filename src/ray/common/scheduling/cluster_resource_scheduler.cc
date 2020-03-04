@@ -33,18 +33,17 @@ bool NodeResources::operator==(const NodeResources &other) {
 
 std::string NodeResources::DebugString() {
   std::stringstream buffer;
-  buffer << "  node predefined resources {";
+  buffer << " {";
   for (size_t i = 0; i < static_cast<size_t>(this->predefined_resources.size()); i++) {
     buffer << "(" << this->predefined_resources[i].total << ":"
            << this->predefined_resources[i].available << ") ";
   }
-  buffer << "}" << std::endl;
+  buffer << "}";
 
-  buffer << "  node custom resources {";
+  buffer << "  {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":(" << it->second.total << ":" << it->second.available
-           << ") ";
+    buffer << it->first << ":(" << it->second.total << ":" << it->second.available << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -63,6 +62,18 @@ std::string VectorToString(std::vector<double> &vector) {
   buffer << "]";
   return buffer.str();
 }
+
+std::string UnorderedMapToString(const std::unordered_map<std::string, double> &map) {
+  std::stringstream buffer;
+
+  buffer << "[";
+  for (auto it = map.begin(); it != map.end(); ++it) {
+    buffer << "(" << it->first << ":" << it->second << ")";
+  }
+  buffer << "]";
+  return buffer.str();
+}
+
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -98,14 +109,14 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
 
 std::string NodeResourceInstances::DebugString() {
   std::stringstream buffer;
-  buffer << "  node predefined resources {";
+  buffer << " {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
     buffer << "(" << VectorToString(predefined_resources[i].total) << ":"
            << VectorToString(this->predefined_resources[i].available) << ") ";
   }
-  buffer << "}" << std::endl;
+  buffer << "}";
 
-  buffer << "  node custom resources {";
+  buffer << " {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
     buffer << it->first << ":(" << VectorToString(it->second.total) << ":"
@@ -132,38 +143,58 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
 
 std::string TaskRequest::DebugString() {
   std::stringstream buffer;
-  buffer << std::endl << "  request predefined resources {";
+  buffer << " {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
     buffer << "(" << this->predefined_resources[i].demand << ":"
            << this->predefined_resources[i].soft << ") ";
   }
-  buffer << "}" << std::endl;
+  buffer << "}";
 
-  buffer << "  request custom resources {";
+  buffer << "  [";
   for (size_t i = 0; i < this->custom_resources.size(); i++) {
     buffer << this->custom_resources[i].id << ":"
            << "(" << this->custom_resources[i].demand << ":"
            << this->custom_resources[i].soft << ") ";
   }
-  buffer << "}" << std::endl;
+  buffer << "]" << std::endl;
   return buffer.str();
+}
+
+bool TaskResourceInstances::IsEmpty() {
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    for (size_t j = 0; j < this->predefined_resources[i].size(); j++) {
+      if (this->predefined_resources[i][j] != 0) {
+        return false;
+      }
+    }
+  }
+ 
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
+    for (size_t j = 0; j < it->second.size(); j++) {
+      if (it->second[j] != 0) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 std::string TaskResourceInstances::DebugString() {
   std::stringstream buffer;
-  buffer << std::endl << "  task allocation: P {";
+  buffer << std::endl << "  Allocation: {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
     buffer << VectorToString(this->predefined_resources[i]);
   }
   buffer << "}";
 
-  buffer << "  C {";
+  buffer << "  [";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
     buffer << it->first << ":" << VectorToString(it->second) << ", ";
   }
 
-  buffer << "}" << std::endl;
+  buffer << "]" << std::endl;
   return buffer.str();
 }
 
@@ -195,6 +226,33 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
   return true;
 }
 
+TaskRequest TaskResourceInstances::ToTaskRequest() {
+  TaskRequest task_req;
+  task_req.predefined_resources.resize(PredefinedResources_MAX);
+
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    task_req.predefined_resources[i].demand = 0;
+    for (size_t j = 0; j < this->predefined_resources[i].size(); j++) {
+      task_req.predefined_resources[i].demand += this->predefined_resources[i][j];
+    }
+  }
+
+  task_req.custom_resources.resize(this->custom_resources.size());
+  size_t i = 0;
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
+    task_req.custom_resources[i].id = it->first;
+    task_req.custom_resources[i].soft = false;
+    task_req.custom_resources[i].demand = 0;
+    for (size_t j = 0; j < it->second.size(); j++) {
+      task_req.custom_resources[i].demand += it->second[j];
+    }
+    i++;
+  }
+  return task_req;
+}
+
+
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : local_node_id_(local_node_id) {
@@ -205,16 +263,25 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const std::unordered_map<std::string, double> &local_node_resources) {
+
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
-  AddOrUpdateNode(local_node_id, local_node_resources, local_node_resources);
+  NodeResources node_resources = 
+      ResourceMapToNodeResources(local_node_resources, local_node_resources);
+
+  RAY_LOG(WARNING) << "\n>> ClusterResourceScheduler, local_node_id_ = " << local_node_id_ << 
+      ", resources: " << UnorderedMapToString(local_node_resources);
+
+  AddOrUpdateNode(local_node_id_, node_resources);
+  InitLocalResources(node_resources);
+
+  RAY_LOG(WARNING) << "\n<< ClusterResourceScheduler: " << DebugString();
 }
 
 void ClusterResourceScheduler::AddOrUpdateNode(
     const std::string &node_id,
     const std::unordered_map<std::string, double> &resources_total,
     const std::unordered_map<std::string, double> &resources_available) {
-  NodeResources node_resources;
-  ResourceMapToNodeResources(resources_total, resources_available, &node_resources);
+  NodeResources node_resources = ResourceMapToNodeResources(resources_total, resources_available);
   AddOrUpdateNode(string_to_int_map_.Insert(node_id), node_resources);
 }
 
@@ -239,6 +306,9 @@ void ClusterResourceScheduler::SetCustomResources(
 
 void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
+  // XXX RAY_LOG(WARNING) << "\n>> AddOrUpdateNode" << DebugString(); 
+  // NodeResources ns = node_resources; // XXX
+  // RAY_LOG(WARNING) << "\n  node_id " << node_id << " " << ns.DebugString(); 
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
@@ -249,6 +319,7 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
     SetPredefinedResources(node_resources, &resources);
     SetCustomResources(node_resources.custom_resources, &resources.custom_resources);
   }
+  // XX RAY_LOG(WARNING) << "\n<< AddOrUpdateNode" << DebugString(); 
 }
 
 bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
@@ -268,6 +339,14 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
                                                 int64_t node_id,
                                                 const NodeResources &resources) {
   int violations = 0;
+
+  /* XXX
+  TaskRequest tr = task_req;
+  RAY_LOG(WARNING) << "===== IsScedulable, task_req: " << tr.DebugString();
+  RAY_LOG(WARNING) << "===== IsScedulable, node_id: " << node_id;
+  NodeResources r = resources;
+  RAY_LOG(WARNING) << "===== IsScedulable, resources: " << r.DebugString();
+  */
 
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -372,8 +451,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double> &task_resources,
     int64_t *total_violations) {
-  TaskRequest task_request;
-  ResourceMapToTaskRequest(task_resources, &task_request);
+  TaskRequest task_request = ResourceMapToTaskRequest(task_resources);
   int64_t node_id = GetBestSchedulableNode(task_request, total_violations);
 
   std::string id_string;
@@ -415,8 +493,7 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 bool ClusterResourceScheduler::SubtractNodeAvailableResources(
     const std::string &node_id,
     const std::unordered_map<std::string, double> &resource_map) {
-  TaskRequest task_request;
-  ResourceMapToTaskRequest(resource_map, &task_request);
+  TaskRequest task_request = ResourceMapToTaskRequest(resource_map);
   return SubtractNodeAvailableResources(string_to_int_map_.Get(node_id), task_request);
 }
 
@@ -448,8 +525,7 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
 bool ClusterResourceScheduler::AddNodeAvailableResources(
     const std::string &node_id,
     const std::unordered_map<std::string, double> &resource_map) {
-  TaskRequest task_request;
-  ResourceMapToTaskRequest(resource_map, &task_request);
+  TaskRequest task_request = ResourceMapToTaskRequest(resource_map);
   return AddNodeAvailableResources(string_to_int_map_.Get(node_id), task_request);
 }
 
@@ -464,16 +540,19 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
   }
 }
 
-int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
+int64_t ClusterResourceScheduler::NumNodes() { 
+  return nodes_.size(); 
+}
 
-void ClusterResourceScheduler::ResourceMapToNodeResources(
+NodeResources ClusterResourceScheduler::ResourceMapToNodeResources(
     const std::unordered_map<std::string, double> &resource_map_total,
-    const std::unordered_map<std::string, double> &resource_map_available,
-    NodeResources *node_resources) {
-  node_resources->predefined_resources.resize(PredefinedResources_MAX);
+    const std::unordered_map<std::string, double> &resource_map_available) {
+
+  NodeResources node_resources;
+  node_resources.predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    node_resources->predefined_resources[i].total =
-        node_resources->predefined_resources[i].available = 0;
+    node_resources.predefined_resources[i].total =
+        node_resources.predefined_resources[i].available = 0;
   }
 
   for (auto it = resource_map_total.begin(); it != resource_map_total.end(); ++it) {
@@ -486,60 +565,75 @@ void ClusterResourceScheduler::ResourceMapToNodeResources(
       resource_capacity.available = (int64_t)it2->second;
     }
     if (it->first == ray::kCPU_ResourceLabel) {
-      node_resources->predefined_resources[CPU] = resource_capacity;
+      node_resources.predefined_resources[CPU] = resource_capacity;
     } else if (it->first == ray::kGPU_ResourceLabel) {
-      node_resources->predefined_resources[GPU] = resource_capacity;
+      node_resources.predefined_resources[GPU] = resource_capacity;
     } else if (it->first == ray::kTPU_ResourceLabel) {
-      node_resources->predefined_resources[TPU] = resource_capacity;
+      node_resources.predefined_resources[TPU] = resource_capacity;
     } else if (it->first == ray::kMemory_ResourceLabel) {
-      node_resources->predefined_resources[MEM] = resource_capacity;
+      node_resources.predefined_resources[MEM] = resource_capacity;
     } else {
       // This is a custom resource.
-      node_resources->custom_resources.emplace(string_to_int_map_.Insert(it->first),
-                                               resource_capacity);
+      node_resources.custom_resources.emplace(string_to_int_map_.Insert(it->first),
+                                              resource_capacity);
     }
   }
+  return node_resources;
 }
 
-void ClusterResourceScheduler::ResourceMapToTaskRequest(
-    const std::unordered_map<std::string, double> &resource_map,
-    TaskRequest *task_request) {
+TaskRequest ClusterResourceScheduler::ResourceMapToTaskRequest(
+    const std::unordered_map<std::string, double> &resource_map) {
   size_t i = 0;
 
-  task_request->predefined_resources.resize(PredefinedResources_MAX);
-  task_request->custom_resources.resize(resource_map.size());
+  TaskRequest task_request;
+
+  task_request.predefined_resources.resize(PredefinedResources_MAX);
+  task_request.custom_resources.resize(resource_map.size());
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    task_request->predefined_resources[0].demand = 0;
-    task_request->predefined_resources[0].soft = false;
+    task_request.predefined_resources[0].demand = 0;
+    task_request.predefined_resources[0].soft = false;
   }
 
   for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
     if (it->first == ray::kCPU_ResourceLabel) {
-      task_request->predefined_resources[CPU].demand = it->second;
+      task_request.predefined_resources[CPU].demand = it->second;
     } else if (it->first == ray::kGPU_ResourceLabel) {
-      task_request->predefined_resources[GPU].demand = it->second;
+      task_request.predefined_resources[GPU].demand = it->second;
     } else if (it->first == ray::kTPU_ResourceLabel) {
-      task_request->predefined_resources[TPU].demand = it->second;
+      task_request.predefined_resources[TPU].demand = it->second;
     } else if (it->first == ray::kMemory_ResourceLabel) {
-      task_request->predefined_resources[MEM].demand = it->second;
+      task_request.predefined_resources[MEM].demand = it->second;
     } else {
-      task_request->custom_resources[i].id = string_to_int_map_.Insert(it->first);
-      task_request->custom_resources[i].demand = it->second;
-      task_request->custom_resources[i].soft = false;
+      task_request.custom_resources[i].id = string_to_int_map_.Insert(it->first);
+      task_request.custom_resources[i].demand = it->second;
+      task_request.custom_resources[i].soft = false;
       i++;
     }
   }
-  task_request->custom_resources.resize(i);
+  task_request.custom_resources.resize(i);
+
+  return task_request;
 }
 
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
                                                       const std::string &resource_name,
-                                                      int64_t resource_total) {
+                                                      int64_t resource_total) {     
   int64_t client_id = string_to_int_map_.Get(client_id_string);
+
   auto it = nodes_.find(client_id);
   if (it == nodes_.end()) {
-    return;
+    NodeResources node_resources;
+    node_resources.predefined_resources.resize(PredefinedResources_MAX);
+    client_id = string_to_int_map_.Insert(client_id_string);
+    nodes_.emplace(client_id, node_resources);
+    it = nodes_.find(client_id);
+    RAY_CHECK(it != nodes_.end());
   }
+
+  RAY_LOG(WARNING) << "\n>> UpdateResourceCapacity" <<
+     ",  client_id: " << client_id <<
+     ",  resource name: " << resource_name <<
+     ",  resource_total: " << resource_total << "\n";                                                                                                      
 
   int idx = -1;
   if (resource_name == ray::kCPU_ResourceLabel) {
@@ -574,11 +668,13 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
       if (itr->second.total < 0) {
         itr->second.total = 0;
       }
+    } else {
+      ResourceCapacity resource_capacity;
+      resource_capacity.total = resource_capacity.available = resource_total;
+      it->second.custom_resources.emplace(resource_id, resource_capacity);
     }
-    ResourceCapacity resource_capacity;
-    resource_capacity.total = resource_capacity.available = resource_total;
-    it->second.custom_resources.emplace(resource_id, resource_capacity);
   }
+  RAY_LOG(WARNING) << "\n<< Cluster resources: " << DebugString();
 }
 
 void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
@@ -613,9 +709,10 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
 
 std::string ClusterResourceScheduler::DebugString(void) {
   std::stringstream buffer;
-  buffer << std::endl << "local node id: " << local_node_id_ << std::endl;
+  buffer << "\n Local id: " << local_node_id_;
+  buffer << " Local resources: " << local_resources_.DebugString();
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
-    buffer << "node id: " << it->first << std::endl;
+    buffer << "   node id: " << it->first;
     buffer << it->second.DebugString();
   }
   return buffer.str();
@@ -664,24 +761,39 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
   }
 }
 
-void ClusterResourceScheduler::AddAvailableResourceInstances(
+std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
     std::vector<double> available,
     ResourceInstanceCapacities *resource_instances /* return */) {
+  std::vector<double> overflow(available.size(), 0.);      
   for (size_t i = 0; i < available.size(); i++) {
-    resource_instances->available[i] = std::min(
-        resource_instances->available[i] + available[i], resource_instances->total[i]);
+    resource_instances->available[i] = resource_instances->available[i] + available[i];
+    if (resource_instances->available[i] > resource_instances->total[i]) {
+      overflow[i] = resource_instances->available[i] - resource_instances->total[i];
+      resource_instances->available[i] = resource_instances->total[i];
+    } 
   }
+
+  RAY_LOG(WARNING) << "\n AddAvailableResourceInstances " << VectorToString(available);                                    
+  RAY_LOG(WARNING) << "\n AddAvailableResourceInstances " << DebugString();                                     
+  RAY_LOG(WARNING) << "\n AddAvailableResourceInstances overflow = " << VectorToString(overflow);                                     
+
+  return overflow;
 }
 
-void ClusterResourceScheduler::SubtractAvailableResourceInstances(
+std::vector<double> ClusterResourceScheduler::SubtractAvailableResourceInstances(
     std::vector<double> available,
     ResourceInstanceCapacities *resource_instances /* return */) {
   RAY_CHECK(available.size() == resource_instances->available.size());
 
+  std::vector<double> underflow(available.size(), 0.);      
   for (size_t i = 0; i < available.size(); i++) {
-    resource_instances->available[i] =
-        std::max(resource_instances->available[i] - available[i], 0.);
+    resource_instances->available[i] = resource_instances->available[i] - available[i];
+    if (resource_instances->available[i] < 0) {
+      underflow[i] = -resource_instances->available[i];
+      resource_instances->available[i] = 0;
+    }  
   }
+  return underflow;
 }
 
 bool ClusterResourceScheduler::AllocateResourceInstances(
@@ -782,11 +894,9 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     return false;
   }
 
-  // Just double check this node can still schedule the task request.
-  if (IsSchedulable(task_req, local_node_id_, it->second) == -1) {
-    return false;
-  }
+  RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 0" << DebugString();
 
+  RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 1";
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (task_req.predefined_resources[i].demand > 0) {
@@ -797,6 +907,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         // Allocation failed. Restore node's local resources by freeing the resources
         // of the failed allocation.
         FreeTaskResourceInstances(*task_allocation);
+        RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 2";
         return false;
       }
     }
@@ -817,19 +928,23 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
           // Allocation failed. Restore node's local resources by freeing the resources
           // of the failed allocation.
           FreeTaskResourceInstances(*task_allocation);
+          RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 3";
           return false;
         }
       }
     } else {
+      RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 4";
       return false;
     }
   }
+  RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 5";
   return true;
 }
 
 void ClusterResourceScheduler::FreeTaskResourceInstances(
     TaskResourceInstances &task_allocation) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    RAY_LOG(WARNING) << "FreeTaskResourceInstances idx = " << i;
     AddAvailableResourceInstances(task_allocation.predefined_resources[i],
                                   &local_resources_.predefined_resources[i]);
   }
@@ -838,19 +953,116 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
        it != task_allocation.custom_resources.end(); it++) {
     auto it_local = local_resources_.custom_resources.find(it->first);
     if (it_local != local_resources_.custom_resources.end()) {
+      RAY_LOG(WARNING) << "FreeTaskResourceInstances (cust) " << it->first;
       AddAvailableResourceInstances(it->second, &it_local->second);
     }
   }
 }
 
-void ClusterResourceScheduler::AddCPUResourceInstances(
+std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
     std::vector<double> &cpu_instances) {
-  AddAvailableResourceInstances(cpu_instances,
-                                &local_resources_.predefined_resources[CPU]);
+  if (cpu_instances.size() == 0) {
+    return cpu_instances; // No overflow.
+  }    
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  double cpus = 0;
+  for(int v : cpu_instances) {
+    cpus += v;
+  } 
+  it->second.predefined_resources[CPU].available = 
+      std::min(it->second.predefined_resources[CPU].available + cpus, 
+               it->second.predefined_resources[CPU].total);
+  return AddAvailableResourceInstances(cpu_instances,
+                                       &local_resources_.predefined_resources[CPU]);
 }
 
-void ClusterResourceScheduler::SubtractCPUResourceInstances(
+std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
     std::vector<double> &cpu_instances) {
-  SubtractAvailableResourceInstances(cpu_instances,
-                                     &local_resources_.predefined_resources[CPU]);
+  if (cpu_instances.size() == 0) {
+    return cpu_instances; // No underflow.
+  }    
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  double cpus = 0;
+  for(int v : cpu_instances) {
+    cpus += v;
+  } 
+  it->second.predefined_resources[CPU].available = 
+      std::max(it->second.predefined_resources[CPU].available - cpus, 0.);
+  return SubtractAvailableResourceInstances(cpu_instances,
+                                            &local_resources_.predefined_resources[CPU]);
+}
+
+
+bool ClusterResourceScheduler::AllocateTaskResources(int64_t node_id, 
+    const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
+
+  // XXX    
+  RAY_LOG(WARNING) << "\n>> AllocateTaskResources" << DebugString(); 
+  TaskRequest ts = task_req; // XXX
+  RAY_LOG(WARNING) << "\n AllocateTaskResources task req: " << ts.DebugString(); 
+
+  if (!SubtractNodeAvailableResources(node_id, task_req)) {
+    RAY_LOG(WARNING) << "\n<< AllocateTaskResources -- FALSE "; 
+    return false;
+  }
+  if (node_id == local_node_id_) {
+    if (AllocateTaskResourceInstances(task_req, task_allocation)) {
+
+      RAY_LOG(WARNING) << "\n task_allocation " << task_allocation->DebugString(); 
+      RAY_LOG(WARNING) << "\n<< AllocateTaskResources (Local 1) " << DebugString(); 
+
+      return true;
+    } else {
+      AddNodeAvailableResources(node_id, task_req);
+      RAY_LOG(WARNING) << "\n<< AllocateTaskResources (Local 2) " << DebugString(); 
+    }
+    return true;
+  } else {
+    RAY_LOG(WARNING) << "\n<< AllocateTaskResources (Remote) " << DebugString(); 
+    return false;
+  }
+}
+
+bool ClusterResourceScheduler::AllocateLocalTaskResources(
+    const std::unordered_map<std::string, double> &task_resources, 
+    TaskResourceInstances *task_allocation /* return */) {
+  TaskRequest task_request = ResourceMapToTaskRequest(task_resources);
+  return AllocateTaskResources(local_node_id_, task_request, task_allocation);    
+}
+
+std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) {
+  if (res_idx == CPU) {
+    return ray::kCPU_ResourceLabel;
+  } else if (res_idx == GPU) {
+    return ray::kGPU_ResourceLabel;
+  } else if (res_idx == TPU) {
+    return ray::kTPU_ResourceLabel;
+  } else if (res_idx == MEM) {
+    return ray::kMemory_ResourceLabel;
+  } else {
+    return string_to_int_map_.Get((uint64_t)res_idx);
+  }
+}
+
+void ClusterResourceScheduler::AllocateRemoteTaskResources(
+    std::string &node_string,
+    const std::unordered_map<std::string, double> &task_resources) {
+  TaskRequest task_request = ResourceMapToTaskRequest(task_resources);
+  auto node_id = string_to_int_map_.Insert(node_string);
+  RAY_CHECK(node_id != local_node_id_);
+  TaskResourceInstances nothing; // This is a remote node, so no local instance allocation.
+  AllocateTaskResources(node_id, task_request, &nothing);    
+}
+
+
+void ClusterResourceScheduler::FreeLocalTaskResources(TaskResourceInstances &task_allocation) {
+  RAY_LOG(WARNING) << "=== FreeLocalTaskResources 0 " << DebugString() << " - " << task_allocation.DebugString();
+  RAY_LOG(WARNING) << "=== FreeLocalTaskResources IsEmpty() = " << task_allocation.IsEmpty() << task_allocation.DebugString();
+  if (!task_allocation.IsEmpty()) {
+    AddNodeAvailableResources(local_node_id_, task_allocation.ToTaskRequest());  
+    FreeTaskResourceInstances(task_allocation);
+  }
+  RAY_LOG(WARNING) << "=== FreeLocalTaskResources 1 " << DebugString();
 }

@@ -738,6 +738,87 @@ TEST_F(SchedulingTest, TaskResourceInstancesTest) {
   }
 }
 
+TEST_F(SchedulingTest, TaskResourceInstancesTest2) {
+  {
+    NodeResources node_resources;
+    vector<int64_t> pred_capacities{4 /* CPU */, 4 /* MEM */, 5 /* GPU */};
+    vector<int64_t> cust_ids{1, 2};
+    vector<int64_t> cust_capacities{4, 4};
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
+    ClusterResourceScheduler cluster_resources(0, node_resources);
+
+    TaskRequest task_req;
+    vector<double> pred_demands = {2. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
+    vector<bool> pred_soft = {false};
+    vector<double> cust_demands{3, 2};
+    vector<bool> cust_soft{false, false};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    EmptyIntVector);
+
+    TaskResourceInstances task_allocation;
+    bool success =
+        cluster_resources.AllocateTaskResourceInstances(task_req, &task_allocation);
+
+    NodeResourceInstances old_local_resources = cluster_resources.GetLocalResources();
+    ASSERT_EQ(success, true);
+    std::vector<double> cpu_instances = task_allocation.GetCPUInstances();
+    cluster_resources.AddCPUResourceInstances(cpu_instances);
+    cluster_resources.SubtractCPUResourceInstances(cpu_instances);
+
+    ASSERT_EQ((cluster_resources.GetLocalResources() == old_local_resources), true);
+  }
+}
+
+TEST_F(SchedulingTest, TaskCPUResourceInstancesTest) {
+  {
+    NodeResources node_resources;
+    vector<int64_t> pred_capacities{4 /* CPU */, 1 /* MEM */, 1 /* GPU */};
+    vector<int64_t> cust_ids{1};
+    vector<int64_t> cust_capacities{8};
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
+    ClusterResourceScheduler cluster_resources(0, node_resources);
+
+    std::vector<double> allocate_cpu_instances {0.5, 0.5, 0.5, 0.5};    
+    cluster_resources.SubtractCPUResourceInstances(allocate_cpu_instances);
+    std::vector<double> available_cpu_instances =
+        cluster_resources.GetLocalResources().GetAvailableResourceInstances().GetCPUInstances();
+    std::vector<double> expected_available_cpu_instances {0.5, 0.5, 0.5, 0.5};    
+    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), 
+                           available_cpu_instances.end(), 
+                           expected_available_cpu_instances.begin()));
+
+    cluster_resources.AddCPUResourceInstances(allocate_cpu_instances);
+    available_cpu_instances =
+        cluster_resources.GetLocalResources().GetAvailableResourceInstances().GetCPUInstances();
+    expected_available_cpu_instances = {1., 1., 1., 1.};    
+    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), 
+                           available_cpu_instances.end(), 
+                           expected_available_cpu_instances.begin()));
+
+    allocate_cpu_instances = {1.5, 1.5, .5, 1.5};    
+    std::vector<double> underflow = cluster_resources.SubtractCPUResourceInstances(allocate_cpu_instances);
+    std::vector<double> expected_underflow {.5, .5, 0., .5};    
+    ASSERT_TRUE(std::equal(underflow.begin(), underflow.end(), expected_underflow.begin()));
+    available_cpu_instances =
+        cluster_resources.GetLocalResources().GetAvailableResourceInstances().GetCPUInstances();
+    expected_available_cpu_instances = {0., 0., 0.5, 0.};    
+    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), 
+                           available_cpu_instances.end(), 
+                           expected_available_cpu_instances.begin()));
+
+    allocate_cpu_instances = {1.0, .5, 1., .5};    
+    std::vector<double> overflow = cluster_resources.AddCPUResourceInstances(allocate_cpu_instances);
+    std::vector<double> expected_overflow {.0, .0, .5, 0.};    
+    ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
+    available_cpu_instances =
+        cluster_resources.GetLocalResources().GetAvailableResourceInstances().GetCPUInstances();
+    expected_available_cpu_instances = {1., .5, 1., .5};    
+    ASSERT_TRUE(std::equal(available_cpu_instances.begin(), 
+                           available_cpu_instances.end(), 
+                           expected_available_cpu_instances.begin()));
+  }
+}
+
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
   size_t map_len = 1000000;
