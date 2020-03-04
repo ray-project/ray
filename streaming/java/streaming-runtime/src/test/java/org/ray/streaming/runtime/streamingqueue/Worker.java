@@ -196,8 +196,8 @@ class WriterWorker extends Worker {
     return name;
   }
 
-  public String testCallReader(RayActor readerActor) {
-    String name = (String) Ray.call(ReaderWorker::getName, readerActor).get();
+  public String testCallReader(RayActor<ReaderWorker> readerActor) {
+    String name = readerActor.call(ReaderWorker::getName).get();
     LOGGER.info("testCallReader: {}", name);
     return name;
   }
