@@ -1744,7 +1744,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   << new_resource_scheduler_->GetResourceNameFromIndex(res_idx) 
                   << ", Resource idx = " << res_idx;
               resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
-	            for (size_t inst_idx = 0; inst_idx < predefined_resources.size(); inst_idx++) {
+	            for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size(); inst_idx++) {
+                RAY_LOG(WARNING) << "HandleRequestWorkerLease quantity, inst_idx = " << inst_idx; 
 	              if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
                   auto rid = resource->add_resource_ids();
                   RAY_LOG(WARNING) << "HandleRequestWorkerLease quantity[" 
