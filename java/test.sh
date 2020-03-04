@@ -26,10 +26,10 @@ bazel build //java:gen_maven_deps
 
 echo "Build test jar."
 bazel build //java:all_tests_deploy.jar
-export RAY_BACKEND_LOG_LEVEL=DEBUG
+# export RAY_BACKEND_LOG_LEVEL=DEBUG
 
 echo "Running tests under cluster mode."
-for i in {1..5}
+for i in {1..10}
 do
   echo ">>>>>>>>>>>>>>>>>>>$i"
   ENABLE_MULTI_LANGUAGE_TESTS=1 run_testng java -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml

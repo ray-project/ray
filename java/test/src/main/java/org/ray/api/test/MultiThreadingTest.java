@@ -125,7 +125,12 @@ public class MultiThreadingTest extends BaseTest {
 
   @Test(timeOut = 3 * 60 * 1000)
   public void testInDriver() {
-    testMultiThreading();
+    try {
+      testMultiThreading();
+    } catch (Exception e) {
+      System.out.println("-----------------------------catched exception:" + e);
+      System.exit(1);
+    }
   }
 
   @Test(timeOut = 3 * 60 * 1000)
@@ -136,7 +141,7 @@ public class MultiThreadingTest extends BaseTest {
     try {
       Assert.assertEquals("ok", obj.get());
     } catch (Exception e) {
-      System.out.println("-----------------------------catched exception~");
+      System.out.println("-----------------------------catched exception:" + e);
       System.exit(1);
     }
   }
