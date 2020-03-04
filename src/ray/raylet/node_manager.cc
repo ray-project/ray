@@ -1729,7 +1729,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             RAY_LOG(WARNING) << "leased_worker 2 = " << worker->WorkerId();
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
             leased_workers_[worker->WorkerId()] = worker;
-
+// TODO (Ion): Fix handling floating point errors, maybe by moving to integers.               
+#define ZERO_CAPACITY 1.0e-5
             TaskResourceInstances allocated_resources;
             if (task_specs.IsActorCreationTask()) {
               allocated_resources = worker->GetLifetimeAllocatedInstances();                                                   
@@ -1744,12 +1745,24 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                   << ", Resource idx = " << res_idx;
               resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
 	            for (size_t inst_idx = 0; inst_idx < predefined_resources.size(); inst_idx++) {
-	              if (predefined_resources[res_idx][inst_idx] > 0) {
+	              if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
                   auto rid = resource->add_resource_ids();
                   RAY_LOG(WARNING) << "HandleRequestWorkerLease quantity[" 
                       << inst_idx << "] = " << predefined_resources[res_idx][inst_idx];
                   rid->set_index(inst_idx);
                   rid->set_quantity(predefined_resources[res_idx][inst_idx]);
+	              }
+              }
+            }
+            auto custom_resources = allocated_resources.custom_resources;
+            for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
+              auto resource = reply->add_resource_mapping();
+              resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(it->first));
+	            for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
+	              if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
+                  auto rid = resource->add_resource_ids();
+                  rid->set_index(inst_idx);
+                  rid->set_quantity(it->second[inst_idx]);
 	              }
               }
             }
