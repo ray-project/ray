@@ -9,8 +9,8 @@ import torch.utils.data
 from torch.utils.data import Dataset
 
 import ray
-from ray.util.sgd.pytorch.constants import USE_FP16, SCHEDULER_STEP
-from ray.util.sgd.pytorch.training_operator import TrainingOperator
+from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP
+from ray.util.sgd.torch.training_operator import TrainingOperator
 from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -23,23 +23,23 @@ except ImportError:
     pass
 
 
-class PyTorchRunner:
+class TorchRunner:
     """Manages a PyTorch model for training.
 
     Args:
-        model_creator (dict -> *): see pytorch_trainer.py
-        data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
-        optimizer_creator (models, dict -> optimizers): see pytorch_trainer.py.
-        loss_creator (dict -> loss | Loss class): see pytorch_trainer.py.
+        model_creator (dict -> *): see torch_trainer.py
+        data_creator (dict -> Dataset, Dataset): see torch_trainer.py.
+        optimizer_creator (models, dict -> optimizers): see torch_trainer.py.
+        loss_creator (dict -> loss | Loss class): see torch_trainer.py.
         scheduler_creator (optimizers, dict -> schedulers): see
-            pytorch_trainer.py.
-        training_operator_cls: see pytorch_trainer.py
-        config (dict): see pytorch_trainer.py.
-        dataloader_config (dict): See pytorch_trainer.py.
-        batch_size (int): see pytorch_trainer.py.
-        use_fp16 (bool): see pytorch_trainer.py.
-        apex_args (dict|None): see pytorch_trainer.py.
-        scheduler_step_freq (str): see pytorch_trainer.py.
+            torch_trainer.py.
+        training_operator_cls: see torch_trainer.py
+        config (dict): see torch_trainer.py.
+        dataloader_config (dict): See torch_trainer.py.
+        batch_size (int): see torch_trainer.py.
+        use_fp16 (bool): see torch_trainer.py.
+        apex_args (dict|None): see torch_trainer.py.
+        scheduler_step_freq (str): see torch_trainer.py.
     """
 
     def __init__(self,
