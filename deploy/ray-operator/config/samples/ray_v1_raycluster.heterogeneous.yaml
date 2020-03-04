@@ -9,7 +9,7 @@ spec:
   # An unique identifier for the head node and workers of this cluster.
   clusterName: raycluster-sample
   images:
-    defaultImage: "docker-image"
+    defaultImage: rayproject/autoscaler
   imagePullPolicy: "Always"
 
   extensions:
