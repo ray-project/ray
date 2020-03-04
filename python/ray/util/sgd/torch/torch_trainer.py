@@ -267,7 +267,8 @@ class TorchTrainer:
               num_steps=None,
               max_retries=0,
               checkpoint="auto",
-              info=None):
+              info=None,
+              backward_rpc=None):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
@@ -319,7 +320,7 @@ class TorchTrainer:
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
                 success, worker_stats = self._train_epoch(
-                    num_steps=num_steps, info=info)
+                    num_steps=num_steps, info=info, backward_rpc=backward_rpc)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -334,12 +335,56 @@ class TorchTrainer:
                 train_stats[stat_key] = [s[stat_key] for s in worker_stats]
         return train_stats
 
-    def _train_epoch(self, num_steps=None, info=None):
-        worker_stats = [
+    def _train_epoch(self, num_steps=None, info=None, backward_rpc=None):
+        train_ops = ray.get([w.get_training_op.remote() for w in self.workers])
+
+        worker_trains = [
             w.train_epoch.remote(num_steps=num_steps, info=info)
             for w in self.workers
         ]
-        success = utils.check_for_failure(worker_stats)
+        worker_backward_rpcs = [
+            op._backward_rpc_read.remote()
+            for op in train_ops
+        ]
+
+        unfinished = worker_trains + worker_backward_rpcs
+        try:
+            while len(unfinished_trains) > 0:
+                finished, unfinished = ray.wait(unfinished)
+
+                finished_trains = []
+                finished_rpcs = []
+
+                for f in finished:
+                    if f in worker_trains:
+                        finished_trains.append(f)
+                    else:
+                        finished_rpcs.append(f)
+
+                # why do we ray.get the train calls?
+                finished_trains = ray.get(finished_trains)
+                finished_rpcs = ray.get(finished_rpcs)
+
+                results = []
+                for rpc in finished_rpcs:
+                    if rpc.done:
+                        continue
+
+                    if type(backward_rpc) is dict:
+                        res = backward_rpc[rpc["method_name"]](*rpc["args"], **rpc["kwargs"])
+                    else:
+                        res = getattr(backward_rpc, rpc["method_name"])(*rpc["args"], **rpc["kwargs"])
+
+                    results.append(dict(world_rank=rpc["world_rank"], res=res))
+                    unfinished.append(train_ops[rpcs["world_rank"]]._backward_rpc_read.remote())
+
+                ray.get([train_ops[res["world_rank"]]._backward_rpc_result.remote(res["res"]) for res in results])
+
+            return True
+        except RayActorError as exc:
+            logger.exception(str(exc))
+        return False
+
         return success, worker_stats
 
     def apply_all_workers(self, fn):
