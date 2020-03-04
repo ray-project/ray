@@ -6,7 +6,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
@@ -27,7 +26,6 @@ public class KillActorTest extends BaseTest {
     System.clearProperty("ray.raylet.config.num_workers_per_process_java");
   }
 
-  @RayRemote
   public static class HangActor {
 
     public String ping() {
@@ -65,7 +63,7 @@ public class KillActorTest extends BaseTest {
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<HangActor> actor = Ray.createActor(HangActor::new, options);
-    RayObject<Boolean> result = Ray.call(HangActor::hang, actor);
+    RayObject<Boolean> result = actor.call(HangActor::hang);
     // The actor will hang in this task.
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
 
@@ -76,9 +74,9 @@ public class KillActorTest extends BaseTest {
 
     if (noReconstruction) {
       // The actor should not be reconstructed.
-      Assert.expectThrows(RayActorException.class, () -> Ray.call(HangActor::hang, actor).get());
+      Assert.expectThrows(RayActorException.class, () -> actor.call(HangActor::hang).get());
     } else {
-      Assert.assertEquals(Ray.call(HangActor::ping, actor).get(), "pong");
+      Assert.assertEquals(actor.call(HangActor::ping).get(), "pong");
     }
   }
 
