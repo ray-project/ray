@@ -97,7 +97,6 @@ trainer = TorchTrainer(
     num_workers=num_workers,
     use_gpu=args.cuda,
     use_fp16=args.fp16,
-    apex_args={"opt_level": "O3"}
 )
 
 img_secs = []

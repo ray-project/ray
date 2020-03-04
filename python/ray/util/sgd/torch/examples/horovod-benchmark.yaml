@@ -54,8 +54,8 @@ worker_nodes:
     #         MarketType: spot
 
 setup_commands:
-    - pip install torch torchvision
-    - pip install ray[rllib] ipdb
+    - pip install torch torchvision ipdb
+    - pip install ray[rllib]  # enable autoscaling
     - git clone https://github.com/horovod/horovod || true
     - tmux new -d -s my-session "pip install horovod"
     # - docker pull horovod/horovod:0.19.0-tf2.0.0-torch1.3.0-mxnet1.5.0-py3.6-gpu

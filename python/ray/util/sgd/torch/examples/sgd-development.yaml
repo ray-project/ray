@@ -10,7 +10,7 @@ max_workers: 0
 target_utilization_fraction: 0.9
 
 # If a node is idle for this many minutes, it will be removed.
-idle_timeout_minutes: 20
+idle_timeout_minutes: 10
 # docker:
 #     image: tensorflow/tensorflow:1.5.0-py3
 #     container_name: ray_docker
@@ -25,7 +25,7 @@ auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: p3.8xlarge
+    InstanceType: p3.16xlarge
     ImageId: ami-0757fc5a639fe7666
     InstanceMarketOptions:
         MarketType: spot
@@ -34,7 +34,7 @@ head_node:
 
 
 worker_nodes:
-    InstanceType: p3.8xlarge
+    InstanceType: p3.16xlarge
     ImageId: ami-0757fc5a639fe7666
     InstanceMarketOptions:
         MarketType: spot
