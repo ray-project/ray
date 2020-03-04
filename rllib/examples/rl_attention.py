@@ -1,13 +1,27 @@
+import argparse
+
 import gym
 
 import numpy as np
 
-from rllib.models.tf import attention
-from rllib.models.tf import recurrent_tf_modelv2
-from rllib.utils import try_import_tf
-from rllib.examples.custom_keras_rnn_model import RepeatInitialEnv
+import ray
+from ray import tune
+
+from ray.tune import registry
+
+from ray.rllib import models
+from ray.rllib.utils import try_import_tf
+from ray.rllib.models.tf import attention
+from ray.rllib.models.tf import recurrent_tf_modelv2
+from ray.rllib.examples.custom_keras_rnn_model import RepeatInitialEnv
 
 tf = try_import_tf()
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--run", type=str, default="PPO")
+parser.add_argument("--env", type=str, default="RepeatInitialEnv")
+parser.add_argument("--stop", type=int, default=90)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class LookAndPush(gym.Env):
@@ -82,3 +96,28 @@ class GRUTrXL(recurrent_tf_modelv2):
 
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
+    models.ModelCatalog.register_custom_model("trxl", GRUTrXL)
+    registry.register_env("RepeatInitialEnv", lambda _: RepeatInitialEnv())
+    tune.run(
+        args.run,
+        stop={"episode_reward_mean": args.stop},
+        config={
+            "env": args.env,
+            "env_config": {
+                "repeat_delay": 2,
+            },
+            "gamma": 0.9,
+            "num_workers": 0,
+            "num_envs_per_worker": 20,
+            "entropy_coeff": 0.001,
+            "num_sgd_iter": 5,
+            "vf_loss_coeff": 1e-5,
+            "model": {
+                "custom_model": "trxl",
+            },
+        })
