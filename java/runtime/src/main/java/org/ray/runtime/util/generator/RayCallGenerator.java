@@ -98,12 +98,6 @@ public class RayCallGenerator extends BaseGenerator {
     newLine("@SuppressWarnings({\"rawtypes\", \"unchecked\"})");
     newLine("interface ActorCall<A> {");
     newLine("");
-    newLine(1, "RayActor<A> getThis();");
-    newLine("");
-    newLine(1, "// =======================================");
-    newLine(1, "// Methods for remote actor calls.");
-    newLine(1, "// =======================================");
-    newLine("");
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
       buildCalls(i, true, false, true, false);
       buildCalls(i, true, false, false, false);
@@ -206,7 +200,7 @@ public class RayCallGenerator extends BaseGenerator {
       // 5) Construct the third line.
       String callFuncArgs = "f, ";
       if (forActor) {
-        callFuncArgs += "getThis(), ";
+        callFuncArgs += "(RayActor) this, ";
       }
       callFuncArgs += "args, ";
       callFuncArgs += forActor ? "" : hasOptionsParam ? "options, " : "null, ";
@@ -214,6 +208,7 @@ public class RayCallGenerator extends BaseGenerator {
       newLine(2, String.format("%sRay.internal().%s(%s);",
           hasReturn ? "return " : "", internalCallFunc, callFuncArgs));
       newLine(1, "}");
+      newLine("");
     }
   }
 
