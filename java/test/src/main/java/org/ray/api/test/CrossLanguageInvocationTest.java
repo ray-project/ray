@@ -12,7 +12,6 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.actor.NativeRayPyActor;
 import org.slf4j.Logger;
@@ -117,7 +116,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     return (byte[])res.get();
   }
 
-  @RayRemote  // Python can create java actors without @RayRemote
   public static class TestActor {
     public TestActor(byte[] v) {
       value = v;

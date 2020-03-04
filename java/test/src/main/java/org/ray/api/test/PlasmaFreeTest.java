@@ -5,14 +5,12 @@ import java.util.Arrays;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.TaskId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class PlasmaFreeTest extends BaseTest {
 
-  @RayRemote
   private static String hello() {
     return "hello";
   }
