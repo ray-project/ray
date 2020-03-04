@@ -33,8 +33,4 @@ public interface RayActor<A> extends ActorCall<A> {
    */
   ActorId getId();
 
-  @Override
-  default RayActor<A> getThis() {
-    return this;
-  }
 }

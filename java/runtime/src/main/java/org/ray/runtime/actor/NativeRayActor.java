@@ -56,6 +56,11 @@ public abstract class NativeRayActor implements RayActor, Externalizable {
   }
 
   @Override
+  public RayActor getThis() {
+    return this;
+  }
+
+  @Override
   public ActorId getId() {
     return ActorId.fromBytes(actorId);
   }
