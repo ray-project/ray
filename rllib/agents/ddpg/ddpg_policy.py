@@ -122,8 +122,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                policy_out, Deterministic, self.policy_model, explore,
-                timestep)
+                policy_out, Deterministic, self.policy_model, timestep,
+                explore)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
