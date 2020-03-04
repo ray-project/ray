@@ -117,15 +117,12 @@ class ClientCallTag {
   /// Constructor.
   ///
   /// \param call A `ClientCall` that represents a request.
-  explicit ClientCallTag(std::shared_ptr<ClientCall> call)
-      : call_(std::move(call)) {}
+  explicit ClientCallTag(std::shared_ptr<ClientCall> call) : call_(std::move(call)) {}
 
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
-  void SetCall(const std::shared_ptr<ClientCall> &call) {
-    call_ = call;
-  }
+  void SetCall(const std::shared_ptr<ClientCall> &call) { call_ = call; }
 
   void SetOperation(const std::function<void(ClientCallTag *tag)> &operation) {
     operation_ = operation;
@@ -209,6 +206,7 @@ class ClientCallManager {
     // Find the next completion queue to wait for response.
     call->response_reader_ = (grpc_client->GetStub().get()->*prepare_async_function)(
         &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
+    call->response_reader_->StartCall();
 
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -218,25 +216,27 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    auto operation = [this, grpc_client, prepare_async_function, request,
-                      callback](ClientCallTag *tag) {
-      RAY_LOG(INFO) << "11111111111111111111111111";
-      auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
-      RAY_LOG(INFO) << "22222222222222222222222222";
-      call->response_reader_ = (grpc_client->GetStubWithReconnect().get()->*prepare_async_function)(
-          &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
-      RAY_LOG(INFO) << "33333333333333333333333333";
-      call->response_reader_->StartCall();
-      RAY_LOG(INFO) << "44444444444444444444444444";
-      auto new_tag = new ClientCallTag(call);
-      new_tag->SetOperation(tag->GetOperation());
-      RAY_LOG(INFO) << "55555555555555555555555555";
-      call->response_reader_->Finish(&call->reply_, &call->status_, (void *)new_tag);
-      RAY_LOG(INFO) << "66666666666666666666666666";
-    };
-    tag->SetOperation(operation);
+    if (RayConfig::instance().rpc_auto_reconnect_enabled()) {
+      auto operation = [this, grpc_client, prepare_async_function, request,
+          callback](ClientCallTag *tag) {
+        RAY_LOG(INFO) << "11111111111111111111111111";
+        auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
+        RAY_LOG(INFO) << "22222222222222222222222222";
+        call->response_reader_ =
+            (grpc_client->GetStubWithReconnect().get()->*prepare_async_function)(
+                &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
+        RAY_LOG(INFO) << "33333333333333333333333333";
+        call->response_reader_->StartCall();
+        RAY_LOG(INFO) << "44444444444444444444444444";
+        auto new_tag = new ClientCallTag(call);
+        new_tag->SetOperation(tag->GetOperation());
+        RAY_LOG(INFO) << "55555555555555555555555555";
+        call->response_reader_->Finish(&call->reply_, &call->status_, (void *)new_tag);
+        RAY_LOG(INFO) << "66666666666666666666666666";
+      };
+      tag->SetOperation(operation);
+    }
 
-    call->response_reader_->StartCall();
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
@@ -274,16 +274,18 @@ class ClientCallManager {
             RAY_LOG(INFO) << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
           }
           tag->GetOperation()(tag);
-        }
-        if (ok && !main_service_.stopped() && !shutdown_) {
-          // Post the callback to the main event loop.
-          main_service_.post([tag]() {
-            tag->GetCall()->OnReplyReceived();
-            // The call is finished, and we can delete this tag now.
-            delete tag;
-          });
-        } else {
           delete tag;
+        } else {
+          if (ok && !main_service_.stopped() && !shutdown_) {
+            // Post the callback to the main event loop.
+            main_service_.post([tag]() {
+              tag->GetCall()->OnReplyReceived();
+              // The call is finished, and we can delete this tag now.
+              delete tag;
+            });
+          } else {
+            delete tag;
+          }
         }
       }
     }

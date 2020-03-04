@@ -43,11 +43,17 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   }
 
   void TearDown() override {
+    RAY_LOG(INFO) << "TearDown 111111111111111";
     gcs_server_->Stop();
+    RAY_LOG(INFO) << "TearDown 22222222222222";
     io_service_.stop();
+    RAY_LOG(INFO) << "TearDown 33333333333333";
     thread_io_service_->join();
+    RAY_LOG(INFO) << "TearDown 4444444444444";
     thread_gcs_server_->join();
+    RAY_LOG(INFO) << "TearDown 5555555555555";
     gcs_client_->Disconnect();
+    RAY_LOG(INFO) << "TearDown 6666666666666";
   }
 
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
@@ -341,292 +347,292 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestJobInfo) {
-  // Create job_table_data
-  JobID add_job_id = JobID::FromInt(1);
-  auto job_table_data = GenJobTableData(add_job_id);
-
-  std::promise<bool> promise;
-  auto on_subscribe = [&promise, add_job_id](const JobID &job_id,
-                                             const gcs::JobTableData &data) {
-    ASSERT_TRUE(add_job_id == job_id);
-    promise.set_value(true);
-  };
-  RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeToFinishedJobs(
-      on_subscribe, [](Status status) { RAY_CHECK_OK(status); }));
-
-  ASSERT_TRUE(AddJob(job_table_data));
-  ASSERT_TRUE(MarkJobFinished(add_job_id));
-  ASSERT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-}
-
-TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
-  // Create actor_table_data
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = GenActorTableData(job_id);
-  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
-
-  // Subscribe
-  std::promise<bool> promise_subscribe;
-  std::atomic<int> subscribe_callback_count(0);
-  auto on_subscribe = [&subscribe_callback_count](const ActorID &actor_id,
-                                                  const gcs::ActorTableData &data) {
-    ++subscribe_callback_count;
-  };
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(actor_id, on_subscribe,
-                                                    [&promise_subscribe](Status status) {
-                                                      RAY_CHECK_OK(status);
-                                                      promise_subscribe.set_value(true);
-                                                    }));
-
-  // Register actor
-  ASSERT_TRUE(RegisterActor(actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() ==
-              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
-
-  // Unsubscribe
-  std::promise<bool> promise_unsubscribe;
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(
-      actor_id, [&promise_unsubscribe](Status status) {
-        RAY_CHECK_OK(status);
-        promise_unsubscribe.set_value(true);
-      }));
-  ASSERT_TRUE(WaitReady(promise_unsubscribe.get_future(), timeout_ms_));
-
-  // Update actor
-  actor_table_data->set_state(
-      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() ==
-              rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  ASSERT_TRUE(WaitReady(promise_subscribe.get_future(), timeout_ms_));
-  auto condition = [&subscribe_callback_count]() {
-    return 1 == subscribe_callback_count;
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-}
-
-TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
-  // Create actor checkpoint
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = GenActorTableData(job_id);
-  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
-
-  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  auto checkpoint = std::make_shared<rpc::ActorCheckpointData>();
-  checkpoint->set_actor_id(actor_table_data->actor_id());
-  checkpoint->set_checkpoint_id(checkpoint_id.Binary());
-  checkpoint->set_execution_dependency(checkpoint_id.Binary());
-
-  // Add checkpoint
-  ASSERT_TRUE(AddCheckpoint(checkpoint));
-
-  // Get Checkpoint
-  auto get_checkpoint_result = GetCheckpoint(checkpoint_id);
-  ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
-
-  // Get CheckpointID
-  auto get_checkpoint_id_result = GetCheckpointID(actor_id);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids_size() == 1);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids(0) == checkpoint_id.Binary());
-}
-
-TEST_F(ServiceBasedGcsGcsClientTest, TestActorSubscribeAll) {
-  // Create actor_table_data
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data1 = GenActorTableData(job_id);
-  auto actor_table_data2 = GenActorTableData(job_id);
-
-  // Subscribe all
-  std::promise<bool> promise_subscribe_all;
-  std::atomic<int> subscribe_all_callback_count(0);
-  auto on_subscribe_all = [&subscribe_all_callback_count](
-                              const ActorID &actor_id, const gcs::ActorTableData &data) {
-    ++subscribe_all_callback_count;
-  };
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeAll(
-      on_subscribe_all, [&promise_subscribe_all](Status status) {
-        RAY_CHECK_OK(status);
-        promise_subscribe_all.set_value(true);
-      }));
-  ASSERT_TRUE(WaitReady(promise_subscribe_all.get_future(), timeout_ms_));
-
-  // Register actor
-  ASSERT_TRUE(RegisterActor(actor_table_data1));
-  ASSERT_TRUE(RegisterActor(actor_table_data2));
-  auto condition = [&subscribe_all_callback_count]() {
-    return 2 == subscribe_all_callback_count;
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-}
-
-TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
-  // Create gcs node info
-  ClientID node1_id = ClientID::FromRandom();
-  auto gcs_node1_info = GenGcsNodeInfo(node1_id.Binary());
-
-  int register_count = 0;
-  int unregister_count = 0;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
-      [&register_count, &unregister_count](const ClientID &node_id,
-                                           const rpc::GcsNodeInfo &data) {
-        if (data.state() == rpc::GcsNodeInfo::ALIVE) {
-          ++register_count;
-        } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
-          ++unregister_count;
-        }
-      },
-      nullptr));
-
-  // Register self
-  ASSERT_TRUE(RegisterSelf(gcs_node1_info));
-  sleep(1);
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info.node_id());
-  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info.state());
-
-  // Register node
-  ClientID node2_id = ClientID::FromRandom();
-  auto gcs_node2_info = GenGcsNodeInfo(node2_id.Binary());
-  ASSERT_TRUE(RegisterNode(gcs_node2_info));
-  WaitPendingDone(register_count, 2);
-
-  // Get node list
-  std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
-  EXPECT_EQ(node_list.size(), 2);
-  EXPECT_EQ(register_count, 2);
-  ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
-  EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
-
-  // Unregister self
-  ASSERT_TRUE(UnregisterSelf());
-
-  // Unregister node
-  ASSERT_TRUE(UnregisterNode(node2_id));
-  WaitPendingDone(unregister_count, 2);
-
-  node_list = GetNodeInfoList();
-  EXPECT_EQ(node_list.size(), 2);
-  EXPECT_EQ(node_list[0].state(),
-            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-  EXPECT_EQ(node_list[1].state(),
-            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-  EXPECT_EQ(unregister_count, 2);
-  ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
-}
-
-TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
-  int add_count = 0;
-  int remove_count = 0;
-  auto subscribe = [&add_count, &remove_count](
-                       const ClientID &id,
-                       const gcs::ResourceChangeNotification &notification) {
-    if (notification.IsAdded()) {
-      ++add_count;
-    } else if (notification.IsRemoved()) {
-      ++remove_count;
-    }
-  };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(subscribe, nullptr));
-
-  // Update resources
-  ClientID node_id = ClientID::FromRandom();
-  gcs::NodeInfoAccessor::ResourceMap resource_map;
-  std::string key = "CPU";
-  auto resource = std::make_shared<rpc::ResourceTableData>();
-  resource->set_resource_capacity(1.0);
-  resource_map[key] = resource;
-  ASSERT_TRUE(UpdateResources(node_id, resource_map));
-  WaitPendingDone(add_count, 1);
-  auto get_resources_result = GetResources(node_id);
-  ASSERT_TRUE(get_resources_result.count(key));
-
-  // Delete resources
-  ASSERT_TRUE(DeleteResources(node_id, {key}));
-  WaitPendingDone(remove_count, 1);
-  get_resources_result = GetResources(node_id);
-  ASSERT_TRUE(get_resources_result.empty());
-}
-
-TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
-  int heartbeat_count = 0;
-  auto heartbeat_subscribe = [&heartbeat_count](const ClientID &id,
-                                                const gcs::HeartbeatTableData &result) {
-    ++heartbeat_count;
-  };
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_subscribe, nullptr));
-
-  int heartbeat_batch_count = 0;
-  auto heartbeat_batch_subscribe =
-      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
-        ++heartbeat_batch_count;
-      };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
-      heartbeat_batch_subscribe, nullptr));
-
-  // Report heartbeat
-  ClientID node_id = ClientID::FromRandom();
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitPendingDone(heartbeat_count, 1);
-
-  // Report batch heartbeat
-  auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
-  batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
-  ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
-  WaitPendingDone(heartbeat_batch_count, 1);
-}
-
-TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
-  JobID job_id = JobID::FromInt(1);
-  TaskID task_id = TaskID::ForDriverTask(job_id);
-  auto task_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
-
-  int task_count = 0;
-  auto task_subscribe = [&task_count](const TaskID &id,
-                                      const rpc::TaskTableData &result) { ++task_count; };
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(task_id, task_subscribe, nullptr));
-
-  // Add task
-  ASSERT_TRUE(AddTask(task_table_data));
-
-  auto get_task_result = GetTask(task_id);
-  ASSERT_TRUE(get_task_result.task().task_spec().task_id() == task_id.Binary());
-  ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, nullptr));
-  ASSERT_TRUE(AddTask(task_table_data));
-
-  // Delete task
-  std::vector<TaskID> task_ids = {task_id};
-  ASSERT_TRUE(DeleteTask(task_ids));
-  EXPECT_EQ(task_count, 1);
-
-  // Add task lease
-  int task_lease_count = 0;
-  auto task_lease_subscribe = [&task_lease_count](
-                                  const TaskID &id,
-                                  const boost::optional<rpc::TaskLeaseData> &result) {
-    ++task_lease_count;
-  };
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(task_id, task_lease_subscribe,
-                                                            nullptr));
-  ClientID node_id = ClientID::FromRandom();
-  auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
-  ASSERT_TRUE(AddTaskLease(task_lease));
-  WaitPendingDone(task_lease_count, 2);
-
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id, nullptr));
-  ASSERT_TRUE(AddTaskLease(task_lease));
-  EXPECT_EQ(task_lease_count, 2);
-
-  // Attempt task reconstruction
-  auto task_reconstruction_data = std::make_shared<rpc::TaskReconstructionData>();
-  task_reconstruction_data->set_task_id(task_id.Binary());
-  task_reconstruction_data->set_num_reconstructions(0);
-  ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
-}
+//TEST_F(ServiceBasedGcsGcsClientTest, TestJobInfo) {
+//  // Create job_table_data
+//  JobID add_job_id = JobID::FromInt(1);
+//  auto job_table_data = GenJobTableData(add_job_id);
+//
+//  std::promise<bool> promise;
+//  auto on_subscribe = [&promise, add_job_id](const JobID &job_id,
+//                                             const gcs::JobTableData &data) {
+//    ASSERT_TRUE(add_job_id == job_id);
+//    promise.set_value(true);
+//  };
+//  RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeToFinishedJobs(
+//      on_subscribe, [](Status status) { RAY_CHECK_OK(status); }));
+//
+//  ASSERT_TRUE(AddJob(job_table_data));
+//  ASSERT_TRUE(MarkJobFinished(add_job_id));
+//  ASSERT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+//}
+//
+//TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
+//  // Create actor_table_data
+//  JobID job_id = JobID::FromInt(1);
+//  auto actor_table_data = GenActorTableData(job_id);
+//  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+//
+//  // Subscribe
+//  std::promise<bool> promise_subscribe;
+//  std::atomic<int> subscribe_callback_count(0);
+//  auto on_subscribe = [&subscribe_callback_count](const ActorID &actor_id,
+//                                                  const gcs::ActorTableData &data) {
+//    ++subscribe_callback_count;
+//  };
+//  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(actor_id, on_subscribe,
+//                                                    [&promise_subscribe](Status status) {
+//                                                      RAY_CHECK_OK(status);
+//                                                      promise_subscribe.set_value(true);
+//                                                    }));
+//
+//  // Register actor
+//  ASSERT_TRUE(RegisterActor(actor_table_data));
+//  ASSERT_TRUE(GetActor(actor_id).state() ==
+//              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+//
+//  // Unsubscribe
+//  std::promise<bool> promise_unsubscribe;
+//  RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(
+//      actor_id, [&promise_unsubscribe](Status status) {
+//        RAY_CHECK_OK(status);
+//        promise_unsubscribe.set_value(true);
+//      }));
+//  ASSERT_TRUE(WaitReady(promise_unsubscribe.get_future(), timeout_ms_));
+//
+//  // Update actor
+//  actor_table_data->set_state(
+//      rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+//  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
+//  ASSERT_TRUE(GetActor(actor_id).state() ==
+//              rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+//  ASSERT_TRUE(WaitReady(promise_subscribe.get_future(), timeout_ms_));
+//  auto condition = [&subscribe_callback_count]() {
+//    return 1 == subscribe_callback_count;
+//  };
+//  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+//}
+//
+//TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
+//  // Create actor checkpoint
+//  JobID job_id = JobID::FromInt(1);
+//  auto actor_table_data = GenActorTableData(job_id);
+//  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+//
+//  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
+//  auto checkpoint = std::make_shared<rpc::ActorCheckpointData>();
+//  checkpoint->set_actor_id(actor_table_data->actor_id());
+//  checkpoint->set_checkpoint_id(checkpoint_id.Binary());
+//  checkpoint->set_execution_dependency(checkpoint_id.Binary());
+//
+//  // Add checkpoint
+//  ASSERT_TRUE(AddCheckpoint(checkpoint));
+//
+//  // Get Checkpoint
+//  auto get_checkpoint_result = GetCheckpoint(checkpoint_id);
+//  ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
+//
+//  // Get CheckpointID
+//  auto get_checkpoint_id_result = GetCheckpointID(actor_id);
+//  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids_size() == 1);
+//  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids(0) == checkpoint_id.Binary());
+//}
+//
+//TEST_F(ServiceBasedGcsGcsClientTest, TestActorSubscribeAll) {
+//  // Create actor_table_data
+//  JobID job_id = JobID::FromInt(1);
+//  auto actor_table_data1 = GenActorTableData(job_id);
+//  auto actor_table_data2 = GenActorTableData(job_id);
+//
+//  // Subscribe all
+//  std::promise<bool> promise_subscribe_all;
+//  std::atomic<int> subscribe_all_callback_count(0);
+//  auto on_subscribe_all = [&subscribe_all_callback_count](
+//                              const ActorID &actor_id, const gcs::ActorTableData &data) {
+//    ++subscribe_all_callback_count;
+//  };
+//  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeAll(
+//      on_subscribe_all, [&promise_subscribe_all](Status status) {
+//        RAY_CHECK_OK(status);
+//        promise_subscribe_all.set_value(true);
+//      }));
+//  ASSERT_TRUE(WaitReady(promise_subscribe_all.get_future(), timeout_ms_));
+//
+//  // Register actor
+//  ASSERT_TRUE(RegisterActor(actor_table_data1));
+//  ASSERT_TRUE(RegisterActor(actor_table_data2));
+//  auto condition = [&subscribe_all_callback_count]() {
+//    return 2 == subscribe_all_callback_count;
+//  };
+//  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+//}
+//
+//TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
+//  // Create gcs node info
+//  ClientID node1_id = ClientID::FromRandom();
+//  auto gcs_node1_info = GenGcsNodeInfo(node1_id.Binary());
+//
+//  int register_count = 0;
+//  int unregister_count = 0;
+//  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+//      [&register_count, &unregister_count](const ClientID &node_id,
+//                                           const rpc::GcsNodeInfo &data) {
+//        if (data.state() == rpc::GcsNodeInfo::ALIVE) {
+//          ++register_count;
+//        } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
+//          ++unregister_count;
+//        }
+//      },
+//      nullptr));
+//
+//  // Register self
+//  ASSERT_TRUE(RegisterSelf(gcs_node1_info));
+//  sleep(1);
+//  EXPECT_EQ(gcs_client_->Nodes().GetSelfId(), node1_id);
+//  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().node_id(), gcs_node1_info.node_id());
+//  EXPECT_EQ(gcs_client_->Nodes().GetSelfInfo().state(), gcs_node1_info.state());
+//
+//  // Register node
+//  ClientID node2_id = ClientID::FromRandom();
+//  auto gcs_node2_info = GenGcsNodeInfo(node2_id.Binary());
+//  ASSERT_TRUE(RegisterNode(gcs_node2_info));
+//  WaitPendingDone(register_count, 2);
+//
+//  // Get node list
+//  std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
+//  EXPECT_EQ(node_list.size(), 2);
+//  EXPECT_EQ(register_count, 2);
+//  ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
+//  EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
+//
+//  // Unregister self
+//  ASSERT_TRUE(UnregisterSelf());
+//
+//  // Unregister node
+//  ASSERT_TRUE(UnregisterNode(node2_id));
+//  WaitPendingDone(unregister_count, 2);
+//
+//  node_list = GetNodeInfoList();
+//  EXPECT_EQ(node_list.size(), 2);
+//  EXPECT_EQ(node_list[0].state(),
+//            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+//  EXPECT_EQ(node_list[1].state(),
+//            rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+//  EXPECT_EQ(unregister_count, 2);
+//  ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
+//}
+//
+//TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
+//  int add_count = 0;
+//  int remove_count = 0;
+//  auto subscribe = [&add_count, &remove_count](
+//                       const ClientID &id,
+//                       const gcs::ResourceChangeNotification &notification) {
+//    if (notification.IsAdded()) {
+//      ++add_count;
+//    } else if (notification.IsRemoved()) {
+//      ++remove_count;
+//    }
+//  };
+//  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(subscribe, nullptr));
+//
+//  // Update resources
+//  ClientID node_id = ClientID::FromRandom();
+//  gcs::NodeInfoAccessor::ResourceMap resource_map;
+//  std::string key = "CPU";
+//  auto resource = std::make_shared<rpc::ResourceTableData>();
+//  resource->set_resource_capacity(1.0);
+//  resource_map[key] = resource;
+//  ASSERT_TRUE(UpdateResources(node_id, resource_map));
+//  WaitPendingDone(add_count, 1);
+//  auto get_resources_result = GetResources(node_id);
+//  ASSERT_TRUE(get_resources_result.count(key));
+//
+//  // Delete resources
+//  ASSERT_TRUE(DeleteResources(node_id, {key}));
+//  WaitPendingDone(remove_count, 1);
+//  get_resources_result = GetResources(node_id);
+//  ASSERT_TRUE(get_resources_result.empty());
+//}
+//
+//TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
+//  int heartbeat_count = 0;
+//  auto heartbeat_subscribe = [&heartbeat_count](const ClientID &id,
+//                                                const gcs::HeartbeatTableData &result) {
+//    ++heartbeat_count;
+//  };
+//  RAY_CHECK_OK(
+//      gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_subscribe, nullptr));
+//
+//  int heartbeat_batch_count = 0;
+//  auto heartbeat_batch_subscribe =
+//      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
+//        ++heartbeat_batch_count;
+//      };
+//  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
+//      heartbeat_batch_subscribe, nullptr));
+//
+//  // Report heartbeat
+//  ClientID node_id = ClientID::FromRandom();
+//  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
+//  heartbeat->set_client_id(node_id.Binary());
+//  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+//  WaitPendingDone(heartbeat_count, 1);
+//
+//  // Report batch heartbeat
+//  auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
+//  batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
+//  ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
+//  WaitPendingDone(heartbeat_batch_count, 1);
+//}
+//
+//TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
+//  JobID job_id = JobID::FromInt(1);
+//  TaskID task_id = TaskID::ForDriverTask(job_id);
+//  auto task_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
+//
+//  int task_count = 0;
+//  auto task_subscribe = [&task_count](const TaskID &id,
+//                                      const rpc::TaskTableData &result) { ++task_count; };
+//  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(task_id, task_subscribe, nullptr));
+//
+//  // Add task
+//  ASSERT_TRUE(AddTask(task_table_data));
+//
+//  auto get_task_result = GetTask(task_id);
+//  ASSERT_TRUE(get_task_result.task().task_spec().task_id() == task_id.Binary());
+//  ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
+//  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, nullptr));
+//  ASSERT_TRUE(AddTask(task_table_data));
+//
+//  // Delete task
+//  std::vector<TaskID> task_ids = {task_id};
+//  ASSERT_TRUE(DeleteTask(task_ids));
+//  EXPECT_EQ(task_count, 1);
+//
+//  // Add task lease
+//  int task_lease_count = 0;
+//  auto task_lease_subscribe = [&task_lease_count](
+//                                  const TaskID &id,
+//                                  const boost::optional<rpc::TaskLeaseData> &result) {
+//    ++task_lease_count;
+//  };
+//  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(task_id, task_lease_subscribe,
+//                                                            nullptr));
+//  ClientID node_id = ClientID::FromRandom();
+//  auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+//  ASSERT_TRUE(AddTaskLease(task_lease));
+//  WaitPendingDone(task_lease_count, 2);
+//
+//  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id, nullptr));
+//  ASSERT_TRUE(AddTaskLease(task_lease));
+//  EXPECT_EQ(task_lease_count, 2);
+//
+//  // Attempt task reconstruction
+//  auto task_reconstruction_data = std::make_shared<rpc::TaskReconstructionData>();
+//  task_reconstruction_data->set_task_id(task_id.Binary());
+//  task_reconstruction_data->set_num_reconstructions(0);
+//  ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
+//}
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   // Create job_table_data
@@ -635,7 +641,10 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
 
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-      job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+      job_table_data, [&promise](Status status) {
+        RAY_LOG(INFO) << "TestDetectGcsAvailability #########################";
+        promise.set_value(status.ok());
+  }));
 
   RAY_LOG(INFO) << "Gcs service init port = " << gcs_server_->GetPort();
   gcs_server_->Stop();

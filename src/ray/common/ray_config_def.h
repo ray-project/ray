@@ -240,7 +240,7 @@ RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
 RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
 
 /// Whether to enable auto reconnect rpc service.
-RAY_CONFIG(bool, rpc_auto_reconnect_enabled, false)
+RAY_CONFIG(bool, rpc_auto_reconnect_enabled, true)
 /// Note: this only takes effect when auto reconnect gcs rpc service is enabled.
 RAY_CONFIG(int64_t, internal_rpc_connect_wait_milliseconds, 100)
 

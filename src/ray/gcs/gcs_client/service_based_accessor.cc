@@ -714,6 +714,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   rpc::AddObjectLocationRequest request;
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
+
   auto operation = [this, request, object_id, node_id,
                     callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
