@@ -9,7 +9,6 @@ import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.function.RayFunc1;
 import org.ray.api.test.BaseTest;
 import org.slf4j.Logger;
@@ -23,7 +22,6 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
   public static final DecimalFormat df = new DecimalFormat("00.00");
   private static final long serialVersionUID = 416045641835782523L;
 
-  @RayRemote
   private static List<Long> singleClient(PressureTestParameter pressureTestParameter) {
 
     try {

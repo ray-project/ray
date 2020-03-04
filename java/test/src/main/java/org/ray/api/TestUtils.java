@@ -3,7 +3,6 @@ package org.ray.api;
 import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import java.util.function.Supplier;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.AbstractRayRuntime;
@@ -79,7 +78,6 @@ public class TestUtils {
     return false;
   }
 
-  @RayRemote
   private static String hi() {
     return "hi";
   }
