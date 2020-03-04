@@ -123,6 +123,7 @@ class TorchTrainer:
     """
 
     def __init__(self,
+                 *,
                  model_creator=None,
                  data_creator=None,
                  optimizer_creator=None,

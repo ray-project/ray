@@ -113,7 +113,7 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
-        self._losses = AverageMeter()
+        meters = collections.defaultdict(AverageMeter)
 
         self.model.train()
         with self.timers["epoch_time"]:
@@ -129,9 +129,9 @@ class TrainingOperator:
                         SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
                     self.scheduler.step()
 
-                if "loss" in metrics:
-                    self._losses.update(
-                        metrics["loss"], n=metrics.get("num_samples", 1))
+                num_samples = metrics.get("num_samples", 1)
+                for metric, value in metrics.items():
+                    meters[metric].update(value, n=num_samples)
                 self.global_step += 1
 
         if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
@@ -139,14 +139,18 @@ class TrainingOperator:
 
         stats = {
             BATCH_COUNT: batch_idx + 1,
-            "mean_train_loss": self._losses.avg,
-            "last_train_loss": self._losses.val,
-            "epoch_time": self.timers["epoch_time"].last
+            "epoch_time": self.timers["epoch_time"].last,
         }
-        stats.update({
-            timer_tag: timer.mean
-            for timer_tag, timer in self.timers.items()
-        })
+
+        for metric, meter in meters.items():
+            stats["mean_" + str(metric)] = meter.avg
+            stats["last_" + str(metric)] = meter.val
+
+        if "profile" in info:
+            stats.update({
+                timer_tag: timer.mean
+                for timer_tag, timer in self.timers.items()
+            })
         return stats
 
     def train_batch(self, batch, batch_info):

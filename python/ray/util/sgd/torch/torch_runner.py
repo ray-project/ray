@@ -46,6 +46,7 @@ class TorchRunner:
                  data_creator=None,
                  scheduler_creator=None,
                  training_operator_cls=None,
+                 profile=False,
                  config=None,
                  use_fp16=False,
                  apex_args=None,
@@ -57,6 +58,7 @@ class TorchRunner:
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls or TrainingOperator
         self.config = {} if config is None else config
+        self._profile = profile
 
         self.epochs = 0
         self._timers = {
@@ -183,8 +185,11 @@ class TorchRunner:
             train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.epochs += 1
-        train_stats.update(self.stats())
-        return train_stats
+        stats = {"epoch": self.epochs}
+        stats.update(train_stats)
+        if self._profile:
+            stats.update(profile=self.time_stats)
+        return stats
 
     def validate(self, num_steps=None, info=None):
         """Evaluates the model on the validation data set."""
@@ -198,15 +203,15 @@ class TorchRunner:
                     iter(self.validation_loader), num_steps)
             validation_stats = self.training_operator.validate(iterator, info)
 
-        validation_stats.update(self.stats())
+        validation_stats.update(self.time_stats())
         return validation_stats
 
-    def stats(self):
-        """Returns a dictionary of statistics collected."""
-        stats = {"epoch": self.epochs}
+    def time_stats(self):
+        """Returns a dictionary of time statistics collected."""
+        stats = {}
         for k, t in self._timers.items():
-            stats[k + "_time_mean"] = t.mean
-            stats[k + "_time_total"] = t.sum
+            stats["mean_" + k] = t.mean
+            stats["total_" + k] = t.sum
             t.reset()
         return stats
 
@@ -231,8 +236,7 @@ class TorchRunner:
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
             "models": self._get_model_state_dicts(),
-            "optimizers": [opt.state_dict() for opt in self.optimizers],
-            "stats": self.stats()
+            "optimizers": [opt.state_dict() for opt in self.optimizers]
         }
         if self.schedulers:
             state.update({

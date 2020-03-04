@@ -139,12 +139,15 @@ class GANOperator(TrainingOperator):
         N = len(imgs)
         dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
         up = nn.Upsample(
-            size=(28, 28), mode="bilinear").type(torch.FloatTensor)
+            size=(28, 28),
+            mode="bilinear",
+            align_corners=False  # This is to reduce user warnings from torch.
+        ).type(torch.FloatTensor)
 
         def get_pred(x):
             x = up(x)
             x = self.classifier(x)
-            return F.softmax(x).data.cpu().numpy()
+            return F.softmax(x, dim=1).data.cpu().numpy()
 
         # Obtain predictions for the fake provided images
         preds = np.zeros((N, 10))
@@ -229,18 +232,23 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
             "util/sgd/torch/examples/mnist_cnn.pt")
     }
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        nn.BCELoss,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.BCELoss,
         training_operator_cls=GANOperator,
         num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
         backend="nccl" if use_gpu else "gloo")
-    for i in range(5):
+
+    from tabulate import tabulate
+    for itr in range(5):
         stats = trainer.train()
-        print(stats)
+        formatted = tabulate([stats], headers="keys")
+        if itr > 0:  # Get the last line of the stats.
+            formatted = formatted.split("\n")[-1]
+        print(formatted)
 
     return trainer
 

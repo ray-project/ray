@@ -55,7 +55,7 @@ setup_commands:
 
 file_mounts: {
     ~/sgd: ~/Research/riselab/ray/python/ray/util/sgd,
-    ~/anaconda3/lib/python3.6/site-packages/ray/tests: ~/Research/riselab/ray/python/ray/tests
+    # ~/anaconda3/lib/python3.6/site-packages/ray/tests: ~/Research/riselab/ray/python/ray/tests
 }
 
 # Custom commands that will be run on the head node after common setup.
