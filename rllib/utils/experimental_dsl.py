@@ -55,7 +55,7 @@ def _check_sample_batch_type(batch):
 # Returns pipeline global vars that should be periodically sent to each worker.
 def _get_global_vars():
     metrics = LocalIterator.get_metrics()
-    return {"timestep": metrics.counters[NUM_STEPS_SAMPLED]}
+    return {"timestep": metrics.counters[STEPS_SAMPLED_COUNTER]}
 
 
 def ParallelRollouts(workers: WorkerSet,
@@ -266,6 +266,8 @@ class TrainOneStep:
                 weights = ray.put(self.workers.local_worker().get_weights())
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights, _get_global_vars())
+        # Also update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(_get_global_vars())
         return info
 
 
@@ -305,6 +307,9 @@ class CollectMetrics:
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]
         res = summarize_episodes(episodes, orig_episodes)
+
+        exp = self.workers.foreach_trainable_policy(
+            lambda p, _: p.get_exploration_info())
 
         # Add in iterator metrics.
         metrics = LocalIterator.get_metrics()
@@ -424,6 +429,9 @@ class ApplyGradients:
             self.workers.local_worker().apply_gradients(gradients)
             apply_timer.push_units_processed(count)
 
+        # Also update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(_get_global_vars())
+
         if self.update_all:
             if self.workers.remote_workers():
                 with metrics.timers[WORKER_UPDATE_TIMER]:
@@ -528,13 +536,16 @@ def LocalReplay(replay_buffer, train_batch_size):
     return LocalIterator(gen_replay, MetricsContext())
 
 
-def Concurrently(ops: List[LocalIterator], deterministic=False):
+def Concurrently(ops: List[LocalIterator], mode="round_robin"):
     """Operator that run the given parent iterators concurrently.
 
     Arguments:
-        deterministic (bool): If True, we will alternate execution between
-            the operators round robin. Otherwise, each operator will be
-            executed as fast as possible without synchronizing on the other.
+        mode (str): One of {'round_robin', 'async'}.
+            - In 'round_robin' mode, we alternate between pulling items from
+              each parent iterator in order deterministically.
+            - In 'async' mode, we pull from each parent iterator as fast as
+              they are produced. This is non-deterministic.
+
         >>> sim_op = ParallelRollouts(...).for_each(...)
         >>> replay_op = LocalReplay(...).for_each(...)
         >>> combined_op = Concurrently([sim_op, replay_op])
@@ -542,6 +553,12 @@ def Concurrently(ops: List[LocalIterator], deterministic=False):
 
     if len(ops) < 2:
         raise ValueError("Should specify at least 2 ops.")
+    if mode == "round_robin":
+        deterministic = True
+    elif mode == "async":
+        deterministic = False
+    else:
+        raise ValueError("Unknown mode {}".format(mode))
     return ops[0].union(*ops[1:], deterministic=deterministic)
 
 

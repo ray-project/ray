@@ -76,7 +76,7 @@ class WorkerSet:
         """Syncs weights of remote workers with the local worker."""
         weights = ray.put(self.local_worker().get_weights())
         for e in self.remote_workers():
-            e.set_weights.remote(weights, _get_global_vars())
+            e.set_weights.remote(weights)
 
     def add_workers(self, num_workers):
         """Creates and add a number of remote workers to this worker set.

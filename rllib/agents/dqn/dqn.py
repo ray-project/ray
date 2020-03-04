@@ -325,9 +325,8 @@ def training_pipeline(workers, config):
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate between (1) and (2). We set deterministic=True so that we
-    # always execute one train step per replay buffer update.
-    train_op = Concurrently([store_op, replay_op], deterministic=True)
+    # Alternate deterministically between (1) and (2).
+    train_op = Concurrently([store_op, replay_op], mode="round_robin")
 
     return StandardMetricsReporting(train_op, workers, config)
 
