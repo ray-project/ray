@@ -31,7 +31,9 @@ def data_creator(config):
         ]))
     if config.get("test_mode"):
         dataset = torch.utils.data.Subset(dataset, list(range(64)))
-    return dataset
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=config.get("batch_size"))
+    return dataloader
 
 
 class Generator(nn.Module):
@@ -221,6 +223,7 @@ class GANOperator(TrainingOperator):
 def train_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "test_mode": test_mode,
+        "batch_size": 16 if test_mode else 512 // num_workers,
         "classification_model_path": os.path.join(
             os.path.dirname(ray.__file__),
             "util/sgd/torch/examples/mnist_cnn.pt")
@@ -234,7 +237,6 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
         num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
-        batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
     for i in range(5):
         stats = trainer.train()
@@ -263,7 +265,7 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enables GPU training")
-    args, _ = parser.parse_known_args()
+    args = parser.parse_args()
     ray.init(address=args.address)
 
     trainer = train_example(

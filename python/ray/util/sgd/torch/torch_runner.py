@@ -25,15 +25,15 @@ class TorchRunner:
     """Manages a PyTorch model for training.
 
     Args:
-        model_creator (dict -> *): see torch_trainer.py
+        model_creator (dict -> Model(s)): see torch_trainer.py
+        optimizer_creator ((models, dict) -> optimizers): see torch_trainer.py.
+        loss_creator (torch.nn.*Loss class | dict -> loss):
+            see torch_trainer.py.
         data_creator (dict -> Iterable(s)): see torch_trainer.py.
-        optimizer_creator (models, dict -> optimizers): see torch_trainer.py.
-        loss_creator (dict -> loss | Loss class): see torch_trainer.py.
-        scheduler_creator (optimizers, dict -> schedulers): see
+        scheduler_creator ((optimizers, dict) -> scheduler): see
             torch_trainer.py.
         training_operator_cls: see torch_trainer.py
         config (dict): see torch_trainer.py.
-        batch_size (int): see torch_trainer.py.
         use_fp16 (bool): see torch_trainer.py.
         apex_args (dict|None): see torch_trainer.py.
         scheduler_step_freq (str): see torch_trainer.py.
@@ -41,25 +41,22 @@ class TorchRunner:
 
     def __init__(self,
                  model_creator,
-                 data_creator,
                  optimizer_creator,
-                 loss_creator,
+                 loss_creator=None,
+                 data_creator=None,
                  scheduler_creator=None,
                  training_operator_cls=None,
                  config=None,
-                 batch_size=16,
                  use_fp16=False,
                  apex_args=None,
                  scheduler_step_freq="batch"):
         self.model_creator = model_creator
-        self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
+        self.data_creator = data_creator
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls or TrainingOperator
         self.config = {} if config is None else config
-        self.batch_size = batch_size
-        self.verbose = True
 
         self.epochs = 0
         self._timers = {
@@ -96,7 +93,22 @@ class TorchRunner:
         # No great way of checking type otherwise
         return loaders, None
 
+    def _initialize_dataloaders(self):
+        logger.debug("Instantiating dataloaders.")
+        if not self.data_creator:
+            return
+        # When creating loaders, a filelock will be used to ensure no
+        # race conditions in data downloading among different workers.
+        with FileLock(os.path.expanduser("~/.ray_data.lock")):
+            loaders = self.data_creator(self.config)
+            train_loader, val_loader = self._validate_loaders(loaders)
+
+        self.train_loader, self.validation_loader = train_loader, val_loader
+
     def _create_loss(self):
+        logger.debug("Creating loss.")
+        if not self.loss_creator:
+            return
         if inspect.isclass(self.loss_creator) and issubclass(
                 self.loss_creator, torch.nn.modules.loss._Loss):
             self.criterion = self.loss_creator()
@@ -139,23 +151,7 @@ class TorchRunner:
         self._create_schedulers_if_available()
         self._try_setup_apex()
         self._create_loss()
-
-        logger.debug("Creating dataset")
-        # When creating loaders, a filelock will be used to ensure no
-        # race conditions in data downloading among different workers.
-        with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            loaders = self.data_creator(self.config)
-            train_loader, val_loader = self._validate_loaders(loaders)
-        self.train_loader, self.validation_loader = train_loader, val_loader
-
-        self.training_operator = self.training_operator_cls(
-            self.config,
-            models=self.models,
-            optimizers=self.optimizers,
-            criterion=self.criterion,
-            schedulers=self.schedulers,
-            use_fp16=self.use_fp16)
-
+        self._initialize_dataloaders()
         self.training_operator = self.training_operator_cls(
             self.config,
             models=self.models,

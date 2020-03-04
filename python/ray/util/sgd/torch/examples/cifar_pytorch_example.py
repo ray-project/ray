@@ -75,7 +75,6 @@ def train_example(num_workers=1,
             "test_mode": test_mode
         },
         use_gpu=use_gpu,
-        batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo",
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
@@ -98,9 +97,9 @@ def tune_example(num_workers=1, use_gpu=False, test_mode=False):
         "num_workers": num_workers,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
-        "batch_size": 16 if test_mode else 512,
         "config": {
             "lr": tune.choice([1e-4, 1e-3]),
+            "batch_size": (16 if test_mode else 512) // num_workers,
             "test_mode": test_mode
         },
         "backend": "nccl" if use_gpu else "gloo"

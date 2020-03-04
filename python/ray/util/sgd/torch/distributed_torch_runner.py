@@ -2,6 +2,7 @@ import collections
 from filelock import FileLock
 import logging
 import os
+import torch
 import torch.nn as nn
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
@@ -67,21 +68,12 @@ class DistributedTorchRunner(TorchRunner):
             self.optimizers = [self.optimizers]
 
         self._create_schedulers_if_available()
-
         self._try_setup_apex()
-
         # This needs to happen after apex
         self.models = [DistributedDataParallel(model) for model in self.models]
 
-        logger.debug("Creating loss.")
         self._create_loss()
-
-        logger.debug("Creating dataset.")
-        with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            loaders = self.data_creator(self.config)
-            train_loader, val_loader = self._validate_loaders(loaders)
-
-        self.train_loader, self.validation_loader = train_loader, val_loader
+        self._initialize_dataloaders()
 
         self.training_operator = self.training_operator_cls(
             self.config,

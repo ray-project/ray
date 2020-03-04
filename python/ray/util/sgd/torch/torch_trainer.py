@@ -67,11 +67,12 @@ class TorchTrainer:
             a ``training_operator_cls`` must be specified. You do not need to
             handle GPU/devices in this function; RaySGD will do that under
             the hood.
-        data_creator (dict -> Dataset(s)): Constructor function
+        data_creator (dict -> Iterable(s)): Constructor function
             that takes in the passed config and returns one or
-            two Iterable objects.
-            Note that even though two Iterable objects can be returned,
-            only one will be used for training.
+            two Iterable objects. Note that even though two Iterable objects
+            can be returned, only one will be used for training, and the
+            other will be used for validation. If not provided, you must
+            provide a custom TrainingOperator.
         optimizer_creator ((models, dict) -> optimizers): Constructor
             function that takes in the return values from
             ``model_creator`` and the passed config and returns One or
@@ -82,7 +83,8 @@ class TorchTrainer:
             takes in the provided config for customization or a subclass
             of ``torch.nn.modules.loss._Loss``, which is most Pytorch
             loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
-        scheduler_creator (optimizers, dict -> loss):
+            If not provided, you must provide a custom TrainingOperator.
+        scheduler_creator ((optimizers, dict) -> scheduler):
             A constructor function for the torch scheduler. This is
             a function that takes in the generated optimizers (from
             ``optimizer_creator``) provided config for customization.
@@ -101,8 +103,6 @@ class TorchTrainer:
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true, and automatically moves both the model and optimizer
             to the available CUDA device.
-        batch_size (int): Total batch size for each minibatch. This
-            value is divided among all workers and rounded.
         backend (string): backend used by distributed PyTorch. Currently
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
@@ -123,17 +123,16 @@ class TorchTrainer:
     """
 
     def __init__(self,
-                 model_creator,
-                 data_creator,
-                 optimizer_creator,
-                 loss_creator,
+                 model_creator=None,
+                 data_creator=None,
+                 optimizer_creator=None,
+                 loss_creator=None,
                  scheduler_creator=None,
                  training_operator_cls=None,
                  initialization_hook=None,
                  config=None,
                  num_workers=1,
                  use_gpu=False,
-                 batch_size=16,
                  backend="auto",
                  use_fp16=False,
                  apex_args=None,
@@ -145,12 +144,23 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
+        if not model_creator or not optimizer_creator:
+            raise ValueError("Model and Optimizer creator must be provided.")
         self.model_creator = model_creator
-        self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
+        self.data_creator = data_creator
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls
+
+        if not training_operator_cls:
+            if not loss_creator:
+                raise ValueError("If a loss_creator is not provided, you must "
+                             "provide a custom training operator.")
+            if not data_creator:
+                raise ValueError("If a data_creator is not provided, you must "
+                             "provide a custom training operator.")
+
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
@@ -163,7 +173,6 @@ class TorchTrainer:
 
         # TODO: Have an auto "use_gpu" option to detect and use GPUs.
         self.use_gpu = use_gpu
-        self.batch_size = batch_size
         self.max_replicas = num_workers
 
         self.use_fp16 = use_fp16
@@ -191,13 +200,12 @@ class TorchTrainer:
             self.workers = [
                 Runner.remote(
                     self.model_creator,
-                    self.data_creator,
                     self.optimizer_creator,
                     self.loss_creator,
+                    self.data_creator,
                     self.scheduler_creator,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,
-                    batch_size=self.batch_size,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
                     scheduler_step_freq=self.scheduler_step_freq,
@@ -211,29 +219,17 @@ class TorchTrainer:
             # Generate actor class
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
-            # Compute batch size per replica
-            batch_size_per_replica = self.batch_size // num_workers
-            if self.batch_size % num_workers > 0:
-                new_batch_size = batch_size_per_replica * num_workers
-                logger.warning(
-                    ("Changing batch size from {old_batch_size} to "
-                     "{new_batch_size} to evenly distribute batches across "
-                     "{num_workers} replicas.").format(
-                         old_batch_size=self.batch_size,
-                         new_batch_size=new_batch_size,
-                         num_workers=num_workers))
             # Start workers
             self.workers = [
                 Runner.remote(
                     self.model_creator,
-                    self.data_creator,
                     self.optimizer_creator,
                     self.loss_creator,
+                    self.data_creator,
                     self.scheduler_creator,
                     backend=self.backend,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,
-                    batch_size=batch_size_per_replica,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
                     scheduler_step_freq=self.scheduler_step_freq)

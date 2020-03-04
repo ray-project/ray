@@ -55,7 +55,7 @@ def tune_example(num_workers=1, use_gpu=False):
         "loss_creator": tune.function(nn.MSELoss),
         "num_workers": num_workers,
         "use_gpu": use_gpu,
-        "batch_size": 512,
+        "config": {"batch_size": 512 // num_workers},
         "backend": "gloo"
     }
 

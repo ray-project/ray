@@ -27,18 +27,19 @@ parser.add_argument('--num-batches-per-iter', type=int, default=10,
 parser.add_argument('--num-iters', type=int, default=10,
                     help='number of benchmark iterations')
 
-parser.add_argument('--cuda', action='store_true', default=False,
-                    help='Enables CUDA training')
+parser.add_argument('--no-cuda', action='store_true', default=False,
+                    help='Disables CUDA training')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
+device = 'GPU' if args.cuda else 'CPU'
+import ray
+ray.init(address="auto")
+num_workers = int(ray.cluster_resources().get(device))
 
 print('Model: %s' % args.model)
 print('Batch size: %d' % args.batch_size)
-device = 'GPU' if args.cuda else 'CPU'
 print('Number of %ss: %d' % (device, num_workers))
-ray.init(address="auto")
-num_workers = int(ray.cluster_resources().get(device))
 
 
 
@@ -84,9 +85,10 @@ trainer = TorchTrainer(
         model.parameters(), lr=0.01 * config.get("lr_scaler")),
     initialization_hook=init_hook,
     config=dict(
-        lr_scaler=hvd.local_size(),
+        lr_scaler=num_workers,
         batch_size=args.batch_size),
     training_operator_cls=Training,
+    num_workers=num_workers,
     use_gpu=args.cuda
 )
 
