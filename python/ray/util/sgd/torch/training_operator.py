@@ -2,7 +2,7 @@ import collections
 import torch
 
 from ray.util.sgd.utils import TimerStat, AverageMeter
-from ray.util.sgd.pytorch.constants import (
+from ray.util.sgd.torch.constants import (
     SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT)
 
 amp = None
@@ -11,7 +11,7 @@ try:
     from apex import amp
 except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
-    # We don't log here because logging happens in the pytorch_runner,
+    # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
     pass
 
@@ -26,7 +26,7 @@ class TrainingOperator:
 
     The scheduler will only be called at a batch or epoch frequency, depending
     on the user parameter. Be sure to set ``scheduler_step_freq`` in
-    ``PyTorchTrainer`` to either "batch" or "epoch" to increment the scheduler
+    ``TorchTrainer`` to either "batch" or "epoch" to increment the scheduler
     correctly during training. If using a learning rate scheduler
     that depends on validation loss, you can use ``trainer.update_scheduler``.
 
@@ -290,7 +290,7 @@ class TrainingOperator:
 
     @property
     def config(self):
-        """Dictionary as provided into PyTorchTrainer."""
+        """Dictionary as provided into TorchTrainer."""
         return self._config
 
     @property
