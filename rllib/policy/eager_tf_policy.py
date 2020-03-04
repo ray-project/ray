@@ -5,6 +5,7 @@ It supports both traced and non-traced eager execution modes."""
 import logging
 import functools
 import numpy as np
+import tree
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import _flatten_action
@@ -23,12 +24,12 @@ logger = logging.getLogger(__name__)
 def _convert_to_tf(x):
     if isinstance(x, SampleBatch):
         x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        return tf.nest.map_structure(_convert_to_tf, x)
+        return tree.map_structure(_convert_to_tf, x)
     if isinstance(x, Policy):
         return x
 
     if x is not None:
-        x = tf.nest.map_structure(
+        x = tree.map_structure(
             lambda f: tf.convert_to_tensor(f) if f is not None else None, x)
     return x
 
@@ -37,7 +38,7 @@ def _convert_to_numpy(x):
     if x is None:
         return None
     try:
-        return tf.nest.map_structure(lambda component: component.numpy(), x)
+        return tree.map_structure(lambda component: component.numpy(), x)
     except AttributeError:
         raise TypeError(
             ("Object of type {} has no method to convert to numpy.").format(
@@ -65,7 +66,7 @@ def convert_eager_outputs(func):
     def _func(*args, **kwargs):
         out = func(*args, **kwargs)
         if tf.executing_eagerly():
-            out = tf.nest.map_structure(_convert_to_numpy, out)
+            out = tree.map_structure(_convert_to_numpy, out)
         return out
 
     return _func
@@ -543,7 +544,7 @@ def build_eager_tf_policy(name,
                 SampleBatch.NEXT_OBS: np.array(
                     [self.observation_space.sample()]),
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
-                SampleBatch.ACTIONS: tf.nest.map_structure(
+                SampleBatch.ACTIONS: tree.map_structure(
                     lambda c: np.array([c]), self.action_space.sample()),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
@@ -560,7 +561,7 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
 
             # Convert everything to tensors.
-            dummy_batch = tf.nest.map_structure(
+            dummy_batch = tree.map_structure(
                 lambda c: tf.convert_to_tensor(c), dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.
@@ -569,7 +570,7 @@ def build_eager_tf_policy(name,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])
 
             if get_batch_divisibility_req:
-                dummy_batch = tf.nest.map_structure(
+                dummy_batch = tree.map_structure(
                     lambda c: tile_to(c, get_batch_divisibility_req(self)),
                     dummy_batch)
 
@@ -588,7 +589,7 @@ def build_eager_tf_policy(name,
             # overwrite any tensor state from that call)
             self.model.from_batch(dummy_batch)
 
-            postprocessed_batch = tf.nest.map_structure(
+            postprocessed_batch = tree.map_structure(
                 lambda c: tf.convert_to_tensor(c), postprocessed_batch.data)
 
             loss_fn(self, self.model, self.dist_class, postprocessed_batch)

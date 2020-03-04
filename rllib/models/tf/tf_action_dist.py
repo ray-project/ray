@@ -45,7 +45,7 @@ class Categorical(TFActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
-        temperature = max(0.0001, temperature)  # clamp for stability reasons
+        assert temperature >= 0.0
         self.n = inputs.shape[-1]
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
@@ -169,8 +169,7 @@ class GumbelSoftmax(TFActionDistribution):
                 For high temperatures, the expected value approaches a uniform
                 distribution.
         """
-        # Clamp for stability reasons.
-        temperature = max(0.0001, temperature)
+        assert temperature >= 0.0
         self.dist = tfp.distributions.RelaxedOneHotCategorical(
             temperature=temperature, logits=inputs)
         super().__init__(inputs, model)

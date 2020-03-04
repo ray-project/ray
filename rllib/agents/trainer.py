@@ -106,9 +106,6 @@ COMMON_CONFIG = {
     "clip_rewards": None,
     # Whether to np.clip() actions to the action space low/high range spec.
     "clip_actions": True,
-    # Whether to argmax actions (to translate from a Trainer Box action space
-    # to an Env Discrete action space).
-    "argmax_actions": False,
     # Whether to use rllib or deepmind preprocessors by default
     "preprocessor_pref": "deepmind",
     # The default learning rate.
@@ -776,7 +773,6 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            argmax_actions=self.config["argmax_actions"],
             explore=explore,
             timestep=self.global_vars["timestep"])
 

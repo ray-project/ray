@@ -95,7 +95,7 @@ fi
 if [[ "$RLLIB_TESTING" == "1" ]]; then
   pip install tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    gym[atari] atari_py smart_open lz4
+    atari_py dm-tree gym[atari] lz4 smart_open
 fi
 
 # Additional streaming dependencies.
