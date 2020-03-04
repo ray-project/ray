@@ -1,6 +1,14 @@
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.optimizers import AsyncReplayOptimizer
+from ray.rllib.optimizers.replay_buffer import ReplayBuffer
+from ray.rllib.optimizers.async_replay_optimizer import ReplayActor
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.experimental_dsl import (
+    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
+    ParallelReplay, TrainOneStep, StandardMetricsReporting,
+    StoreToReplayActors,
+    UpdateTargetNetwork)
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -70,6 +78,40 @@ def update_target_based_on_num_steps_trained(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
+# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
+def training_pipeline(workers, config):
+    num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
+    replay_actors = create_colocated(ReplayActor, [
+        num_replay_buffer_shards,
+        config["learning_starts"],
+        config["buffer_size"],
+        config["train_batch_size"],
+        config["prioritized_replay_alpha"],
+        config["prioritized_replay_beta"],
+        config["prioritized_replay_eps"],
+    ], num_replay_buffer_shards)
+
+    # (1) Store experiences into the local replay buffer.
+    rollouts = ParallelRollouts(workers)
+    store_op = rollouts.for_each(StoreToReplayActors(replay_actors))
+
+    # (2) Replay and train on selected experiences.
+    replay_op = ParallelReplay(replay_actors) \
+        .for_each(Enqueue(in_queue)) \
+
+    LearnerThread(in_queue, out_queue).start()
+    
+    stats_op = Dequeue(out_queue) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"],
+            by_steps_trained=True))
+
+    # Alternate deterministically between (1) and (2).
+    train_op = Concurrently([store_op, replay_op], mode="async")
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 APEX_TRAINER_PROPERTIES = {
     "make_workers": defer_make_workers,
     "make_policy_optimizer": make_async_optimizer,
@@ -77,4 +119,7 @@ APEX_TRAINER_PROPERTIES = {
 }
 
 ApexTrainer = DQNTrainer.with_updates(
-    name="APEX", default_config=APEX_DEFAULT_CONFIG, **APEX_TRAINER_PROPERTIES)
+    name="APEX",
+    default_config=APEX_DEFAULT_CONFIG,
+    training_pipeline=training_pipeline,
+    **APEX_TRAINER_PROPERTIES)

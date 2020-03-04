@@ -97,6 +97,7 @@ class PolicyOptimizer:
             res (dict): A training result dict from worker metrics with
                 `info` replaced with stats from self.
         """
+        print("COLLECT FROM SELECTED WORKERS", selected_workers)
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             selected_workers or self.workers.remote_workers(),

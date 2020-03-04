@@ -13,6 +13,7 @@ import time
 
 import ray
 from ray.exceptions import RayError
+from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -283,7 +284,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
 
 @ray.remote(num_cpus=0)
-class ReplayActor:
+class ReplayActor(ParallelIteratorWorker):
     """A replay buffer shard.
 
     Ray actors are single-threaded, so for scalability multiple replay actors
@@ -297,6 +298,12 @@ class ReplayActor:
         self.train_batch_size = train_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
+
+        def gen_replay():
+            while True:
+                yield self.replay()
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)
 
         def new_buffer():
             return PrioritizedReplayBuffer(

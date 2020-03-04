@@ -102,7 +102,10 @@ def build_trainer(name,
                 policy = get_policy_class(config)
             if before_init:
                 before_init(self)
-            if make_workers:
+            use_pipeline_impl = (training_pipeline and
+                                 (self.config["use_pipeline_impl"]
+                                  or "RLLIB_USE_PIPELINE_IMPL" in os.environ))
+            if make_workers and not use_pipeline_impl:
                 self.workers = make_workers(self, env_creator, policy, config)
             else:
                 self.workers = self._make_workers(env_creator, policy, config,
@@ -110,8 +113,7 @@ def build_trainer(name,
             self.train_pipeline = None
             self.optimizer = None
 
-            if training_pipeline and (self.config["use_pipeline_impl"] or
-                                      "RLLIB_USE_PIPELINE_IMPL" in os.environ):
+            if use_pipeline_impl:
                 logger.warning("Using experimental pipeline based impl.")
                 self.train_pipeline = training_pipeline(self.workers, config)
             elif make_policy_optimizer:

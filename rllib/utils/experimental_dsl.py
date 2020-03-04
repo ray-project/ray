@@ -5,12 +5,14 @@ TODO(ekl): describe the concepts."""
 import logging
 from typing import List, Any, Tuple, Union
 import numpy as np
+import random
 import time
 
 import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import MetricsContext
-from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
+from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer, \
+    ReplayBuffer
 from ray.rllib.evaluation.metrics import collect_episodes, \
     summarize_episodes, get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -494,7 +496,22 @@ class StoreToReplayBuffer:
                     weight=None)
 
 
+class StoreToReplayActors:
+    def __init__(self, replay_actors):
+        self.replay_actors = replay_actors
+
+    def __call__(self, batch: SampleBatchType):
+        actor = random.choice(self.replay_actors)
+        actor.add_batch.remote(batch)
+
+
+def ParallelReplay(replay_actors):
+    replay = from_actors(replay_actors)
+    return replay.gather_async().filter(lambda x: x is not None)
+
+
 def LocalReplay(replay_buffer, train_batch_size):
+    assert isinstance(replay_buffer, ReplayBuffer)
     replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
     # TODO(ekl) support more options
     synchronize_sampling = False
@@ -581,13 +598,17 @@ class UpdateTargetNetwork:
     track when we should update the target next.
     """
 
-    def __init__(self, workers, target_update_freq):
+    def __init__(self, workers, target_update_freq, by_steps_trained=False):
         self.workers = workers
         self.target_update_freq = target_update_freq
+        if by_steps_trained:
+            self.metric = STEPS_TRAINED_COUNTER
+        else:
+            self.metric = STEPS_SAMPLED_COUNTER
 
     def __call__(self, _):
         metrics = LocalIterator.get_metrics()
-        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
             self.workers.local_worker().foreach_trainable_policy(
