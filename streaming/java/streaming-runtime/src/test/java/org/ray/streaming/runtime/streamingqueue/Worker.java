@@ -218,7 +218,7 @@ class WriterWorker extends Worker {
     LOGGER.info("Peer isDirectActorCall: {}", ((NativeRayActor) peer).isDirectCallActor());
     int count = 3;
     while (count-- != 0) {
-      pear.call(ReaderWorker::testRayCall).get();
+      peer.call(ReaderWorker::testRayCall).get();
     }
 
     try {
