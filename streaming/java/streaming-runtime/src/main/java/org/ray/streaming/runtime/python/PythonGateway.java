@@ -12,6 +12,7 @@ import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonPartition;
 import org.ray.streaming.python.stream.PythonStreamSource;
 import org.ray.streaming.runtime.util.ReflectionUtils;
+import org.ray.streaming.serialization.MsgPackSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

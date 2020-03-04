@@ -57,6 +57,11 @@
   <version>1.0.10</version>
 </dependency>
 <dependency>
+  <groupId>org.apache.commons</groupId>
+  <artifactId>commons-lang3</artifactId>
+  <version>3.4</version>
+</dependency>
+<dependency>
   <groupId>org.msgpack</groupId>
   <artifactId>msgpack-core</artifactId>
   <version>0.8.20</version>

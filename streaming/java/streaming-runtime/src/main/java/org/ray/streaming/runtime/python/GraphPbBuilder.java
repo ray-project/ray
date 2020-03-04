@@ -13,6 +13,7 @@ import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.generated.RemoteCall;
 import org.ray.streaming.runtime.generated.Streaming;
+import org.ray.streaming.serialization.MsgPackSerializer;
 
 public class GraphPbBuilder {
 

@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.python;
+package org.ray.streaming.serialization;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;

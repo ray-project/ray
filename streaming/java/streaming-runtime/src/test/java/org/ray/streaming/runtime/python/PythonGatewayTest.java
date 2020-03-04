@@ -9,6 +9,7 @@ import java.util.Map;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobGraphBuilder;
+import org.ray.streaming.serialization.MsgPackSerializer;
 import org.testng.annotations.Test;
 
 public class PythonGatewayTest {

@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.python;
+package org.ray.streaming.serialization;
 
 import com.google.common.io.BaseEncoding;
 import java.util.ArrayList;
@@ -31,6 +31,8 @@ public class MsgPackSerializer {
         Class<?> clz = obj.getClass();
         if (clz == Boolean.class) {
           packer.packBoolean((Boolean) obj);
+        } else if (clz == Byte.class) {
+          packer.packByte((Byte) obj);
         } else if (clz == Integer.class) {
           packer.packInt((Integer) obj);
         } else if (clz == Long.class) {
@@ -84,7 +86,9 @@ public class MsgPackSerializer {
         return value.asBooleanValue().getBoolean();
       case INTEGER:
         IntegerValue iv = value.asIntegerValue();
-        if (iv.isInIntRange()) {
+        if (iv.isInByteRange()) {
+          return iv.toByte();
+        } else if (iv.isInIntRange()) {
           return iv.toInt();
         } else if (iv.isInLongRange()) {
           return iv.toLong();
