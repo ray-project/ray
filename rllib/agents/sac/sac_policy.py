@@ -95,8 +95,9 @@ def get_dist_class(config, action_space):
     if isinstance(action_space, Discrete):
         action_dist_class = Categorical
     else:
-        action_dist_class = SquashedGaussian if \
-            config["normalize_actions"] is True else DiagGaussian
+        action_dist_class = (
+            SquashedGaussian if config["normalize_actions"]
+            else DiagGaussian)
     return action_dist_class
 
 
