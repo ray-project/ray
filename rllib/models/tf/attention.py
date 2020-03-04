@@ -18,13 +18,13 @@ def relative_position_embedding(seq_length, out_dim):
 
 
 def rel_shift(x):
-    # shift approach as implemented by Dai et al. 2019
-    # taken from: https://github.com/kimiyoung/transformer-xl/blob/44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
+    # Transposed version of the shift approach implemented by Dai et al. 2019
+    # https://github.com/kimiyoung/transformer-xl/blob/44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31
     x_size = tf.shape(x)
 
-    x = tf.pad(x, [[0, 0], [1, 0], [0, 0], [0, 0]])
-    x = tf.reshape(x, [x_size[1] + 1, x_size[0], x_size[2], x_size[3]])
-    x = tf.slice(x, [1, 0, 0, 0], [-1, -1, -1, -1])
+    x = tf.pad(x, [[0, 0], [0, 0], [1, 0], [0, 0]])
+    x = tf.reshape(x, [x_size[0], x_size[2] + 1, x_size[1], x_size[3]])
+    x = tf.slice(x, [0, 1, 0, 0], [-1, -1, -1, -1])
     x = tf.reshape(x, x_size)
 
     return x
@@ -45,30 +45,31 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                                   use_bias=False))
 
     def call(self, inputs):
-        L = tf.shape(inputs)[0]  # length of segment
+        L = tf.shape(inputs)[1]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
 
         qkv = self._qkv_layer(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
-        queries = queries[-L:]  # only query based on the segment
+        queries = queries[:, -L:]  # only query based on the segment
 
-        queries = tf.reshape(queries, [L, -1, H, D])
-        keys = tf.reshape(keys, [L, -1, H, D])
-        values = tf.reshape(values, [L, -1, H, D])
+        queries = tf.reshape(queries, [-1, L, H, D])
+        keys = tf.reshape(keys, [-1, L, H, D])
+        values = tf.reshape(values, [-1, L, H, D])
 
-        score = tf.einsum("ibhd,jbhd->ijbh", queries, keys)
+        score = tf.einsum("bihd,bjhd->bijh", queries, keys)
         score = score / D ** 0.5
 
         # causal mask of the same length as the sequence
         mask = tf.sequence_mask(tf.range(1, L + 1), dtype=score.dtype)
-        mask = mask[:, :, None, None]
+        mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = tf.nn.softmax(masked_score, axis=1)
+        wmat = tf.nn.softmax(masked_score, axis=2)
 
-        out = tf.einsum("ijbn,jbnd->ibnd", wmat, values)
+        out = tf.einsum("bijh,bjhd->bihd", wmat, values)
+        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
         return self._linear_layer(out)
 
 
@@ -100,7 +101,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
     def call(self, inputs, memory=None):
-        L = tf.shape(inputs)[0]  # length of segment
+        L = tf.shape(inputs)[1]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
 
@@ -108,7 +109,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         M = memory.shape[0] if memory is not None else 0
 
         if memory is not None:
-            inputs = np.concatenate((tf.stop_gradient(memory), inputs), axis=-1)
+            inputs = np.concatenate((tf.stop_gradient(memory), inputs), axis=1)
 
         if self._input_layernorm is not None:
             inputs = self._input_layernorm(inputs)
@@ -116,29 +117,29 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         qkv = self._qkv_layer(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
-        queries = queries[-L:]  # only query based on the segment
+        queries = queries[:, -L:]  # only query based on the segment
 
-        queries = tf.reshape(queries, [L, -1, H, D])
-        keys = tf.reshape(keys, [L + M, -1, H, D])
-        values = tf.reshape(values, [L + M, -1, H, D])
+        queries = tf.reshape(queries, [-1, L, H, D])
+        keys = tf.reshape(keys, [-1, L + M, H, D])
+        values = tf.reshape(values, [-1, L + M, H, D])
 
         rel = self._pos_proj(self._rel_pos_encoder)
-        rel = tf.reshape(rel, [-1, H, D])
+        rel = tf.reshape(rel, [L, H, D])
 
-        score = tf.einsum("ibhd,jbhd->ijbh", queries + self._uvar, keys)
-        pos_score = tf.einsum("ibhd,jhd->ijbh", queries + self._vvar, rel)
+        score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
+        pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, rel)
         score = score + rel_shift(pos_score)
         score = score / D**0.5
 
         # causal mask of the same length as the sequence
         mask = tf.sequence_mask(tf.range(M + 1, L + M + 1), dtype=score.dtype)
-        mask = mask[:, :, None, None]
+        mask = mask[None, :, :, None]
 
         masked_score = score * mask + 1e30 * (mask - 1.)
-        wmat = tf.nn.softmax(masked_score, axis=1)
+        wmat = tf.nn.softmax(masked_score, axis=2)
 
-        out = tf.einsum("ijbn,jbnd->ibnd", wmat, values)
-        out = tf.reshape(out, [out.shape[0], out.shape[1], H * D])
+        out = tf.einsum("bijh,bjhd->bihd", wmat, values)
+        out = tf.reshape(out, tf.concat((tf.shape(out)[:2], [H * D]), axis=0))
         return self._linear_layer(out)
 
 
@@ -155,6 +156,7 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
                                                    activation=output_activation)
 
     def call(self, inputs, **kwargs):
+        del kwargs
         output = self._hidden_layer(inputs)
         return self._output_layer(output)
 
@@ -172,6 +174,7 @@ class SkipConnection(tf.keras.layers.Layer):
         self._layer = layer
 
     def call(self, inputs, **kwargs):
+        del kwargs
         outputs = self._layer(inputs)
         if self._fan_in_layer is None:
             outputs = outputs + inputs

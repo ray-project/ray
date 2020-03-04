@@ -57,42 +57,69 @@ class LookAndPush(gym.Env):
         return self._state, -1, False, {}
 
 
-# make custom version of samplebatch to handle previous
-class GRUTrXL(recurrent_tf_modelv2):
+class GRUTrXL(recurrent_tf_modelv2.RecurrentTFModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        self.model = attention.make_GRU_TrXL(
-            seq_length=model_config["seq_length"],
-            num_layers=model_config["num_layers"],
-            attn_dim=model_config["attn_dim"],
-            num_heads=model_config["num_heads"],
-            head_dim=model_config["head_dim"],
-            ff_hidden_dim=model_config["ff_hidden_dim"],
+        super(GRUTrXL, self).__init__(obs_space, action_space, num_outputs,
+                                      model_config, name)
+        self.max_seq_len = model_config["max_seq_len"]
+        self.obs_dim = obs_space.shape[0]
+        input_layer = tf.keras.layers.Input(
+            shape=(self.max_seq_len, obs_space.shape[0]),
+            name="inputs",
         )
+
+        trxl_out = attention.make_GRU_TrXL(
+            seq_length=model_config["max_seq_len"],
+            num_layers=model_config["custom_options"]["num_layers"],
+            attn_dim=model_config["custom_options"]["attn_dim"],
+            num_heads=model_config["custom_options"]["num_heads"],
+            head_dim=model_config["custom_options"]["head_dim"],
+            ff_hidden_dim=model_config["custom_options"]["ff_hidden_dim"],
+        )(input_layer)
+
         # Postprocess TrXL output with another hidden layer and compute values
-        self.logits_layer = tf.keras.layers.Dense(
+        logits = tf.keras.layers.Dense(
             self.num_outputs,
             activation=tf.keras.activations.linear,
-            name="logits")
-        self.value_layer = tf.keras.layers.Dense(
-            1, activation=None, name="values")
+            name="logits")(trxl_out)
+        values_out = tf.keras.layers.Dense(
+            1, activation=None, name="values")(trxl_out)
 
-        super(GRUTrXL, self).__init__(self, obs_space, action_space,
-                                      num_outputs, model_config, name)
+        self.trxl_model = tf.keras.Model(
+            inputs=[input_layer],
+            outputs=[logits, values_out],
+        )
+        self.register_variables(self.trxl_model.variables)
+        self.trxl_model.summary()
 
     def forward_rnn(self, inputs, state, seq_lens):
-        obs = inputs["obs"]
+        state = state[0]
+        in_shape = tf.shape(inputs)
+        state_shape = tf.concat((in_shape[:1],
+                                 [self.max_seq_len],
+                                 in_shape[2:]),
+                                axis=0)
+        state = tf.cond(tf.reduce_all(tf.shape(state) == tf.shape(inputs)),
+                        lambda: state,
+                        lambda: tf.zeros(state_shape, dtype=inputs.dtype))
 
-        if inputs.shape[1] == 1:
-            state = tf.roll(state, -1, axis=0)
-            state[:, -1] = obs  # this probably isn't supported
-            obs = state
+        # We assume state is the history of recent observations and append
+        # the current inputs to the end and only keep the most recent (up to
+        # max_seq_len). This allows us to deal with timestep-wise inference
+        # and full sequence training with the same logic.
+        state = tf.concat((state, inputs), axis=1)[:, -self.max_seq_len:]
+        logits, self._value_out = self.trxl_model(state)
 
-        self.trxl_out = self.model(obs)
-        self._value_out = self.value_layer(self.trxl_out)
+        in_T = tf.shape(inputs)[1]
+        logits = logits[:, -in_T:]
+        self._value_out = self._value_out[:, -in_T:]
 
-        return self.logits_layer(self.trxl_out), state
+        return logits, [state]
+
+    def get_initial_state(self):
+        return [np.zeros((), np.float32)]
 
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
@@ -119,5 +146,13 @@ if __name__ == "__main__":
             "vf_loss_coeff": 1e-5,
             "model": {
                 "custom_model": "trxl",
+                "max_seq_len": 20,
+                "custom_options": {
+                    "num_layers": 3,
+                    "attn_dim": 100,
+                    "num_heads": 12,
+                    "head_dim": 100,
+                    "ff_hidden_dim": 200,
+                },
             },
         })

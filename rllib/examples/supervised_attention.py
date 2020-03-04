@@ -13,9 +13,9 @@ tf = try_import_tf()
 def bit_shift_generator(seq_length, shift, batch_size):
     while True:
         values = np.array([0., 1.], dtype=np.float32)
-        seq = np.random.choice(values, (seq_length, batch_size, 1))
-        targets = np.squeeze(np.roll(seq, shift, axis=0).astype(np.int32))
-        targets[:shift, :] = 0
+        seq = np.random.choice(values, (batch_size, seq_length, 1))
+        targets = np.squeeze(np.roll(seq, shift, axis=1).astype(np.int32))
+        targets[:, :shift] = 0
         yield seq, targets
 
 
@@ -77,6 +77,6 @@ if __name__ == "__main__":
     tf.enable_eager_execution()
     train_bit_shift(
         seq_length=20,
-        num_iterations=1000,
+        num_iterations=2000,
         print_every_n=200,
     )
