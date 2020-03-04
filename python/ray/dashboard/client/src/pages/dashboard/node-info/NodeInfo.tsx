@@ -12,6 +12,7 @@ import { connect } from "react-redux";
 import { StoreState } from "../../../store";
 import Errors from "./dialogs/errors/Errors";
 import Logs from "./dialogs/logs/Logs";
+import IFrame from "./dialogs/grafana/IFrame";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
 
@@ -37,6 +38,7 @@ const mapStateToProps = (state: StoreState) => ({
 interface State {
   logDialog: { hostname: string; pid: number | null } | null;
   errorDialog: { hostname: string; pid: number | null } | null;
+  iframeDialog: { pid: number | "All"; metric: "cpu" | "memory" } | null;
 }
 
 class NodeInfo extends React.Component<
@@ -44,7 +46,8 @@ class NodeInfo extends React.Component<
 > {
   state: State = {
     logDialog: null,
-    errorDialog: null
+    errorDialog: null,
+    iframeDialog: null
   };
 
   setLogDialog = (hostname: string, pid: number | null) => {
@@ -63,9 +66,17 @@ class NodeInfo extends React.Component<
     this.setState({ errorDialog: null });
   };
 
+  setIframeDialog = (pid: number | "All", metric: "cpu" | "memory") => {
+    this.setState({ iframeDialog: { pid, metric } });
+  };
+
+  clearIframeDialog = () => {
+    this.setState({ iframeDialog: null });
+  };
+
   render() {
     const { classes, nodeInfo, rayletInfo } = this.props;
-    const { logDialog, errorDialog } = this.state;
+    const { logDialog, errorDialog, iframeDialog } = this.state;
 
     if (nodeInfo === null || rayletInfo === null) {
       return <Typography color="textSecondary">Loading...</Typography>;
@@ -148,6 +159,7 @@ class NodeInfo extends React.Component<
                 errorCounts={errorCounts[client.ip]}
                 setLogDialog={this.setLogDialog}
                 setErrorDialog={this.setErrorDialog}
+                setIframeDialog={this.setIframeDialog}
                 initialExpanded={nodeInfo.clients.length <= 1}
               />
             ))}
@@ -170,6 +182,13 @@ class NodeInfo extends React.Component<
             clearErrorDialog={this.clearErrorDialog}
             hostname={errorDialog.hostname}
             pid={errorDialog.pid}
+          />
+        )}
+        {iframeDialog !== null && (
+          <IFrame
+            clearDialog={this.clearIframeDialog}
+            pid={iframeDialog.pid}
+            metric={iframeDialog.metric}
           />
         )}
       </React.Fragment>
