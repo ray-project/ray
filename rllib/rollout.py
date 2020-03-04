@@ -344,14 +344,21 @@ def rollout(agent,
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
-        action_init = {
-            p: _flatten_action(m.action_space.sample())
-            for p, m in policy_map.items()
-        }
     else:
         env = gym.make(env_name)
         multiagent = False
+        try:
+            policy_map = {DEFAULT_POLICY_ID: agent.policy}
+        except AttributeError:
+            raise AttributeError(
+                "Agent ({}) does not have a `policy` property! This is needed "
+                "for performing (trained) agent rollouts.".format(agent))
         use_lstm = {DEFAULT_POLICY_ID: False}
+
+    action_init = {
+        p: _flatten_action(m.action_space.sample())
+        for p, m in policy_map.items()
+    }
 
     # If monitoring has been requested, manually wrap our environment with a
     # gym monitor, which is set to record every episode.

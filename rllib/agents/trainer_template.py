@@ -105,9 +105,11 @@ def build_trainer(name,
             if before_init:
                 before_init(self)
             if make_workers:
-                self.workers = make_workers(self, env_creator, policy, config)
+                self.workers = make_workers(self, env_creator, self._policy,
+                                            config)
             else:
-                self.workers = self._make_workers(env_creator, policy, config,
+                self.workers = self._make_workers(env_creator, self._policy,
+                                                  config,
                                                   self.config["num_workers"])
             self.train_pipeline = None
             self.optimizer = None
