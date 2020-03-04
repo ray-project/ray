@@ -635,9 +635,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
 
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-      job_table_data, [&promise](Status status) {
-        promise.set_value(status.ok());
-  }));
+      job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
 
   RAY_LOG(INFO) << "Gcs service init port = " << gcs_server_->GetPort();
   gcs_server_->Stop();
