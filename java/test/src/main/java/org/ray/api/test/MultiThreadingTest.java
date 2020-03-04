@@ -125,12 +125,7 @@ public class MultiThreadingTest extends BaseTest {
 
   @Test(timeOut = 3 * 60 * 1000)
   public void testInDriver() {
-    try {
-      testMultiThreading();
-    } catch (Exception e) {
-      System.out.println("-----------------------------catched exception:" + e);
-      System.exit(1);
-    }
+    testMultiThreading();
   }
 
   @Test(timeOut = 3 * 60 * 1000)
@@ -138,12 +133,7 @@ public class MultiThreadingTest extends BaseTest {
     // Single-process mode doesn't have real workers.
     TestUtils.skipTestUnderSingleProcess();
     RayObject<String> obj = Ray.call(MultiThreadingTest::testMultiThreading);
-    try {
-      Assert.assertEquals("ok", obj.get());
-    } catch (Exception e) {
-      System.out.println("-----------------------------catched exception:" + e);
-      System.exit(1);
-    }
+    Assert.assertEquals("ok", obj.get());
   }
 
   public void testGetCurrentActorId() {
