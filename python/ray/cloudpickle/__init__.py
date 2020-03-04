@@ -16,4 +16,4 @@ else:
     from ray.cloudpickle.cloudpickle import *
     FAST_CLOUDPICKLE_USED = False
 
-__version__ = '1.4.0.dev0'
+__version__ = '1.2.2.dev0'
