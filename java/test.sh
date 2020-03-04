@@ -26,7 +26,7 @@ bazel build //java:gen_maven_deps
 
 echo "Build test jar."
 bazel build //java:all_tests_deploy.jar
-# export RAY_BACKEND_LOG_LEVEL=DEBUG
+export RAY_BACKEND_LOG_LEVEL=DEBUG
 
 echo "Running tests under cluster mode."
 for i in {1..10}
