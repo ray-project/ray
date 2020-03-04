@@ -96,10 +96,10 @@ Status ServiceBasedActorInfoAccessor::AsyncRegister(
   request.mutable_actor_table_data()->CopyFrom(*data_ptr);
 
   auto operation = [this, request, actor_id,
-      callback](SequencerDoneCallback done_callback) {
+                    callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().RegisterActorInfo(
         request, [actor_id, callback, done_callback](
-            const Status &status, const rpc::RegisterActorInfoReply &reply) {
+                     const Status &status, const rpc::RegisterActorInfoReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -122,10 +122,10 @@ Status ServiceBasedActorInfoAccessor::AsyncUpdate(
   request.mutable_actor_table_data()->CopyFrom(*data_ptr);
 
   auto operation = [this, request, actor_id,
-      callback](SequencerDoneCallback done_callback) {
+                    callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().UpdateActorInfo(
         request, [actor_id, callback, done_callback](
-            const Status &status, const rpc::UpdateActorInfoReply &reply) {
+                     const Status &status, const rpc::UpdateActorInfoReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -183,10 +183,10 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
   request.mutable_checkpoint_data()->CopyFrom(*data_ptr);
 
   auto operation = [this, request, actor_id, checkpoint_id,
-      callback](SequencerDoneCallback done_callback) {
+                    callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().AddActorCheckpoint(
         request, [actor_id, checkpoint_id, callback, done_callback](
-            const Status &status, const rpc::AddActorCheckpointReply &reply) {
+                     const Status &status, const rpc::AddActorCheckpointReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -415,10 +415,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
   }
 
   auto operation = [this, request, node_id,
-      callback](SequencerDoneCallback done_callback) {
+                    callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().UpdateResources(
         request, [node_id, callback, done_callback](
-            const Status &status, const rpc::UpdateResourcesReply &reply) {
+                     const Status &status, const rpc::UpdateResourcesReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -443,10 +443,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
   }
 
   auto operation = [this, request, node_id,
-      callback](SequencerDoneCallback done_callback) {
+                    callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().DeleteResources(
         request, [node_id, callback, done_callback](
-            const Status &status, const rpc::DeleteResourcesReply &reply) {
+                     const Status &status, const rpc::DeleteResourcesReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -715,10 +715,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
   auto operation = [this, request, object_id, node_id,
-      callback](SequencerDoneCallback done_callback) {
+                    callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().AddObjectLocation(
         request, [object_id, node_id, callback, done_callback](
-            const Status &status, const rpc::AddObjectLocationReply &reply) {
+                     const Status &status, const rpc::AddObjectLocationReply &reply) {
           if (callback) {
             callback(status);
           }
@@ -742,10 +742,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
   request.set_node_id(node_id.Binary());
 
   auto operation = [this, request, object_id, node_id,
-      callback](SequencerDoneCallback done_callback) {
+                    callback](SequencerDoneCallback done_callback) {
     client_impl_->GetGcsRpcClient().RemoveObjectLocation(
         request, [object_id, node_id, callback, done_callback](
-            const Status &status, const rpc::RemoveObjectLocationReply &reply) {
+                     const Status &status, const rpc::RemoveObjectLocationReply &reply) {
           if (callback) {
             callback(status);
           }
