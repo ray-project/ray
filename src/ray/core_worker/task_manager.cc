@@ -120,13 +120,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  // if (spec.IsActorCreationTask()) {
-  //  ObjectID actor_creation_return_id =
-  //  spec.ActorDummyObject().WithTransportType(TaskTransportType::DIRECT); RAY_CHECK_OK(
-  //        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IS_ACTOR_CREATION_RETURN),
-  //        actor_creation_return_id));
-  //}
-
   ShutdownIfNeeded();
 }
 

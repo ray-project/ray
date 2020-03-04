@@ -441,16 +441,6 @@ class CoreWorkerDirectTaskReceiver {
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
-  /// The max number of concurrent calls to allow.
-  int max_concurrency_ = 1;
-  /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::shared_ptr<BoundedExecutor> pool_;
-  /// Whether this actor use asyncio for concurrency.
-  /// TODO(simon) group all asyncio related fields into a separate struct.
-  bool is_asyncio_ = false;
-  /// If use_asyncio_ is true, fiber_state_ contains the running state required
-  /// to enable continuation and work together with python asyncio.
-  std::shared_ptr<FiberState> fiber_state_;
 };
 
 }  // namespace ray
