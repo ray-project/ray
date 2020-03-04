@@ -314,7 +314,7 @@ def update_target_if_needed(trainer, fetches):
 
 def training_pipeline(workers, config):
     local_replay_buffer = ReplayBuffer(config["buffer_size"])
-    rollouts = ParallelRollouts(workers)
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     # (1) Store experiences into the local replay buffer.
     store_op = rollouts.for_each(StoreToReplayBuffer(local_replay_buffer))
