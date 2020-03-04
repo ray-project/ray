@@ -14,7 +14,7 @@ import torch.nn as nn
 
 import ray
 from ray import tune
-from ray.util.sgd.pytorch.pytorch_trainer import PyTorchTrainable
+from ray.util.sgd.torch.torch_trainer import TorchTrainable
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -60,7 +60,7 @@ def tune_example(num_replicas=1, use_gpu=False):
     }
 
     analysis = tune.run(
-        PyTorchTrainable,
+        TorchTrainable,
         num_samples=12,
         config=config,
         stop={"training_iteration": 2},
