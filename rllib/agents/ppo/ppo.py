@@ -68,7 +68,8 @@ DEFAULT_CONFIG = with_common_config({
     # the default optimizer.
     "simple_optimizer": False,
     # Use PyTorch as framework?
-    "use_pytorch": False
+    "use_pytorch": False,
+    "standardize": ["advantages"]
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -81,7 +82,7 @@ def choose_policy_optimizer(workers, config):
             num_sgd_iter=config["num_sgd_iter"],
             train_batch_size=config["train_batch_size"],
             sgd_minibatch_size=config["sgd_minibatch_size"],
-            standardize_fields=["advantages"])
+            standardize_fields=config["standardize"])
 
     return LocalMultiGPUOptimizer(
         workers,
@@ -91,7 +92,7 @@ def choose_policy_optimizer(workers, config):
         sample_batch_size=config["sample_batch_size"],
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
-        standardize_fields=["advantages"],
+        standardize_fields=config["standardize"],
         shuffle_sequences=config["shuffle_sequences"])
 
 
