@@ -561,10 +561,12 @@ def detect_fate_sharing_support_win32():
             # https://docs.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject
             JobObjectExtendedLimitInformation = 9
             JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+            JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
             buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
             buf.BasicLimitInformation.LimitFlags = (
                 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
                 | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
             infoclass = JobObjectExtendedLimitInformation
             if not kernel32.SetInformationJobObject(
