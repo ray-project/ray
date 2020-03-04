@@ -799,7 +799,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       new ActorHandle(actor_id, job_id, /*actor_cursor=*/*actor_object_id,
                       function.GetLanguage(), actor_creation_options.is_direct_call,
                       function.GetFunctionDescriptor(), extension_data));
-  RAY_CHECK(AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/true))
+  RAY_CHECK(AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/!actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
   return status;
 }
@@ -882,23 +882,12 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = actor_handle->GetActorCreationReturnId();
 
-  RAY_CHECK(reference_counter_->SetDeleteCallback(
-      actor_creation_return_id,
-      [this, actor_id, is_owner_handle](const ObjectID &object_id) {
-        // TODO(swang): Unsubscribe from the actor table.
-        // TODO(swang): Remove the actor handle entry.
-        // If we own the actor, also terminate the actor.
-        if (is_owner_handle) {
-          RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
-                        << " has gone out of scope, sending message to actor " << actor_id
-                        << " to do a clean exit.";
-          KillActor(actor_id, /*intentional=*/true);
-        }
-      }));
+  bool inserted;
+  {
+    absl::MutexLock lock(&actor_handles_mutex_);
+    inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+  }
 
-  absl::MutexLock lock(&actor_handles_mutex_);
-
-  auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   if (inserted) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
@@ -940,7 +929,23 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
+
+    RAY_CHECK(reference_counter_->SetDeleteCallback(
+        actor_creation_return_id,
+        [this, actor_id, is_owner_handle](const ObjectID &object_id) {
+          // TODO(swang): Unsubscribe from the actor table.
+          // TODO(swang): Remove the actor handle entry.
+          // If we own the actor and the actor handle is no longer in scope,
+          // terminate the actor.
+          if (is_owner_handle) {
+            RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
+                          << " has gone out of scope, sending message to actor " << actor_id
+                          << " to do a clean exit.";
+            KillActor(actor_id, /*intentional=*/true);
+          }
+        }));
   }
+
   return inserted;
 }
 
