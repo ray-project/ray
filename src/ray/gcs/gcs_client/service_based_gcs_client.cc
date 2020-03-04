@@ -31,7 +31,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   std::pair<std::string, int> address = get_address();
 
   // Connect to gcs service
-  client_call_manager_.reset(new rpc::ClientCallManager(io_service));
+  client_call_manager_.reset(new rpc::ClientCallManager(io_service, 1, true));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
                                               *client_call_manager_, get_address));
 

@@ -161,8 +161,9 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
-      : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
+  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1,
+      bool auto_reconnect_enabled = false)
+      : main_service_(main_service), num_threads_(num_threads), shutdown_(false), auto_reconnect_enabled_(auto_reconnect_enabled) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -216,23 +217,17 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    if (RayConfig::instance().rpc_auto_reconnect_enabled()) {
+    if (auto_reconnect_enabled_) {
       auto operation = [this, grpc_client, prepare_async_function, request,
           callback](ClientCallTag *tag) {
-        RAY_LOG(INFO) << "11111111111111111111111111";
         auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
-        RAY_LOG(INFO) << "22222222222222222222222222";
         call->response_reader_ =
             (grpc_client->GetStubWithReconnect().get()->*prepare_async_function)(
                 &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
-        RAY_LOG(INFO) << "33333333333333333333333333";
         call->response_reader_->StartCall();
-        RAY_LOG(INFO) << "44444444444444444444444444";
         auto new_tag = new ClientCallTag(call);
         new_tag->SetOperation(tag->GetOperation());
-        RAY_LOG(INFO) << "55555555555555555555555555";
         call->response_reader_->Finish(&call->reply_, &call->status_, (void *)new_tag);
-        RAY_LOG(INFO) << "66666666666666666666666666";
       };
       tag->SetOperation(operation);
     }
@@ -308,6 +303,9 @@ class ClientCallManager {
 
   /// Polling threads to check the completion queue.
   std::vector<std::thread> polling_threads_;
+
+  /// Whether to enable auto reconnect rpc service.
+  bool auto_reconnect_enabled_;
 };
 
 }  // namespace rpc

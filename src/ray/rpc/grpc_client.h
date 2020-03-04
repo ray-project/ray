@@ -39,32 +39,28 @@ class GrpcClient {
  public:
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager)
       : client_call_manager_(call_manager) {
-    grpc::ChannelArguments argument;
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument_.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument_.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument_.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                  grpc::InsecureChannelCredentials(), argument);
+                                  grpc::InsecureChannelCredentials(), argument_);
     stub_ = GrpcService::NewStub(channel);
   }
 
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
-             const std::function<std::pair<std::string, int>()> &get_address)
+             const std::function<std::pair<std::string, int>()> &get_server_address)
       : client_call_manager_(call_manager) {
-    grpc::ChannelArguments argument;
-    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
-    // this configurable, or selectively set it for known local connections only.
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument_.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument_.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument_.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                  grpc::InsecureChannelCredentials(), argument);
+                                  grpc::InsecureChannelCredentials(), argument_);
     stub_ = GrpcService::NewStub(channel);
-    get_address_ = get_address;
+    get_server_address_ = get_server_address;
   }
 
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager,
@@ -72,14 +68,13 @@ class GrpcClient {
       : client_call_manager_(call_manager) {
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
-    grpc::ChannelArguments argument;
-    argument.SetResourceQuota(quota);
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument_.SetResourceQuota(quota);
+    argument_.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument_.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument_.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                  grpc::InsecureChannelCredentials(), argument);
+                                  grpc::InsecureChannelCredentials(), argument_);
     stub_ = GrpcService::NewStub(channel);
   }
 
@@ -108,32 +103,23 @@ class GrpcClient {
   }
 
   std::unique_ptr<typename GrpcService::Stub> &GetStubWithReconnect() {
-    RAY_LOG(INFO) << "GetStub GetStub GetStub GetStub GetStub GetStub GetStub";
-    std::pair<std::string, int> address_pair = get_address_();
-    std::string address = address_pair.first;
-    int port = address_pair.second;
-    RAY_LOG(INFO) << "GetStub address = " << address << ", port = " << port;
-
-    grpc::ChannelArguments argument;
-    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
-    // this configurable, or selectively set it for known local connections only.
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    std::pair<std::string, int> address = get_server_address_();
+    RAY_LOG(INFO) << "GetStub address = " << address.first << ", port = " << address.second;
     std::shared_ptr<grpc::Channel> channel =
-        grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                  grpc::InsecureChannelCredentials(), argument);
+        grpc::CreateCustomChannel(address.first + ":" + std::to_string(address.second),
+                                  grpc::InsecureChannelCredentials(), argument_);
     stub_ = GrpcService::NewStub(channel);
-    RAY_LOG(INFO) << "Finish GetStub......................";
     return stub_;
   }
 
  private:
+  grpc::ChannelArguments argument_;
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
 
-  std::function<std::pair<std::string, int>()> get_address_;
+  /// This function is used to get rpc server address. Called only when reconnecting RPC server.
+  std::function<std::pair<std::string, int>()> get_server_address_;
 };
 
 }  // namespace rpc
