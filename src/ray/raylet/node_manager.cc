@@ -1151,7 +1151,7 @@ void NodeManager::ProcessDisconnectClientMessage(
   RAY_LOG(WARNING) << ">> ProcessDisconnectClientMessage, intentional = " << intentional_disconnect;    
   RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> GetRegisteredWorker " << PrintWorkerPool();
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-  RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> GetRegisteredWorker result = " << worker->WorkerId();
+  // RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> GetRegisteredWorker result = " << worker->WorkerId();
   bool is_worker = false, is_driver = false;
   if (worker) {
     // The client is a worker.
@@ -2171,15 +2171,20 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
   RAY_LOG(WARNING) << "xxxx HandleDirectCallTaskBlocked = " << worker;
   if (new_scheduler_enabled_) {
+    RAY_LOG(WARNING) << "===x HandleDirectCallTaskBlocked 1 ";
     if (!worker) {
+      RAY_LOG(WARNING) << "===x HandleDirectCallTaskBlocked 2 ";
       return;
     }
+    RAY_LOG(WARNING) << "===x HandleDirectCallTaskBlocked 3 " << worker;
     std::vector<double> cpu_instances = worker->GetAllocatedInstances().GetCPUInstances();
-    RAY_LOG(WARNING) << "====x HandleDirectCallTaskBlocked -> AddCPUResourceInstances ====";
-    std::vector<double> borrowed_cpu_instances = 
-        new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
-    worker->SetBorrowedCPUInstances(borrowed_cpu_instances);   
-    worker->MarkBlocked();
+    if (cpu_instances.size() > 0) {
+    RAY_LOG(WARNING) << "===x HandleDirectCallTaskBlocked -> AddCPUResourceInstances ====";
+      std::vector<double> borrowed_cpu_instances = 
+          new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
+      worker->SetBorrowedCPUInstances(borrowed_cpu_instances);   
+      worker->MarkBlocked();
+    }
     NewSchedulerSchedulePendingTasks();
     return;
   }
@@ -2202,9 +2207,11 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     }
     std::vector<double> cpu_instances = worker->GetAllocatedInstances().GetCPUInstances();
     RAY_LOG(WARNING) << "====x HandleDirectCallTaskUnblocked -> SubtractCPUResourceInstances/AddCPUResourceInstances ====";
-    new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances); 
-    new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());   
-    worker->MarkUnblocked();
+    if (cpu_instances.size() > 0) {
+      new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances); 
+      new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());   
+      worker->MarkUnblocked();
+    }
     NewSchedulerSchedulePendingTasks();
     return;
   }

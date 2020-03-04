@@ -72,7 +72,13 @@ class TaskResourceInstances {
   /// For each resource of this request aggregate its instances.
   TaskRequest ToTaskRequest();
   /// Get CPU instances only.
-  std::vector<double> GetCPUInstances() { return this->predefined_resources[CPU]; };
+  std::vector<double> GetCPUInstances() {  
+    if (this->predefined_resources.size()) {
+      return this->predefined_resources[CPU]; 
+    } else {
+      return {};
+    }
+  };
   /// Check whether there are no resource instances.
   bool IsEmpty();
   /// Returns human-readable string for these resources.
