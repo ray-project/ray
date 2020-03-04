@@ -998,7 +998,9 @@ cdef class CoreWorker:
             const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
-            CObjectID c_outer_object_id = outer_object_id.native() if outer_object_id else CObjectID.Nil()
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
         c_owner_address.ParseFromString(serialized_owner_address)

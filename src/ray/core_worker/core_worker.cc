@@ -799,7 +799,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       new ActorHandle(actor_id, job_id, /*actor_cursor=*/*actor_object_id,
                       function.GetLanguage(), actor_creation_options.is_direct_call,
                       function.GetFunctionDescriptor(), extension_data));
-  RAY_CHECK(AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/!actor_creation_options.is_detached))
+  RAY_CHECK(AddActorHandle(std::move(actor_handle),
+                           /*is_owner_handle=*/!actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
   return status;
 }
@@ -880,7 +881,7 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
 bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                 bool is_owner_handle) {
   const auto &actor_id = actor_handle->GetActorID();
-  const auto actor_creation_return_id = actor_handle->GetActorCreationReturnId();
+  const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
   bool inserted;
   {
@@ -939,8 +940,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
           // terminate the actor.
           if (is_owner_handle) {
             RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
-                          << " has gone out of scope, sending message to actor " << actor_id
-                          << " to do a clean exit.";
+                          << " has gone out of scope, sending message to actor "
+                          << actor_id << " to do a clean exit.";
             KillActor(actor_id, /*intentional=*/true);
           }
         }));

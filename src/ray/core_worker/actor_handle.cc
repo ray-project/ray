@@ -11,7 +11,6 @@ ray::rpc::ActorHandle CreateInnerActorHandle(
     const std::string &extension_data) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
-  inner.set_actor_creation_return_id(initial_cursor.Binary());
   inner.set_creation_job_id(job_id.Data(), job_id.Size());
   inner.set_actor_language(actor_language);
   *inner.mutable_actor_creation_task_function_descriptor() =

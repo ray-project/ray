@@ -13,8 +13,6 @@ message ActorHandle {
   // ID of the actor.
   bytes actor_id = 1;
 
-  bytes actor_creation_return_id = 2;
-
   // ID of the job that created the actor (it is possible that the handle
   // exists on a job with a different job ID).
   bytes creation_job_id = 3;

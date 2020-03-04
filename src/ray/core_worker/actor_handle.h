@@ -15,10 +15,7 @@ namespace ray {
 class ActorHandle {
  public:
   ActorHandle(ray::rpc::ActorHandle inner)
-      : inner_(inner),
-        actor_creation_return_id_(
-            ObjectID::FromBinary(inner_.actor_creation_return_id())),
-        actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
+      : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id, const JobID &job_id,
@@ -31,8 +28,6 @@ class ActorHandle {
   ActorHandle(const std::string &serialized);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
-
-  ObjectID GetActorCreationReturnId() const { return actor_creation_return_id_; };
 
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
@@ -81,8 +76,6 @@ class ActorHandle {
   /// The actor's state (alive or dead). This defaults to ALIVE. Once marked
   /// DEAD, the actor handle can never go back to being ALIVE.
   rpc::ActorTableData::ActorState state_ GUARDED_BY(mutex_) = rpc::ActorTableData::ALIVE;
-
-  const ObjectID actor_creation_return_id_ GUARDED_BY(mutex_);
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter

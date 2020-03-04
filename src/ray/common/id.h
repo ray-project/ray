@@ -349,6 +349,14 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return A random object id.
   static ObjectID FromRandom();
 
+  /// Compute the object ID that is used to track an actor's lifetime. This
+  /// object does not actually have a value; it is just used for counting
+  /// references (handles) to the actor.
+  ///
+  /// \param actor_id The ID of the actor to track.
+  /// \return The computed object ID.
+  static ObjectID ForActorHandle(const ActorID &actor_id);
+
  private:
   /// A helper method to generate an ObjectID.
   static ObjectID GenerateObjectId(const std::string &task_id_binary,
