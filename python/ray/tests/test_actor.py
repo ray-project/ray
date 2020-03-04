@@ -537,6 +537,7 @@ def test_distributed_actor_handle_deletion(ray_start_regular):
     class Actor:
         def method(self):
             return 1
+
         def getpid(self):
             return os.getpid()
 
@@ -555,7 +556,8 @@ def test_distributed_actor_handle_deletion(ray_start_regular):
     # The original actor handle does not go out of scope due to a memory leak,
     # so we need to add this call to gc.collect().
     # See https://github.com/ray-project/ray/issues/7326.
-    import gc; gc.collect()
+    import gc
+    gc.collect()
 
     # Once the task finishes, the actor process should get killed.
     ray.get(signal.send.remote())

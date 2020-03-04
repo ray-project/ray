@@ -35,7 +35,8 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     }
   }
   if (spec.IsActorTask()) {
-    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
     task_deps.push_back(actor_creation_return_id);
   }
   reference_counter_->UpdateSubmittedTaskReferences(task_deps);
@@ -119,10 +120,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  //if (spec.IsActorCreationTask()) {
-  //  ObjectID actor_creation_return_id = spec.ActorDummyObject().WithTransportType(TaskTransportType::DIRECT);
-  //  RAY_CHECK_OK(
-  //        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IS_ACTOR_CREATION_RETURN), actor_creation_return_id));
+  // if (spec.IsActorCreationTask()) {
+  //  ObjectID actor_creation_return_id =
+  //  spec.ActorDummyObject().WithTransportType(TaskTransportType::DIRECT); RAY_CHECK_OK(
+  //        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IS_ACTOR_CREATION_RETURN),
+  //        actor_creation_return_id));
   //}
 
   ShutdownIfNeeded();
@@ -222,7 +224,8 @@ void TaskManager::RemoveFinishedTaskReferences(
     }
   }
   if (spec.IsActorTask()) {
-    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
     plasma_dependencies.push_back(actor_creation_return_id);
   }
 

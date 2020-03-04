@@ -15,7 +15,10 @@ namespace ray {
 class ActorHandle {
  public:
   ActorHandle(ray::rpc::ActorHandle inner)
-      : inner_(inner), actor_creation_return_id_(ObjectID::FromBinary(inner_.actor_creation_return_id())), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
+      : inner_(inner),
+        actor_creation_return_id_(
+            ObjectID::FromBinary(inner_.actor_creation_return_id())),
+        actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id, const JobID &job_id,

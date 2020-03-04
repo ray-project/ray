@@ -759,8 +759,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
-                               ActorID *return_actor_id,
-                               ObjectID *actor_object_id) {
+                               ActorID *return_actor_id, ObjectID *actor_object_id) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -878,19 +877,24 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
   return status;
 }
 
-bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle) {
+bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                bool is_owner_handle) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = actor_handle->GetActorCreationReturnId();
 
-  RAY_CHECK(reference_counter_->SetDeleteCallback(actor_creation_return_id, [this, actor_id, is_owner_handle](const ObjectID &object_id) {
+  RAY_CHECK(reference_counter_->SetDeleteCallback(
+      actor_creation_return_id,
+      [this, actor_id, is_owner_handle](const ObjectID &object_id) {
         // TODO(swang): Unsubscribe from the actor table.
         // TODO(swang): Remove the actor handle entry.
         // If we own the actor, also terminate the actor.
         if (is_owner_handle) {
-          RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id << " has gone out of scope, sending message to actor " << actor_id << " to do a clean exit.";
+          RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
+                        << " has gone out of scope, sending message to actor " << actor_id
+                        << " to do a clean exit.";
           KillActor(actor_id, /*intentional=*/true);
         }
-        }));
+      }));
 
   absl::MutexLock lock(&actor_handles_mutex_);
 

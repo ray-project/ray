@@ -780,7 +780,8 @@ class ActorHandle:
 
         if hasattr(worker, "core_worker"):
             # Non-local mode
-            state = worker.core_worker.serialize_actor_handle(self._ray_actor_id)
+            state = worker.core_worker.serialize_actor_handle(
+                self._ray_actor_id)
             state = (state, self._ray_actor_creation_return_id)
         else:
             # Local mode

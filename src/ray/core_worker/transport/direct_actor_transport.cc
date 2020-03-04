@@ -8,7 +8,8 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id, bool force_kill) {
+Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
+                                                     bool force_kill) {
   absl::MutexLock lock(&mu_);
   pending_force_kills_[actor_id] = force_kill;
   auto it = rpc_clients_.find(actor_id);

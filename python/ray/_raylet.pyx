@@ -848,7 +848,8 @@ cdef class CoreWorker:
                     &c_actor_id,
                     &c_actor_creation_return_id))
 
-            return ActorID(c_actor_id.Binary()), ObjectID(c_actor_creation_return_id.Binary())
+            return (ActorID(c_actor_id.Binary()),
+                    ObjectID(c_actor_creation_return_id.Binary()))
 
     def submit_actor_task(self,
                           Language language,
@@ -918,7 +919,8 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
-            ObjectID actor_creation_return_id):
+                                              ObjectID
+                                              actor_creation_return_id):
         cdef CActorHandle* c_actor_handle
         worker = ray.worker.get_global_worker()
         worker.check_connected()
