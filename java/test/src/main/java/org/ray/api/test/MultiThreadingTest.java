@@ -26,7 +26,7 @@ public class MultiThreadingTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MultiThreadingTest.class);
 
-  private static final int LOOP_COUNTER = 100;
+  private static final int LOOP_COUNTER = 10;
   private static final int NUM_THREADS = 20;
 
   @RayRemote
