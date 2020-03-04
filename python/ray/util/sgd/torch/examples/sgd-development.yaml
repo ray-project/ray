@@ -3,9 +3,9 @@ cluster_name: sgd-pytorch
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 0
-initial_workers: 0
-max_workers: 0
+min_workers: 1
+initial_workers: 1
+max_workers: 1
 
 target_utilization_fraction: 0.9
 
@@ -19,6 +19,7 @@ idle_timeout_minutes: 10
 provider:
     type: aws
     region: us-east-1
+    availability_zone: us-east-1c
 
 # How Ray will authenticate with newly launched nodes.
 auth:

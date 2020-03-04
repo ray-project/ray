@@ -28,7 +28,7 @@ parser.add_argument(
     "--num-warmup-batches",
     type=int,
     default=10,
-    help="number of warm-up batches that don\"t count towards benchmark")
+    help="number of warm-up batches that don't count towards benchmark")
 parser.add_argument(
     "--num-batches-per-iter",
     type=int,
@@ -70,7 +70,7 @@ class Training(TrainingOperator):
         target = torch.LongTensor(args.batch_size).random_() % 1000
         if args.cuda:
             data, target = data.cuda(), target.cuda()
-
+        # print(self.model)
         def benchmark():
             self.optimizer.zero_grad()
             output = self.model(data)
@@ -78,9 +78,9 @@ class Training(TrainingOperator):
             loss.backward()
             self.optimizer.step()
 
-        print("Running warmup...")
+        # print("Running warmup...")
         timeit.timeit(benchmark, number=args.num_warmup_batches)
-        print("Running benchmark...")
+        # print("Running benchmark...")
         time = timeit.timeit(benchmark, number=args.num_batches_per_iter)
         img_sec = args.batch_size * args.num_batches_per_iter / time
         return {"img_sec": img_sec}
@@ -102,7 +102,7 @@ trainer = TorchTrainer(
 img_secs = []
 for x in range(args.num_iters):
     result = trainer.train()
-    print(result)
+    # print(result)
     img_sec = result["img_sec"]
     print("Iter #%d: %.1f img/sec per %s" % (x, img_sec, device))
     img_secs.append(img_sec)
