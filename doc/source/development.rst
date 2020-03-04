@@ -44,7 +44,7 @@ Using a local repository for dependencies
 If you'd like to build Ray with custom dependencies (for example, with a
 different version of Cython), you can modify your ``.bzl`` file as follows:
 
-.. code-block:: text
+.. code-block:: python
 
   http_archive(
     name = "cython",
