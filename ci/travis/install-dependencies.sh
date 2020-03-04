@@ -49,7 +49,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   "${ROOT_DIR}/install-strace.sh" || true
   pip install scipy tensorflow==$tf_version \
-    cython==0.29.0 gym \
+    cython==0.29.0 gym dm-tree \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
@@ -60,7 +60,7 @@ elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install scipy tensorflow==$tf_version \
-    cython==0.29.0 gym \
+    cython==0.29.0 gym dm-tree \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
@@ -95,7 +95,7 @@ fi
 if [[ "$RLLIB_TESTING" == "1" ]]; then
   pip install tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    atari_py dm-tree gym[atari] lz4 smart_open
+    atari_py gym[atari] lz4 smart_open
 fi
 
 # Additional streaming dependencies.
