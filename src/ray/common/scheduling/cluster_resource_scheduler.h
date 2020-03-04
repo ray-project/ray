@@ -159,6 +159,9 @@ class ClusterResourceScheduler {
       const std::string &local_node_id,
       const std::unordered_map<std::string, double> &local_node_resources);
 
+  // Mapping from predefined resource indexes to resource strings
+  std::string GetResourceNameFromResourceIdx(int64_t res_idx);
+
   /// Add a new node or overwrite the resources of an existing node.
   ///
   /// \param node_id: Node ID.

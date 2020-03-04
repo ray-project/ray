@@ -1565,7 +1565,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
         << spec.TaskId() << ", spec.JobId() = " << spec.JobId(); 
 
     worker->AssignTaskId(spec.TaskId()); // XXX
-    worker->SetOwnerAddress(spec.CallerAddress());
     worker->AssignJobId(spec.JobId());
     worker->SetAssignedTask(task.second);
 
@@ -1632,23 +1631,7 @@ void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   } else {
     tasks_to_dispatch_.push_back(work);
   }
-  /*
-    ray::Status status = object_manager_.Wait(
-        object_ids, -1, object_ids.size(), false,
-        [this, work](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
-          RAY_CHECK(remaining.empty());
-          tasks_to_dispatch_.push_back(work);
-          RAY_LOG(WARNING) << "====x WaitForTaskArgsRequests -> DispatchScheduledTasksToWorkers ===="; 
-          DispatchScheduledTasksToWorkers();
-        });
-    RAY_CHECK_OK(status);
-  } else {
-    tasks_to_dispatch_.push_back(work);
-  }
-  */
 };
-
-
 
 
 void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
@@ -2179,7 +2162,7 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
     RAY_LOG(WARNING) << "===x HandleDirectCallTaskBlocked 3 " << worker;
     std::vector<double> cpu_instances = worker->GetAllocatedInstances().GetCPUInstances();
     if (cpu_instances.size() > 0) {
-    RAY_LOG(WARNING) << "===x HandleDirectCallTaskBlocked -> AddCPUResourceInstances ====";
+      RAY_LOG(WARNING) << "===x HandleDirectCallTaskBlocked -> AddCPUResourceInstances ====";
       std::vector<double> borrowed_cpu_instances = 
           new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
       worker->SetBorrowedCPUInstances(borrowed_cpu_instances);   
