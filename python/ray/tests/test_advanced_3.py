@@ -527,8 +527,8 @@ def test_put_pins_object(ray_start_object_store_memory):
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(ray.ObjectID(x_binary))
+    assert not ray.worker.global_worker.core_worker.object_exists(
+        ray.ObjectID(x_binary))
 
     # weakref put
     y_id = ray.put("HI", weakref=True)

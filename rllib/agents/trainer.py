@@ -594,6 +594,9 @@ class Trainer(Trainable):
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
+                # Assert that user has not unset "in_evaluation".
+                assert "in_evaluation" not in extra_config or \
+                    extra_config["in_evaluation"] is True
                 extra_config.update({
                     "batch_mode": "complete_episodes",
                     "batch_steps": 1,
