@@ -1,6 +1,6 @@
 const base =
   process.env.NODE_ENV === "development"
-    ? "http://localhost:8265"
+    ? "http://localhost:8266"
     : window.location.origin;
 
 // TODO(mitchellstern): Add JSON schema validation for the responses.
@@ -238,3 +238,21 @@ export interface TuneAvailabilityResponse {
 
 export const getTuneAvailability = () =>
   get<TuneAvailabilityResponse>("/api/tune_availability", {});
+
+export interface IsHostedResponse {
+  is_hosted: boolean
+}
+
+export const getIsHosted = () =>
+  get<IsHostedResponse>("/api/is_hosted", {});
+
+export interface GetGrafanaIframeResponse {
+  frame_html: string
+}
+export const getGrafanaIframe = (
+  pid: number | "All",
+  metric: "cpu" | "memory"
+) => get<GetGrafanaIframeResponse>("/api/grafana_iframe", {
+    pid: pid,
+    metric: metric
+  })

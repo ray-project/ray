@@ -1,5 +1,6 @@
 import React from "react";
 import UsageBar from "../../../../common/UsageBar";
+import SpanButton from "../../../../common/SpanButton";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
@@ -39,17 +40,30 @@ export const ClusterCPU: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeCPU: NodeFeatureComponent = ({ node }) => (
-  <div style={{ minWidth: 60 }}>
-    <UsageBar percent={node.cpu} text={`${node.cpu.toFixed(1)}%`} />
-  </div>
+type setIframeDialogType = (
+  pid: number | "All",
+  metric: "cpu" | "memory"
+) => void;
+
+export const makeNodeCPU = (
+  setIframeDialog: setIframeDialogType
+): NodeFeatureComponent => ({ node }) => (
+  <SpanButton onClick={() => setIframeDialog("All", "cpu")}>
+    <div style={{ minWidth: 60 }}>
+      <UsageBar percent={node.cpu} text={`${node.cpu.toFixed(1)}%`} />
+    </div>
+  </SpanButton>
 );
 
-export const WorkerCPU: WorkerFeatureComponent = ({ worker }) => (
-  <div style={{ minWidth: 60 }}>
-    <UsageBar
-      percent={worker.cpu_percent}
-      text={`${worker.cpu_percent.toFixed(1)}%`}
-    />
-  </div>
+export const makeWorkerCPU = (
+  setIframeDialog: setIframeDialogType
+): WorkerFeatureComponent => ({ worker }) => (
+  <SpanButton onClick={() => setIframeDialog(worker.pid, "cpu")}>
+    <div style={{ minWidth: 60 }}>
+      <UsageBar
+        percent={worker.cpu_percent}
+        text={`${worker.cpu_percent.toFixed(1)}%`}
+      />
+    </div>
+  </SpanButton>
 );

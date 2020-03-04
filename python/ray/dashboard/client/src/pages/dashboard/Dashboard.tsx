@@ -6,7 +6,12 @@ import Tabs from "@material-ui/core/Tabs";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { connect } from "react-redux";
-import { getNodeInfo, getRayletInfo, getTuneAvailability } from "../../api";
+import {
+  getNodeInfo,
+  getRayletInfo,
+  getTuneAvailability,
+  getIsHosted
+} from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
@@ -44,17 +49,25 @@ class Dashboard extends React.Component<
     typeof mapDispatchToProps
 > {
   timeoutId = 0;
+  state = { isHosted: false };
 
   refreshNodeAndRayletInfo = async () => {
     try {
-      const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
+      const [
+        nodeInfo,
+        rayletInfo,
+        tuneAvailability,
+        isHosted
+      ] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
-        getTuneAvailability()
+        getTuneAvailability(),
+        getIsHosted()
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
       this.props.setTuneAvailability({ tuneAvailability });
       this.props.setError(null);
+      this.setState({ isHosted: isHosted.is_hosted });
     } catch (error) {
       this.props.setError(error.toString());
     } finally {
@@ -91,7 +104,9 @@ class Dashboard extends React.Component<
     const SelectedComponent = tabs[tab].component;
     return (
       <div className={classes.root}>
-        <Typography variant="h5">Ray Dashboard</Typography>
+        <Typography variant="h5">
+          {this.state.isHosted ? "Anyscale Hosted Dashboard" : "Ray Dashboard"}
+        </Typography>
         <Tabs
           className={classes.tabs}
           indicatorColor="primary"

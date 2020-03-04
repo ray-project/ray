@@ -23,25 +23,21 @@ class DashboardClient:
         self.exporter = Exporter(
             self.auth_info.get("ingestor_url"),
             self.auth_info.get("access_token"), dashboard_controller)
+        self.hosted_dashboard_url = self.auth_info["dashboard_url"]
 
     def _authorize(self):
         resp = requests.get(self.auth_url, timeout=self.timeout)
         status = resp.status_code
         json_response = resp.json()
-        return status, json_response["ingestor_url"], json_response[
-            "access_token"]
+        return status, json_response
 
     def _connect(self):
-        status, ingestor_url, access_token = self._authorize()
+        status, json_response = self._authorize()
         if status != 200:
             raise ConnectionError(
                 "Failed to authorize to hosted dashbaord server.")
 
-        auth_info = {
-            "ingestor_url": ingestor_url,
-            "access_token": access_token
-        }
-        return auth_info
+        return json_response
 
     def start_exporting_metrics(self):
         """Run an exporter thread to export metrics"""

@@ -17,6 +17,7 @@ class HostedDashboardController(BaseDashboardController):
         self.redis_client = redis.StrictRedis(host="127.0.0.1", port=6379)
         self.node_stats = HostedNodeStatsImporter(self.redis_client)
         self.raylet_stats = HostedRayletStatsImporter(self.redis_client)
+        self.is_hosted = True
 
     def get_node_info(self):
         return self.node_stats.get_node_stats()
