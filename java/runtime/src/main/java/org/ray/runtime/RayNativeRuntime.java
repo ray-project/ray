@@ -136,11 +136,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(RayActor<?> actor) {
+  public void killActor(RayActor<?> actor, boolean noReconstruction) {
     if (!((NativeRayActor) actor).isDirectCallActor()) {
       throw new UnsupportedOperationException("Only direct call actors can be killed.");
     }
-    nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes());
+    nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes(), noReconstruction);
   }
 
   @Override
@@ -204,5 +204,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetResource(long conn, String resourceName, double capacity,
       byte[] nodeId);
 
-  private static native void nativeKillActor(long nativeCoreWorkerPointer, byte[] actorId);
+  private static native void nativeKillActor(long nativeCoreWorkerPointer, byte[] actorId,
+      boolean noReconstruction);
 }

@@ -186,9 +186,10 @@ public final class Ray extends RayCall {
    * fail and the actor to exit in the same way as if it crashed.
    *
    * @param actor The actor to be killed.
+   * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
    */
-  public static void killActor(RayActor<?> actor) {
-    runtime.killActor(actor);
+  public static void killActor(RayActor<?> actor, boolean noReconstruction) {
+    runtime.killActor(actor, noReconstruction);
   }
 
   /**

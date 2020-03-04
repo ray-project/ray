@@ -59,12 +59,10 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
 /*
  * Class:     org_ray_runtime_RayNativeRuntime
  * Method:    nativeKillActor
- * Signature: (J[B)V
+ * Signature: (J[BZ)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(JNIEnv *,
-                                                                             jclass,
-                                                                             jlong,
-                                                                             jbyteArray);
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(
+    JNIEnv *, jclass, jlong, jbyteArray, jboolean);
 
 #ifdef __cplusplus
 }

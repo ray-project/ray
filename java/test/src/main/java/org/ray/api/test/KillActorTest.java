@@ -1,7 +1,7 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -30,6 +30,10 @@ public class KillActorTest extends BaseTest {
   @RayRemote
   public static class HangActor {
 
+    public String ping() {
+      return "pong";
+    }
+
     public boolean hang() throws InterruptedException {
       while (true) {
         Thread.sleep(1000);
@@ -40,21 +44,21 @@ public class KillActorTest extends BaseTest {
   @RayRemote
   public static class KillerActor {
 
-    public void kill(RayActor<?> actor) {
-      Ray.killActor(actor);
+    public void kill(RayActor<?> actor, boolean noReconstruction) {
+      Ray.killActor(actor, noReconstruction);
     }
   }
 
-  private static void localKill(RayActor<?> actor) {
-    Ray.killActor(actor);
+  private static void localKill(RayActor<?> actor, boolean noReconstruction) {
+    Ray.killActor(actor, noReconstruction);
   }
 
-  private static void remoteKill(RayActor<?> actor) {
+  private static void remoteKill(RayActor<?> actor, boolean noReconstruction) {
     RayActor<KillerActor> killer = Ray.createActor(KillerActor::new);
-    Ray.call(KillerActor::kill, killer, actor);
+    Ray.call(KillerActor::kill, killer, actor, noReconstruction);
   }
 
-  private void testKillActor(Consumer<RayActor<?>> kill) {
+  private void testKillActor(BiConsumer<RayActor<?>, Boolean> kill, boolean noReconstruction) {
     TestUtils.skipTestUnderSingleProcess();
     TestUtils.skipTestIfDirectActorCallDisabled();
 
@@ -66,19 +70,25 @@ public class KillActorTest extends BaseTest {
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());
 
     // Kill the actor
-    kill.accept(actor);
+    kill.accept(actor, noReconstruction);
     // The get operation will fail with RayActorException
     Assert.expectThrows(RayActorException.class, result::get);
 
-    // The actor should not be reconstructed.
-    Assert.expectThrows(RayActorException.class, () -> Ray.call(HangActor::hang, actor).get());
+    if (noReconstruction) {
+      // The actor should not be reconstructed.
+      Assert.expectThrows(RayActorException.class, () -> Ray.call(HangActor::hang, actor).get());
+    } else {
+      Assert.assertEquals(Ray.call(HangActor::ping, actor).get(), "pong");
+    }
   }
 
   public void testLocalKill() {
-    testKillActor(KillActorTest::localKill);
+    testKillActor(KillActorTest::localKill, false);
+    testKillActor(KillActorTest::localKill, true);
   }
 
   public void testRemoteKill() {
-    testKillActor(KillActorTest::remoteKill);
+    testKillActor(KillActorTest::remoteKill, false);
+    testKillActor(KillActorTest::remoteKill, true);
   }
 }

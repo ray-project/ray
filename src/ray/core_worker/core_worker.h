@@ -380,8 +380,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] no_reconstruction If set to true, the killed actor will not be
+  /// reconstructed anymore.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id);
+  Status KillActor(const ActorID &actor_id, bool no_reconstruction);
 
   /// Add an actor handle from a serialized string.
   ///

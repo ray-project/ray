@@ -1661,7 +1661,7 @@ def kill(actor):
                          "Got: {}.".format(type(actor)))
 
     worker = ray.worker.get_global_worker()
-    worker.core_worker.kill_actor(actor._ray_actor_id)
+    worker.core_worker.kill_actor(actor._ray_actor_id, False)
 
 
 def _mode(worker=global_worker):

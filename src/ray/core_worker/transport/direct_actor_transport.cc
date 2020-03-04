@@ -8,9 +8,13 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
+Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
+                                                     bool no_reconstruction) {
   absl::MutexLock lock(&mu_);
-  pending_force_kills_.insert(actor_id);
+  rpc::KillActorRequest request;
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_no_reconstruction(no_reconstruction);
+  pending_force_kills_.emplace(actor_id, request);
   auto it = rpc_clients_.find(actor_id);
   if (it == rpc_clients_.end()) {
     // Actor is not yet created, or is being reconstructed, cache the request
@@ -126,11 +130,10 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   RAY_CHECK(client);
   // Check if there is a pending force kill. If there is, send it and disconnect the
   // client.
-  if (pending_force_kills_.find(actor_id) != pending_force_kills_.end()) {
-    rpc::KillActorRequest request;
-    request.set_intended_actor_id(actor_id.Binary());
+  auto kill_request_it = pending_force_kills_.find(actor_id);
+  if (kill_request_it != pending_force_kills_.end()) {
     RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
-    RAY_CHECK_OK(client->KillActor(request, nullptr));
+    RAY_CHECK_OK(client->KillActor(kill_request_it->second, nullptr));
     pending_force_kills_.erase(actor_id);
   }
 

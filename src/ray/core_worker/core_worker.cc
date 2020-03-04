@@ -848,11 +848,11 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
-Status CoreWorker::KillActor(const ActorID &actor_id) {
+Status CoreWorker::KillActor(const ActorID &actor_id, bool no_reconstruction) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
   RAY_CHECK(actor_handle->IsDirectCallActor());
-  return direct_actor_submitter_->KillActor(actor_id);
+  return direct_actor_submitter_->KillActor(actor_id, no_reconstruction);
 }
 
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
@@ -1326,7 +1326,9 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     return;
   }
   RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
-  RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+  if (request.no_reconstruction()) {
+    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+  }
   if (log_dir_ != "") {
     RayLog::ShutDownRayLog();
   }
