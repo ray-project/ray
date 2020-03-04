@@ -114,7 +114,8 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   /**
-   * Build `Ray.call`, `Ray.createActor` and `actor.call` methods with the given number of parameters.
+   * Build `Ray.call`, `Ray.createActor` and `actor.call` methods with
+   * the given number of parameters.
    *
    * @param numParameters the number of parameters
    * @param forActor Build `actor.call` when true, otherwise build `Ray.call`.
