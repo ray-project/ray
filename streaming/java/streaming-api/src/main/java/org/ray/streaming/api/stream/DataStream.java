@@ -36,11 +36,10 @@ public class DataStream<T> extends Stream<T> {
   }
 
   /**
-   * @param input parent data stream
-   * @param streamOperator operator for deserialize data from upstream python stream
+   * Create a reference of referenced stream
    */
-  public DataStream(PythonDataStream input, StreamOperator streamOperator) {
-    super(input, streamOperator);
+  public DataStream(PythonDataStream referencedStream) {
+    super(referencedStream);
   }
 
   /**
@@ -123,7 +122,7 @@ public class DataStream<T> extends Stream<T> {
    * @return This stream.
    */
   public DataStream<T> broadcast() {
-    this.partition = new BroadcastPartition<>();
+    super.setPartition(new BroadcastPartition<>());
     return this;
   }
 
@@ -134,8 +133,12 @@ public class DataStream<T> extends Stream<T> {
    * @return This stream.
    */
   public DataStream<T> partitionBy(Partition<T> partition) {
-    this.partition = partition;
+    super.setPartition(partition);
     return this;
+  }
+
+  public PythonDataStream asPythonStream() {
+    return new PythonDataStream(this);
   }
 
   /**
@@ -145,7 +148,7 @@ public class DataStream<T> extends Stream<T> {
    * @return This stream.
    */
   public DataStream<T> setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 

@@ -12,11 +12,12 @@ import org.ray.streaming.operator.impl.ReduceOperator;
  * @param <K> Type of the key.
  * @param <T> Type of the data.
  */
+@SuppressWarnings("unchecked")
 public class KeyDataStream<K, T> extends DataStream<T> {
 
   public KeyDataStream(DataStream<T> input, StreamOperator streamOperator) {
     super(input, streamOperator);
-    this.partition = new KeyPartition();
+    super.setPartition(new KeyPartition());
   }
 
   /**
@@ -42,7 +43,7 @@ public class KeyDataStream<K, T> extends DataStream<T> {
   }
 
   public KeyDataStream<K, T> setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 }

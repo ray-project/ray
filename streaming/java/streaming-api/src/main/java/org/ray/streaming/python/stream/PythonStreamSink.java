@@ -10,11 +10,11 @@ import org.ray.streaming.python.PythonOperator;
 public class PythonStreamSink extends StreamSink implements PythonStream {
   public PythonStreamSink(PythonDataStream input, PythonOperator sinkOperator) {
     super(input, sinkOperator);
-    this.streamingContext.addSink(this);
+    getStreamingContext().addSink(this);
   }
 
   public PythonStreamSink setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 

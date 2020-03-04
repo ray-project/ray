@@ -9,7 +9,7 @@ proto_library(
     srcs = ["src/protobuf/streaming.proto"],
     visibility = ["//visibility:public"],
 )
-PythonDataStreamSink
+
 proto_library(
     name = "streaming_queue_proto",
     srcs = ["src/protobuf/streaming_queue.proto"],

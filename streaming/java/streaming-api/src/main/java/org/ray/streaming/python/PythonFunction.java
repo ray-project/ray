@@ -16,7 +16,6 @@ import org.ray.streaming.api.function.Function;
  * <p>If the python data stream api is invoked from java, `moduleName` and
  * `className`/`functionName` will be not null.</p>
  * <p>
- * TODO serialize to bytes using protobuf
  */
 public class PythonFunction implements Function {
   public enum FunctionInterface {

@@ -23,8 +23,11 @@ public class PythonDataStream extends Stream implements PythonStream {
     super(input, pythonOperator);
   }
 
-  protected PythonDataStream(Stream inputStream, PythonOperator pythonOperator) {
-    super(inputStream, pythonOperator);
+  /**
+   * Create a reference of referenced stream
+   */
+  public PythonDataStream(DataStream referencedStream) {
+    super(referencedStream);
   }
 
   /**
@@ -89,7 +92,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return This stream.
    */
   public PythonDataStream broadcast() {
-    this.partition = PythonPartition.BroadcastPartition;
+    super.setPartition(PythonPartition.BroadcastPartition);
     return this;
   }
 
@@ -100,8 +103,12 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return This stream.
    */
   public PythonDataStream partitionBy(PythonPartition partition) {
-    this.partition = partition;
+    super.setPartition(partition);
     return this;
+  }
+
+  public DataStream asJavaStream() {
+    return new DataStream(this);
   }
 
   /**
@@ -111,18 +118,13 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return This stream.
    */
   public PythonDataStream setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 
   @Override
   public Language getLanguage() {
     return Language.PYTHON;
-  }
-
-  public DataStream asJavaStream() {
-    // TODO add deserialization operator
-    return new DataStream(this, null);
   }
 
 }

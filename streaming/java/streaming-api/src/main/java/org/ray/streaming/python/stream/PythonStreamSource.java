@@ -14,11 +14,11 @@ public class PythonStreamSource extends PythonDataStream implements StreamSource
 
   private PythonStreamSource(StreamingContext streamingContext, PythonFunction sourceFunction) {
     super(streamingContext, new PythonOperator(sourceFunction));
-    super.partition = PythonPartition.RoundRobinPartition;
+    super.setPartition(PythonPartition.RoundRobinPartition);
   }
 
   public PythonStreamSource setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 

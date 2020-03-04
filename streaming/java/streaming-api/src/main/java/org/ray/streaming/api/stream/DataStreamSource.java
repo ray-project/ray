@@ -16,7 +16,7 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
 
   private DataStreamSource(StreamingContext streamingContext, SourceFunction<T> sourceFunction) {
     super(streamingContext, new SourceOperator<>(sourceFunction));
-    super.partition = new RoundRobinPartition<>();
+    super.setPartition(new RoundRobinPartition<>());
   }
 
   public static <T> DataStreamSource<T> fromSource(
@@ -39,7 +39,7 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
 
   @Override
   public DataStreamSource<T> setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 }

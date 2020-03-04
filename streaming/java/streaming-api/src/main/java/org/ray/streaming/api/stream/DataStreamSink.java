@@ -12,11 +12,11 @@ public class DataStreamSink<T> extends StreamSink<T> {
 
   public DataStreamSink(DataStream<T> input, SinkOperator sinkOperator) {
     super(input, sinkOperator);
-    this.streamingContext.addSink(this);
+    getStreamingContext().addSink(this);
   }
 
   public DataStreamSink<T> setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 

@@ -8,11 +8,12 @@ import org.ray.streaming.python.PythonPartition;
 /**
  * Represents a python DataStream returned by a key-by operation.
  */
+@SuppressWarnings("unchecked")
 public class PythonKeyDataStream extends PythonDataStream implements PythonStream  {
 
   public PythonKeyDataStream(PythonDataStream input, PythonOperator pythonOperator) {
     super(input, pythonOperator);
-    this.partition = PythonPartition.KeyPartition;
+    super.setPartition(PythonPartition.KeyPartition);
   }
 
   /**
@@ -27,7 +28,7 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   }
 
   public PythonKeyDataStream setParallelism(int parallelism) {
-    this.parallelism = parallelism;
+    super.setParallelism(parallelism);
     return this;
   }
 
