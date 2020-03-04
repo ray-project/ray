@@ -35,10 +35,6 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   // Gcs rpc client
   std::unique_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-
-  // Event loop where reconnect gcs service tasks are processed.
-  boost::asio::io_service io_service_;
-  std::unique_ptr<std::thread> work_thread_;
 };
 
 }  // namespace gcs
