@@ -42,6 +42,8 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   @Override
   public void onTestFailure(ITestResult result) {
     printInfo("TEST FAILURE", getFullTestName(result));
+    printInfo("TEST FAILURE, exception:", result.getThrowable().toString());
+    Runtime.getRuntime().halt(1);
   }
 
   @Override
