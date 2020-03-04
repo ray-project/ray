@@ -23,6 +23,7 @@ def pool():
     pool = Pool(processes=1)
     yield pool
     pool.terminate()
+    pool.join()
     ray.shutdown()
 
 
@@ -31,6 +32,7 @@ def pool_4_processes():
     pool = Pool(processes=4)
     yield pool
     pool.terminate()
+    pool.join()
     ray.shutdown()
 
 
@@ -47,6 +49,8 @@ def test_ray_init(shutdown_only):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == 2
     check_pool_size(pool, 2)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that starting a pool doesn't affect ray if there is a local
@@ -56,6 +60,8 @@ def test_ray_init(shutdown_only):
     pool = Pool(processes=2)
     assert int(ray.state.cluster_resources()["CPU"]) == 3
     check_pool_size(pool, 2)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that trying to start a pool on an existing ray cluster throws an
@@ -94,6 +100,8 @@ def test_connect_to_ray(ray_start_cluster):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == init_cpus
     check_pool_size(pool, init_cpus)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that starting a pool connects to a running ray cluster if
@@ -102,6 +110,8 @@ def test_connect_to_ray(ray_start_cluster):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
     check_pool_size(pool, start_cpus)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Set RAY_ADDRESS, so pools should connect to the running ray cluster.
@@ -113,6 +123,8 @@ def test_connect_to_ray(ray_start_cluster):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
     check_pool_size(pool, start_cpus)
+    pool.terminate()
+    pool.join()
     ray.shutdown()
 
     # Check that trying to start a pool on an existing ray cluster throws an
@@ -135,6 +147,7 @@ def test_initializer(shutdown_only):
 
         assert len(os.listdir(dirname)) == 4
         pool.terminate()
+        pool.join()
 
 
 def test_close(pool_4_processes):
@@ -492,6 +505,8 @@ def test_maxtasksperchild(shutdown_only):
 
     pool = Pool(5, maxtasksperchild=1)
     assert len(set(pool.map(f, range(20)))) == 20
+    pool.terminate()
+    pool.join()
 
 
 if __name__ == "__main__":
