@@ -22,8 +22,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <Windows.h>
+#else
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
 
 #include <cerrno>
 #include <string>
@@ -73,9 +77,12 @@ int create_buffer(int64_t size) {
   int fd;
   std::string file_template = plasma_config->directory;
 #ifdef _WIN32
-  if (!CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
-                         (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
-                         (DWORD)(uint64_t)size, NULL)) {
+  HANDLE h = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+                               (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
+                               (DWORD)(uint64_t)size, NULL);
+  if (h) {
+    fd = fh_open(reinterpret_cast<intptr_t>(h), -1);
+  } else {
     fd = -1;
   }
 #else
@@ -116,7 +123,15 @@ void* fake_mmap(size_t size) {
   // MAP_POPULATE can be used to pre-populate the page tables for this memory region
   // which avoids work when accessing the pages later. However it causes long pauses
   // when mmapping the files. Only supported on Linux.
-  void* pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  void* pointer;
+#ifdef _WIN32
+  pointer = MapViewOfFile(reinterpret_cast<HANDLE>(fh_get(fd)), FILE_MAP_ALL_ACCESS, 0, 0, size);
+  if (pointer == NULL) {
+    ARROW_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
+    return reinterpret_cast<void*>(-1);
+  }
+#else
+  pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (pointer == MAP_FAILED) {
     ARROW_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
     if (errno == ENOMEM && plasma_config->hugepages_enabled) {
@@ -125,13 +140,15 @@ void* fake_mmap(size_t size) {
     }
     return pointer;
   }
-
+#endif
   // Increase dlmalloc's allocation granularity directly.
   mparams.granularity *= GRANULARITY_MULTIPLIER;
-
-  MmapRecord& record = mmap_records[pointer];
-  record.fd = fd;
-  record.size = size;
+  {
+    std::lock_guard<std::mutex> l(mmap_records_lock);
+    MmapRecord& record = mmap_records[pointer];
+    record.fd = fd;
+    record.size = size;
+  }
 
   // We lie to dlmalloc about where mapped memory actually lives.
   pointer = pointer_advance(pointer, kMmapRegionsGap);
@@ -143,22 +160,28 @@ int fake_munmap(void* addr, int64_t size) {
   ARROW_LOG(DEBUG) << "fake_munmap(" << addr << ", " << size << ")";
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
+  {
+    std::lock_guard<std::mutex> l(mmap_records_lock);
+    auto entry = mmap_records.find(addr);
+    if (entry == mmap_records.end() || entry->second.size != size) {
+      // Reject requests to munmap that don't directly match previous
+      // calls to mmap, to prevent dlmalloc from trimming.
+      return -1;
+    }
 
-  auto entry = mmap_records.find(addr);
+  int r;
+#ifdef _WIN32
+  r = UnmapViewOfFile(addr) ? 0 : -1;
+#else
+  r = munmap(addr, size);
+#endif
+    if (r == 0) {
+      close(entry->second.fd);
+    }
 
-  if (entry == mmap_records.end() || entry->second.size != size) {
-    // Reject requests to munmap that don't directly match previous
-    // calls to mmap, to prevent dlmalloc from trimming.
-    return -1;
+    mmap_records.erase(entry);
+    return r;
   }
-
-  int r = munmap(addr, size);
-  if (r == 0) {
-    close(entry->second.fd);
-  }
-
-  mmap_records.erase(entry);
-  return r;
 }
 
 void SetMallocGranularity(int value) { change_mparam(M_GRANULARITY, value); }

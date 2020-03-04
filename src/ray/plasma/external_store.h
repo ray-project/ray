@@ -23,7 +23,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "plasma/client.h"
+#include "arrow/buffer.h"
+#include "arrow/status.h"
+#include "plasma/common.h"
+using arrow::Status;
+using arrow::Buffer;
+using plasma::ObjectID;
 
 namespace plasma {
 

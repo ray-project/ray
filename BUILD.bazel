@@ -746,22 +746,58 @@ cc_test(
 )
 
 cc_library(
+    name = "ray_plasma_store",
+    srcs = glob(
+        [
+            "src/ray/plasma/*.cc",
+        ],
+        exclude = [
+            "src/ray/plasma/protocol.cc",  # conflict with @plasma//:plasma_client
+            "src/ray/plasma/**/*_tests.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/plasma/*.h",
+        ],
+    ),
+    copts = COPTS + ["-I@plasma//:cpp/src/"],
+    includes = [
+        "cpp/src/",
+        "src/ray",
+        "@boost//:asio",
+    ],
+    strip_include_prefix = "src/ray",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@//:platform_shims",
+        "@boost//:asio",
+        "@com_github_ray_project_ray//:platform_shims",
+        "@com_google_googletest//:gtest",
+        "@plasma//:ae",
+        "@plasma//:arrow",
+        "@plasma//:common_fbs",
+        "@plasma//:plasma_fbs",
+        "@plasma//:plasma_server_upstream",
+    ],
+)
+
+cc_library(
     name = "object_manager",
     srcs = glob([
         "src/ray/object_manager/*.cc",
     ]),
     hdrs = glob([
         "src/ray/object_manager/*.h",
+        "src/ray/plasma/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src",
-    ],
     deps = [
         ":gcs",
         ":object_manager_fbs",
         ":object_manager_rpc",
         ":ray_common",
+        ":ray_plasma_store",
         ":ray_util",
         "@boost//:asio",
         "@plasma//:plasma_client",
@@ -1108,13 +1144,6 @@ FLATC_ARGS = [
 ]
 
 flatbuffer_cc_library(
-    name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/common.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/common/",
-)
-
-flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
@@ -1364,7 +1393,6 @@ genrule(
         "//:raylet",
         "//:raylet_monitor",
         "//:gcs_server",
-        "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ],
     outs = ["ray_pkg.out"],
@@ -1390,7 +1418,6 @@ genrule(
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
-        cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&

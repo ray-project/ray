@@ -162,15 +162,13 @@ def ray_deps_setup():
     auto_http_archive(
         name = "plasma",
         build_file = True,
-        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
-        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
+        url = "https://github.com/apache/arrow/archive/f00a153d0972638bbb0a9b95142e2ddf09b985a8.tar.gz",
+        sha256 = "005475ef923bf4b48843be328fb34e2775fba1447341585695901c7bdfa7b7b6",
         patches = [
             "//thirdparty/patches:arrow-headers-unused.patch",
             "//thirdparty/patches:arrow-windows-export.patch",
             "//thirdparty/patches:arrow-windows-nonstdc.patch",
-            "//thirdparty/patches:arrow-windows-sigpipe.patch",
             "//thirdparty/patches:arrow-windows-socket.patch",
-            "//thirdparty/patches:arrow-windows-dlmalloc.patch",
             "//thirdparty/patches:arrow-windows-tcp.patch",
         ],
     )

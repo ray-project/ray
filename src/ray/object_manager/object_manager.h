@@ -16,6 +16,9 @@
 #define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
 
 #include <algorithm>
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -24,21 +27,16 @@
 #include <random>
 #include <thread>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
-
 #include "absl/time/clock.h"
 #include "plasma/client.h"
-
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/plasma/store.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 
@@ -64,6 +62,12 @@ struct ObjectManagerConfig {
   /// Number of threads of rpc service
   /// Send and receive request in these threads
   int rpc_service_threads_number;
+  /// Initial memory allocation for store.
+  int64_t object_store_memory;
+  /// The directory for shared memory files.
+  std::string plasma_directory;
+  /// Enable huge pages.
+  bool huge_pages;
 };
 
 struct LocalObjectInfo {
@@ -72,6 +76,16 @@ struct LocalObjectInfo {
   /// A map from the ID of a remote object manager to the timestamp of when
   /// the object was last pushed to that object manager (if a push took place).
   std::unordered_map<ClientID, int64_t> recent_pushes;
+};
+
+class ObjectStoreRunner {
+ public:
+  ObjectStoreRunner(const ObjectManagerConfig &config);
+  ~ObjectStoreRunner();
+
+ private:
+  plasma::PlasmaStoreRunner plasma_store_;
+  std::thread store_thread_;
 };
 
 class ObjectManagerInterface {
@@ -372,6 +386,8 @@ class ObjectManager : public ObjectManagerInterface,
   ClientID self_node_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
+  // Object store runner.
+  ObjectStoreRunner object_store_internal_;
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 

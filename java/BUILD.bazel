@@ -138,23 +138,9 @@ filegroup(
     ],
 )
 
-# plasma_store_server binary should be located in jar root path
-# and keep in sync with mvn resource
-genrule(
-    name = "cp_plasma_store_server",
-    srcs = [
-        "@plasma//:plasma_store_server",
-    ],
-    outs = ["plasma_store_server"],
-    cmd = """
-        cp -f $(location @plasma//:plasma_store_server) $@
-    """,
-)
-
 filegroup(
     name = "java_native_deps",
     srcs = [
-        ":cp_plasma_store_server",
         "//:core_worker_library_java",
         "//:gcs_server",
         "//:libray_redis_module.so",

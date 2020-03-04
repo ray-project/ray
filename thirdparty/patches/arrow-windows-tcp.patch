@@ -10,23 +10,6 @@ diff --git cpp/src/plasma/io.h cpp/src/plasma/io.h
 -
 -int ConnectIpcSock(const std::string& pathname);
 +int ConnectOrListenIpcSock(const std::string& pathname, bool shall_listen);
-diff --git cpp/src/plasma/store.cc cpp/src/plasma/store.cc
---- cpp/src/plasma/store.cc
-+++ cpp/src/plasma/store.cc
-@@ -1150,1 +1150,1 @@
--    int socket = BindIpcSock(socket_name, true);
-+    int socket = ConnectOrListenIpcSock(socket_name, true);
-@@ -1301,1 +1301,5 @@
-+#ifdef _WINSOCKAPI_
-+  WSADATA wsadata;
-+  WSAStartup(MAKEWORD(2, 2), &wsadata);
-+#endif
-   plasma::StartServer(socket_name, plasma_directory, hugepages_enabled, external_store);
-@@ -1307,1 +1311,4 @@
-+#ifdef _WINSOCKAPI_
-+  WSACleanup();
-+#endif
-   return 0;
 diff --git cpp/src/plasma/io.cc cpp/src/plasma/io.cc
 --- cpp/src/plasma/io.cc
 +++ cpp/src/plasma/io.cc

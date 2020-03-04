@@ -21,6 +21,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 
+#include <mutex>
 #include <unordered_map>
 
 namespace plasma {
@@ -48,6 +49,7 @@ struct MmapRecord {
 /// via mmap. Associates the address of that segment with its file descriptor
 /// and size.
 extern std::unordered_map<void*, MmapRecord> mmap_records;
+extern std::mutex mmap_records_lock;
 
 }  // namespace plasma
 

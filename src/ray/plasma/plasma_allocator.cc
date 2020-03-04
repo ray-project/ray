@@ -29,8 +29,10 @@ void dlfree(void* mem);
 
 int64_t PlasmaAllocator::footprint_limit_ = 0;
 int64_t PlasmaAllocator::allocated_ = 0;
+std::mutex PlasmaAllocator::malloc_lock_;
 
 void* PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
+  std::lock_guard<std::mutex> l(PlasmaAllocator::malloc_lock_);
   if (allocated_ + static_cast<int64_t>(bytes) > footprint_limit_) {
     return nullptr;
   }
@@ -41,6 +43,7 @@ void* PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
 }
 
 void PlasmaAllocator::Free(void* mem, size_t bytes) {
+  std::lock_guard<std::mutex> l(PlasmaAllocator::malloc_lock_);
   dlfree(mem);
   allocated_ -= bytes;
 }

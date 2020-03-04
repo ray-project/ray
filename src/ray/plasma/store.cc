@@ -1138,123 +1138,33 @@ Status PlasmaStore::ProcessMessage(Client* client) {
   return Status::OK();
 }
 
-class PlasmaStoreRunner {
- public:
-  PlasmaStoreRunner() {}
-
-  void Start(char* socket_name, std::string directory, bool hugepages_enabled,
-             std::shared_ptr<ExternalStore> external_store) {
-    // Create the event loop.
-    loop_.reset(new EventLoop);
-    store_.reset(new PlasmaStore(loop_.get(), directory, hugepages_enabled, socket_name,
-                                 external_store));
-    plasma_config = store_->GetPlasmaStoreInfo();
-
-    // We are using a single memory-mapped file by mallocing and freeing a single
-    // large amount of space up front. According to the documentation,
-    // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
-    // bookkeeping.
-    void* pointer = plasma::PlasmaAllocator::Memalign(
-        kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-    ARROW_CHECK(pointer != nullptr);
-    // This will unmap the file, but the next one created will be as large
-    // as this one (this is an implementation detail of dlmalloc).
-    plasma::PlasmaAllocator::Free(
-        pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-
-    int socket = BindIpcSock(socket_name, true);
-    // TODO(pcm): Check return value.
-    ARROW_CHECK(socket >= 0);
-
-    loop_->AddFileEvent(socket, kEventLoopRead, [this, socket](int events) {
-      this->store_->ConnectClient(socket);
-    });
-    loop_->Start();
-  }
-
-  void Stop() { loop_->Stop(); }
-
-  void Shutdown() {
-    loop_->Shutdown();
-    loop_ = nullptr;
-    store_ = nullptr;
-  }
-
- private:
-  std::unique_ptr<EventLoop> loop_;
-  std::unique_ptr<PlasmaStore> store_;
-};
-
-static std::unique_ptr<PlasmaStoreRunner> g_runner = nullptr;
-
 void HandleSignal(int signal) {
   if (signal == SIGTERM) {
     ARROW_LOG(INFO) << "SIGTERM Signal received, closing Plasma Server...";
-    if (g_runner != nullptr) {
-      g_runner->Stop();
-    }
+    pthread_exit(0);
   }
 }
 
-void StartServer(char* socket_name, std::string plasma_directory, bool hugepages_enabled,
-                 std::shared_ptr<ExternalStore> external_store) {
-  // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
-  // to a client that has already died, the store could die.
-  signal(SIGPIPE, SIG_IGN);
-
-  g_runner.reset(new PlasmaStoreRunner());
-  signal(SIGTERM, HandleSignal);
-  g_runner->Start(socket_name, plasma_directory, hugepages_enabled, external_store);
-}
-
-}  // namespace plasma
-
-int main(int argc, char* argv[]) {
-  ArrowLog::StartArrowLog(argv[0], ArrowLogLevel::ARROW_INFO);
+PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
+                     bool hugepages_enabled, std::string plasma_directory,
+                     const std::string external_store_endpoint):
+    hugepages_enabled_(hugepages_enabled), external_store_endpoint_(external_store_endpoint) {
+  ArrowLog::StartArrowLog("plasma_store", ArrowLogLevel::ARROW_INFO);
   ArrowLog::InstallFailureSignalHandler();
-  char* socket_name = nullptr;
-  // Directory where plasma memory mapped files are stored.
-  std::string plasma_directory;
-  std::string external_store_endpoint;
-  bool hugepages_enabled = false;
-  int64_t system_memory = -1;
-  int c;
-  while ((c = getopt(argc, argv, "s:m:d:e:h")) != -1) {
-    switch (c) {
-      case 'd':
-        plasma_directory = std::string(optarg);
-        break;
-      case 'e':
-        external_store_endpoint = std::string(optarg);
-        break;
-      case 'h':
-        hugepages_enabled = true;
-        break;
-      case 's':
-        socket_name = optarg;
-        break;
-      case 'm': {
-        char extra;
-        int scanned = sscanf(optarg, "%" SCNd64 "%c", &system_memory, &extra);
-        ARROW_CHECK(scanned == 1);
-        // Set system memory capacity
-        plasma::PlasmaAllocator::SetFootprintLimit(static_cast<size_t>(system_memory));
-        ARROW_LOG(INFO) << "Allowing the Plasma store to use up to "
-                        << static_cast<double>(system_memory) / 1000000000
-                        << "GB of memory.";
-        break;
-      }
-      default:
-        exit(-1);
-    }
-  }
+
   // Sanity check command line options.
-  if (!socket_name) {
+  if (socket_name.empty()) {
     ARROW_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
   }
+  socket_name_ = socket_name;
   if (system_memory == -1) {
     ARROW_LOG(FATAL) << "please specify the amount of system memory with -m switch";
   }
+  // Set system memory capacity
+  plasma::PlasmaAllocator::SetFootprintLimit(static_cast<size_t>(system_memory));
+  ARROW_LOG(INFO) << "Allowing the Plasma store to use up to "
+                  << static_cast<double>(system_memory) / 1000000000
+                  << "GB of memory.";
   if (hugepages_enabled && plasma_directory.empty()) {
     ARROW_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
                         "filesystem with -d";
@@ -1296,26 +1206,80 @@ int main(int argc, char* argv[]) {
     plasma::SetMallocGranularity(1024 * 1024 * 1024);  // 1 GB
   }
 #endif
-  // Get external store
+  system_memory_ = system_memory;
+  plasma_directory_ = plasma_directory;
+}
+
+void PlasmaStoreRunner::Start() {
+#ifdef _WINSOCKAPI_
+  WSADATA wsadata;
+  WSAStartup(MAKEWORD(2, 2), &wsadata);
+#endif
+   // Get external store
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
-  if (!external_store_endpoint.empty()) {
+  if (!external_store_endpoint_.empty()) {
     std::string name;
     ARROW_CHECK_OK(
-        plasma::ExternalStores::ExtractStoreName(external_store_endpoint, &name));
+        plasma::ExternalStores::ExtractStoreName(external_store_endpoint_, &name));
     external_store = plasma::ExternalStores::GetStore(name);
     if (external_store == nullptr) {
       ARROW_LOG(FATAL) << "No such external store \"" << name << "\"";
-      return -1;
     }
     ARROW_LOG(DEBUG) << "connecting to external store...";
-    ARROW_CHECK_OK(external_store->Connect(external_store_endpoint));
+    ARROW_CHECK_OK(external_store->Connect(external_store_endpoint_));
   }
-  ARROW_LOG(DEBUG) << "starting server listening on " << socket_name;
-  plasma::StartServer(socket_name, plasma_directory, hugepages_enabled, external_store);
-  plasma::g_runner->Shutdown();
-  plasma::g_runner = nullptr;
+  ARROW_LOG(DEBUG) << "starting server listening on " << socket_name_;
 
+  // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+  // to a client that has already died, the store could die.
+#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
+   // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+   // to a client that has already died, the store could die.
+   signal(SIGPIPE, SIG_IGN);
+#endif
+  signal(SIGTERM, HandleSignal);
+
+  // Create the event loop.
+  loop_.reset(new EventLoop);
+  store_.reset(new PlasmaStore(loop_.get(), plasma_directory_, hugepages_enabled_,
+                               socket_name_, external_store));
+  plasma_config = store_->GetPlasmaStoreInfo();
+
+  // We are using a single memory-mapped file by mallocing and freeing a single
+  // large amount of space up front. According to the documentation,
+  // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
+  // bookkeeping.
+  void* pointer = plasma::PlasmaAllocator::Memalign(
+      kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
+  ARROW_CHECK(pointer != nullptr);
+  // This will unmap the file, but the next one created will be as large
+  // as this one (this is an implementation detail of dlmalloc).
+  plasma::PlasmaAllocator::Free(
+      pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
+
+  int socket = ConnectOrListenIpcSock(socket_name_, true);
+  // TODO(pcm): Check return value.
+  ARROW_CHECK(socket >= 0);
+
+  loop_->AddFileEvent(socket, kEventLoopRead, [this, socket](int events) {
+    this->store_->ConnectClient(socket);
+  });
+  loop_->Start();
+
+  Shutdown();
+#ifdef _WINSOCKAPI_
+  WSACleanup();
+#endif
   ArrowLog::UninstallSignalAction();
   ArrowLog::ShutDownArrowLog();
-  return 0;
 }
+
+void PlasmaStoreRunner::Stop() { loop_->Stop(); }
+
+void PlasmaStoreRunner::Shutdown() {
+  loop_->Shutdown();
+  loop_ = nullptr;
+  store_ = nullptr;
+}
+
+}  // namespace plasma
