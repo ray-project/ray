@@ -275,6 +275,13 @@ cc_library(
     ],
 )
 
+
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
+
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -745,6 +752,59 @@ cc_test(
     ],
 )
 
+
+flatbuffer_cc_library(
+    name = "common_fbs",
+    srcs = ["src/ray/plasma/common.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "src/ray/plasma/",
+)
+
+
+flatbuffer_cc_library(
+    name = "plasma_fbs",
+    srcs = ["src/ray/plasma/plasma.fbs"],
+    includes=["src/ray/plasma/common.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "src/ray/plasma/",
+)
+
+cc_library(
+    name = "ray_plasma_store",
+    srcs = glob(
+        [
+            "src/ray/plasma/*.cc",
+        ],
+        exclude = [
+            "src/ray/plasma/protocol.cc",  # conflict with @plasma//:plasma_client
+            "src/ray/plasma/**/*_tests.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/plasma/*.h",
+            "src/ray/plasma/thirdparty/dlmalloc.c",
+        ],
+    ),
+    copts = COPTS  + ["-I@plasma//:cpp/src/"],
+    includes = [
+        "@boost//:asio",
+        "src/ray",
+        "cpp/src/",
+    ],
+    strip_include_prefix = "src/ray",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_ray_project_ray//:platform_shims",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest",
+        "@plasma//:ae",
+        "@plasma//:arrow",
+        ":common_fbs",
+        ":plasma_fbs",
+    ],
+)
+
 cc_library(
     name = "object_manager",
     srcs = glob([
@@ -752,11 +812,9 @@ cc_library(
     ]),
     hdrs = glob([
         "src/ray/object_manager/*.h",
+        "src/ray/plasma/*.h",
     ]),
     copts = COPTS,
-    includes = [
-        "src",
-    ],
     deps = [
         ":gcs",
         ":object_manager_fbs",
@@ -765,6 +823,7 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
         "@plasma//:plasma_client",
+        ":ray_plasma_store",
     ],
 )
 
@@ -1101,19 +1160,6 @@ cc_test(
     ],
 )
 
-FLATC_ARGS = [
-    "--gen-object-api",
-    "--gen-mutable",
-    "--scoped-enums",
-]
-
-flatbuffer_cc_library(
-    name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/common.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/common/",
-)
-
 flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
@@ -1364,7 +1410,6 @@ genrule(
         "//:raylet",
         "//:raylet_monitor",
         "//:gcs_server",
-        "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ],
     outs = ["ray_pkg.out"],
@@ -1390,7 +1435,6 @@ genrule(
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
         cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
-        cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&

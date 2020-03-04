@@ -16,6 +16,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
+#include "ray/plasma/store.h"
 
 namespace asio = boost::asio;
 
