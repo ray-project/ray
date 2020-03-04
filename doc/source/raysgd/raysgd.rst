@@ -7,7 +7,7 @@ RaySGD is a lightweight library for distributed deep learning, providing thin wr
 
 The main features are:
 
-  - **Ease of use**: Scale Pytorch's native ``DistributedDataParallel`` and TensorFlow's ``tf.distribute.MirroredStrategy`` without needing to monitor individual nodes.
+  - **Ease of use**: Scale PyTorch's native ``DistributedDataParallel`` and TensorFlow's ``tf.distribute.MirroredStrategy`` without needing to monitor individual nodes.
   - **Composability**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
   - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-CPU, or multi-GPU clusters by changing 2 lines of code.
 
@@ -20,7 +20,7 @@ The main features are:
 Getting Started
 ---------------
 
-You can start a ``PyTorchTrainer`` with the following:
+You can start a ``TorchTrainer`` with the following:
 
 .. code-block:: python
 
@@ -29,7 +29,7 @@ You can start a ``PyTorchTrainer`` with the following:
     import torch.nn as nn
     from torch import distributed
 
-    from ray.util.sgd import PyTorchTrainer
+    from ray.util.sgd import TorchTrainer
     from ray.util.sgd.examples.train_example import LinearDataset
 
 
@@ -48,7 +48,7 @@ You can start a ``PyTorchTrainer`` with the following:
 
     ray.init()
 
-    trainer1 = PyTorchTrainer(
+    trainer1 = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,

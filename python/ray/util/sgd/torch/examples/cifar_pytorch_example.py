@@ -8,12 +8,11 @@ import torchvision
 import torchvision.transforms as transforms
 
 import ray
-from ray.util.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
-from ray.util.sgd.pytorch.resnet import ResNet18
-from ray.util.sgd.pytorch.utils import TEST_MODE
+from ray.util.sgd.torch import (TorchTrainer, TorchTrainable)
+from ray.util.sgd.torch.resnet import ResNet18
 
 
-def initialization_hook(runner):
+def initialization_hook():
     print("NCCL DEBUG SET")
     # Need this for avoiding a connection restart issue
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
@@ -40,6 +39,11 @@ def cifar_creator(config):
     validation_dataset = torchvision.datasets.CIFAR10(
         root="~/data", train=False, download=False, transform=transform_test)
 
+    if config.get("test_mode"):
+        train_dataset = torch.utils.data.Subset(train_dataset, list(range(64)))
+        validation_dataset = torch.utils.data.Subset(validation_dataset,
+                                                     list(range(64)))
+
     return train_dataset, validation_dataset
 
 
@@ -58,8 +62,7 @@ def train_example(num_replicas=1,
                   use_gpu=False,
                   use_fp16=False,
                   test_mode=False):
-    config = {TEST_MODE: test_mode}
-    trainer1 = PyTorchTrainer(
+    trainer1 = TorchTrainer(
         ResNet18,
         cifar_creator,
         optimizer_creator,
@@ -67,7 +70,10 @@ def train_example(num_replicas=1,
         scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
         num_replicas=num_replicas,
-        config=config,
+        config={
+            "lr": 0.01,
+            "test_mode": test_mode
+        },
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo",
@@ -88,20 +94,20 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
         "model_creator": ResNet18,
         "data_creator": cifar_creator,
         "optimizer_creator": optimizer_creator,
-        "loss_creator": lambda config: nn.CrossEntropyLoss(),
+        "loss_creator": nn.CrossEntropyLoss,
         "num_replicas": num_replicas,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
         "batch_size": 16 if test_mode else 512,
         "config": {
-            "lr": tune.choice([1e-4, 1e-3, 5e-3, 1e-2]),
-            TEST_MODE: test_mode
+            "lr": tune.choice([1e-4, 1e-3]),
+            "test_mode": test_mode
         },
         "backend": "nccl" if use_gpu else "gloo"
     }
 
     analysis = tune.run(
-        PyTorchTrainable,
+        TorchTrainable,
         num_samples=2,
         config=config,
         stop={"training_iteration": 2},
