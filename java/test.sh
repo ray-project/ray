@@ -11,7 +11,7 @@ run_testng() {
     $@ || exit_code=$?
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
-        exit $exit_code
+        exit 0
     fi
 }
 
