@@ -17,10 +17,7 @@ parser = argparse.ArgumentParser(
     description="PyTorch Synthetic Benchmark",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
-    "--fp16-allreduce",
-    action="store_true",
-    default=False,
-    help="use fp16 compression during allreduce")
+    "--fp16", action="store_true", default=False, help="use fp16 training")
 
 parser.add_argument(
     "--model", type=str, default="resnet50", help="model to benchmark")
@@ -30,12 +27,12 @@ parser.add_argument(
 parser.add_argument(
     "--num-warmup-batches",
     type=int,
-    default=1,
+    default=10,
     help="number of warm-up batches that don\"t count towards benchmark")
 parser.add_argument(
     "--num-batches-per-iter",
     type=int,
-    default=1,
+    default=10,
     help="number of batches per benchmark iteration")
 parser.add_argument(
     "--num-iters", type=int, default=10, help="number of benchmark iterations")
@@ -67,34 +64,26 @@ def init_hook():
     cudnn.benchmark = True
 
 
-def benchmark_evaluate(operator):
-    data = torch.randn(args.batch_size, 3, 224, 224)
-    target = torch.LongTensor(args.batch_size).random_() % 1000
-    if args.cuda:
-        data, target = data.cuda(), target.cuda()
-
-    def benchmark():
-        operator.optimizer.zero_grad()
-        output = operator.model(data)
-        loss = F.cross_entropy(output, target)
-        loss.backward()
-        operator.optimizer.step()
-
-    print("Running warmup...")
-    timeit.timeit(benchmark, number=args.num_warmup_batches)
-    print("Running benchmark...")
-    time = timeit.timeit(benchmark, number=args.num_batches_per_iter)
-    img_sec = args.batch_size * args.num_batches_per_iter / time
-    return {"img_sec": img_sec}
-
-
 class Training(TrainingOperator):
-    def setup(self, config):
-        import json
-        from types import SimpleNamespace
-        self.args = json.loads(
-            json.dumps(config), object_hook=lambda d: SimpleNamespace(**d))
-        vars(self.args).update(vars(args))
+    def train_epoch(self, *pargs, **kwargs):
+        data = torch.randn(args.batch_size, 3, 224, 224)
+        target = torch.LongTensor(args.batch_size).random_() % 1000
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+
+        def benchmark():
+            self.optimizer.zero_grad()
+            output = self.model(data)
+            loss = F.cross_entropy(output, target)
+            loss.backward()
+            self.optimizer.step()
+
+        print("Running warmup...")
+        timeit.timeit(benchmark, number=args.num_warmup_batches)
+        print("Running benchmark...")
+        time = timeit.timeit(benchmark, number=args.num_batches_per_iter)
+        img_sec = args.batch_size * args.num_batches_per_iter / time
+        return {"img_sec": img_sec}
 
 
 trainer = TorchTrainer(
@@ -102,16 +91,18 @@ trainer = TorchTrainer(
     optimizer_creator=lambda model, cfg: optim.SGD(
         model.parameters(), lr=0.01 * cfg.get("lr_scaler")),
     initialization_hook=init_hook,
-    config=dict(lr_scaler=num_workers),
+    config=dict(
+        lr_scaler=num_workers),
     training_operator_cls=Training,
     num_workers=num_workers,
-    use_gpu=args.cuda
+    use_gpu=args.cuda,
+    use_fp16=args.fp16,
+    apex_args={"opt_level": "O3"}
 )
 
 img_secs = []
 for x in range(args.num_iters):
-    print("trainer has been setup")
-    result = trainer.apply_all_operators(benchmark_evaluate)
+    result = trainer.train()
     print(result)
     img_sec = result["img_sec"]
     print("Iter #%d: %.1f img/sec per %s" % (x, img_sec, device))
