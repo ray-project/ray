@@ -173,6 +173,7 @@ public class RayCallGenerator extends BaseGenerator {
         rayFuncGenericTypes);
 
     String callFunc = forActorCreation ? "createActor" : "call";
+    String internalCallFunc = forActorCreation ? "createActor" : forActor ? "callActor" : "call";
 
     // Enumerate all combinations of the parameters.
     for (String param : generateParameters(numParameters)) {
@@ -210,7 +211,7 @@ public class RayCallGenerator extends BaseGenerator {
       callFuncArgs += forActor ? "" : hasOptionsParam ? "options, " : "null, ";
       callFuncArgs = callFuncArgs.substring(0, callFuncArgs.length() - 2);
       newLine(2, String.format("%sRay.internal().%s(%s);",
-          hasReturn ? "return " : "", callFunc, callFuncArgs));
+          hasReturn ? "return " : "", internalCallFunc, callFuncArgs));
       newLine(1, "}");
     }
   }
