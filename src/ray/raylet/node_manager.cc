@@ -1657,9 +1657,9 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   }
 
   if (new_scheduler_enabled_) {
-    auto request_resources = task.GetTaskSpecification().GetRequiredResources();
+    auto task_specs = task.GetTaskSpecification();
     auto work = std::make_pair(
-        [this, request_resources, reply, send_reply_callback](
+        [this, task_specs, reply, send_reply_callback](
             std::shared_ptr<Worker> worker, ClientID spillback_to, std::string address,
             int port) {
           if (worker != nullptr) {
@@ -1671,6 +1671,31 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             RAY_LOG(WARNING) << "leased_worker 2 = " << worker->WorkerId();
             RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
             leased_workers_[worker->WorkerId()] = worker;
+
+            TaskResourceInstances allocated_resources;
+            if (task_specs.IsActorCreationTask()) {
+              allocated_resources = worker->GetLifetimeAllocatedInstances();                                                   
+            } else {
+              allocated_resources = worker->GetAllocatedInstances();                                                   
+            }
+            auto predefined_resources = allocated_resources.predefined_resources;
+            for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
+              auto resource = reply->add_resource_mapping();
+              RAY_LOG(WARNING) << "HandleRequestWorkerLease Resource name = " 
+                  << new_resource_scheduler_->GetResourceNameFromIndex(res_idx) 
+                  << ", Resource idx = " << res_idx;
+              resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+	            for (size_t inst_idx = 0; inst_idx < predefined_resources.size(); inst_idx++) {
+	              if (predefined_resources[res_idx][inst_idx] > 0) {
+                  auto rid = resource->add_resource_ids();
+                  RAY_LOG(WARNING) << "HandleRequestWorkerLease quantity[" 
+                      << inst_idx << "] = " << predefined_resources[res_idx][inst_idx];
+                  rid->set_index(inst_idx);
+                  rid->set_quantity(predefined_resources[res_idx][inst_idx]);
+	              }
+              }
+            }
+            RAY_LOG(WARNING) << "HandleRequestWorkerLease Resource DONE ";
           } else {
             reply->mutable_retry_at_raylet_address()->set_ip_address(address);
             reply->mutable_retry_at_raylet_address()->set_port(port);

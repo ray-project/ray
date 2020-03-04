@@ -1032,7 +1032,7 @@ bool ClusterResourceScheduler::AllocateLocalTaskResources(
   return AllocateTaskResources(local_node_id_, task_request, task_allocation);    
 }
 
-std::string ClusterResourceScheduler::GetResourceNameFromResourceIdx(int64_t res_idx) {
+std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) {
   if (res_idx == CPU) {
     return ray::kCPU_ResourceLabel;
   } else if (res_idx == GPU) {
