@@ -271,7 +271,6 @@ def setup_counter_actor(test_checkpoint=False,
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
 def test_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=False)
 
     @ray.remote
@@ -292,10 +291,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
     ray.wait(forks, num_returns=len(forks))
     count += num_incs * num_iters
 
-    # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding raylet to exit.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
-
     # Check that the actor did not restore from a checkpoint.
     assert not ray.get(counter.test_restore.remote())
     # Check that we can submit another call on the actor and get the
@@ -309,7 +304,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -331,10 +325,6 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     ray.wait([counter.__ray_checkpoint__.remote()])
     count += num_incs * num_iters
 
-    # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding raylet to exit.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
-
     # Check that the actor restored from a checkpoint.
     assert ray.get(counter.test_restore.remote())
     # Check that the number of inc calls since actor initialization is
@@ -350,7 +340,6 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
 def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -370,10 +359,6 @@ def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     ]
     ray.wait(forks, num_returns=len(forks))
     count += num_incs * num_iters
-
-    # Kill the second plasma store to get rid of the cached objects and
-    # trigger the corresponding raylet to exit.
-    cluster.list_all_nodes()[1].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
     assert ray.get(counter.test_restore.remote())

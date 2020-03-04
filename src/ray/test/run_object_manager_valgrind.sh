@@ -6,7 +6,7 @@
 set -e
 set -x
 
-bazel build "//:object_manager_stress_test" "//:object_manager_test" "@plasma//:plasma_store_server"
+bazel build "//:object_manager_stress_test" "//:object_manager_test"
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
@@ -24,12 +24,10 @@ fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
 
 # Allow cleanup commands to fail.
-killall plasma_store || true
 bazel run //:redis-cli -- -p 6379 shutdown || true
 sleep 1s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
@@ -37,9 +35,9 @@ sleep 1s
 
 # Run tests. Use timeout=10000ms for the Wait tests since tests run slower
 # in valgrind.
-$VALGRIND_CMD ./bazel-bin/object_manager_test $STORE_EXEC 10000
+$VALGRIND_CMD ./bazel-bin/object_manager_test 10000
 sleep 1s
-$VALGRIND_CMD ./bazel-bin/object_manager_stress_test $STORE_EXEC
+$VALGRIND_CMD ./bazel-bin/object_manager_stress_test
 bazel run //:redis-cli -- -p 6379 shutdown
 sleep 1s
 

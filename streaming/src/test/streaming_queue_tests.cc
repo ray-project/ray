@@ -1,22 +1,20 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 #include <unistd.h>
-#include "gtest/gtest.h"
-#include "queue/queue_client.h"
-#include "ray/core_worker/core_worker.h"
 
 #include "data_reader.h"
 #include "data_writer.h"
+#include "gtest/gtest.h"
 #include "message/message.h"
 #include "message/message_bundle.h"
-#include "ring_buffer.h"
-
+#include "queue/queue_client.h"
 #include "queue_tests_base.h"
+#include "ray/core_worker/core_worker.h"
+#include "ring_buffer.h"
 
 using namespace std::placeholders;
 namespace ray {
 namespace streaming {
 
-static std::string store_executable;
 static std::string raylet_executable;
 static std::string gcs_server_executable;
 static std::string actor_executable;
@@ -25,15 +23,15 @@ static int node_manager_port;
 class StreamingWriterTest : public StreamingQueueTestBase {
  public:
   StreamingWriterTest()
-      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port,
-                               actor_executable, gcs_server_executable) {}
+      : StreamingQueueTestBase(1, raylet_executable, node_manager_port, actor_executable,
+                               gcs_server_executable) {}
 };
 
 class StreamingExactlySameTest : public StreamingQueueTestBase {
  public:
   StreamingExactlySameTest()
-      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port,
-                               actor_executable, gcs_server_executable) {}
+      : StreamingQueueTestBase(1, raylet_executable, node_manager_port, actor_executable,
+                               gcs_server_executable) {}
 };
 
 TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
@@ -57,11 +55,10 @@ INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingExactlySameTest,
 int main(int argc, char **argv) {
   // set_streaming_log_config("streaming_writer_test", StreamingLogLevel::INFO, 0);
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 6);
-  ray::streaming::store_executable = std::string(argv[1]);
-  ray::streaming::raylet_executable = std::string(argv[2]);
-  ray::streaming::node_manager_port = std::stoi(std::string(argv[3]));
-  ray::streaming::actor_executable = std::string(argv[4]);
-  ray::streaming::gcs_server_executable = std::string(argv[5]);
+  RAY_CHECK(argc == 5);
+  ray::streaming::raylet_executable = std::string(argv[1]);
+  ray::streaming::node_manager_port = std::stoi(std::string(argv[2]));
+  ray::streaming::actor_executable = std::string(argv[3]);
+  ray::streaming::gcs_server_executable = std::string(argv[4]);
   return RUN_ALL_TESTS();
 }

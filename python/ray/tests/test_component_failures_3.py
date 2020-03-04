@@ -79,7 +79,6 @@ def test_actor_creation_node_failure(ray_start_cluster):
     reason="Hanging with new GCS API.")
 def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_raylet()
-    ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
     ray.worker._global_node.kill_monitor()
     if ray_constants.GCS_SERVICE_ENABLED:
@@ -97,19 +96,17 @@ def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
 
     if ray_constants.GCS_SERVICE_ENABLED:
-        process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE]
-                         + all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER]
-                         + all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+        process_infos = (all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
+                         all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
                          all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR]
                          + all_processes[ray_constants.PROCESS_TYPE_MONITOR])
     else:
         process_infos = (
-            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
             all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
             all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
             all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
             all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
-    assert len(process_infos) == 5
+    assert len(process_infos) == 4
 
     # Kill all the components in parallel.
     for process_info in process_infos:

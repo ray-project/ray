@@ -154,35 +154,6 @@ def test_raylet_failed(ray_start_cluster):
     # Kill all raylets on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
-    # The plasma stores should still be alive on the worker nodes.
-    check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
-                           True)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [{
-        "num_cpus": 8,
-        "num_nodes": 2,
-        "_internal_config": json.dumps({
-            # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10
-        }),
-    }],
-    indirect=True)
-def test_plasma_store_failed(ray_start_cluster):
-    cluster = ray_start_cluster
-    # Kill all plasma stores on worker nodes.
-    _test_component_failed(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE)
-
-    # No processes should be left alive on the worker nodes.
-    check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
-                           False)
-    check_components_alive(cluster, ray_constants.PROCESS_TYPE_RAYLET, False)
-
 
 if __name__ == "__main__":
     import pytest

@@ -25,7 +25,6 @@ namespace ray {
 namespace raylet {
 
 std::string test_executable;
-std::string store_executable;
 
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
@@ -69,8 +68,8 @@ class TestObjectManagerBase : public ::testing::Test {
 
   void SetUp() {
     // start store
-    std::string store_sock_1 = StartStore("1");
-    std::string store_sock_2 = StartStore("2");
+    std::string store_sock_1 = "/tmp/store1";
+    std::string store_sock_2 = "/tmp/store2";
 
     // start first server
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "", true);
@@ -79,6 +78,9 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
+    om_config_1.object_store_memory = 1000000000;
+    om_config_1.plasma_directory = "";
+    om_config_1.huge_pages = false;
     server1.reset(new ray::raylet::Raylet(
         main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379, "",
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
@@ -89,6 +91,9 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
+    om_config_2.object_store_memory = 1000000000;
+    om_config_2.plasma_directory = "";
+    om_config_2.huge_pages = false;
     server2.reset(new ray::raylet::Raylet(
         main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379, "",
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
@@ -105,9 +110,6 @@ class TestObjectManagerBase : public ::testing::Test {
 
     this->server1.reset();
     this->server2.reset();
-
-    int s = system("killall plasma_store_server &");
-    ASSERT_TRUE(!s);
 
     std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));
     s = system(("rm " + cmd_str + "/raylet_1").c_str());
@@ -250,6 +252,5 @@ TEST_F(TestObjectManagerIntegration, StartTestObjectManagerPush) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::raylet::test_executable = std::string(argv[0]);
-  ray::raylet::store_executable = std::string(argv[1]);
   return RUN_ALL_TESTS();
 }

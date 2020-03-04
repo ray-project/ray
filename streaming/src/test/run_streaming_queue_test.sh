@@ -35,7 +35,7 @@ if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
 
-bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
+bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so"
 bazel build //streaming:streaming_test_worker
 bazel build //streaming:streaming_queue_tests
 
@@ -47,7 +47,6 @@ fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 RAYLET_EXEC="./bazel-bin/raylet"
 STREAMING_TEST_WORKER_EXEC="./bazel-bin/streaming/streaming_test_worker"
 GCS_SERVER_EXEC="./bazel-bin/gcs_server"
@@ -62,7 +61,7 @@ sleep 2s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
 sleep 2s
 # Run tests.
-./bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC
+./bazel-bin/streaming/streaming_queue_tests $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC
 sleep 1s
 bazel run //:redis-cli -- -p 6379 shutdown
 bazel run //:redis-cli -- -p 6380 shutdown

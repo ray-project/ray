@@ -28,8 +28,6 @@ namespace ray {
 
 using rpc::GcsNodeInfo;
 
-std::string store_executable;
-
 static inline void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
@@ -87,34 +85,14 @@ class TestObjectManagerBase : public ::testing::Test {
 #endif
   }
 
-  std::string StartStore(const std::string &id) {
-    std::string store_id = ray::JoinPaths(ray::GetUserTempDir(), "store");
-    store_id = store_id + id;
-    std::string store_pid = store_id + ".pid";
-    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &" + " echo $! > " +
-                                 store_pid;
-
-    RAY_LOG(DEBUG) << plasma_command;
-    int ec = system(plasma_command.c_str());
-    RAY_CHECK(ec == 0);
-    sleep(1);
-    return store_id;
-  }
-
-  void StopStore(const std::string &store_id) {
-    std::string store_pid = store_id + ".pid";
-    std::string kill_1 = "kill -9 `cat " + store_pid + "`";
-    int s = system(kill_1.c_str());
-    ASSERT_TRUE(!s);
-  }
-
   void SetUp() {
     flushall_redis();
 
     // start store
-    store_id_1 = StartStore(UniqueID::FromRandom().Hex());
-    store_id_2 = StartStore(UniqueID::FromRandom().Hex());
+    store_id_1 =
+        ray::JoinPaths(ray::GetUserTempDir(), "store" + UniqueID::FromRandom().Hex());
+    store_id_2 =
+        ray::JoinPaths(ray::GetUserTempDir(), "store" + UniqueID::FromRandom().Hex());
 
     unsigned int pull_timeout_ms = 1000;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
@@ -132,6 +110,9 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.push_timeout_ms = push_timeout_ms;
     om_config_1.object_manager_port = 0;
     om_config_1.rpc_service_threads_number = 3;
+    om_config_1.object_store_memory = 1000000000;
+    om_config_1.plasma_directory = "";
+    om_config_1.huge_pages = false;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
@@ -144,6 +125,9 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.push_timeout_ms = push_timeout_ms;
     om_config_2.object_manager_port = 0;
     om_config_2.rpc_service_threads_number = 3;
+    om_config_2.object_store_memory = 1000000000;
+    om_config_2.plasma_directory = "";
+    om_config_2.huge_pages = false;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
@@ -161,9 +145,6 @@ class TestObjectManagerBase : public ::testing::Test {
 
     this->server1.reset();
     this->server2.reset();
-
-    StopStore(store_id_1);
-    StopStore(store_id_2);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -461,6 +442,5 @@ TEST_F(StressTestObjectManager, StartStressTestObjectManager) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::store_executable = std::string(argv[1]);
   return RUN_ALL_TESTS();
 }

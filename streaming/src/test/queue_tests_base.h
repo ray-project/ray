@@ -15,12 +15,11 @@ static void flushall_redis(void) {
 /// Base class for real-world tests with streaming queue
 class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
  public:
-  StreamingQueueTestBase(int num_nodes, std::string raylet_exe, std::string store_exe,
-                         int port, std::string actor_exe, std::string gcs_server_exe)
+  StreamingQueueTestBase(int num_nodes, std::string raylet_exe, int port,
+                         std::string actor_exe, std::string gcs_server_exe)
       : gcs_options_("127.0.0.1", 6379, ""),
         raylet_executable_(raylet_exe),
         gcs_server_executable_(gcs_server_exe),
-        store_executable_(store_exe),
         actor_executable_(actor_exe),
         node_manager_port_(port) {
 #ifdef _WIN32
@@ -38,7 +37,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     // start plasma store.
     for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket = StartStore();
+      store_socket =
+          ray::JoinPaths(ray::GetUserTempDir(), "store" + RandomObjectID().Hex());
     }
 
     // start gcs server
@@ -59,38 +59,12 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
       StopRaylet(raylet_socket);
     }
 
-    for (const auto &store_socket : raylet_store_socket_names_) {
-      StopStore(store_socket);
-    }
-
     StopGcsServer(gcs_server_pid_);
   }
 
   JobID NextJobId() const {
     static uint32_t job_counter = 1;
     return JobID::FromInt(job_counter++);
-  }
-
-  std::string StartStore() {
-    std::string store_socket_name =
-        ray::JoinPaths(ray::GetUserTempDir(), "store" + RandomObjectID().Hex());
-    std::string store_pid = store_socket_name + ".pid";
-    std::string plasma_command = store_executable_ + " -m 10000000 -s " +
-                                 store_socket_name +
-                                 " 1> /dev/null 2> /dev/null & echo $! > " + store_pid;
-    RAY_LOG(DEBUG) << plasma_command;
-    RAY_CHECK(system(plasma_command.c_str()) == 0);
-    usleep(200 * 1000);
-    return store_socket_name;
-  }
-
-  void StopStore(std::string store_socket_name) {
-    std::string store_pid = store_socket_name + ".pid";
-    std::string kill_9 = "kill -9 `cat " + store_pid + "`";
-    RAY_LOG(DEBUG) << kill_9;
-    ASSERT_EQ(system(kill_9.c_str()), 0);
-    ASSERT_EQ(system(("rm -rf " + store_socket_name).c_str()), 0);
-    ASSERT_EQ(system(("rm -rf " + store_socket_name + ".pid").c_str()), 0);
   }
 
   std::string StartGcsServer(std::string redis_address) {
@@ -126,6 +100,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
         .append(" --object_manager_port=0 --node_manager_port=" + std::to_string(port))
+        .append(" --object-store-memory=10000000")
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -352,7 +327,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   gcs::GcsClientOptions gcs_options_;
   std::string raylet_executable_;
   std::string gcs_server_executable_;
-  std::string store_executable_;
   std::string actor_executable_;
   int node_manager_port_;
   std::string gcs_server_pid_;

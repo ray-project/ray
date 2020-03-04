@@ -11,7 +11,7 @@ import ray
 def ray_gdb_start():
     # Setup environment and start ray
     _environ = os.environ.copy()
-    for process_name in ["RAYLET", "PLASMA_STORE"]:
+    for process_name in ["RAYLET"]:
         os.environ["RAY_{}_GDB".format(process_name)] = "1"
         os.environ["RAY_{}_TMUX".format(process_name)] = "1"
 
@@ -37,7 +37,7 @@ def test_raylet_gdb(ray_gdb_start):
     assert ray.get(f.remote()) == 42
 
     # Check process name in `ps aux | grep gdb`
-    for process_name in ["raylet/raylet", "plasma/plasma_store_server"]:
+    for process_name in ["raylet/raylet"]:
         pgrep_command = subprocess.Popen(
             ["pgrep", "-f", "gdb.*{}".format(process_name)],
             stdout=subprocess.PIPE,
