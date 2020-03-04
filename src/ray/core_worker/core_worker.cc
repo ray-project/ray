@@ -250,15 +250,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
-  plasma_notifier_.reset(new ObjectStoreNotificationManager(io_service_, store_socket,
-                                                            /*exit_on_error*/ false));
 }
 
 CoreWorker::~CoreWorker() {
-  // ObjectStoreNotificationManager depends on io_service_ so we need to shut it down
-  // first.
-  plasma_notifier_->Shutdown();
-
   io_service_.stop();
   io_thread_.join();
   if (log_dir_ != "") {
@@ -1401,13 +1395,22 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback) {
-  plasma_notifier_->SubscribeObjAdded(
-      [subscribe_callback](const object_manager::protocol::ObjectInfoT &info) {
-        // This callback must be asynchronous to allow plasma to receive objects
-        subscribe_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
-                           info.metadata_size);
-      });
+void CoreWorker::SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback) {
+  plasma_done_callback_ = subscribe_callback;
+}
+
+void CoreWorker::SubscribeToPlasmaAdd(const ObjectID &object_id) {
+  RAY_CHECK_OK(local_raylet_client_->SubscribeToPlasma(object_id));
+}
+
+void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+                                         rpc::PlasmaObjectReadyReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
+  // This callback must be asynchronous to allow plasma to receive objects
+  plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
+                        request.metadata_size());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
