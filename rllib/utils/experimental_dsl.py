@@ -308,9 +308,6 @@ class CollectMetrics:
         self.episode_history = self.episode_history[-self.min_history:]
         res = summarize_episodes(episodes, orig_episodes)
 
-        exp = self.workers.foreach_trainable_policy(
-            lambda p, _: p.get_exploration_info())
-
         # Add in iterator metrics.
         metrics = LocalIterator.get_metrics()
         if metrics.parent_metrics:
@@ -499,7 +496,9 @@ class StoreToReplayBuffer:
 
 def LocalReplay(replay_buffer, train_batch_size):
     replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
+    # TODO(ekl) support more options
     synchronize_sampling = False
+    prioritized_replay_beta = None
 
     def gen_replay(timeout):
         while True:
@@ -513,6 +512,8 @@ def LocalReplay(replay_buffer, train_batch_size):
                     idxes = replay_buffer.sample_idxes(train_batch_size)
 
                 if isinstance(replay_buffer, PrioritizedReplayBuffer):
+                    metrics = LocalIterator.get_metrics()
+                    num_steps_trained = metrics.counters[STEPS_TRAINED_COUNTER]
                     (obses_t, actions, rewards, obses_tp1, dones, weights,
                      batch_indexes) = replay_buffer.sample_with_idxes(
                          idxes,
