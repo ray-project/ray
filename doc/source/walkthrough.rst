@@ -83,7 +83,7 @@ This causes a few changes in behavior:
            remote_function.remote()
 
 The invocations are executed in parallel because the call to ``remote_function.remote()`` doesn't block.
-All I/O is performed in the background using Ray's internal event loop.
+All computation is performed in the background, driven by Ray's internal event loop.
 
 See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
 
