@@ -555,7 +555,7 @@ def LocalReplay(replay_buffer, train_batch_size):
 
 
 def Concurrently(ops: List[LocalIterator], mode="round_robin"):
-    """Operator that run the given parent iterators concurrently.
+    """Operator that runs the given parent iterators concurrently.
 
     Arguments:
         mode (str): One of {'round_robin', 'async'}.
