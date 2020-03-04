@@ -1,2 +1,6 @@
+images:
+ - name: controller
+   newTag: latest
+   newName: eoakes/controller
 resources:
 - manager.yaml
