@@ -59,19 +59,15 @@ class GrpcServer {
     if (!is_closed_) {
       // Shutdown the server with an immediate deadline.
       // TODO(edoakes): do we want to do this in all cases?
-      RAY_LOG(INFO) << "Shutdown 111111111111111";
       server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
-      RAY_LOG(INFO) << "Shutdown 2222222222222222";
       for (const auto &cq : cqs_) {
         cq->Shutdown();
       }
-      RAY_LOG(INFO) << "Shutdown 33333333333333333";
       for (auto &polling_thread : polling_threads_) {
         polling_thread.join();
       }
-      RAY_LOG(INFO) << "Shutdown 444444444444444444";
       is_closed_ = true;
-      RAY_LOG(INFO) << "gRPC server of " << name_ << " shutdown.";
+      RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
     }
   }
 

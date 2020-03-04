@@ -122,8 +122,6 @@ class ClientCallTag {
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
-  void SetCall(const std::shared_ptr<ClientCall> &call) { call_ = call; }
-
   void SetOperation(const std::function<void(ClientCallTag *tag)> &operation) {
     operation_ = operation;
   }
@@ -264,25 +262,19 @@ class ClientCallManager {
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
         tag->GetCall()->SetReturnStatus();
-        if (tag->GetCall()->GetStatus().IsIOError()) {
-          // Reconnect gcs server
-          // Retry operation
-          if (!tag->GetOperation()) {
-            RAY_LOG(INFO) << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
-          }
+        if (tag->GetCall()->GetStatus().IsIOError() && tag->GetOperation()) {
+          // Reconnect gcs server and retry operation.
           tag->GetOperation()(tag);
           delete tag;
-        } else {
-          if (ok && !main_service_.stopped() && !shutdown_) {
-            // Post the callback to the main event loop.
-            main_service_.post([tag]() {
-              tag->GetCall()->OnReplyReceived();
-              // The call is finished, and we can delete this tag now.
-              delete tag;
-            });
-          } else {
+        } else if (ok && !main_service_.stopped() && !shutdown_) {
+          // Post the callback to the main event loop.
+          main_service_.post([tag]() {
+            tag->GetCall()->OnReplyReceived();
+            // The call is finished, and we can delete this tag now.
             delete tag;
-          }
+          });
+        } else {
+          delete tag;
         }
       }
     }
