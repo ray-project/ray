@@ -553,11 +553,6 @@ def test_distributed_actor_handle_deletion(ray_start_regular):
     x_id = f.remote(a, signal)
     # Delete the original handle. The actor should not get killed yet.
     del a
-    # The original actor handle does not go out of scope due to a memory leak,
-    # so we need to add this call to gc.collect().
-    # See https://github.com/ray-project/ray/issues/7326.
-    import gc
-    gc.collect()
 
     # Once the task finishes, the actor process should get killed.
     ray.get(signal.send.remote())
