@@ -92,8 +92,8 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
-    arrow::Status s = store_client_.Create(plasma_id, /*evict_if_full=*/true, object_size,
-                                           NULL, metadata_size, &data);
+    arrow::Status s =
+        store_client_.Create(plasma_id, object_size, NULL, metadata_size, &data);
     std::vector<boost::asio::mutable_buffer> buffer;
     if (!s.ok()) {
       // Create failed. The object may already exist locally. If something else went

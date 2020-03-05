@@ -71,10 +71,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status =
-          store_client_.Create(object_id.ToPlasmaId(), evict_if_full, data_size,
-                               metadata ? metadata->Data() : nullptr,
-                               metadata ? metadata->Size() : 0, &arrow_buffer);
+      plasma_status = store_client_.Create(object_id.ToPlasmaId(), data_size,
+                                           metadata ? metadata->Data() : nullptr,
+                                           metadata ? metadata->Size() : 0, &arrow_buffer,
+                                           /*device_num=*/0, evict_if_full);
       // Always try to evict after the first attempt.
       evict_if_full = true;
     }
