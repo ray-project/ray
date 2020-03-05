@@ -13,7 +13,8 @@ from ray import tune
 from ray.util.sgd.torch import TorchTrainer, TorchTrainable
 from ray.util.sgd.torch.training_operator import (_TestingOperator,
                                                   _TestMetricsOperator)
-from ray.util.sgd.torch.constants import BATCH_COUNT, SCHEDULER_STEP, NUM_SAMPLES
+from ray.util.sgd.torch.constants import (BATCH_COUNT, SCHEDULER_STEP,
+                                          NUM_SAMPLES)
 from ray.util.sgd.utils import check_for_failure
 
 from ray.util.sgd.torch.examples.train_example import (
@@ -231,6 +232,20 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
 
     for i in range(3):
         trainer.train()
+    trainer.shutdown()
+
+
+def test_profiling(ray_start_2_cpus):  # noqa: F811
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss())
+
+    stats = trainer.train(profile=True)
+    assert "profile" in stats
+    stats = trainer.validate(profile=True)
+    assert "profile" in stats
     trainer.shutdown()
 
 

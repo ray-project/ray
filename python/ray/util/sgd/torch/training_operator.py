@@ -75,7 +75,7 @@ class TrainingOperator:
         # You are not expected to override this method.
         self.timers = {
             k: TimerStat()
-            for k in ["fwd", "grad", "apply", "epoch_time"]
+            for k in ["fwd", "grad", "apply", "eval_fwd"]
         }
         self._validated_customization = False
         self._models = models  # List of models
@@ -137,34 +137,25 @@ class TrainingOperator:
         metric_meters = AverageMeterCollection()
 
         self.model.train()
-        with self.timers["epoch_time"]:
-            for batch_idx, batch in enumerate(iterator):
-                batch_info = {
-                    "batch_idx": batch_idx,
-                    "global_step": self.global_step
-                }
-                batch_info.update(info)
-                metrics = self.train_batch(batch, batch_info=batch_info)
+        for batch_idx, batch in enumerate(iterator):
+            batch_info = {
+                "batch_idx": batch_idx,
+                "global_step": self.global_step
+            }
+            batch_info.update(info)
+            metrics = self.train_batch(batch, batch_info=batch_info)
 
-                if self.scheduler and batch_info.get(
-                        SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
-                    self.scheduler.step()
+            if self.scheduler and batch_info.get(
+                    SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
+                self.scheduler.step()
 
-                metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
-                self.global_step += 1
+            metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
+            self.global_step += 1
 
         if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
             self.scheduler.step()
 
-        stats = {"epoch_time": self.timers["epoch_time"].last}
-        stats.update(metric_meters.summary())
-
-        if "profile" in info:
-            stats.update({
-                timer_tag: timer.mean
-                for timer_tag, timer in self.timers.items()
-            })
-        return stats
+        return metric_meters.summary()
 
     def train_batch(self, batch, batch_info):
         """Computes loss and updates the model over one batch.
@@ -283,9 +274,11 @@ class TrainingOperator:
             target = target.cuda(non_blocking=True)
 
         # compute output
-        output = self.model(features)
-        loss = self.criterion(output, target)
-        _, predicted = torch.max(output.data, 1)
+
+        with self.timers["eval_fwd"]:
+            output = self.model(features)
+            loss = self.criterion(output, target)
+            _, predicted = torch.max(output.data, 1)
 
         num_correct = (predicted == target).sum().item()
         num_samples = target.size(0)
@@ -294,6 +287,16 @@ class TrainingOperator:
             "val_accuracy": num_correct / num_samples,
             NUM_SAMPLES: num_samples
         }
+
+    def time_stats(self, reset=True):
+        """Returns a dictionary of time statistics collected."""
+        stats = {}
+        for k, t in self.timers.items():
+            if t.count > 0:
+                stats["mean_" + k] = t.mean
+            if reset:
+                t.reset()
+        return stats
 
     def state_dict(self):
         """Returns a serializable representation of the operator state."""

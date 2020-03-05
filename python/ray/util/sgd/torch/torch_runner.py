@@ -46,7 +46,6 @@ class TorchRunner:
                  loss_creator=None,
                  scheduler_creator=None,
                  training_operator_cls=None,
-                 profile=False,
                  config=None,
                  use_fp16=False,
                  apex_args=None,
@@ -58,7 +57,6 @@ class TorchRunner:
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls or TrainingOperator
         self.config = {} if config is None else config
-        self._profile = profile
 
         self.epochs = 0
         self._timers = {
@@ -168,7 +166,7 @@ class TorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def train_epoch(self, num_steps=None, info=None):
+    def train_epoch(self, num_steps=None, profile=False, info=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.epochs + 1))
         info = info or {}
@@ -185,11 +183,11 @@ class TorchRunner:
         self.epochs += 1
         stats = {"epoch": self.epochs}
         stats.update(train_stats)
-        if self._profile:
-            stats.update(profile=self.time_stats)
+        if profile:
+            stats.update(profile=self.time_stats())
         return stats
 
-    def validate(self, num_steps=None, info=None):
+    def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set."""
         if self.validation_loader is None:
             raise ValueError("No validation dataloader provided.")
@@ -200,17 +198,19 @@ class TorchRunner:
                 iterator = itertools.islice(
                     iter(self.validation_loader), num_steps)
             validation_stats = self.training_operator.validate(iterator, info)
-        if self._profile:
-            validation_stats.update(self.time_stats())
+        if profile:
+            validation_stats.update(profile=self.time_stats())
         return validation_stats
 
-    def time_stats(self):
+    def time_stats(self, reset=True):
         """Returns a dictionary of time statistics collected."""
         stats = {}
         for k, t in self._timers.items():
             stats["mean_" + k] = t.mean
             stats["total_" + k] = t.sum
-            t.reset()
+            if reset:
+                t.reset()
+        stats.update(self.training_operator.time_stats())
         return stats
 
     def _get_model_state_dicts(self):

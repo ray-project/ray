@@ -1,5 +1,4 @@
-"""
-This file holds code for a Training guide for PytorchSGD in the documentation.
+"""Example code for RaySGD Torch in the documentation.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
@@ -14,7 +13,6 @@ import torch
 import torch.nn as nn
 
 from ray.util.sgd import TorchTrainer
-
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -78,7 +76,7 @@ def train_example(num_workers=1, use_gpu=False):
         num_workers=num_workers,
         use_gpu=use_gpu,
         config={
-            "lr": 1e-2, # used in optimizer_creator
+            "lr": 1e-2,  # used in optimizer_creator
             "hidden_size": 1,  # used in model_creator
             "batch_size": 4,  # used in data_creator
         },

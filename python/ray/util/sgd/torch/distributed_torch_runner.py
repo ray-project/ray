@@ -1,7 +1,5 @@
 import collections
-from filelock import FileLock
 import logging
-import os
 import torch
 import torch.nn as nn
 import torch.distributed as dist
