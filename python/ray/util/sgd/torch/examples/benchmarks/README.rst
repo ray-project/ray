@@ -38,6 +38,26 @@ You can then launch a synthetic benchmark run with the following command:
     # Or with apex fp16
     $ ray submit sgd-development.yaml benchmarks/benchmark.py --args="--batch-size 128 --use-fp16"
 
+You should see something like:
+
+.. code-block:: bash
+
+    Model: resnet50
+    Batch size: 128
+    Number of GPUs: 16
+    Iter #0: 354.2 img/sec per GPU
+    Iter #1: 354.0 img/sec per GPU
+    Iter #2: 353.0 img/sec per GPU
+    Iter #3: 353.3 img/sec per GPU
+    Iter #4: 352.8 img/sec per GPU
+    Iter #5: 348.5 img/sec per GPU
+    Iter #6: 352.5 img/sec per GPU
+    Iter #7: 352.5 img/sec per GPU
+    Iter #8: 352.1 img/sec per GPU
+    Iter #9: 352.2 img/sec per GPU
+    Img/sec per GPU: 352.5 +-3.0
+    Total img/sec on 16 GPU(s): 5640.2 +-47.2
+
 
 Results
 -------
@@ -58,6 +78,7 @@ Here are benchmarking results on synthetic data as of 03/04/2020:
     # Run on AWS us-east-1c, p3.16xlarge instances.
 
     Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Apex
+    ==============  =======   ==============  =======    ==============
     1 * 8 GPU(s)    2273.4    2552.3          2863.6     6171.5
     2 * 8 GPU(s)    4210.5    4974.2          5640.2     8414.1
     4 * 8 GPU(s)    6633.3    9544.4          11014.8    16346.8
