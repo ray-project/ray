@@ -29,9 +29,9 @@ def ray_start_2_cpus():
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=1)
     metrics = trainer.train(num_steps=1)
@@ -45,9 +45,9 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
                          if dist.is_available() else [1])
 def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     for i in range(3):

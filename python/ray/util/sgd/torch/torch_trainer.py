@@ -154,10 +154,9 @@ class TorchTrainer:
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls
 
-        if not training_operator_cls:
-            if not loss_creator:
-                raise ValueError("If a loss_creator is not provided, you must "
-                                 "provide a custom training operator.")
+        if not training_operator_cls and not loss_creator:
+            raise ValueError("If a loss_creator is not provided, you must "
+                             "provide a custom training operator.")
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
