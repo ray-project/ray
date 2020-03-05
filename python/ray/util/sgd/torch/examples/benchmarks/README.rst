@@ -1,0 +1,54 @@
+Running benchmarks
+==================
+
+You can run `benchmark.py` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://ray.readthedocs.io/en/latest/autoscaling.html#aws>`_.
+
+Simple Instructions
+-------------------
+
+First, ``git clone https://github.com/ray-project/ray && cd ray/python/ray/util/sgd/torch/examples/``.
+
+Then, run ``ray up example-sgd.yaml``. You may want to install FP16 support for PyTorch with the following configuration in the YAML file:
+
+.. code-block::yaml
+
+    setup_commands:
+        - ray || pip install -U ray[rllib]
+        - pip install -U ipdb torch torchvision
+        # Install apex, but continue if this command fails.
+        # For faster installation purposes, we do not install the apex cpp bindings
+        # The cpp bindings can improve your benchmarked performance.
+        - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
+
+You should then run ``ray monitor ray/util/sgd/torch/examples/example-sgd.yaml`` to monitor the progress of the cluster setup. When the cluster is done setting up, you should see something like the following:
+
+.. code-block::bash
+
+    2020-03-05 01:24:53,613 INFO log_timer.py:17 -- AWSNodeProvider: Set tag ray-node-status=up-to-date on ['i-07ba946522fcb1d3d'] [LogTimer=134ms]
+    2020-03-05 01:24:53,734 INFO log_timer.py:17 -- AWSNodeProvider: Set tag ray-runtime-config=c12bae3df69d4d6a207e90948dc4bf763319d7ed on ['i-07ba946522fcb1d3d'] [LogTimer=121ms]
+    2020-03-05 01:24:58,475 INFO autoscaler.py:733 -- StandardAutoscaler: 7/7 target nodes (0 pending)
+    2020-03-05 01:24:58,476 INFO autoscaler.py:734 -- LoadMetrics: MostDelayedHeartbeats={'172.31.38.189': 0.21588897705078125, '172.31.38.95': 0.21587467193603516, '172.31.42.196': 0.21586227416992188, '172.31.34.227': 0.2158496379852295, '172.31.42.101': 0.2158372402191162}, NodeIdleSeconds=Min=6 Mean=27 Max=40, NumNodesConnected=8, NumNodesUsed=0.0, ResourceUsage=0.0/512.0 CPU, 0.0/64.0 GPU, 0.0 GiB/4098.67 GiB memory, 0.0/1.0 node:172.31.34.227, 0.0/1.0 node:172.31.36.8, 0.0/1.0 node:172.31.36.82, 0.0/1.0 node:172.31.38.189, 0.0/1.0 node:172.31.38.95, 0.0/1.0 node:172.31.42.101, 0.0/1.0 node:172.31.42.196, 0.0/1.0 node:172.31.45.185, 0.0 GiB/5.45 GiB object_store_memory, TimeSinceLastHeartbeat=Min=0 Mean=0 Max=0
+
+You can then launch a synthetic benchmark run with the following command:
+
+.. code-block::bash
+
+    $ ray submit sgd-development.yaml benchmarks/benchmark.py --args="--batch-size 128"
+
+    # Or with apex fp16
+    $ ray submit sgd-development.yaml benchmarks/benchmark.py --args="--batch-size 128 --use-fp16"
+
+
+Results
+-------
+
+Here are some results as of 03/04/2020:
+
+.. code-block::bash
+
+    # Images per second for ResNet50, Batches per worker =128
+    Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Apex
+    1 * 8 GPU(s)    2273.4    2552.3          2863.6     6171.5
+    2 * 8 GPU(s)    4210.5    4974.2          5640.2     8414.1
+    4 * 8 GPU(s)    6633.3    9544.4          11014.8    16346.8
+    8 * 8 GPU(s)    12414.6   18479.8         22273.6    33148.2

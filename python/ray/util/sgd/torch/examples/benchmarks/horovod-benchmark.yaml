@@ -61,29 +61,13 @@ setup_commands:
     - git clone https://github.com/horovod/horovod || true
     - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
     - tmux new -d -s my-session "pip install horovod"
-    # - docker pull horovod/horovod:0.19.0-tf2.0.0-torch1.3.0-mxnet1.5.0-py3.6-gpu
-    # - docker tag $(docker images -q) horovod:latest || true
-    # - pip install ray
-    # - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-    # - rm -rf ./anaconda3/lib/python3.6/site-packages/ray/experimental/sgd/
-    # - cp -rf ~/sgd ./anaconda3/lib/python3.6/site-packages/ray/experimental/
-    # - pip install -U ipdb ray[rllib] torch torchvision
-    # - rm -rf apex || true
-    # - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
 
 
-file_mounts: {
-    # ~/sgd: ~/Research/riselab/ray/python/ray/experimental/sgd,
-    # ~/anaconda3/lib/python3.6/site-packages/ray/tests: ~/Research/riselab/ray/python/ray/tests
-}
+file_mounts: {}
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
     - cat ~/ray_bootstrap_key.pem > ~/.ssh/id_rsa
-    # - docker stop $(docker ps -aq) || true
-    # - cp ~/ray_bootstrap_key.pem /home/ubuntu/.ssh/
-    # - nvidia-docker run -it --network=host -d -v /home/ubuntu/.ssh:/root/.ssh horovod:latest bash -c "pip install Pillow==6.1; cat /root/.ssh/ray_bootstrap_key.pem > ~/.ssh/id_rsa; sleep infinity"
-    # - nvidia
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands:

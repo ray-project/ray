@@ -59,8 +59,10 @@ worker_nodes:
 setup_commands:
     # This replaces the standard anaconda Ray installation
     - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-    - rm -rf ./anaconda3/lib/python3.6/site-packages/ray/util/sgd/
-    - cp -rf ~/sgd ./anaconda3/lib/python3.6/site-packages/ray/util/
+    # Uncomment this and the filemount to update the Ray installation with your local Ray code
+    # - rm -rf ./anaconda3/lib/python3.6/site-packages/ray/util/sgd/
+    # - cp -rf ~/sgd ./anaconda3/lib/python3.6/site-packages/ray/util/
+
     # Installing this without -U to make sure we don't replace the existing Ray installation
     - pip install ray[rllib]
     - pip install -U ipdb torch torchvision
@@ -70,7 +72,8 @@ setup_commands:
 
 
 file_mounts: {
-    ~/sgd: ../../../sgd,
+    # This should point to ray/python/ray/util/sgd.
+    # ~/sgd: ../../../sgd,
 }
 
 # Custom commands that will be run on the head node after common setup.
