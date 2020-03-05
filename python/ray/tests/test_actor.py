@@ -10,6 +10,7 @@ except ImportError:
 import sys
 
 import ray
+import ray.test_utils
 import ray.cluster_utils
 
 
@@ -105,6 +106,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
 
     # The cache of ActorClassMethodMetadata.
     cache = ray.actor.ActorClassMethodMetadata._cache
+    cache.clear()
 
     # Check cache hit during ActorHandle deserialization.
     A1 = ray.remote(Actor)
@@ -545,8 +547,7 @@ def test_distributed_actor_handle_deletion(ray_start_regular):
         ray.get(signal.wait.remote())
         return ray.get(actor.method.remote())
 
-    from ray.test_utils import SignalActor
-    signal = SignalActor.remote()
+    signal = ray.test_utils.SignalActor.remote()
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     # Pass the handle to another task that cannot run yet.
