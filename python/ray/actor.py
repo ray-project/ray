@@ -223,7 +223,7 @@ class ActorClassMetadata:
     Attributes:
         language: The actor language, e.g. Python, Java.
         modified_class: The original class that was decorated (with some
-            additional methods added like __ray_checkpoint__).
+            additional methods added like __ray_terminate__).
         actor_creation_function_descriptor: The function descriptor for
             the actor creation task.
         class_id: The ID of this actor class.
@@ -656,7 +656,7 @@ class ActorHandle:
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
         worker = ray.worker.get_global_worker()
-        if worker.connected:
+        if worker.connected and hasattr(worker, "core_worker"):
             worker.core_worker.remove_actor_handle_reference(
                 self._ray_actor_id)
 
@@ -726,7 +726,7 @@ class ActorHandle:
         if not self._ray_is_cross_language:
             raise AttributeError("'{}' object has no attribute '{}'".format(
                 type(self).__name__, item))
-        if item in ["__ray_checkpoint__"]:
+        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
@@ -785,7 +785,7 @@ class ActorHandle:
                 self._ray_actor_id)
         else:
             # Local mode
-            state = {
+            state = ({
                 "actor_language": self._ray_actor_language,
                 "actor_id": self._ray_actor_id,
                 "method_decorators": self._ray_method_decorators,
@@ -794,7 +794,7 @@ class ActorHandle:
                 "actor_method_cpus": self._ray_actor_method_cpus,
                 "actor_creation_function_descriptor": self.
                 _ray_actor_creation_function_descriptor,
-            }
+            }, None)
 
         return state
 
@@ -857,6 +857,11 @@ def modify_class(cls):
     # terminating the worker.
     class Class(cls):
         __ray_actor_class__ = cls  # The original actor class
+
+        def __ray_terminate__(self):
+            worker = ray.worker.get_global_worker()
+            if worker.mode != ray.LOCAL_MODE:
+                ray.actor.exit_actor()
 
         def __ray_checkpoint__(self):
             """Save a checkpoint.

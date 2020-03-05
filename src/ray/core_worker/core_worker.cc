@@ -346,6 +346,20 @@ void CoreWorker::InternalHeartbeat() {
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
 }
 
+std::unordered_map<ObjectID, std::pair<size_t, size_t>>
+CoreWorker::GetAllReferenceCounts() const {
+  auto counts = reference_counter_->GetAllReferenceCounts();
+  absl::MutexLock lock(&actor_handles_mutex_);
+  // Strip actor IDs from the ref counts since there is no associated ObjectID
+  // in the language frontend.
+  for (const auto &handle : actor_handles_) {
+    auto actor_id = handle.first;
+    auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
+    counts.erase(actor_handle_id);
+  }
+  return counts;
+}
+
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     TaskID *owner_id,
                                                     rpc::Address *owner_address) {
