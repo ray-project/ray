@@ -361,8 +361,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     const std::string &extension_data, ActorID *actor_id,
-                     ObjectID *actor_creation_return_id);
+                     const std::string &extension_data, ActorID *actor_id);
 
   /// Submit an actor task.
   ///
@@ -386,6 +385,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] Status
   Status KillActor(const ActorID &actor_id, bool force_kill);
 
+  /// Decrease the reference count for this actor. Should be called by the
+  /// language frontend when a reference to the ActorHandle destroyed.
+  ///
+  /// \param[in] actor_id The actor ID to decrease the reference count for.
+  void RemoveActorHandleReference(const ActorID &actor_id);
+
   /// Add an actor handle from a serialized string.
   ///
   /// This should be called when an actor handle is given to us by another task
@@ -393,8 +398,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// actor.
   ///
   /// \param[in] serialized The serialized actor handle.
+  /// \param[in] outer_object_id The object ID that contained the serialized
+  /// actor handle, if any.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized);
+  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
+                                            const ObjectID &outer_object_id);
 
   /// Serialize an actor handle.
   ///
@@ -403,8 +411,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id The ID of the actor handle to serialize.
   /// \param[out] The serialized handle.
+  /// \param[out] The ID used to track references to the actor handle. If the
+  /// serialized actor handle in the language frontend is stored inside an
+  /// object, then this must be recorded in the worker's ReferenceCounter.
   /// \return Status::Invalid if we don't have the specified handle.
-  Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
+  Status SerializeActorHandle(const ActorID &actor_id, std::string *output,
+                              ObjectID *actor_handle_id) const;
 
   ///
   /// Public methods related to task execution. Should not be used by driver processes.

@@ -759,7 +759,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
-                               ActorID *return_actor_id, ObjectID *actor_object_id) {
+                               ActorID *return_actor_id) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -794,11 +794,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     status = local_raylet_client_->SubmitTask(task_spec);
   }
 
-  *actor_object_id = return_ids[0];
-  std::unique_ptr<ActorHandle> actor_handle(
-      new ActorHandle(actor_id, job_id, /*actor_cursor=*/*actor_object_id,
-                      function.GetLanguage(), actor_creation_options.is_direct_call,
-                      function.GetFunctionDescriptor(), extension_data));
+  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
+      actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
+      function.GetLanguage(), actor_creation_options.is_direct_call,
+      function.GetFunctionDescriptor(), extension_data));
   RAY_CHECK(AddActorHandle(std::move(actor_handle),
                            /*is_owner_handle=*/!actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
@@ -861,19 +860,32 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill) {
   return direct_actor_submitter_->KillActor(actor_id, force_kill);
 }
 
-ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
+void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
+  ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
+  reference_counter_->RemoveLocalReference(actor_handle_id, nullptr);
+}
+
+ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
+                                                      const ObjectID &outer_object_id) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();
   RAY_UNUSED(AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false));
+
+  ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
+  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id,
+                                        actor_handle->GetOwnerId(),
+                                        actor_handle->GetOwnerAddress());
+
   return actor_id;
 }
 
-Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
-                                        std::string *output) const {
+Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output,
+                                        ObjectID *actor_handle_id) const {
   ActorHandle *actor_handle = nullptr;
   auto status = GetActorHandle(actor_id, &actor_handle);
   if (status.ok()) {
     actor_handle->Serialize(output);
+    *actor_handle_id = ObjectID::ForActorHandle(actor_id);
   }
   return status;
 }
@@ -882,6 +894,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                 bool is_owner_handle) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+  reference_counter_->AddLocalReference(actor_creation_return_id);
 
   bool inserted;
   {

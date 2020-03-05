@@ -111,8 +111,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CreateActor(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CActorCreationOptions &options,
-            const c_string &extension_data, CActorID *actor_id,
-            CObjectID *actor_creation_return_id)
+            const c_string &extension_data, CActorID *actor_id)
         CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
@@ -135,9 +134,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetWebuiDisplay(const c_string &key, const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
-        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
+        void RemoveActorHandleReference(const CActorID &actor_id)
+        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
+                                                   CObjectID &outer_object_id)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
-                                        *bytes)
+                                        *bytes,
+                                        CObjectID *c_actor_handle_id)
         CRayStatus GetActorHandle(const CActorID &actor_id,
                                   CActorHandle **actor_handle) const
         void AddLocalReference(const CObjectID &object_id)

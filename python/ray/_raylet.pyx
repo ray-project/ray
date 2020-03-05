@@ -828,7 +828,6 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
-            CObjectID c_actor_creation_return_id
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -845,11 +844,9 @@ cdef class CoreWorker:
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
-                    &c_actor_id,
-                    &c_actor_creation_return_id))
+                    &c_actor_id))
 
-            return (ActorID(c_actor_id.Binary()),
-                    ObjectID(c_actor_creation_return_id.Binary()))
+            return ActorID(c_actor_id.Binary())
 
     def submit_actor_task(self,
                           Language language,
@@ -918,15 +915,24 @@ cdef class CoreWorker:
             self.core_worker.get().CreateProfileEvent(event_type),
             extra_data)
 
+    def remove_actor_handle_reference(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        self.core_worker.get().RemoveActorHandleReference(c_actor_id)
+
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
                                               ObjectID
-                                              actor_creation_return_id):
-        cdef CActorHandle* c_actor_handle
+                                              outer_object_id):
+        cdef:
+            CActorHandle* c_actor_handle
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
-            bytes)
+            bytes, c_outer_object_id)
         check_status(self.core_worker.get().GetActorHandle(
             c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
@@ -949,7 +955,6 @@ cdef class CoreWorker:
             method_meta = ray.actor.ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id,
-                                         actor_creation_return_id,
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_return_vals,
@@ -958,7 +963,6 @@ cdef class CoreWorker:
                                          worker.current_session_and_job)
         else:
             return ray.actor.ActorHandle(language, actor_id,
-                                         actor_creation_return_id,
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_return_vals
@@ -969,9 +973,10 @@ cdef class CoreWorker:
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:
             c_string output
+            CObjectID c_actor_handle_id
         check_status(self.core_worker.get().SerializeActorHandle(
-            actor_id.native(), &output))
-        return output
+            actor_id.native(), &output, &c_actor_handle_id))
+        return output, ObjectID(c_actor_handle_id.Binary())
 
     def add_object_id_reference(self, ObjectID object_id):
         # Note: faster to not release GIL for short-running op.

@@ -552,7 +552,7 @@ class ActorClass:
                 function_signature = meta.method_meta.signatures["__init__"]
                 creation_args = signature.flatten_args(function_signature,
                                                        args, kwargs)
-            actor_id, actor_object_id = worker.core_worker.create_actor(
+            actor_id = worker.core_worker.create_actor(
                 meta.language,
                 meta.actor_creation_function_descriptor,
                 creation_args,
@@ -568,7 +568,6 @@ class ActorClass:
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
-            actor_object_id,
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_return_vals,
@@ -616,7 +615,6 @@ class ActorHandle:
     def __init__(self,
                  language,
                  actor_id,
-                 actor_creation_return_id,
                  method_decorators,
                  method_signatures,
                  method_num_return_vals,
@@ -626,7 +624,6 @@ class ActorHandle:
                  original_handle=False):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
-        self._ray_actor_creation_return_id = actor_creation_return_id
         self._ray_original_handle = original_handle
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
@@ -654,6 +651,14 @@ class ActorHandle:
                     self._ray_method_num_return_vals[method_name],
                     decorator=self._ray_method_decorators.get(method_name))
                 setattr(self, method_name, method)
+
+    def __del__(self):
+        # Mark that this actor handle has gone out of scope. Once all actor
+        # handles are out of scope, the actor will exit.
+        worker = ray.worker.get_global_worker()
+        if worker.connected:
+            worker.core_worker.remove_actor_handle_reference(
+                self._ray_actor_id)
 
     def _actor_method_call(self,
                            method_name,
@@ -765,12 +770,8 @@ class ActorHandle:
     def _actor_id(self):
         return self._ray_actor_id
 
-    def _serialization_helper(self, ray_forking):
+    def _serialization_helper(self):
         """This is defined in order to make pickling work.
-
-        Args:
-            ray_forking: True if this is being called because Ray is forking
-                the actor handle and false if it is being called by pickling.
 
         Returns:
             A dictionary of the information needed to reconstruct the object.
@@ -782,13 +783,11 @@ class ActorHandle:
             # Non-local mode
             state = worker.core_worker.serialize_actor_handle(
                 self._ray_actor_id)
-            state = (state, self._ray_actor_creation_return_id)
         else:
             # Local mode
             state = {
                 "actor_language": self._ray_actor_language,
                 "actor_id": self._ray_actor_id,
-                "actor_creation_return_id": self._ray_actor_creation_return_id,
                 "method_decorators": self._ray_method_decorators,
                 "method_signatures": self._ray_method_signatures,
                 "method_num_return_vals": self._ray_method_num_return_vals,
@@ -800,13 +799,15 @@ class ActorHandle:
         return state
 
     @classmethod
-    def _deserialization_helper(cls, state, ray_forking):
+    def _deserialization_helper(cls, state, outer_object_id=None):
         """This is defined in order to make pickling work.
 
         Args:
             state: The serialized state of the actor handle.
-            ray_forking: True if this is being called because Ray is forking
-                the actor handle and false if it is being called by pickling.
+            outer_object_id: The ObjectID that the serialized actor handle was
+                contained in, if any. This is used for counting references to
+                the actor handle.
+
         """
         worker = ray.worker.get_global_worker()
         worker.check_connected()
@@ -814,7 +815,7 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                *state)
+                state, outer_object_id)
         else:
             # Local mode
             return cls(
@@ -822,7 +823,6 @@ class ActorHandle:
                 # thread-safe.
                 state["actor_language"],
                 state["actor_id"],
-                state["actor_creation_return_id"],
                 state["method_decorators"],
                 state["method_signatures"],
                 state["method_num_return_vals"],
@@ -832,8 +832,8 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper(False)
-        return ActorHandle._deserialization_helper, (state, False)
+        state = self._serialization_helper()
+        return ActorHandle._deserialization_helper, (state)
 
 
 def modify_class(cls):

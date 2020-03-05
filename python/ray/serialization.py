@@ -135,11 +135,30 @@ class SerializationContext:
         self._thread_local = threading.local()
 
         def actor_handle_serializer(obj):
-            return obj._serialization_helper(True)
+            serialized, actor_handle_id = obj._serialization_helper()
+            # Update ref counting for the actor handle
+            if self.is_in_band_serialization():
+                # This actor handle is being stored in an object. Add the
+                # actor's handle ID to the list of IDs contained in the object
+                # so that we keep the actor alive as long as the outer object
+                # is in scope.
+                self.add_contained_object_id(actor_handle_id)
+            else:
+                # If this serialization is out-of-band (e.g., from a call to
+                # cloudpickle directly or captured in a remote function/actor),
+                # then pin the object for the lifetime of this worker by adding
+                # a local reference that won't ever be removed.
+                ray.worker.get_global_worker(
+                ).core_worker.add_object_id_reference(actor_handle_id)
+            return serialized
 
         def actor_handle_deserializer(serialized_obj):
+            # If this actor handle was stored in another object, then tell the
+            # core worker.
+            context = ray.worker.global_worker.get_serialization_context()
+            outer_id = context.get_outer_object_id()
             return ray.actor.ActorHandle._deserialization_helper(
-                serialized_obj, True)
+                serialized_obj, outer_id)
 
         self._register_cloudpickle_serializer(
             ray.actor.ActorHandle,
