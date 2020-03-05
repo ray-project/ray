@@ -14,7 +14,7 @@ import org.ray.streaming.api.function.Function;
  *
  * <p>If the python data stream api is invoked from python, `function` will be not null.</p>
  * <p>If the python data stream api is invoked from java, `moduleName` and
- * `className`/`functionName` will be not null.</p>
+ * `functionName` will be not null.</p>
  * <p>
  */
 public class PythonFunction implements Function {
@@ -39,7 +39,6 @@ public class PythonFunction implements Function {
 
   private byte[] function;
   private String moduleName;
-  private String className;
   private String functionName;
   /**
    * FunctionInterface can be used to validate python function,
@@ -49,11 +48,9 @@ public class PythonFunction implements Function {
 
   private PythonFunction(byte[] function,
                          String moduleName,
-                         String className,
                          String functionName) {
     this.function = function;
     this.moduleName = moduleName;
-    this.className = className;
     this.functionName = functionName;
   }
 
@@ -67,10 +64,6 @@ public class PythonFunction implements Function {
 
   public String getModuleName() {
     return moduleName;
-  }
-
-  public String getClassName() {
-    return className;
   }
 
   public String getFunctionName() {
@@ -87,28 +80,17 @@ public class PythonFunction implements Function {
    * @param function serialized python function sent from python driver
    */
   public static PythonFunction fromFunction(byte[] function) {
-    return new PythonFunction(function, null, null, null);
-  }
-
-  /**
-   * Create a {@link PythonFunction} using <code>moduleName</code> and
-   * <code>className</code>.
-   *
-   * @param moduleName python module name
-   * @param className  python class name
-   */
-  public static PythonFunction fromClassName(String moduleName, String className) {
-    return new PythonFunction(null, moduleName, className, null);
+    return new PythonFunction(function, null, null);
   }
 
   /**
    * Create a {@link PythonFunction} using <code>moduleName</code> and
    * <code>functionName</code>.
    *
-   * @param moduleName   python module name
-   * @param functionName python function name
+   * @param moduleName   user function module name
+   * @param functionName function/class name of the user function.
    */
   public static PythonFunction fromFunctionName(String moduleName, String functionName) {
-    return new PythonFunction(null, moduleName, null, functionName);
+    return new PythonFunction(null, moduleName, functionName);
   }
 }

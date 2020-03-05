@@ -295,7 +295,7 @@ def load_function(descriptor_func_bytes: bytes):
     Returns:
         a streaming function
     """
-    function_bytes, module_name, class_name, function_name, function_interface\
+    function_bytes, module_name, function_name, function_interface\
         = gateway_client.deserialize(descriptor_func_bytes)
     if function_bytes:
         return deserialize(function_bytes)
@@ -304,16 +304,18 @@ def load_function(descriptor_func_bytes: bytes):
         assert function_interface
         function_interface = getattr(sys.modules[__name__], function_interface)
         mod = importlib.import_module(module_name)
-        if class_name:
-            assert function_name is None
-            cls = getattr(mod, class_name)
-            assert issubclass(cls, function_interface)
-            return cls()
-        else:
-            assert function_name
-            func = getattr(mod, function_name)
+        assert function_name
+        func = getattr(mod, function_name)
+        # If func is a python function, user function is a simple python
+        # function, which will be wrapped as a SimpleXXXFunction.
+        # If func is a python class, user function is a sub class
+        # of XXXFunction.
+        if inspect.isfunction(func):
             simple_func_class = _get_simple_function_class(function_interface)
             return simple_func_class(func)
+        else:
+            assert issubclass(func, function_interface)
+            return func()
 
 
 def _get_simple_function_class(function_interface):
