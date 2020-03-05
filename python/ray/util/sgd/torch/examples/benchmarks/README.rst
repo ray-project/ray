@@ -10,7 +10,7 @@ First, ``git clone https://github.com/ray-project/ray && cd ray/python/ray/util/
 
 Then, run ``ray up example-sgd.yaml``. You may want to install FP16 support for PyTorch with the following configuration in the YAML file:
 
-.. code-block::yaml
+.. code-block:: yaml
 
     setup_commands:
         - ray || pip install -U ray[rllib]
@@ -22,7 +22,7 @@ Then, run ``ray up example-sgd.yaml``. You may want to install FP16 support for 
 
 You should then run ``ray monitor ray/util/sgd/torch/examples/example-sgd.yaml`` to monitor the progress of the cluster setup. When the cluster is done setting up, you should see something like the following:
 
-.. code-block::bash
+.. code-block:: bash
 
     2020-03-05 01:24:53,613 INFO log_timer.py:17 -- AWSNodeProvider: Set tag ray-node-status=up-to-date on ['i-07ba946522fcb1d3d'] [LogTimer=134ms]
     2020-03-05 01:24:53,734 INFO log_timer.py:17 -- AWSNodeProvider: Set tag ray-runtime-config=c12bae3df69d4d6a207e90948dc4bf763319d7ed on ['i-07ba946522fcb1d3d'] [LogTimer=121ms]
@@ -31,7 +31,7 @@ You should then run ``ray monitor ray/util/sgd/torch/examples/example-sgd.yaml``
 
 You can then launch a synthetic benchmark run with the following command:
 
-.. code-block::bash
+.. code-block:: bash
 
     $ ray submit sgd-development.yaml benchmarks/benchmark.py --args="--batch-size 128"
 
@@ -50,7 +50,7 @@ Here are benchmarking results on synthetic data as of 03/04/2020:
  - Horovod Version: horovod-0.19.0
 
 
-.. code-block::bash
+.. code-block:: bash
 
     # Images per second for ResNet50
     # Batches per worker = 128
