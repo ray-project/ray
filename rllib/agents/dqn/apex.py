@@ -127,9 +127,9 @@ def training_pipeline(workers, config):
             by_steps_trained=True))
 
     # Execute (1), (2), (3) asynchronously as fast as possible.
-    train_op = Concurrently([store_op, replay_op, update_op], mode="async")
+    merged_op = Concurrently([store_op, replay_op, update_op], mode="async")
 
-    return StandardMetricsReporting(train_op, workers, config)
+    return StandardMetricsReporting(merged_op, workers, config)
 
 
 APEX_TRAINER_PROPERTIES = {
