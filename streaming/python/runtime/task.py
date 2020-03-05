@@ -55,7 +55,8 @@ class StreamTask(ABC):
                 logger.info("Create DataWriter succeed.")
                 self.writers[edge] = writer
                 collectors.append(
-                    OutputCollector(writer, channel_ids, target_actors, edge.partition))
+                    OutputCollector(writer, channel_ids, target_actors,
+                                    edge.partition))
 
         # readers
         input_actor_ids = {}

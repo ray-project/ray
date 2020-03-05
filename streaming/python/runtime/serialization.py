@@ -3,13 +3,11 @@ import pickle
 import msgpack
 from ray.streaming import message
 
-
 _RECORD_TYPE_ID = 0
 _KEY_RECORD_TYPE_ID = 1
 
 
 class Serializer(ABC):
-
     @abstractmethod
     def serialize(self, obj):
         pass
@@ -20,7 +18,6 @@ class Serializer(ABC):
 
 
 class PythonSerializer(Serializer):
-
     def serialize(self, obj):
         return pickle.dumps(obj)
 
@@ -28,7 +25,7 @@ class PythonSerializer(Serializer):
         return pickle.loads(serialized_bytes)
 
 
-class XLangSerializer(Serializer):
+class CrossLangSerializer(Serializer):
     """Serialize stream element between java/python"""
 
     def serialize(self, obj):

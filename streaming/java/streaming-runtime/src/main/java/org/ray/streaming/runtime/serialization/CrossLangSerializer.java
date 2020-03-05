@@ -9,7 +9,7 @@ import org.ray.streaming.message.Record;
  * A serializer for cross-lang serialization between java/python.
  * TODO implements a more sophisticated serialization framework
  */
-public class XLangSerializer implements Serializer {
+public class CrossLangSerializer implements Serializer {
   private static final byte RECORD_TYPE_ID = 0;
   private static final byte KEY_RECORD_TYPE_ID = 1;
 

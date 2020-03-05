@@ -8,11 +8,11 @@ import org.ray.streaming.api.Language;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.message.Record;
+import org.ray.streaming.runtime.serialization.CrossLangSerializer;
 import org.ray.streaming.runtime.serialization.JavaSerializer;
-import org.ray.streaming.runtime.serialization.XLangSerializer;
+import org.ray.streaming.runtime.serialization.Serializer;
 import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.DataWriter;
-import org.ray.streaming.runtime.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +25,7 @@ public class OutputCollector implements Collector<Record> {
   private Language[] targetLanguages;
   private Partition partition;
   private Serializer javaSerializer = new JavaSerializer();
-  private Serializer xLangSerializer = new XLangSerializer();
+  private Serializer crossLangSerializer = new CrossLangSerializer();
 
   public OutputCollector(DataWriter writer,
                          Collection<String> outputQueueIds,
@@ -46,7 +46,7 @@ public class OutputCollector implements Collector<Record> {
     return targetActors.stream()
         .map(actor -> {
           if (actor instanceof RayPyActor) {
-            return new XLangSerializer();
+            return new CrossLangSerializer();
           } else {
             return new JavaSerializer();
           }
@@ -57,7 +57,7 @@ public class OutputCollector implements Collector<Record> {
   public void collect(Record record) {
     int[] partitions = this.partition.partition(record, outputQueues.length);
     ByteBuffer javaBuffer = null;
-    ByteBuffer xLangBuffer = null;
+    ByteBuffer crossLangBuffer = null;
     for (int partition : partitions) {
       if (targetLanguages[partition] == Language.JAVA) {
         // avoid repeated serialization
@@ -67,10 +67,10 @@ public class OutputCollector implements Collector<Record> {
         writer.write(outputQueues[partition], javaBuffer);
       } else {
         // avoid repeated serialization
-        if (xLangBuffer == null) {
-          xLangBuffer = ByteBuffer.wrap(xLangSerializer.serialize(record));
+        if (crossLangBuffer == null) {
+          crossLangBuffer = ByteBuffer.wrap(crossLangSerializer.serialize(record));
         }
-        writer.write(outputQueues[partition], xLangBuffer);
+        writer.write(outputQueues[partition], crossLangBuffer);
       }
     }
   }

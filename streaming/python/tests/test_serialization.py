@@ -1,9 +1,9 @@
-from ray.streaming.runtime.serialization import XLangSerializer
+from ray.streaming.runtime.serialization import CrossLangSerializer
 from ray.streaming.message import Record, KeyRecord
 
 
 def test_serialize():
-    serializer = XLangSerializer()
+    serializer = CrossLangSerializer()
     record = Record("value")
     record.stream = "stream1"
     key_record = KeyRecord("key", "value")

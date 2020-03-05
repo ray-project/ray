@@ -34,8 +34,7 @@ class CollectionCollector(Collector):
 
 
 class OutputCollector(Collector):
-    def __init__(self, writer: DataWriter,
-                 channel_ids: typing.List[str],
+    def __init__(self, writer: DataWriter, channel_ids: typing.List[str],
                  target_actors: typing.List[ActorHandle],
                  partition_func: partition.Partition):
         self._writer = writer
@@ -51,7 +50,7 @@ class OutputCollector(Collector):
                                 .format(actor._ray_actor_language))
         self._partition_func = partition_func
         self.python_serializer = serialization.PythonSerializer()
-        self.x_lang_serializer = serialization.XLangSerializer()
+        self.cross_lang_serializer = serialization.CrossLangSerializer()
         logger.info(
             "Create OutputCollector, channel_ids {}, partition_func {}".format(
                 channel_ids, partition_func))
@@ -60,7 +59,7 @@ class OutputCollector(Collector):
         partitions = self._partition_func \
             .partition(record, len(self._channel_ids))
         python_buffer = None
-        x_lang_buffer = None
+        cross_lang_buffer = None
         for partition_index in partitions:
             if self._target_languages[partition_index] == \
                     function.Language.PYTHON:
@@ -71,7 +70,8 @@ class OutputCollector(Collector):
                                    python_buffer)
             else:
                 # avoid repeated serialization
-                if x_lang_buffer is None:
-                    x_lang_buffer = self.x_lang_serializer.serialize(record)
+                if cross_lang_buffer is None:
+                    cross_lang_buffer = self.cross_lang_serializer.serialize(
+                        record)
                 self._writer.write(self._channel_ids[partition_index],
-                                   x_lang_buffer)
+                                   cross_lang_buffer)

@@ -279,20 +279,20 @@ class JavaDataStream(Stream):
     def key_by(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.keyBy"""
         self._check_partition_call()
-        return JavaKeyDataStream(self, self._unary_call("keyBy",
-                                                        java_func_class))
+        return JavaKeyDataStream(self,
+                                 self._unary_call("keyBy", java_func_class))
 
     def broadcast(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.broadcast"""
         self._check_partition_call()
-        return JavaDataStream(self, self._unary_call("broadcast",
-                                                     java_func_class))
+        return JavaDataStream(self,
+                              self._unary_call("broadcast", java_func_class))
 
     def partition_by(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.partitionBy"""
         self._check_partition_call()
-        return JavaDataStream(self, self._unary_call("partitionBy",
-                                                     java_func_class))
+        return JavaDataStream(self,
+                              self._unary_call("partitionBy", java_func_class))
 
     def sink(self, java_func_class):
         """See org.ray.streaming.api.stream.DataStream.sink"""
@@ -381,8 +381,8 @@ class JavaKeyDataStream(JavaDataStream):
 
     def reduce(self, java_func_class):
         """See org.ray.streaming.api.stream.KeyDataStream.reduce"""
-        return JavaDataStream(self, super()._unary_call("reduce",
-                                                        java_func_class))
+        return JavaDataStream(self,
+                              super()._unary_call("reduce", java_func_class))
 
     def as_python(self):
         """

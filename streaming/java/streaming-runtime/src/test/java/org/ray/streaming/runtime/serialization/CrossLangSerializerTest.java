@@ -9,12 +9,12 @@ import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
 import org.testng.annotations.Test;
 
-public class XLangSerializerTest {
+public class CrossLangSerializerTest {
 
   @Test
   @SuppressWarnings("unchecked")
   public void testSerialize() {
-    XLangSerializer serializer = new XLangSerializer();
+    CrossLangSerializer serializer = new CrossLangSerializer();
     Record record = new Record("value");
     record.setStream("stream1");
     assertTrue(EqualsBuilder.reflectionEquals(record,
