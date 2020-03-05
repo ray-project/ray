@@ -1,7 +1,34 @@
 Running benchmarks
 ==================
 
-You can run `benchmark.py` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://ray.readthedocs.io/en/latest/autoscaling.html#aws>`_.
+You can run ``benchmark.py`` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://ray.readthedocs.io/en/latest/autoscaling.html#aws>`_.
+
+Results
+-------
+
+Here are benchmarking results on synthetic data (via ``benchmark.py``) as of 03/04/2020:
+
+ - PyTorch Version: torch-1.4.0-cp36-cp36m
+ - Torchvision Version: torchvision-0.5.0-cp36-cp36m
+ - Apex Version: commit hash 5633f6d
+ - Horovod Version: horovod-0.19.0
+
+
+.. code-block:: bash
+
+    # Images per second for ResNet50
+    # Batches per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3.16xlarge instances.
+
+    Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Apex
+    ==============  =======   ==============  =======    ==============
+    1 * 8 GPU(s)    2273.4    2552.3          2863.6     6171.5
+    2 * 8 GPU(s)    4210.5    4974.2          5640.2     8414.1
+    4 * 8 GPU(s)    6633.3    9544.4          11014.8    16346.8
+    8 * 8 GPU(s)    12414.6   18479.8         22273.6    33148.2
+
+
 
 Simple Instructions
 -------------------
@@ -57,29 +84,3 @@ You should see something like:
     Iter #9: 352.2 img/sec per GPU
     Img/sec per GPU: 352.5 +-3.0
     Total img/sec on 16 GPU(s): 5640.2 +-47.2
-
-
-Results
--------
-
-Here are benchmarking results on synthetic data as of 03/04/2020:
-
- - PyTorch Version: torch-1.4.0-cp36-cp36m
- - Torchvision Version: torchvision-0.5.0-cp36-cp36m
- - Apex Version: commit hash 5633f6d
- - Horovod Version: horovod-0.19.0
-
-
-.. code-block:: bash
-
-    # Images per second for ResNet50
-    # Batches per worker = 128
-    # GPU Type = V100
-    # Run on AWS us-east-1c, p3.16xlarge instances.
-
-    Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Apex
-    ==============  =======   ==============  =======    ==============
-    1 * 8 GPU(s)    2273.4    2552.3          2863.6     6171.5
-    2 * 8 GPU(s)    4210.5    4974.2          5640.2     8414.1
-    4 * 8 GPU(s)    6633.3    9544.4          11014.8    16346.8
-    8 * 8 GPU(s)    12414.6   18479.8         22273.6    33148.2
