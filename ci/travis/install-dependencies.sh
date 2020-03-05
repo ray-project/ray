@@ -38,6 +38,8 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
   pip config --user set global.no-color True
   pip config --user set global.progress_bar off
   pip config --user set global.quiet True
+  # Install modules needed in all Travis builds.
+  pip install dm-tree
 fi
 
 if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
@@ -49,7 +51,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   "${ROOT_DIR}/install-strace.sh" || true
   pip install scipy tensorflow==$tf_version \
-    cython==0.29.0 gym dm-tree \
+    cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
@@ -60,7 +62,7 @@ elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install scipy tensorflow==$tf_version \
-    cython==0.29.0 gym dm-tree \
+    cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
