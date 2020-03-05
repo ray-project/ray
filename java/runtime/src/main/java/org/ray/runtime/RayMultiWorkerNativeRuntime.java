@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
@@ -139,7 +140,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public void killActor(RayActor<?> actor) {
+  public void killActor(RayActor actor) {
     getCurrentRuntime().killActor(actor);
   }
 
@@ -149,12 +150,12 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
+  public RayObject callActor(RayFunc func, RayJavaActor<?> actor, Object[] args) {
     return getCurrentRuntime().callActor(func, actor, args);
   }
 
   @Override
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+  public <T> RayJavaActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
                                      ActorCreationOptions options) {
     return getCurrentRuntime().createActor(actorFactoryFunc, args, options);
   }

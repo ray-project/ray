@@ -187,7 +187,7 @@ public final class Ray extends RayCall {
    *
    * @param actor The actor to be killed.
    */
-  public static void killActor(RayActor<?> actor) {
+  public static void killActor(RayActor actor) {
     runtime.killActor(actor);
   }
 

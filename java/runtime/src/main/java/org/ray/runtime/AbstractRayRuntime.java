@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
@@ -98,7 +99,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
+  public RayObject callActor(RayFunc func, RayJavaActor<?> actor, Object[] args) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
@@ -108,12 +109,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
+  public <T> RayJavaActor<T> createActor(RayFunc actorFactoryFunc,
       Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
-    return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
+    return (RayJavaActor<T>) createActorImpl(functionDescriptor, args, options);
   }
 
   private void checkPyArguments(Object[] args) {

@@ -1,7 +1,7 @@
 package org.ray.exercise;
 
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 
 /**
@@ -13,7 +13,7 @@ public class Exercise05 {
     try {
       Ray.init();
       // `Ray.createActor` creates an actor instance.
-      RayActor<Adder> adder = Ray.createActor(Adder::new, 0);
+      RayJavaActor<Adder> adder = Ray.createActor(Adder::new, 0);
       // Use `Ray.call(actor, parameters)` to call an actor method.
       RayObject<Integer> result1 = adder.call(Adder::add, 1);
       System.out.println(result1.get());

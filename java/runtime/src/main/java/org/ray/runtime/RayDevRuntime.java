@@ -50,7 +50,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(RayActor<?> actor) {
+  public void killActor(RayActor actor) {
     throw new UnsupportedOperationException();
   }
 

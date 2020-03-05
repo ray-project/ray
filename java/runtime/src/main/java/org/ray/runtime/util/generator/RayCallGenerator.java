@@ -8,7 +8,7 @@ import java.util.List;
 import org.apache.commons.io.FileUtils;
 
 /**
- * A util class that generates `RayCall.java` and `ActorCall.java`, which provide type-safe
+ * A util class that generates `RayCall.java` and `JavaActorCall.java`, which provide type-safe
  * interfaces for `Ray.call`, `Ray.createActor` and `actor.call`.
  */
 public class RayCallGenerator extends BaseGenerator {
@@ -76,7 +76,7 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   /**
-   * @return Whole file content of `ActorCall.java`.
+   * @return Whole file content of `JavaActorCall.java`.
    */
   private String generateActorCallDotJava() {
     sb = new StringBuilder();
@@ -96,7 +96,7 @@ public class RayCallGenerator extends BaseGenerator {
     newLine(" * This class provides type-safe interfaces for remote actor calls.");
     newLine(" **/");
     newLine("@SuppressWarnings({\"rawtypes\", \"unchecked\"})");
-    newLine("interface ActorCall<A> {");
+    newLine("interface JavaActorCall<A> {");
     newLine("");
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
       buildCalls(i, true, false, true, false);
@@ -148,7 +148,7 @@ public class RayCallGenerator extends BaseGenerator {
     // 2) Construct the `returnType` part.
     String returnType;
     if (forActorCreation) {
-      returnType = "RayActor<A>";
+      returnType = "RayJavaActor<A>";
     } else {
       returnType = hasReturn ? "RayObject<R>" : "void";
     }
@@ -200,7 +200,7 @@ public class RayCallGenerator extends BaseGenerator {
       // 5) Construct the third line.
       String callFuncArgs = "f, ";
       if (forActor) {
-        callFuncArgs += "(RayActor) this, ";
+        callFuncArgs += "(RayJavaActor) this, ";
       }
       callFuncArgs += "args, ";
       callFuncArgs += forActor ? "" : hasOptionsParam ? "options, " : "null, ";
@@ -304,7 +304,7 @@ public class RayCallGenerator extends BaseGenerator {
     FileUtils.write(new File(path), new RayCallGenerator().generateRayCallDotJava(),
         Charset.defaultCharset());
     path = System.getProperty("user.dir")
-        + "/api/src/main/java/org/ray/api/ActorCall.java";
+        + "/api/src/main/java/org/ray/api/JavaActorCall.java";
     FileUtils.write(new File(path), new RayCallGenerator().generateActorCallDotJava(),
         Charset.defaultCharset());
   }

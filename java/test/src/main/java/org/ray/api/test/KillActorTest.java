@@ -2,7 +2,7 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayActorException;
@@ -28,7 +28,7 @@ public class KillActorTest extends BaseTest {
   public void testKillActor() {
     TestUtils.skipTestUnderSingleProcess();
     TestUtils.skipTestIfDirectActorCallDisabled();
-    RayActor<HangActor> actor = Ray.createActor(HangActor::new);
+    RayJavaActor<HangActor> actor = Ray.createActor(HangActor::new);
     Assert.assertTrue(actor.call(HangActor::alive).get());
     RayObject<Boolean> result = actor.call(HangActor::hang);
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());

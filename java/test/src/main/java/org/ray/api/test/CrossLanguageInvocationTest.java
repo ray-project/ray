@@ -8,7 +8,7 @@ import java.io.InputStream;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
@@ -86,7 +86,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   @Test
   public void testPassActorHandleFromJavaToPython() {
     // Create a java actor, and pass actor handle to python.
-    RayActor<TestActor> javaActor = Ray.createActor(TestActor::new, "1".getBytes());
+    RayJavaActor<TestActor> javaActor = Ray.createActor(TestActor::new, "1".getBytes());
     Preconditions.checkState(javaActor instanceof NativeRayActor);
     byte[] actorHandleBytes = ((NativeRayActor) javaActor).toBytes();
     RayObject res = Ray.callPy(PYTHON_MODULE,

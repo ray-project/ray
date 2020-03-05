@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Checkpointable;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayActorException;
 import org.ray.api.id.ActorId;
@@ -47,7 +47,7 @@ public class ActorReconstructionTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
-    RayActor<Counter> actor = Ray.createActor(Counter::new, options);
+    RayJavaActor<Counter> actor = Ray.createActor(Counter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
       actor.call(Counter::increase).get();
@@ -127,7 +127,7 @@ public class ActorReconstructionTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
-    RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
+    RayJavaActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
       actor.call(CheckpointableCounter::increase).get();
