@@ -138,7 +138,7 @@ You can also obtain profiling information:
     >>> print(pretty_print(trainer.train(profile=True)))
 
     batch_count: 16
-    epoch: 3
+    epoch: 1
     last_train_loss: 0.15574650466442108
     mean_train_loss: 7.475177114367485
     num_samples: 1000
