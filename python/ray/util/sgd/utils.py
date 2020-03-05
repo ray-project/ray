@@ -1,3 +1,4 @@
+import collections
 from contextlib import closing
 import logging
 import numpy as np
@@ -134,6 +135,7 @@ class AverageMeter:
 
 class AverageMeterCollection:
     """A grouping of AverageMeter."""
+
     def __init__(self):
         self._batch_count = 0
         self.n = 0

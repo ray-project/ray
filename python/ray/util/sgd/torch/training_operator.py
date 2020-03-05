@@ -1,8 +1,7 @@
 import collections
 import torch
 
-from ray.util.sgd.utils import (
-    TimerStat, AverageMeter, AverageMeterCollection, NUM_SAMPLES)
+from ray.util.sgd.utils import (TimerStat, AverageMeterCollection, NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
@@ -53,7 +52,7 @@ class TrainingOperator:
                  schedulers=None,
                  use_fp16=False):
         # You are not expected to override this method.
-        self.timers = defaultdict(TimerStat)
+        self.timers = collections.defaultdict(TimerStat)
         self._validated_customization = False
         self._models = models  # List of models
         assert isinstance(models, collections.Iterable), (
