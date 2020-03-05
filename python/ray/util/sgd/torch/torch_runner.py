@@ -26,10 +26,10 @@ class TorchRunner:
 
     Args:
         model_creator (dict -> Model(s)): see torch_trainer.py
+        data_creator (dict -> Iterable(s)): see torch_trainer.py.
         optimizer_creator ((models, dict) -> optimizers): see torch_trainer.py.
         loss_creator (torch.nn.*Loss class | dict -> loss):
             see torch_trainer.py.
-        data_creator (dict -> Iterable(s)): see torch_trainer.py.
         scheduler_creator ((optimizers, dict) -> scheduler): see
             torch_trainer.py.
         training_operator_cls: see torch_trainer.py
@@ -41,9 +41,9 @@ class TorchRunner:
 
     def __init__(self,
                  model_creator,
+                 data_creator,
                  optimizer_creator,
                  loss_creator=None,
-                 data_creator=None,
                  scheduler_creator=None,
                  training_operator_cls=None,
                  profile=False,
@@ -97,8 +97,6 @@ class TorchRunner:
 
     def _initialize_dataloaders(self):
         logger.debug("Instantiating dataloaders.")
-        if not self.data_creator:
-            return
         # When creating loaders, a filelock will be used to ensure no
         # race conditions in data downloading among different workers.
         with FileLock(os.path.expanduser("~/.ray_data.lock")):

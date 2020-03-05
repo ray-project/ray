@@ -145,8 +145,8 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not model_creator or not optimizer_creator:
-            raise ValueError("Model and Optimizer creator must be provided.")
+        if not (model_creator and optimizer_creator and data_creator):
+            raise ValueError("Must provide a Model, Optimizer, Data creator.")
         self.model_creator = model_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
@@ -157,9 +157,6 @@ class TorchTrainer:
         if not training_operator_cls:
             if not loss_creator:
                 raise ValueError("If a loss_creator is not provided, you must "
-                                 "provide a custom training operator.")
-            if not data_creator:
-                raise ValueError("If a data_creator is not provided, you must "
                                  "provide a custom training operator.")
 
         self.initialization_hook = initialization_hook
@@ -200,11 +197,11 @@ class TorchTrainer:
             # Start workers
             self.workers = [
                 Runner.remote(
-                    self.model_creator,
-                    self.optimizer_creator,
-                    self.loss_creator,
-                    self.data_creator,
-                    self.scheduler_creator,
+                    model_creator=self.model_creator,
+                    data_creator=self.data_creator,
+                    optimizer_creator=self.optimizer_creator,
+                    loss_creator=self.loss_creator,
+                    scheduler_creator=self.scheduler_creator,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,
                     use_fp16=self.use_fp16,
@@ -223,11 +220,11 @@ class TorchTrainer:
             # Start workers
             self.workers = [
                 Runner.remote(
-                    self.model_creator,
-                    self.optimizer_creator,
-                    self.loss_creator,
-                    self.data_creator,
-                    self.scheduler_creator,
+                    model_creator=self.model_creator,
+                    data_creator=self.data_creator,
+                    optimizer_creator=self.optimizer_creator,
+                    loss_creator=self.loss_creator,
+                    scheduler_creator=self.scheduler_creator,
                     backend=self.backend,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,

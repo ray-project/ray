@@ -88,8 +88,7 @@ class DistributedTorchRunner(TorchRunner):
 
         Automatically sets epoch of sampler if possible.
         """
-        if self.train_loader and hasattr(
-                self.train_loader.sampler, "set_epoch"):
+        if hasattr(self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
