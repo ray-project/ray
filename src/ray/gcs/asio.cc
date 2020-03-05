@@ -16,9 +16,16 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
   // gives access to c->fd
   redisContext *c = &(async_context->c);
 
+  boost::asio::ip::tcp::socket::native_handle_type handle;
+#ifdef _WIN32
+  handle = RFDMap::getInstance().lookupSocket(c->fd);
+#else
+  handle = c->fd;
+#endif
+
   // hiredis is already connected
   // use the existing native socket
-  socket_.assign(boost::asio::ip::tcp::v4(), c->fd);
+  socket_.assign(boost::asio::ip::tcp::v4(), handle);
 
   // register hooks with the hiredis async context
   async_context->ev.addRead = call_C_addRead;
