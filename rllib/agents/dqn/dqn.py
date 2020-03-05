@@ -317,10 +317,14 @@ def training_pipeline(workers, config):
     local_replay_buffer = ReplayBuffer(config["buffer_size"])
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
-    # (1) Store experiences into the local replay buffer.
+    # We execute the following steps concurrently:
+    # (1) Generate rollouts and store them in our local replay buffer. Calling
+    # next() on store_op drives this.
     store_op = rollouts.for_each(StoreToReplayBuffer(local_replay_buffer))
 
-    # (2) Replay and train on selected experiences.
+    # (2) Read and train on experiences from the replay buffer. Every batch
+    # returned from the LocalReplay() iterator is passed to TrainOneStep to
+    # take a SGD step, and then we decide whether to update the target network.
     replay_op = LocalReplay(local_replay_buffer, config["train_batch_size"]) \
         .for_each(TrainOneStep(workers)) \
         .for_each(UpdateTargetNetwork(
