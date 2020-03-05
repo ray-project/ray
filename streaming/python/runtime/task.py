@@ -41,21 +41,21 @@ class StreamTask(ABC):
         # writers
         collectors = []
         for edge in execution_node.output_edges:
-            output_actor_ids = {}
+            output_actors_map = {}
             task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
                 edge.target_node_id)
             for target_task_id, target_actor in task_id2_worker.items():
                 channel_name = ChannelID.gen_id(self.task_id, target_task_id,
                                                 execution_graph.build_time())
-                output_actor_ids[channel_name] = target_actor
-            if len(output_actor_ids) > 0:
-                channel_ids = list(output_actor_ids.keys())
-                to_actor_ids = list(output_actor_ids.values())
-                writer = DataWriter(channel_ids, to_actor_ids, channel_conf)
+                output_actors_map[channel_name] = target_actor
+            if len(output_actors_map) > 0:
+                channel_ids = list(output_actors_map.keys())
+                target_actors = list(output_actors_map.values())
+                writer = DataWriter(channel_ids, target_actors, channel_conf)
                 logger.info("Create DataWriter succeed.")
                 self.writers[edge] = writer
                 collectors.append(
-                    OutputCollector(channel_ids, writer, edge.partition))
+                    OutputCollector(writer, channel_ids, target_actors, edge.partition))
 
         # readers
         input_actor_ids = {}

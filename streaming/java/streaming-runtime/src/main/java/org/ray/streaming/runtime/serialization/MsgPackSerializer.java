@@ -1,4 +1,4 @@
-package org.ray.streaming.serialization;
+package org.ray.streaming.runtime.serialization;
 
 import com.google.common.io.BaseEncoding;
 import java.util.ArrayList;

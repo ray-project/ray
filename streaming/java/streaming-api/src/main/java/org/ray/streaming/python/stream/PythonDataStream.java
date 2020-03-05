@@ -24,7 +24,8 @@ public class PythonDataStream extends Stream implements PythonStream {
   }
 
   /**
-   * Create a reference of referenced stream
+   * Create a python reference stream of java stream.
+   * Changes in new stream will be reflected in referenced stream and vice versa
    */
   public PythonDataStream(DataStream referencedStream) {
     super(referencedStream);

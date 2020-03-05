@@ -1,4 +1,4 @@
-package org.ray.streaming.serialization;
+package org.ray.streaming.runtime.serialization;
 
 import java.util.Arrays;
 import java.util.List;
@@ -9,13 +9,14 @@ import org.ray.streaming.message.Record;
  * A serializer for cross-lang serialization between java/python.
  * TODO implements a more sophisticated serialization framework
  */
-public class XLangSerializer {
+public class XLangSerializer implements Serializer {
   private static final byte RECORD_TYPE_ID = 0;
   private static final byte KEY_RECORD_TYPE_ID = 1;
 
   private MsgPackSerializer msgPackSerializer = new MsgPackSerializer();
 
-  public byte[] serialize(Record record) {
+  public byte[] serialize(Object object) {
+    Record record = (Record) object;
     Object value = record.getValue();
     Class<? extends Record> clz = record.getClass();
     if (clz == Record.class) {

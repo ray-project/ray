@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+import pickle
 import msgpack
 from ray.streaming import message
 
@@ -6,17 +8,36 @@ _RECORD_TYPE_ID = 0
 _KEY_RECORD_TYPE_ID = 1
 
 
-class XLangSerializer:
+class Serializer(ABC):
+
+    @abstractmethod
+    def serialize(self, obj):
+        pass
+
+    @abstractmethod
+    def deserialize(self, serialized_bytes):
+        pass
+
+
+class PythonSerializer(Serializer):
+
+    def serialize(self, obj):
+        return pickle.dumps(obj)
+
+    def deserialize(self, serialized_bytes):
+        return pickle.loads(serialized_bytes)
+
+
+class XLangSerializer(Serializer):
     """Serialize stream element between java/python"""
 
-    def serialize(self, record):
-        if type(record) is message.Record:
-            fields = [_RECORD_TYPE_ID, record.stream, record.value]
-        elif type(record) is message.KeyRecord:
-            fields = [_KEY_RECORD_TYPE_ID, record.stream, record.key,
-                      record.value]
+    def serialize(self, obj):
+        if type(obj) is message.Record:
+            fields = [_RECORD_TYPE_ID, obj.stream, obj.value]
+        elif type(obj) is message.KeyRecord:
+            fields = [_KEY_RECORD_TYPE_ID, obj.stream, obj.key, obj.value]
         else:
-            raise Exception("Unsupported value {}".format(record))
+            raise Exception("Unsupported value {}".format(obj))
         return msgpack.packb(fields, use_bin_type=True)
 
     def deserialize(self, data):

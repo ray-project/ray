@@ -64,26 +64,28 @@ public abstract class StreamTask implements Runnable {
     List<ExecutionEdge> outputEdges = executionNode.getOutputEdges();
     List<Collector> collectors = new ArrayList<>();
     for (ExecutionEdge edge : outputEdges) {
-      Map<String, ActorId> outputActorIds = new HashMap<>();
+      Map<String, RayActor> outputActorsMap = new HashMap<>();
       Map<Integer, RayActor> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
         String queueName = ChannelID.genIdStr(taskId, targetTaskId, executionGraph.getBuildTime());
-        outputActorIds.put(queueName, targetActor.getId());
+        outputActorsMap.put(queueName, targetActor);
       });
 
-      if (!outputActorIds.isEmpty()) {
+      if (!outputActorsMap.isEmpty()) {
         List<String> channelIDs = new ArrayList<>();
-        List<ActorId> toActorIds = new ArrayList<>();
-        outputActorIds.forEach((k, v) -> {
-          channelIDs.add(k);
-          toActorIds.add(v);
+        List<RayActor> targetActors = new ArrayList<>();
+        List<ActorId> targetActorIds = new ArrayList<>();
+        outputActorsMap.forEach((channelName, actor) -> {
+          channelIDs.add(channelName);
+          targetActors.add(actor);
+          targetActorIds.add(actor.getId());
         });
-        DataWriter writer = new DataWriter(channelIDs, toActorIds, queueConf);
+        DataWriter writer = new DataWriter(channelIDs, targetActorIds, queueConf);
         LOG.info("Create DataWriter succeed.");
         writers.put(edge, writer);
         Partition partition = edge.getPartition();
-        collectors.add(new OutputCollector(channelIDs, writer, partition));
+        collectors.add(new OutputCollector(writer, channelIDs, targetActors, partition));
       }
     }
 

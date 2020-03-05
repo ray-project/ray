@@ -1,4 +1,4 @@
-from ray.streaming.serialization import XLangSerializer
+from ray.streaming.runtime.serialization import XLangSerializer
 from ray.streaming.message import Record, KeyRecord
 
 
