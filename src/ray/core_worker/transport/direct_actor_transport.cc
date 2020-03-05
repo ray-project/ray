@@ -11,7 +11,12 @@ namespace ray {
 Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
                                                      bool force_kill) {
   absl::MutexLock lock(&mu_);
-  pending_force_kills_[actor_id] = force_kill;
+  auto inserted = pending_force_kills_.emplace(actor_id, force_kill);
+  if (!inserted.second && force_kill) {
+    // Overwrite the previous request to kill the actor if the new request is a
+    // force kill.
+    inserted.first->second = true;
+  }
   auto it = rpc_clients_.find(actor_id);
   if (it == rpc_clients_.end()) {
     // Actor is not yet created, or is being reconstructed, cache the request

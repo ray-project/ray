@@ -137,19 +137,7 @@ class SerializationContext:
         def actor_handle_serializer(obj):
             serialized, actor_handle_id = obj._serialization_helper()
             # Update ref counting for the actor handle
-            if self.is_in_band_serialization():
-                # This actor handle is being stored in an object. Add the
-                # actor's handle ID to the list of IDs contained in the object
-                # so that we keep the actor alive as long as the outer object
-                # is in scope.
-                self.add_contained_object_id(actor_handle_id)
-            else:
-                # If this serialization is out-of-band (e.g., from a call to
-                # cloudpickle directly or captured in a remote function/actor),
-                # then pin the object for the lifetime of this worker by adding
-                # a local reference that won't ever be removed.
-                ray.worker.get_global_worker(
-                ).core_worker.add_object_id_reference(actor_handle_id)
+            self.add_contained_object_id(actor_handle_id)
             return serialized
 
         def actor_handle_deserializer(serialized_obj):
@@ -172,15 +160,7 @@ class SerializationContext:
             return serialized_obj[0](*serialized_obj[1])
 
         def object_id_serializer(obj):
-            if self.is_in_band_serialization():
-                self.add_contained_object_id(obj)
-            else:
-                # If this serialization is out-of-band (e.g., from a call to
-                # cloudpickle directly or captured in a remote function/actor),
-                # then pin the object for the lifetime of this worker by adding
-                # a local reference that won't ever be removed.
-                ray.worker.get_global_worker(
-                ).core_worker.add_object_id_reference(obj)
+            self.add_contained_object_id(obj)
             owner_id = ""
             owner_address = ""
             # TODO(swang): Remove this check. Otherwise, we will not be able to
@@ -262,10 +242,20 @@ class SerializationContext:
         return object_ids
 
     def add_contained_object_id(self, object_id):
-        if not hasattr(self._thread_local, "object_ids"):
-            self._thread_local.object_ids = set()
-
-        self._thread_local.object_ids.add(object_id)
+        if self.is_in_band_serialization():
+            # This object ID is being stored in an object. Add the ID to the
+            # list of IDs contained in the object so that we keep the inner
+            # object value alive as long as the outer object is in scope.
+            if not hasattr(self._thread_local, "object_ids"):
+                self._thread_local.object_ids = set()
+            self._thread_local.object_ids.add(object_id)
+        else:
+            # If this serialization is out-of-band (e.g., from a call to
+            # cloudpickle directly or captured in a remote function/actor),
+            # then pin the object for the lifetime of this worker by adding
+            # a local reference that won't ever be removed.
+            ray.worker.get_global_worker().core_worker.add_object_id_reference(
+                object_id)
 
     def _deserialize_pickle5_data(self, data):
         if not self.use_pickle:
