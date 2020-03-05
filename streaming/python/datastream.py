@@ -29,9 +29,8 @@ class Stream(ABC):
         Returns:
             the parallelism of this transformation
         """
-        bytes_data = self._gateway_client(). \
+        return self._gateway_client(). \
             call_method(self._j_stream, "getParallelism")
-        return gateway_client.deserialize(bytes_data)
 
     def set_parallelism(self, parallelism: int):
         """Sets the parallelism of this transformation
@@ -58,9 +57,8 @@ class Stream(ABC):
         Returns:
             An unique id identifies this stream.
         """
-        bytes_data = self._gateway_client(). \
+        return self._gateway_client(). \
             call_method(self._j_stream, "getId")
-        return gateway_client.deserialize(bytes_data)
 
     @abstractmethod
     def get_language(self):
@@ -246,7 +244,7 @@ class DataStream(Stream):
         in this stream and vice versa.
         """
         j_stream = self._gateway_client(). \
-            call_method(self._j_stream, "asJavaStream")
+            call_method(self._j_stream, "asJava")
         return JavaDataStream(self, j_stream)
 
 
@@ -308,7 +306,7 @@ class JavaDataStream(Stream):
         in this stream and vice versa.
         """
         j_stream = self._gateway_client(). \
-            call_method(self._j_stream, "asPythonStream")
+            call_method(self._j_stream, "asPython")
         return DataStream(self, j_stream)
 
     def _check_partition_call(self):
@@ -368,7 +366,7 @@ class KeyDataStream(DataStream):
         in this stream and vice versa.
         """
         j_stream = self._gateway_client(). \
-            call_method(self._j_stream, "asJavaStream")
+            call_method(self._j_stream, "asJava")
         return JavaKeyDataStream(self, j_stream)
 
 
@@ -394,7 +392,7 @@ class JavaKeyDataStream(JavaDataStream):
         in this stream and vice versa.
         """
         j_stream = self._gateway_client(). \
-            call_method(self._j_stream, "asPythonStream")
+            call_method(self._j_stream, "asPython")
         return KeyDataStream(self, j_stream)
 
 
