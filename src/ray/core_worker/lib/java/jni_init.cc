@@ -50,11 +50,11 @@ jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
+jfieldID java_base_task_options_use_direct_call;
+jfieldID java_base_task_options_default_use_direct_call;
 
 jclass java_actor_creation_options_class;
-jfieldID java_actor_creation_options_default_use_direct_call;
 jfieldID java_actor_creation_options_max_reconstructions;
-jfieldID java_actor_creation_options_use_direct_call;
 jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
 
@@ -155,15 +155,15 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
+  java_base_task_options_use_direct_call =
+      env->GetFieldID(java_base_task_options_class, "useDirectCall", "Z");
+  java_base_task_options_default_use_direct_call =
+      env->GetStaticFieldID(java_base_task_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
 
   java_actor_creation_options_class =
       LoadClass(env, "org/ray/api/options/ActorCreationOptions");
-  java_actor_creation_options_default_use_direct_call = env->GetStaticFieldID(
-      java_actor_creation_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
   java_actor_creation_options_max_reconstructions =
       env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
-  java_actor_creation_options_use_direct_call =
-      env->GetFieldID(java_actor_creation_options_class, "useDirectCall", "Z");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
   java_actor_creation_options_max_concurrency =
@@ -190,9 +190,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
 
   java_task_executor_get = env->GetStaticMethodID(
-      java_task_executor_class,
-      "get",
-      "([B)Lorg/ray/runtime/task/TaskExecutor;");
+      java_task_executor_class, "get", "([B)Lorg/ray/runtime/task/TaskExecutor;");
 
   return CURRENT_JNI_VERSION;
 }

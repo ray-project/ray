@@ -276,6 +276,14 @@ def _to_native_conf(conf):
     if Config.STREAMING_EMPTY_MESSAGE_INTERVAL in conf:
         config.empty_message_interval = \
             conf[Config.STREAMING_EMPTY_MESSAGE_INTERVAL]
+    if Config.FLOW_CONTROL_TYPE in conf:
+        conf.flow_control_type = conf[Config.FLOW_CONTROL_TYPE]
+    if Config.WRITER_CONSUMED_STEP in conf:
+        conf.writer_consumed_step = \
+            conf[Config.WRITER_CONSUMED_STEP]
+    if Config.READER_CONSUMED_STEP in conf:
+        conf.reader_consumed_step = \
+            conf[Config.READER_CONSUMED_STEP]
     logger.info("conf: %s", str(config))
     return config.SerializeToString()
 

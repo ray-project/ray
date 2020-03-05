@@ -25,30 +25,21 @@ DEFAULT_CONFIG = with_common_config({
         "hidden_activation": "relu",
         "hidden_layer_sizes": (256, 256),
     },
-    # Unsquash actions to the upper and lower bounds of env's action space
+    # Unsquash actions to the upper and lower bounds of env's action space.
     "normalize_actions": True,
 
     # === Learning ===
-    # Update the target by \tau * policy + (1-\tau) * target_policy
+    # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 5e-3,
     # Target entropy lower bound. This is the inverse of reward scale,
     # and will be optimized automatically.
     "target_entropy": "auto",
     # Disable setting done=True at end of episode.
     "no_done_at_end": True,
-    # N-step target updates
+    # N-step target updates.
     "n_step": 1,
-    # === Evaluation ===
-    # The evaluation stats will be reported under the "evaluation" metric key.
-    "evaluation_interval": 1,
-    # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 1,
-    # Extra configuration that disables exploration.
-    "evaluation_config": {
-        "explore": False,
-    },
 
-    # Number of env steps to optimize for before returning
+    # Number of env steps to optimize for before returning.
     "timesteps_per_iteration": 100,
 
     # === Replay buffer ===

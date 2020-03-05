@@ -62,7 +62,7 @@ def _report_progress(runner, reporter, done=False):
     if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
         executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, sched_debug_str, executor_debug_str)
+        reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
 def run(run_or_experiment,
@@ -242,10 +242,6 @@ def run(run_or_experiment,
         experiments = run_or_experiment
     else:
         experiments = [run_or_experiment]
-    if len(experiments) > 1:
-        logger.info(
-            "Running multiple concurrent experiments is experimental and may "
-            "not work with certain features.")
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
@@ -349,9 +345,6 @@ def run(run_or_experiment,
     trials = runner.get_trials()
     if return_trials:
         return trials
-    logger.info("Returning an analysis object by default. You can call "
-                "`analysis.trials` to retrieve a list of trials. "
-                "This message will be removed in future versions of Tune.")
     return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
 
 

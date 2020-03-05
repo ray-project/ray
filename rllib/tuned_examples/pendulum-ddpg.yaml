@@ -15,14 +15,16 @@ pendulum-ddpg:
         env_config: {}
 
         # === Exploration ===
-        exploration_should_anneal: True
-        schedule_max_timesteps: 100000
+        exploration_config:
+            type: "OrnsteinUhlenbeckNoise"
+            scale_timesteps: 10000
+            initial_scale: 1.0,
+            final_scale: 0.02
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+
         timesteps_per_iteration: 600
-        exploration_fraction: 0.1
-        exploration_final_scale: 0.02
-        exploration_ou_noise_scale: 0.1
-        exploration_ou_theta: 0.15
-        exploration_ou_sigma: 0.2
         target_network_update_freq: 0
         tau: 0.001
 
@@ -47,7 +49,7 @@ pendulum-ddpg:
         # === Parallelism ===
         num_workers: 0
         num_gpus_per_worker: 0
-        per_worker_exploration: False
+        #per_worker_exploration: False
         worker_side_prioritization: False
 
         # === Evaluation ===

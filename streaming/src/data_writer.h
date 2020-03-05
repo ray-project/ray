@@ -10,6 +10,7 @@
 #include "channel.h"
 #include "config/streaming_config.h"
 #include "event_service.h"
+#include "flow_control.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
 
@@ -30,6 +31,40 @@ namespace streaming {
 /// accordingly. It will sleep for a short interval to save cpu if all ring
 /// buffers have no data in that moment.
 class DataWriter {
+ public:
+  explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
+  virtual ~DataWriter();
+
+  /// Streaming writer client initialization.
+  /// \param queue_id_vec queue id vector
+  /// \param channel_message_id_vec channel seq id is related with message checkpoint
+  /// \param queue_size queue size (memory size not length)
+  StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
+                       const std::vector<ActorID> &actor_ids,
+                       const std::vector<uint64_t> &channel_message_id_vec,
+                       const std::vector<uint64_t> &queue_size_vec);
+
+  ///  To increase throughout, we employed an output buffer for message transformation,
+  ///  which means we merge a lot of message to a message bundle and no message will be
+  ///  pushed into queue directly util daemon thread does this action.
+  ///  Additionally, writing will block when buffer ring is full intentionly.
+  ///  \param q_id, destination channel id
+  ///  \param data, pointer of raw data
+  ///  \param data_size, raw data size
+  ///  \param message_type
+  ///  \return message seq iq
+  uint64_t WriteMessageToBufferRing(
+      const ObjectID &q_id, uint8_t *data, uint32_t data_size,
+      StreamingMessageType message_type = StreamingMessageType::Message);
+
+  void Run();
+
+  void Stop();
+
+  /// Get offset information about channels for checkpoint.
+  ///  \param offset_map (return value)
+  void GetOffsetInfo(std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map);
+
  private:
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
 
@@ -41,16 +76,6 @@ class DataWriter {
   /// \\param buffer_remain
   StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
                                        uint64_t &buffer_remain);
-
-  /// Start the loop forward thread for collecting messages from all channels.
-  /// Invoking stack:
-  /// WriterLoopForward
-  ///   -- WriteChannelProcess
-  ///      -- WriteBufferToChannel
-  ///        -- CollectFromRingBuffer
-  ///        -- WriteTransientBufferToChannel
-  ///   -- WriteEmptyMessage(if WriteChannelProcess return empty state)
-  void WriterLoopForward();
 
   /// Push empty message when no valid message or bundle was produced each time
   /// interval.
@@ -79,42 +104,25 @@ class DataWriter {
 
   void EmptyMessageTimerCallback();
 
- public:
-  explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
-  virtual ~DataWriter();
+  /// Notify channel consumed  refreshing downstream queue stats.
+  void RefreshChannelAndNotifyConsumed(ProducerChannelInfo &channel_info);
 
-  /// Streaming writer client initialization.
-  /// \param queue_id_vec queue id vector
-  /// \param channel_message_id_vec channel seq id is related with message checkpoint
-  /// \param queue_size queue size (memory size not length)
-  StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
-                       const std::vector<ActorID> &actor_ids,
-                       const std::vector<uint64_t> &channel_message_id_vec,
-                       const std::vector<uint64_t> &queue_size_vec);
+  /// Notify channel consumed by given offset.
+  void NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset);
 
-  ///  To increase throughout, we employed an output buffer for message transformation,
-  ///  which means we merge a lot of message to a message bundle and no message will be
-  ///  pushed into queue directly util daemon thread does this action.
-  ///  Additionally, writing will block when buffer ring is full intentionly.
-  ///  \param q_id
-  ///  \param data
-  ///  \param data_size
-  ///  \param message_type
-  ///  \return message seq iq
-  uint64_t WriteMessageToBufferRing(
-      const ObjectID &q_id, uint8_t *data, uint32_t data_size,
-      StreamingMessageType message_type = StreamingMessageType::Message);
-
-  void Run();
-
-  void Stop();
+  void FlowControlTimer();
 
  private:
   std::shared_ptr<EventService> event_service_;
 
   std::shared_ptr<std::thread> empty_message_thread_;
+
+  std::shared_ptr<std::thread> flow_control_thread_;
   // One channel have unique identity.
   std::vector<ObjectID> output_queue_ids_;
+  // Flow controller makes a decision when it's should be blocked and avoid
+  // unnecessary overflow.
+  std::shared_ptr<FlowControl> flow_controller_;
 
  protected:
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;

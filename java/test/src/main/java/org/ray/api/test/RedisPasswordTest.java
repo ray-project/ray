@@ -2,7 +2,6 @@ package org.ray.api.test;
 
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -22,7 +21,6 @@ public class RedisPasswordTest extends BaseTest {
     System.clearProperty("ray.redis.password");
   }
 
-  @RayRemote
   public static String echo(String str) {
     return str;
   }

@@ -105,17 +105,6 @@ class TaskManager : public TaskFinisherInterface {
   void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                              rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
 
-  /// Remove submitted task references in the reference counter for the object IDs.
-  /// If the references were borrowed by a worker while executing a task, then
-  /// merge in the ref counts for any references that the task (or a nested
-  /// task) is still borrowing. If any reference counts for the borrowed
-  /// objects reach zero, they are deleted from the in-memory store.
-  void RemoveSubmittedTaskReferences(
-      const std::vector<ObjectID> &object_ids,
-      const rpc::Address &worker_addr = rpc::Address(),
-      const ReferenceCounter::ReferenceTableProto &borrowed_refs =
-          ReferenceCounter::ReferenceTableProto());
-
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs

@@ -64,7 +64,7 @@ class TrainMNIST(tune.Trainable):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(address=args.ray_address)
+    ray.init(address=args.ray_address, num_cpus=6 if args.smoke_test else None)
     sched = ASHAScheduler(metric="mean_accuracy")
     analysis = tune.run(
         TrainMNIST,

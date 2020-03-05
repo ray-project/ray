@@ -1,6 +1,6 @@
 # flake8: noqa
 """
-This file holds code for the Pytorch Trainer creator signatures.
+This file holds code for the torch Trainer creator signatures.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
@@ -18,7 +18,7 @@ def model_creator(config):
     function to specify the optimization procedure for multiple models.
 
     Args:
-        config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
+        config (dict): Configuration dictionary passed into ``TorchTrainer``.
 
     Returns:
         One or more torch.nn.Module objects.
@@ -36,7 +36,7 @@ def optimizer_creator(model, config):
     Args:
         models: The return values from ``model_creator``. This can be one
             or more torch nn modules.
-        config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
+        config (dict): Configuration dictionary passed into ``TorchTrainer``.
 
     Returns:
         One or more Torch optimizer objects.
@@ -46,7 +46,7 @@ def optimizer_creator(model, config):
 
 
 # __torch_data_start__
-from ray.util.sgd.pytorch.examples.train_example import LinearDataset
+from ray.util.sgd.torch.examples.train_example import LinearDataset
 
 def data_creator(config):
     """Constructs torch.utils.data.Dataset objects.
@@ -55,7 +55,7 @@ def data_creator(config):
     only one dataset will be used for training.
 
     Args:
-        config: Configuration dictionary passed into ``PyTorchTrainer``
+        config: Configuration dictionary passed into ``TorchTrainer``
 
     Returns:
         One or Two Dataset objects. If only one Dataset object is provided,
@@ -71,10 +71,10 @@ def loss_creator(config):
     """Constructs the Torch Loss object.
 
     Note that optionally, you can pass in a Torch Loss constructor directly
-    into the PyTorchTrainer (i.e., ``PyTorchTrainer(loss_creator=nn.BCELoss, ...)``).
+    into the TorchTrainer (i.e., ``TorchTrainer(loss_creator=nn.BCELoss, ...)``).
 
     Args:
-        config: Configuration dictionary passed into ``PyTorchTrainer``
+        config: Configuration dictionary passed into ``TorchTrainer``
 
     Returns:
         Torch Loss object.
@@ -91,7 +91,7 @@ def scheduler_creator(optimizer, config):
     Args:
         optimizers: The return values from ``optimizer_creator``.
             This can be one or more torch optimizer objects.
-        config: Configuration dictionary passed into ``PyTorchTrainer``
+        config: Configuration dictionary passed into ``TorchTrainer``
 
     Returns:
         One or more Torch scheduler objects.
@@ -108,9 +108,9 @@ ray.init()
 # __torch_ray_end__
 
 # __torch_trainer_start__
-from ray.util.sgd import PyTorchTrainer
+from ray.util.sgd import TorchTrainer
 
-trainer = PyTorchTrainer(
+trainer = TorchTrainer(
     model_creator,
     data_creator,
     optimizer_creator,

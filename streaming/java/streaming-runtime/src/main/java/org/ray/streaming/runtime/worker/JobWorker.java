@@ -2,8 +2,8 @@ package org.ray.streaming.runtime.worker;
 
 import java.io.Serializable;
 import java.util.Map;
+
 import org.ray.api.Ray;
-import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -27,7 +27,6 @@ import org.slf4j.LoggerFactory;
 /**
  * The stream job worker, it is a ray actor.
  */
-@RayRemote
 public class JobWorker implements Serializable {
   private static final Logger LOGGER = LoggerFactory.getLogger(JobWorker.class);
 

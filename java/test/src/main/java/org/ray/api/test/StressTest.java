@@ -64,7 +64,7 @@ public class StressTest extends BaseTest {
     public int ping(int n) {
       List<ObjectId> objectIds = new ArrayList<>();
       for (int i = 0; i < n; i++) {
-        objectIds.add(Ray.call(Actor::ping, actor).getId());
+        objectIds.add(actor.call(Actor::ping).getId());
       }
       int sum = 0;
       for (Integer result : Ray.<Integer>get(objectIds)) {
@@ -74,14 +74,14 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test(enabled = false, groups = {"directCall"})
+  @Test(enabled = false)
   public void testSubmittingManyTasksToOneActor() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Actor> actor = Ray.createActor(Actor::new);
     List<ObjectId> objectIds = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       RayActor<Worker> worker = Ray.createActor(Worker::new, actor);
-      objectIds.add(Ray.call(Worker::ping, worker, 100).getId());
+      objectIds.add(worker.call(Worker::ping, 100).getId());
     }
 
     for (Integer result : Ray.<Integer>get(objectIds)) {

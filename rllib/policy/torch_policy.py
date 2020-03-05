@@ -4,10 +4,10 @@ import time
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
     ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
 
@@ -86,9 +86,9 @@ class TorchPolicy(Policy):
             action_dist = None
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    logits, self.model, self.dist_class, explore,
+                    logits, self.dist_class, self.model,
                     timestep if timestep is not None else
-                    self.global_timestep)
+                    self.global_timestep, explore)
             input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,
@@ -100,6 +100,28 @@ class TorchPolicy(Policy):
                 })
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
                     extra_action_out)
+
+    @override(Policy)
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
+        with torch.no_grad():
+            input_dict = self._lazy_tensor_dict({
+                SampleBatch.CUR_OBS: obs_batch,
+                SampleBatch.ACTIONS: actions
+            })
+            if prev_action_batch:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+            if prev_reward_batch:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+
+            parameters, _ = self.model(input_dict, state_batches, [1])
+            action_dist = self.dist_class(parameters, self.model)
+            log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+            return log_likelihoods
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):

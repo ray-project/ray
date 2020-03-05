@@ -150,7 +150,7 @@ void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
     // A local request failed. This shouldn't happen if the raylet is still alive
     // and we don't currently handle raylet failures, so treat it as a fatal
     // error.
-    RAY_LOG(FATAL) << "Lost connection with local raylet. Error: " << status.ToString();
+    RAY_LOG(FATAL) << status.ToString();
   }
 }
 

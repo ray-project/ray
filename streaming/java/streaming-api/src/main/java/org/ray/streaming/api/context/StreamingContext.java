@@ -70,6 +70,10 @@ public class StreamingContext implements Serializable {
     streamSinks.add(streamSink);
   }
 
+  public List<StreamSink> getStreamSinks() {
+    return streamSinks;
+  }
+
   public void withConfig(Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
   }

@@ -1,4 +1,0 @@
-*.log
-*temporary.yaml
-rllib_impala_p36.yaml
-sgd_p36.yaml

@@ -32,7 +32,8 @@ class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest()
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter())),
+        reference_counter_(
+            std::shared_ptr<ReferenceCounter>(new ReferenceCounter(rpc::Address()))),
         actor_manager_(std::shared_ptr<ActorManagerInterface>(new MockActorManager())),
         manager_(store_, reference_counter_, actor_manager_,
                  [this](const TaskSpecification &spec) {

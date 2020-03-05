@@ -165,6 +165,33 @@ class Policy(metaclass=ABCMeta):
             {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
+        """Computes the log-prob/likelihood for a given action and observation.
+
+        Args:
+            actions (Union[List,np.ndarray]): Batch of actions, for which to
+                retrieve the log-probs/likelihoods (given all other inputs:
+                obs, states, ..).
+            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            state_batches (Optional[list]): List of RNN state input batches,
+                if any.
+            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+                action values.
+            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+                rewards.
+
+        Returns:
+            log-likelihoods (np.ndarray): Batch of log probs/likelihoods, with
+                shape: [BATCH_SIZE].
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,

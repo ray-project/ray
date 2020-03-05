@@ -72,7 +72,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
                 "timesteps_per_iteration": 1000,
                 "num_gpus": 0,
                 "min_iter_time_s": 1,
-                "exploration": False,
+                "explore": False,
                 "learning_starts": 1000,
                 "target_network_update_freq": 100,
                 "optimizer": {
