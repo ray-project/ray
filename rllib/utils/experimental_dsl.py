@@ -441,13 +441,14 @@ class ApplyGradients:
                         e.set_weights.remote(weights, _get_global_vars())
         else:
             if metrics.current_actor is None:
-                raise ValueError("Could not find actor to update. When "
-                                 "update_all=False, `current_actor` must be set "
-                                 "in the iterator context.")
+                raise ValueError(
+                    "Could not find actor to update. When "
+                    "update_all=False, `current_actor` must be set "
+                    "in the iterator context.")
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = self.workers.local_worker().get_weights()
-                metrics.current_actor.set_weights.remote(weights,
-                                                     _get_global_vars())
+                metrics.current_actor.set_weights.remote(
+                    weights, _get_global_vars())
 
 
 class AverageGradients:
@@ -617,22 +618,41 @@ class UpdateTargetNetwork:
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
+
 class Enqueue:
-    def __init__(self, output_queue):
+    def __init__(self, output_queue, name="enqueue"):
         if not isinstance(output_queue, queue.Queue):
-            raise ValueError("Expected queue.Queue, got {}".format(type(output_queue)))
+            raise ValueError("Expected queue.Queue, got {}".format(
+                type(output_queue)))
         self.queue = output_queue
+        self.fetch_start_time = None
+        self.put_start_time = None
+        self.name = name
+
+    def _on_fetch_start(self):
+        self.fetch_start_time = time.perf_counter()
 
     def __call__(self, x):
+        metrics = LocalIterator.get_metrics()
+        if self.fetch_start_time is not None:
+            now = time.perf_counter()
+            metrics.timers["{}_fetch".format(
+                self.name)].push(now - self.fetch_start_time)
+            self.fetch_start_time = None
+            self.put_start_time = now
         try:
             self.queue.put_nowait(x)
+            now = time.perf_counter()
+            metrics.timers["{}_put".format(
+                self.name)].push(now - self.put_start_time)
         except queue.Full:
             return _NextValueNotReady()
 
 
 def Dequeue(input_queue, check=lambda: True):
     if not isinstance(input_queue, queue.Queue):
-        raise ValueError("Expected queue.Queue, got {}".format(type(input_queue)))
+        raise ValueError("Expected queue.Queue, got {}".format(
+            type(input_queue)))
 
     def base_iterator(timeout=None):
         while check():

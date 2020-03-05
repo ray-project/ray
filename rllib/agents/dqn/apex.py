@@ -113,7 +113,7 @@ def training_pipeline(workers, config):
     # learner thread via its in-queue.
     replay_op = ParallelReplay(replay_actors) \
         .zip_with_source_actor() \
-        .for_each(Enqueue(learner_thread.inqueue))
+        .for_each(Enqueue(learner_thread.inqueue, name="learner_inqueue"))
 
     # (3) Get priorities get back from learner thread and apply them to the
     # replay buffer actors.

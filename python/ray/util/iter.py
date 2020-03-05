@@ -640,7 +640,13 @@ class LocalIterator(Generic[T]):
                 if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
-                    yield fn(item)
+                    # Keep retrying the function until it returns a valid
+                    # value. This allows for non-blocking functions.
+                    while True:
+                        result = fn(item)
+                        yield result
+                        if not isinstance(result, _NextValueNotReady):
+                            break
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
