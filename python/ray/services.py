@@ -768,7 +768,8 @@ def start_redis(node_ip_address,
             redis_max_clients=redis_max_clients,
             redis_max_memory=redis_max_memory,
             stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file)
+            stderr_file=redis_stderr_file,
+            fate_share=fate_share)
         processes.append(p)
 
         shard_address = address(node_ip_address, redis_shard_port)

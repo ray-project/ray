@@ -95,14 +95,14 @@ public class FailureTest extends BaseTest {
   public void testActorCreationFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, true);
-    assertTaskFailedWithRayTaskException(Ray.call(BadActor::badMethod, actor));
+    assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
   }
 
   @Test
   public void testActorTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
-    assertTaskFailedWithRayTaskException(Ray.call(BadActor::badMethod, actor));
+    assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
   }
 
   @Test
@@ -125,14 +125,14 @@ public class FailureTest extends BaseTest {
     TestUtils.skipTestIfDirectActorCallEnabled();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     try {
-      Ray.call(BadActor::badMethod2, actor).get();
+      actor.call(BadActor::badMethod2).get();
       Assert.fail("This line shouldn't be reached.");
     } catch (RayActorException e) {
       // When the actor process dies while executing a task, we should receive an
       // RayActorException.
     }
     try {
-      Ray.call(BadActor::badMethod, actor).get();
+      actor.call(BadActor::badMethod).get();
       Assert.fail("This line shouldn't be reached.");
     } catch (RayActorException e) {
       // When a actor task is submitted to a dead actor, we should also receive an
