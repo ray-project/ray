@@ -41,13 +41,14 @@ public class JobSchedulerImpl implements JobScheduler {
     this.jobGraph = jobGraph;
     if (Ray.internal() == null) {
       System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+      System.setProperty("ray.run-mode", "CLUSTER");
       Ray.init();
     }
 
     ExecutionGraph executionGraph = this.taskAssigner.assign(this.jobGraph);
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
     boolean hasPythonNode = executionNodes.stream()
-        .allMatch(node -> node.getLanguage() == Language.PYTHON);
+        .anyMatch(node -> node.getLanguage() == Language.PYTHON);
     RemoteCall.ExecutionGraph executionGraphPb = null;
     if (hasPythonNode) {
       executionGraphPb = new GraphPbBuilder().buildExecutionGraphPb(executionGraph);
