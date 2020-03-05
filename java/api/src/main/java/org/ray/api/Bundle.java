@@ -3,12 +3,12 @@ package org.ray.api;
 import org.ray.api.id.GroupId;
 
 /**
- * A handle to a slot set.
+ * A handle to a bundle.
  */
-public interface SlotSet {
+public interface Bundle {
 
   /**
-   * @return The id of this slot set.
+   * @return The id of this bundle.
    */
   GroupId getId();
 }

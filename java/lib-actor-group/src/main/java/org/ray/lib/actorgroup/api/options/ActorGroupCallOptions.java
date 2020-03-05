@@ -11,7 +11,8 @@ public class ActorGroupCallOptions {
 
   public final LoadBalancingStrategy loadBalancingStrategy;
 
-  private ActorGroupCallOptions(CallOptions callOptions, LoadBalancingStrategy loadBalancingStrategy) {
+  private ActorGroupCallOptions(CallOptions callOptions,
+      LoadBalancingStrategy loadBalancingStrategy) {
     this.callOptions = callOptions;
     this.loadBalancingStrategy = loadBalancingStrategy;
   }

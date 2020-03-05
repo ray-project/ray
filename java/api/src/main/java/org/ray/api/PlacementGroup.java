@@ -14,7 +14,7 @@ public interface PlacementGroup {
   GroupId getId();
 
   /**
-   * @return All slot sets in this group.
+   * @return All bundles in this group.
    */
-  List<SlotSet> getSlotSets();
+  List<Bundle> getBundles();
 }

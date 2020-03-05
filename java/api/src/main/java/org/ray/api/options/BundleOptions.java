@@ -4,24 +4,24 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * The options for creating a slot set. ONLY for internal use.
+ * The options for creating a bundle. ONLY for internal use.
  */
-public class SlotSetOptions extends BaseTaskOptions {
+public class BundleOptions extends BaseTaskOptions {
 
   public final int unitCount;
 
-  private SlotSetOptions(int unitCount, Map<String, Double> unitResources) {
-    super(unitResources);
+  private BundleOptions(Map<String, Double> unitResources, int unitCount) {
+    super(unitResources, DEFAULT_USE_DIRECT_CALL);
     this.unitCount = unitCount;
   }
 
   /**
-   * The inner class for building SlotSetOptions.
+   * The inner class for building BundleOptions.
    */
   static class Builder {
 
-    private int unitCount = 1;
     private Map<String, Double> unitResources = new HashMap<>();
+    private int unitCount = 1;
 
     public Builder setUnitCount(int unitCount) {
       this.unitCount = unitCount;
@@ -33,8 +33,8 @@ public class SlotSetOptions extends BaseTaskOptions {
       return this;
     }
 
-    public SlotSetOptions createSlotSetOptions() {
-      return new SlotSetOptions(unitCount, unitResources);
+    public BundleOptions createBundleOptions() {
+      return new BundleOptions(unitResources, unitCount);
     }
   }
 }

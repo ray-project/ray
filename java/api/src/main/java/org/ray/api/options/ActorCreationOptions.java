@@ -2,8 +2,8 @@ package org.ray.api.options;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.ray.api.Bundle;
 import org.ray.api.LifeCycleGroup;
-import org.ray.api.SlotSet;
 
 /**
  * The options for creating actor.
@@ -19,18 +19,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final int maxConcurrency;
 
-  public final SlotSet slotSet;
+  public final Bundle bundle;
 
   public final LifeCycleGroup lifeCycleGroup;
 
   private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
-                               String jvmOptions, int maxConcurrency, SlotSet slotSet,
+                               String jvmOptions, int maxConcurrency, Bundle bundle,
                                LifeCycleGroup lifeCycleGroup) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
-    this.slotSet = slotSet;
+    this.bundle = bundle;
     this.lifeCycleGroup = lifeCycleGroup;
   }
 
@@ -43,7 +43,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxReconstructions = NO_RECONSTRUCTION;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
-    private SlotSet slotSet = null;
+    private Bundle bundle = null;
     private LifeCycleGroup lifeCycleGroup = null;
 
     public Builder setResources(Map<String, Double> resources) {
@@ -74,8 +74,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public Builder setSlotSet(SlotSet slotSet) {
-      this.slotSet = slotSet;
+    public Builder setBundle(Bundle bundle) {
+      this.bundle = bundle;
       return this;
     }
 
@@ -86,7 +86,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions createActorCreationOptions() {
       return new ActorCreationOptions(
-          resources, maxReconstructions, jvmOptions, maxConcurrency, slotSet, lifeCycleGroup);
+          resources, maxReconstructions, jvmOptions, maxConcurrency, bundle, lifeCycleGroup);
     }
   }
 

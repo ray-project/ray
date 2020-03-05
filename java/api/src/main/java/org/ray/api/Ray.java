@@ -120,7 +120,7 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Create a placement group and preallocate the actor slots.
+   * Create a placement group and preallocate the resources.
    *
    * @param options The options for creating the placement group.
    * @return A handle to the created placement group.
