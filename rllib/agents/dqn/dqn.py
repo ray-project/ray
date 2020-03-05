@@ -312,6 +312,7 @@ def update_target_if_needed(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
+# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
 def training_pipeline(workers, config):
     local_replay_buffer = ReplayBuffer(config["buffer_size"])
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
