@@ -51,13 +51,6 @@ parser.add_argument(
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = "GPU" if args.cuda else "CPU"
-ray.init(address=None if args.local else "auto")
-num_workers = 2 if args.local else int(ray.cluster_resources().get(device))
-
-print("Model: %s" % args.model)
-print("Batch size: %d" % args.batch_size)
-print("Number of %ss: %d" % (device, num_workers))
-
 
 def init_hook():
     import torch.backends.cudnn as cudnn
@@ -86,31 +79,39 @@ class Training(TrainingOperator):
         return {"img_sec": img_sec}
 
 
-trainer = TorchTrainer(
-    model_creator=lambda cfg: getattr(models, args.model)(),
-    optimizer_creator=lambda model, cfg: optim.SGD(
-        model.parameters(), lr=0.01 * cfg.get("lr_scaler")),
-    initialization_hook=init_hook,
-    config=dict(
-        lr_scaler=num_workers),
-    training_operator_cls=Training,
-    num_workers=num_workers,
-    use_gpu=args.cuda,
-    use_fp16=args.fp16,
-)
+if __name__ == "__main__":
+    ray.init(address=None if args.local else "auto")
+    num_workers = 2 if args.local else int(ray.cluster_resources().get(device))
 
-img_secs = []
-for x in range(args.num_iters):
-    result = trainer.train()
-    # print(result)
-    img_sec = result["img_sec"]
-    print("Iter #%d: %.1f img/sec per %s" % (x, img_sec, device))
-    img_secs.append(img_sec)
+    print("Model: %s" % args.model)
+    print("Batch size: %d" % args.batch_size)
+    print("Number of %ss: %d" % (device, num_workers))
 
-# Results
-img_sec_mean = np.mean(img_secs)
-img_sec_conf = 1.96 * np.std(img_secs)
-print("Img/sec per %s: %.1f +-%.1f" % (device, img_sec_mean, img_sec_conf))
-print("Total img/sec on %d %s(s): %.1f +-%.1f" %
-      (num_workers, device, num_workers * img_sec_mean,
-       num_workers * img_sec_conf))
+    trainer = TorchTrainer(
+        model_creator=lambda cfg: getattr(models, args.model)(),
+        optimizer_creator=lambda model, cfg: optim.SGD(
+            model.parameters(), lr=0.01 * cfg.get("lr_scaler")),
+        initialization_hook=init_hook,
+        config=dict(
+            lr_scaler=num_workers),
+        training_operator_cls=Training,
+        num_workers=num_workers,
+        use_gpu=args.cuda,
+        use_fp16=args.fp16,
+    )
+
+    img_secs = []
+    for x in range(args.num_iters):
+        result = trainer.train()
+        # print(result)
+        img_sec = result["img_sec"]
+        print("Iter #%d: %.1f img/sec per %s" % (x, img_sec, device))
+        img_secs.append(img_sec)
+
+    # Results
+    img_sec_mean = np.mean(img_secs)
+    img_sec_conf = 1.96 * np.std(img_secs)
+    print("Img/sec per %s: %.1f +-%.1f" % (device, img_sec_mean, img_sec_conf))
+    print("Total img/sec on %d %s(s): %.1f +-%.1f" %
+          (num_workers, device, num_workers * img_sec_mean,
+           num_workers * img_sec_conf))
