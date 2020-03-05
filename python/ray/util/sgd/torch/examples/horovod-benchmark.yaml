@@ -4,8 +4,8 @@ cluster_name: horovod-pytorch
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
 min_workers: 0
-initial_workers: 15
-max_workers: 15
+initial_workers: 0
+max_workers: 0
 
 target_utilization_fraction: 0.9
 
