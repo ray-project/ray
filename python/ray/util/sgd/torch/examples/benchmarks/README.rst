@@ -42,11 +42,21 @@ You can then launch a synthetic benchmark run with the following command:
 Results
 -------
 
-Here are some results as of 03/04/2020:
+Here are benchmarking results on synthetic data as of 03/04/2020:
+
+ - PyTorch Version: torch-1.4.0-cp36-cp36m
+ - Torchvision Version: torchvision-0.5.0-cp36-cp36m
+ - Apex Version: commit hash 5633f6d
+ - Horovod Version: horovod-0.19.0
+
 
 .. code-block::bash
 
-    # Images per second for ResNet50, Batches per worker =128
+    # Images per second for ResNet50
+    # Batches per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3.16xlarge instances.
+
     Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Apex
     1 * 8 GPU(s)    2273.4    2552.3          2863.6     6171.5
     2 * 8 GPU(s)    4210.5    4974.2          5640.2     8414.1
