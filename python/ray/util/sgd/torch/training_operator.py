@@ -1,5 +1,4 @@
 import collections
-import threading
 
 import torch
 
@@ -88,33 +87,16 @@ class TrainingOperator:
                         "TrainingOperator if using multi-scheduler, "
                         "multi-model or multi-optimizer training/validation.")
 
-        self._backward_rpc_read_ready = threading.Event()
-        self._backward_rpc_result_ready = threading.Event()
-        self._backward_rpc_result = None
-        self._backward_rpc_data = None
-
         self.setup(config)
 
-    def _backward_rpc_send(self, method_name, *args, **kwargs):
-        self._backward_rpc_data = {
-            "done": False,
-            "method_name": method_name,
-            "args": args,
-            "kwargs": kwargs
-        }
-        self._backward_rpc_read_ready.set()
-        self._backward_rpc_result_ready.wait()
-        self._backward_rpc_result_ready.clear()
-        return self._backward_rpc_result
+    def _set_batch_logs_reporter(self, r):
+        self._batch_logs_reporter = r
 
-    def _backward_rpc_read(self):
-        self._backward_rpc_read_ready.wait()
-        self._backward_rpc_read_ready.clear()
-        return self._backward_rpc_data
+    def send_batch_logs(self, data):
+        return self._send_batch_logs(data)
 
-    def _backward_rpc_result(self, res):
-        self._backward_rpc_result = res
-        self._backward_rpc_result_ready.set()
+    def _send_batch_logs(self, data, done=False):
+        return self._batch_logs_reporter._send.remote(data, done)
 
     def setup(self, config):
         """Override this method to implement custom operator setup.
@@ -180,6 +162,9 @@ class TrainingOperator:
             timer_tag: timer.mean
             for timer_tag, timer in self.timers.items()
         })
+
+        # todo: should we block here?
+        ray.get(self._send_batch_logs(None, done=True))
         return stats
 
     def forward(self, features, target):

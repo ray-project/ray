@@ -10,7 +10,7 @@ class Logger:
     def setup(self):
         pass
 
-    def commit_batch(self):
+    def commit_batch(self): # todo: this might not log on last batch
         self.step += 1
 
     def log_object(self, name, x):

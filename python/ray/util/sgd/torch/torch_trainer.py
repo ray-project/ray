@@ -9,6 +9,7 @@ import torch.distributed as dist
 
 import ray
 
+from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
@@ -16,6 +17,7 @@ from ray.util.sgd.torch.distributed_torch_runner import (
 from ray.util.sgd import utils
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.torch.batch_logs_reporter import BatchLogsReporter
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -193,7 +195,7 @@ class TorchTrainer:
     def _start_workers(self, num_replicas):
         logger.info(f"start_workers: Setting %d replicas." % num_replicas)
         if num_replicas == 1:
-            # Generate actor class
+            # Generate actor classes
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(self.use_gpu))(TorchRunner)
             # Start workers
@@ -213,10 +215,13 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq,
                 )
             ]
+            self.batch_reporters = [
+                BatchLogsReporter.remote(0)
+            ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
             # Get setup tasks in order to throw errors on failure
-            ray.get(self.workers[0].setup.remote())
+            ray.get(self.workers[0].setup.remote(self.batch_reporters[0]))
         else:
             # Generate actor class
             Runner = ray.remote(
@@ -250,6 +255,10 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq)
                 for i in range(num_replicas)
             ]
+            self.batch_reporters = [
+                BatchLogsReporter.remote(i)
+                for i in range(num_replicas)
+            ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
 
@@ -259,7 +268,7 @@ class TorchTrainer:
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(address, i, len(self.workers))
+                worker.setup.remote(address, i, len(self.workers), self.batch_reporters[i])
                 for i, worker in enumerate(self.workers)
             ])
 
@@ -268,7 +277,7 @@ class TorchTrainer:
               max_retries=0,
               checkpoint="auto",
               info=None,
-              backward_rpc=None):
+              batch_logs_handler=None):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
@@ -309,7 +318,7 @@ class TorchTrainer:
 
         with self.optimizer_timer:
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, info=info)
+                num_steps=num_steps, info=info, batch_logs_handler=batch_logs_handler)
             # Fault handling
             for i in range(max_retries):
                 if success:
@@ -320,7 +329,7 @@ class TorchTrainer:
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
                 success, worker_stats = self._train_epoch(
-                    num_steps=num_steps, info=info, backward_rpc=backward_rpc)
+                    num_steps=num_steps, info=info, batch_logs_handler=batch_logs_handler)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -335,57 +344,58 @@ class TorchTrainer:
                 train_stats[stat_key] = [s[stat_key] for s in worker_stats]
         return train_stats
 
-    def _train_epoch(self, num_steps=None, info=None, backward_rpc=None):
-        train_ops = ray.get([w.get_training_op.remote() for w in self.workers])
-
+    def _train_epoch(self, num_steps=None, info=None, batch_logs_handler=None):
+        batch_log_reads = [
+            r._read.remote()
+            for r in self.batch_reporters
+        ]
         worker_trains = [
             w.train_epoch.remote(num_steps=num_steps, info=info)
             for w in self.workers
         ]
-        worker_backward_rpcs = [
-            op._backward_rpc_read.remote()
-            for op in train_ops
-        ]
 
-        unfinished = worker_trains + worker_backward_rpcs
+        unfinished_trains_n = len(worker_trains)
+        unfinished = worker_trains + batch_log_reads
         try:
-            while len(unfinished_trains) > 0:
+            while unfinished_trains_n > 0:
                 finished, unfinished = ray.wait(unfinished)
 
                 finished_trains = []
-                finished_rpcs = []
+                finished_log_reads = []
 
+                # todo: is this expensive?
                 for f in finished:
                     if f in worker_trains:
                         finished_trains.append(f)
+                        unfinished_trains_n -= 1
                     else:
-                        finished_rpcs.append(f)
+                        finished_log_reads.append(f)
 
-                # why do we ray.get the train calls?
+                # todo: why do we ray.get the train calls?
                 finished_trains = ray.get(finished_trains)
-                finished_rpcs = ray.get(finished_rpcs)
+                finished_log_reads = ray.get(finished_log_reads)
 
-                results = []
-                for rpc in finished_rpcs:
-                    if rpc.done:
+                finish_reads = []
+                for log_read in finished_log_reads:
+                    r = self.batch_reporters[log_read["world_rank"]]
+                    finish_reads.append(r._finish_read.remote())
+
+                    if log_read["done"]:
                         continue
 
-                    if type(backward_rpc) is dict:
-                        res = backward_rpc[rpc["method_name"]](*rpc["args"], **rpc["kwargs"])
-                    else:
-                        res = getattr(backward_rpc, rpc["method_name"])(*rpc["args"], **rpc["kwargs"])
+                    if batch_logs_handler is not None:
+                        batch_logs_handler(log_read["data"])
 
-                    results.append(dict(world_rank=rpc["world_rank"], res=res))
-                    unfinished.append(train_ops[rpcs["world_rank"]]._backward_rpc_read.remote())
+                    unfinished.append(r._read.remote())
 
-                ray.get([train_ops[res["world_rank"]]._backward_rpc_result.remote(res["res"]) for res in results])
+                ray.get(finish_reads)
 
-            return True
+            ray.get(unfinished) # and ignore all the dones
+
+            return True, worker_trains
         except RayActorError as exc:
             logger.exception(str(exc))
-        return False
-
-        return success, worker_stats
+        return False, worker_trains
 
     def apply_all_workers(self, fn):
         """Run a function on all operators on the workers.

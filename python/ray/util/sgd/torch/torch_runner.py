@@ -125,7 +125,7 @@ class TorchRunner:
             self.models, self.optimizers = amp.initialize(
                 self.models, self.optimizers, **self.apex_args)
 
-    def setup(self):
+    def setup(self, batch_reporter):
         """Initializes the model."""
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
@@ -168,6 +168,8 @@ class TorchRunner:
             world_rank=0,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
+
+        self.training_operator._set_batch_logs_reporter(batch_reporter)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""

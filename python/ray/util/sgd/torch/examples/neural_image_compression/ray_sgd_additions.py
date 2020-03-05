@@ -17,8 +17,6 @@ class _TrainingOperator(TrainingOperator):
         sysconfig = config.system_config
         self.logger = sysconfig.logging_cls(sysconfig)
 
-        self.head_cb_actor = sysconfig.head_cb_actor
-
         if self.world_rank == 0:
             self.batch_logs = Namespace()
             self.batch_logs.packet_type = "batch_logs"
@@ -27,17 +25,13 @@ class _TrainingOperator(TrainingOperator):
         self.sysinfo = info["_system_training_op_info"]
 
         if self.world_rank == 0:
-            num_steps = info.get("num_steps", len(self.train_loader))
-
             tqdm_setup = Namespace()
             tqdm_setup.packet_type = "tqdm_setup"
             tqdm_setup.kwargs = {
-                "total": num_steps,
-                "desc": "{}/{}e".format(info["train_steps"]+1, self.sysinfo.args.num_epochs),
-                "unity": "batch"
+                "loader_len": len(self.train_loader)
             }
 
-            self.head_cb_actor.send_packet.remote(tqdm_setup)
+            ray.get(self.send_batch_logs(tqdm_setup))
 
         return super().train_epoch(iterator, info)
 
@@ -70,7 +64,7 @@ class _TrainingOperator(TrainingOperator):
 
             def log_fn():
                 # todo: this is specific to neural compression and needs to be customizable
-                wandb.log({"Output examples": [wandb.Image(self.output, caption="Batch {}".format(batch_idx))]})
+                self.logger.log_image("Output examples", self.output) # caption="Batch {}".format(batch_idx)
 
             run_intervals("log", log_fn)
             run_intervals("checkpoint", lambda: print("Checkpoint mock executed"))
@@ -81,15 +75,13 @@ class _TrainingOperator(TrainingOperator):
                 k: logs[k] for k in ["loss"]
             }
 
-            # we are being somewhat dangerous here,
-            # since this relies on the train_epoch code initiating a
-            # send_to_head before we start batches
             self.batch_logs.batch_idx = batch_idx
             self.batch_logs.pbar_logs = pbar_logs
 
-            self.head_cb_actor.send_packet.remote(self.batch_logs)
+            ray.get(self.send_batch_logs(self.batch_logs))
 
-            wandb.log({"Train loss": logs["loss"]})
+            self.logger.log_object("Train loss", logs["loss"])
+            self.logger.commit_batch()
 
         return logs
 
@@ -147,7 +139,7 @@ class System():
         iterator = trange(
             self.args.num_epochs,
             unit='epoch')
-        for i in iterator:
+        for epoch_idx in iterator:
             # todo: load checkpoints from mid-epoch properly
             training_op_info = Namespace()
             training_op_info.intervals = self.intervals
@@ -166,17 +158,25 @@ class System():
                 kwargs["info"] = info
 
 
-            self._batch_pbar = None
+            batch_pbar = None
             def handle_head_packet(packet):
+                print('Packet received')
                 if packet.packet_type == "tqdm_setup":
-                    batch_pbar = tqdm(**packet.kwargs)
+                    num_steps = kwargs.get("num_steps", packet["loader_len"])
+
+                    batch_pbar = tqdm({
+                        "total": num_steps,
+                        "desc": "{}/{}e".format(epoch_idx+1, self.args.num_epochs),
+                        "unit": "batch"
+                    })
                     return
 
                 if packet.packet_type == "batch_logs":
-                    tqdm.n = packet.batch_idx
-                    # tqdm.refresh() # may be needed
-                    tqdm.set_postfix(packet.pbar_logs)
+                    batch_pbar.n = packet.batch_idx
+                    # batch_pbar.refresh() # may be needed
+                    batch_pbar.set_postfix(packet.pbar_logs)
 
+            kwargs["batch_logs_handler"] = handle_head_packet
             logs = self.trainer.train(*args, **kwargs)
 
 
@@ -237,18 +237,6 @@ class System():
             loss_creator,
             **kwargs):
         system_config = Namespace()
-
-
-        @ray.remote(num_cpus=0)
-        class HeadCBActor():
-            def get_last_packet(self):
-                return self.last_packet
-
-            def send_packet(packet):
-                print("Received on head cb actor:", packet)
-                self.last_packet = packet
-
-        system_config.head_cb_actor = HeadCBActor.remote()
 
         from ml_logging import WandbLogger, Logger
         system_config.logging_cls = Logger

@@ -27,7 +27,7 @@ class DistributedTorchRunner(TorchRunner):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
-    def setup(self, url, world_rank, world_size):
+    def setup(self, url, world_rank, world_size, batch_logs_reporter):
         """Connects to the distributed PyTorch backend and initializes the model.
 
         Args:
@@ -36,7 +36,7 @@ class DistributedTorchRunner(TorchRunner):
             world_size (int): the total number of runners.
         """
         self._setup_distributed_pytorch(url, world_rank, world_size)
-        self._setup_training()
+        self._setup_training(batch_logs_reporter)
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
         with self._timers["setup_proc"]:
@@ -51,7 +51,7 @@ class DistributedTorchRunner(TorchRunner):
                 rank=world_rank,
                 world_size=world_size)
 
-    def _setup_training(self):
+    def _setup_training(self, batch_logs_reporter):
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
@@ -105,6 +105,7 @@ class DistributedTorchRunner(TorchRunner):
             world_rank=self.world_rank,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
+        self.training_operator._set_batch_logs_reporter(batch_logs_reporter)
 
     def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
