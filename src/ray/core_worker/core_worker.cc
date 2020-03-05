@@ -817,7 +817,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
     auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
     // RAY_CHECK(!worker_context_.GetCurrentTaskID().IsNil) << "Zero'd out current task
     // id";
-    RAY_LOG(ERROR) << "Task ID is " << task_id << " AND NEXT IS :" << next_task_index;
+    RAY_LOG(ERROR) << "Task ID is " << task_id << " AND NEXT IS: " << next_task_index;
     // auto null_task_spec = TaskSpecification();
     // worker_context_.ResetCurrentTask(null_task_spec);
     RAY_RETURN_NOT_OK(
@@ -1224,7 +1224,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       // Direct call type objects that weren't inlined have been promoted to plasma.
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
-      if (task.ArgId(i, 0).IsDirectCallType()) {
+      if (task.ArgId(i, 0).IsDirectCallType() && !local_mode_enabled_) {
         RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         task.ArgId(i, 0)));
       }
@@ -1265,8 +1265,13 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   // Fetch by-reference arguments directly from the plasma store.
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(by_ref_ids, -1, worker_context_,
-                                                &result_map, &got_exception));
+  if (local_mode_enabled_) {
+    RAY_RETURN_NOT_OK(
+        memory_store_->Get(by_ref_ids, -1, worker_context_, &result_map, &got_exception));
+  } else {
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(by_ref_ids, -1, worker_context_,
+                                                  &result_map, &got_exception));
+  }
   for (const auto &it : result_map) {
     args->at(by_ref_indices[it.first]) = it.second;
   }

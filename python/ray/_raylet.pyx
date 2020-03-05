@@ -246,7 +246,6 @@ cdef int prepare_resources(
     cdef:
         unordered_map[c_string, double] out
         c_string resource_name
-
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
 
