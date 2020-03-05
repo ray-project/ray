@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.ActorCreationOptions.Builder;
 import org.ray.streaming.api.context.StreamingContext;
@@ -95,9 +95,9 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
     ActorCreationOptions.Builder builder = new Builder();
 
-    RayActor<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
+    RayJavaActor<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
         builder.createActorCreationOptions());
-    RayActor<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
+    RayJavaActor<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
         builder.createActorCreationOptions());
 
     LOGGER.info("call getName on writerActor: {}",

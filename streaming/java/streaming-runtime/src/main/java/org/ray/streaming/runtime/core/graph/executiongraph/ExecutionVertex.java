@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.resource.Slot;
@@ -39,7 +39,7 @@ public class ExecutionVertex implements Serializable {
 
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private Slot slot;
-  private RayActor<JobWorker> workerActor;
+  private RayJavaActor<JobWorker> workerActor;
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
 
@@ -82,7 +82,7 @@ public class ExecutionVertex implements Serializable {
     return state == ExecutionVertexState.TO_DEL;
   }
 
-  public RayActor<JobWorker> getWorkerActor() {
+  public RayJavaActor<JobWorker> getWorkerActor() {
     return workerActor;
   }
 
@@ -90,7 +90,7 @@ public class ExecutionVertex implements Serializable {
     return workerActor.getId();
   }
 
-  public void setWorkerActor(RayActor<JobWorker> workerActor) {
+  public void setWorkerActor(RayJavaActor<JobWorker> workerActor) {
     this.workerActor = workerActor;
   }
 

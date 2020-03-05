@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
+import org.ray.api.RayJavaActor;
 import org.ray.api.id.ActorId;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.actor.NativeRayActor;
@@ -66,7 +66,7 @@ class ReaderWorker extends Worker {
   private List<ActorId> inputActorIds = new ArrayList<>();
   private DataReader dataReader = null;
   private long handler = 0;
-  private RayActor<WriterWorker> peerActor = null;
+  private RayJavaActor<WriterWorker> peerActor = null;
   private int msgCount = 0;
   private int totalMsg = 0;
 
@@ -88,7 +88,7 @@ class ReaderWorker extends Worker {
     return "testRayCall";
   }
 
-  public boolean init(List<String> inputQueueList, RayActor<WriterWorker> peer, int msgCount) {
+  public boolean init(List<String> inputQueueList, RayJavaActor<WriterWorker> peer, int msgCount) {
 
     this.inputQueueList = inputQueueList;
     this.peerActor = peer;
@@ -181,7 +181,7 @@ class WriterWorker extends Worker {
   private List<String> outputQueueList = null;
   private List<ActorId> outputActorIds = new ArrayList<>();
   DataWriter dataWriter = null;
-  RayActor<ReaderWorker> peerActor = null;
+  RayJavaActor<ReaderWorker> peerActor = null;
   int msgCount = 0;
 
   public WriterWorker(String name) {
@@ -196,13 +196,13 @@ class WriterWorker extends Worker {
     return name;
   }
 
-  public String testCallReader(RayActor<ReaderWorker> readerActor) {
+  public String testCallReader(RayJavaActor<ReaderWorker> readerActor) {
     String name = readerActor.call(ReaderWorker::getName).get();
     LOGGER.info("testCallReader: {}", name);
     return name;
   }
 
-  public boolean init(List<String> outputQueueList, RayActor<ReaderWorker> peer, int msgCount) {
+  public boolean init(List<String> outputQueueList, RayJavaActor<ReaderWorker> peer, int msgCount) {
 
     this.outputQueueList = outputQueueList;
     this.peerActor = peer;
