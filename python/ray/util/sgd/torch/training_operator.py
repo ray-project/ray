@@ -2,8 +2,9 @@ import collections
 import torch
 
 from ray.util.sgd.utils import TimerStat, AverageMeter
-from ray.util.sgd.torch.constants import (
-    SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT)
+from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,
+                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP,
+                                          BATCH_COUNT, NUM_SAMPLES)
 
 amp = None
 
@@ -19,6 +20,26 @@ except ImportError:
 def _is_multiple(component):
     """Checks if a component (optimizer, model, etc) is not singular."""
     return isinstance(component, collections.Iterable) and len(component) > 1
+
+
+class AverageMeterCollection:
+    def __init__(self):
+        self._batch_count = 0
+        self.n = 0
+        self._meters = collections.defaultdict(AverageMeter)
+
+    def update(self, metrics, n=1):
+        self._batch_count += 1
+        self.n += n
+        for metric, value in metrics.items():
+            self._meters[metric].update(value, n=n)
+
+    def summary(self):
+        stats = {BATCH_COUNT: self._batch_count, NUM_SAMPLES: self.n}
+        for metric, meter in self._meters.items():
+            stats["mean_" + str(metric)] = meter.avg
+            stats["last_" + str(metric)] = meter.val
+        return stats
 
 
 class TrainingOperator:
@@ -48,7 +69,7 @@ class TrainingOperator:
                  config,
                  models,
                  optimizers,
-                 criterion,
+                 criterion=None,
                  schedulers=None,
                  use_fp16=False):
         # You are not expected to override this method.
@@ -113,7 +134,7 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
-        meters = collections.defaultdict(AverageMeter)
+        metric_meters = AverageMeterCollection()
 
         self.model.train()
         with self.timers["epoch_time"]:
@@ -129,22 +150,14 @@ class TrainingOperator:
                         SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
                     self.scheduler.step()
 
-                num_samples = metrics.get("num_samples", 1)
-                for metric, value in metrics.items():
-                    meters[metric].update(value, n=num_samples)
+                metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
                 self.global_step += 1
 
         if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
             self.scheduler.step()
 
-        stats = {
-            BATCH_COUNT: batch_idx + 1,
-            "epoch_time": self.timers["epoch_time"].last,
-        }
-
-        for metric, meter in meters.items():
-            stats["mean_" + str(metric)] = meter.avg
-            stats["last_" + str(metric)] = meter.val
+        stats = {"epoch_time": self.timers["epoch_time"].last}
+        stats.update(metric_meters.summary())
 
         if "profile" in info:
             stats.update({
@@ -180,6 +193,9 @@ class TrainingOperator:
                 By default, this dictionary contains "loss" and "num_samples".
                 "num_samples" corresponds to number of datapoints in the batch.
                 However, you can provide any number of other values.
+                Consider returning "num_samples" in the metrics because
+                by default, ``train_epoch`` uses "num_samples" to
+                calculate averages.
 
         """
         features, target = batch
@@ -205,7 +221,7 @@ class TrainingOperator:
         # Call step of optimizer to update model params.
         with self.timers["apply"]:
             self.optimizer.step()
-        return {"loss": loss.item(), "num_samples": features.size(0)}
+        return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
@@ -225,13 +241,12 @@ class TrainingOperator:
 
         Returns:
             A dict of metrics from the evaluation.
-                By default, returns "mean_accuracy" and "mean_validation_loss"
+                By default, returns "mean_accuracy" and "mean_val_loss"
                 which is computed by aggregating "loss" and "correct" values
                 from ``validate_batch`` and dividing it by the sum of
                 ``num_samples`` from all calls to ``self.validate_batch``.
         """
-        losses = AverageMeter()
-        total_correct = 0
+        metric_meters = AverageMeterCollection()
 
         # switch to evaluate mode
         self.model.eval()
@@ -240,19 +255,9 @@ class TrainingOperator:
                 batch_info = {"batch_idx": batch_idx}
                 batch_info.update(info)
                 metrics = self.validate_batch(batch, batch_info)
-                if "loss" in metrics:
-                    losses.update(
-                        metrics["loss"], n=metrics.get("num_samples", 1))
+                metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
 
-                if "num_correct" in metrics:
-                    total_correct += metrics["num_correct"]
-
-        stats = {
-            "batch_count": batch_idx + 1,
-            "mean_validation_loss": losses.avg,
-            "mean_accuracy": total_correct / losses.count
-        }
-        return stats
+        return metric_meters.summary()
 
     def validate_batch(self, batch, batch_info):
         """Calcuates the loss and accuracy over a given batch.
@@ -266,7 +271,11 @@ class TrainingOperator:
 
         Returns:
             A dict of metrics.
-                By default, returns "loss", "num_correct", and "num_samples".
+                By default, returns "val_loss", "val_accuracy", and
+                "num_samples". When overriding, consider returning
+                "num_samples" in the metrics because
+                by default, ``validate`` uses "num_samples" to
+                calculate averages.
         """
         features, target = batch
         if torch.cuda.is_available():
@@ -278,10 +287,12 @@ class TrainingOperator:
         loss = self.criterion(output, target)
         _, predicted = torch.max(output.data, 1)
 
+        num_correct = (predicted == target).sum().item()
+        num_samples = target.size(0)
         return {
-            "loss": loss.item(),
-            "num_correct": (predicted == target).sum().item(),
-            "num_samples": target.size(0)
+            "val_loss": loss.item(),
+            "val_accuracy": num_correct / num_samples,
+            NUM_SAMPLES: num_samples
         }
 
     def state_dict(self):
@@ -345,3 +356,24 @@ class _TestingOperator(TrainingOperator):
         if callable(func):
             return func(self, iterator, info)
         return {"done": 1}
+
+
+class _TestMetricsOperator(TrainingOperator):
+    def setup(self, config):
+        self._train_scores = config["scores"].copy()
+        self._val_scores = config["val_scores"].copy()
+        self.key = config["key"]
+
+    def train_batch(self, batch, batch_info=None):
+        metrics = super(_TestMetricsOperator, self).train_batch(
+            batch, batch_info)
+        num_samples = metrics[NUM_SAMPLES]
+        metrics.update({self.key: self._train_scores.pop(0) / num_samples})
+        return metrics
+
+    def validate_batch(self, batch, batch_info=None):
+        metrics = super(_TestMetricsOperator, self).validate_batch(
+            batch, batch_info)
+        num_samples = metrics[NUM_SAMPLES]
+        metrics.update({self.key: self._val_scores.pop(0) / num_samples})
+        return metrics

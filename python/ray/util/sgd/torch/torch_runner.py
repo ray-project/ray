@@ -200,8 +200,8 @@ class TorchRunner:
                 iterator = itertools.islice(
                     iter(self.validation_loader), num_steps)
             validation_stats = self.training_operator.validate(iterator, info)
-
-        validation_stats.update(self.time_stats())
+        if self._profile:
+            validation_stats.update(self.time_stats())
         return validation_stats
 
     def time_stats(self):
@@ -260,7 +260,7 @@ class TorchRunner:
 
         if self.use_fp16 and "amp" in state and amp:
             amp.load_state_dict(state["amp"])
-        self.epochs = state["stats"]["epoch"]
+        self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state_dict)
 
     def apply(self, fn):

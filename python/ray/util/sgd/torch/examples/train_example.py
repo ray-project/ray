@@ -12,8 +12,10 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data.distributed import DistributedSampler
 
 from ray.util.sgd import TorchTrainer
+
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -55,23 +57,41 @@ def scheduler_creator(optimizer, config):
 
 def data_creator(config):
     """Returns training dataloader, validation dataloader."""
+    train_dataset = LinearDataset(2, 5, size=config.get("data_size", 1000))
+    val_dataset = LinearDataset(2, 5, size=config.get("val_size", 400))
+    train_sampler, val_sampler = None, None
+    if config.get("use_dist_sampler"):
+        train_sampler = DistributedSampler(train_dataset)
+        val_sampler = DistributedSampler(val_dataset)
     train_loader = torch.utils.data.DataLoader(
-        LinearDataset(2, 5), config.get("batch_size", 64))
+        train_dataset,
+        batch_size=config.get("batch_size", 32),
+        shuffle=(train_sampler is None),
+        sampler=train_sampler
+        )
     validation_loader = torch.utils.data.DataLoader(
-        LinearDataset(2, 5, size=400), config.get("batch_size", 64))
+        val_dataset,
+        batch_size=config.get("batch_size", 32),
+        shuffle=(val_sampler is None),
+        sampler=val_sampler)
     return train_loader, validation_loader
 
 
 def train_example(num_workers=1, use_gpu=False):
     trainer1 = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         scheduler_creator=scheduler_creator,
         num_workers=num_workers,
         use_gpu=use_gpu,
-        config={"lr": 1e-2, "hidden_size": 1, "batch_size": 4},
+        config={
+            "lr": 1e-2, # used in optimizer_creator
+            "hidden_size": 1,  # used in model_creator
+            "batch_size": 4,  # used in data_creator
+            "use_dist_sampler": num_workers > 1  # used in data_creator
+        },
         backend="gloo",
         scheduler_step_freq="epoch")
     for i in range(5):

@@ -15,7 +15,7 @@ from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
 from ray.util.sgd import utils
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NUM_SAMPLES
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -306,15 +306,21 @@ class TorchTrainer:
             raise RuntimeError("Training run failed.")
 
         worker_stats = ray.get(worker_stats)
+        return self._process_stats(worker_stats)
 
-        train_stats = {}
+    def _process_stats(self, worker_stats):
+        stats = {
+            NUM_SAMPLES: sum(
+                stats.pop(NUM_SAMPLES, np.nan) for stats in worker_stats)
+        }
+
         for stat_key in worker_stats[0]:
             if isinstance(worker_stats[0], numbers.Number):
-                train_stats[stat_key] = np.nanmean(
+                stats[stat_key] = np.nanmean(
                     [s.get(stat_key, np.nan) for s in worker_stats])
             else:
-                train_stats[stat_key] = worker_stats[0][stat_key]
-        return train_stats
+                stats[stat_key] = worker_stats[0][stat_key]
+        return stats
 
     def _train_epoch(self, num_steps=None, info=None):
         worker_stats = [
@@ -369,11 +375,7 @@ class TorchTrainer:
             for w in self.workers
         ])
 
-        validation_stats = {}
-        for stat_key in worker_stats[0]:
-            validation_stats[stat_key] = np.nanmean(
-                [s.get(stat_key, np.nan) for s in worker_stats])
-        return validation_stats
+        return self._process_stats(worker_stats)
 
     def update_scheduler(self, metric):
         """Calls ``scheduler.step(metric)`` on all schedulers.
