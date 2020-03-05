@@ -33,6 +33,7 @@ func ServiceForPod(conf *ServiceConfig) *corev1.Service {
 			Namespace: conf.RayCluster.Namespace,
 		},
 		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{{Name: "redis", Port: int32(defaultRedisPort)}},
 			ClusterIP: "None",
 			// select this raycluster's component
 			Selector: map[string]string{
