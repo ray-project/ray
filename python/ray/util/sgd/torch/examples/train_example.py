@@ -13,7 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ray.util.sgd import PyTorchTrainer
+from ray.util.sgd import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -44,7 +44,7 @@ def optimizer_creator(model, config):
 def scheduler_creator(optimizer, config):
     """Returns a learning rate scheduler wrapping the optimizer.
 
-    You will need to set ``PyTorchTrainer(scheduler_step_freq="epoch")``
+    You will need to set ``TorchTrainer(scheduler_step_freq="epoch")``
     for the scheduler to be incremented correctly.
 
     If using a scheduler for validation loss, be sure to call
@@ -59,7 +59,7 @@ def data_creator(config):
 
 
 def train_example(num_replicas=1, use_gpu=False):
-    trainer1 = PyTorchTrainer(
+    trainer1 = TorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,

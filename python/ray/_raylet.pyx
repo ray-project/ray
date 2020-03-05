@@ -177,10 +177,9 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
         The output vector.
     """
     cdef:
-        ObjectID object_id
         c_vector[CObjectID] result
     for object_id in object_ids:
-        result.push_back(object_id.native())
+        result.push_back((<ObjectID>object_id).native())
     return result
 
 
@@ -267,7 +266,6 @@ cdef void prepare_args(
         int64_t put_threshold
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
-        ObjectID obj_id
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -288,8 +286,8 @@ cdef void prepare_args(
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
-                for obj_id in serialized_arg.contained_object_ids:
-                    inlined_ids.push_back(obj_id.native())
+                for object_id in serialized_arg.contained_object_ids:
+                    inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
                         arg_data, string_to_buffer(serialized_arg.metadata),
@@ -298,7 +296,7 @@ cdef void prepare_args(
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
-                        core_worker.put_serialized_cobject(serialized_arg)))))
+                        core_worker.put_serialized_object(serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -694,12 +692,6 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
                               c_bool pin_object=True):
-        return ObjectID(self.put_serialized_cobject(
-            serialized_object, object_id, pin_object))
-
-    def put_serialized_cobject(self, serialized_object,
-                               ObjectID object_id=None,
-                               c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -1008,6 +1000,7 @@ cdef class CoreWorker:
                                            CObjectID.Nil())
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
+
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
