@@ -6,13 +6,19 @@ You can run ``benchmark.py`` for benchmarking the RaySGD TorchTrainer implementa
 Results
 -------
 
-Here are benchmarking results on synthetic data (via ``benchmark.py``) as of 03/04/2020:
+Here are benchmarking results on synthetic data (via ``benchmark.py`` and ``horovod_benchmark_apex.py``) as of 03/04/2020:
 
  - PyTorch Version: torch-1.4.0-cp36-cp36m
  - Torchvision Version: torchvision-0.5.0-cp36-cp36m
  - Apex Version: commit hash 5633f6d
  - Horovod Version: horovod-0.19.0
 
+This compares the following:
+
+ - Horovod
+ - Horovod with fp16-allreduce enabled
+ - Pytorch DistributedDataParallel
+ - Pytorch DistributedDataParallel with ``APEX amp`` enabled (``O1``)
 
 .. code-block:: bash
 
@@ -21,13 +27,12 @@ Here are benchmarking results on synthetic data (via ``benchmark.py``) as of 03/
     # GPU Type = V100
     # Run on AWS us-east-1c, p3.16xlarge instances.
 
-    Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Apex
-    ==============  =======   ==============  =======    ==============
+    Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Amp
+    ==============  =======   ==============  =======    =============
     1 * 8 GPU(s)    2273.4    2552.3          2863.6     6171.5
     2 * 8 GPU(s)    4210.5    4974.2          5640.2     8414.1
     4 * 8 GPU(s)    6633.3    9544.4          11014.8    16346.8
     8 * 8 GPU(s)    12414.6   18479.8         22273.6    33148.2
-
 
 
 Simple Instructions
@@ -35,7 +40,7 @@ Simple Instructions
 
 First, ``git clone https://github.com/ray-project/ray && cd ray/python/ray/util/sgd/torch/examples/``.
 
-Then, run ``ray up example-sgd.yaml``. You may want to install FP16 support for PyTorch with the following configuration in the YAML file:
+Then, run ``ray up sgd-development.yaml``. You may want to install FP16 support for PyTorch with the following configuration in the YAML file:
 
 .. code-block:: yaml
 
@@ -47,7 +52,7 @@ Then, run ``ray up example-sgd.yaml``. You may want to install FP16 support for 
         # The cpp bindings can improve your benchmarked performance.
         - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
 
-You should then run ``ray monitor ray/util/sgd/torch/examples/example-sgd.yaml`` to monitor the progress of the cluster setup. When the cluster is done setting up, you should see something like the following:
+You should then run ``ray monitor sgd-development.yaml`` to monitor the progress of the cluster setup. When the cluster is done setting up, you should see something like the following:
 
 .. code-block:: bash
 
@@ -84,3 +89,7 @@ You should see something like:
     Iter #9: 352.2 img/sec per GPU
     Img/sec per GPU: 352.5 +-3.0
     Total img/sec on 16 GPU(s): 5640.2 +-47.2
+
+
+You can also run ``benchmarks/horovod-benchmark.yaml`` to launch an AWS cluster that sets up Horovod on each machine.
+See ``https://github.com/horovod/horovod`` for launching Horovod training. ``horovod_benchmark_apex.py`` can be used with ``horovodrun`` to obtain benchmarking results.
