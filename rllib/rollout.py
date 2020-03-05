@@ -2,11 +2,12 @@
 
 import argparse
 import collections
+import copy
 import json
 import os
+from pathlib import Path
 import pickle
 import shelve
-from pathlib import Path
 
 import gym
 import ray
@@ -211,7 +212,8 @@ def create_parser(parser_creator=None):
         default="{}",
         type=json.loads,
         help="Algorithm-specific configuration (e.g. env, hyperparams). "
-        "Gets merged with loaded configuration from checkpoint file.")
+        "Gets merged with loaded configuration from checkpoint file and "
+        "`evaluation_config` settings therein.")
     parser.add_argument(
         "--save-info",
         default=False,
@@ -259,6 +261,9 @@ def run(args, parser):
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
 
+    # Merge with `evaluation_config`.
+    evaluation_config = copy.deepcopy(config.get("evaluation_config", {}))
+    config = merge_dicts(config, evaluation_config)
     # Merge with command line `--config` settings.
     config = merge_dicts(config, args.config)
     if not args.env:

@@ -4,8 +4,8 @@ import torch.nn as nn
 import unittest
 from unittest.mock import MagicMock
 
-from ray.util.sgd.pytorch.training_operator import TrainingOperator
-from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.util.sgd.torch.training_operator import TrainingOperator
+from ray.util.sgd.torch.torch_runner import TorchRunner
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -45,14 +45,14 @@ def create_dataloaders(config):
     return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
 
-class TestPyTorchRunner(unittest.TestCase):
+class TestTorchRunner(unittest.TestCase):
     def testValidate(self):
         class MockOperator(TrainingOperator):
             def setup(self, config):
                 self.train_epoch = MagicMock(returns=dict(mean_accuracy=10))
                 self.validate = MagicMock(returns=dict(mean_accuracy=10))
 
-        runner = PyTorchRunner(
+        runner = TorchRunner(
             model_creator,
             create_dataloaders,
             optimizer_creator,
@@ -76,7 +76,7 @@ class TestPyTorchRunner(unittest.TestCase):
                 self.count += 1
                 return {"count": self.count}
 
-        runner = PyTorchRunner(
+        runner = TorchRunner(
             model_creator,
             create_dataloaders,
             optimizer_creator,
@@ -105,7 +105,7 @@ class TestPyTorchRunner(unittest.TestCase):
             ]
             return opts[0], opts[1], opts[2]
 
-        runner = PyTorchRunner(
+        runner = TorchRunner(
             three_model_creator,
             single_loader,
             three_optimizer_creator,
@@ -116,8 +116,8 @@ class TestPyTorchRunner(unittest.TestCase):
         self.assertEqual(len(runner.given_models), 3)
         self.assertEqual(len(runner.given_optimizers), 3)
 
-        runner2 = PyTorchRunner(model_creator, single_loader,
-                                optimizer_creator, loss_creator)
+        runner2 = TorchRunner(model_creator, single_loader, optimizer_creator,
+                              loss_creator)
         runner2.setup()
 
         self.assertNotEqual(runner2.given_models, runner2.models)
@@ -128,26 +128,26 @@ class TestPyTorchRunner(unittest.TestCase):
             return (LinearDataset(2, 5), LinearDataset(2, 5, size=400),
                     LinearDataset(2, 5, size=400))
 
-        runner = PyTorchRunner(model_creator, three_data_loader,
-                               optimizer_creator, loss_creator)
+        runner = TorchRunner(model_creator, three_data_loader,
+                             optimizer_creator, loss_creator)
         with self.assertRaises(ValueError):
             runner.setup()
 
-        runner2 = PyTorchRunner(model_creator, three_data_loader,
-                                optimizer_creator, loss_creator)
+        runner2 = TorchRunner(model_creator, three_data_loader,
+                              optimizer_creator, loss_creator)
         with self.assertRaises(ValueError):
             runner2.setup()
 
     def testSingleLoader(self):
-        runner = PyTorchRunner(model_creator, single_loader, optimizer_creator,
-                               loss_creator)
+        runner = TorchRunner(model_creator, single_loader, optimizer_creator,
+                             loss_creator)
         runner.setup()
         runner.train_epoch()
         with self.assertRaises(ValueError):
             runner.validate()
 
     def testNativeLoss(self):
-        runner = PyTorchRunner(
+        runner = TorchRunner(
             model_creator,
             single_loader,
             optimizer_creator,
@@ -165,8 +165,8 @@ class TestPyTorchRunner(unittest.TestCase):
             ]
             return opts[0], opts[1], opts[2]
 
-        runner = PyTorchRunner(multi_model_creator, single_loader,
-                               multi_optimizer_creator, loss_creator)
+        runner = TorchRunner(multi_model_creator, single_loader,
+                             multi_optimizer_creator, loss_creator)
 
         with self.assertRaises(ValueError):
             runner.setup()

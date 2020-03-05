@@ -95,15 +95,20 @@ def build_trainer(name,
         def _init(self, config, env_creator):
             if validate_config:
                 validate_config(config)
+
             if get_initial_state:
                 self.state = get_initial_state(self)
             else:
                 self.state = {}
+
             # Override default policy if `get_policy_class` is provided.
             if get_policy_class is not None:
                 self._policy = get_policy_class(config)
+
             if before_init:
                 before_init(self)
+
+            # Creating all workers (excluding evaluation workers).
             if make_workers:
                 self.workers = make_workers(self, env_creator, self._policy,
                                             config)
