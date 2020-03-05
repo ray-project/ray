@@ -10,6 +10,7 @@ import java.util.Set;
 
 import org.nustaq.serialization.FSTBasicObjectSerializer;
 import org.nustaq.serialization.FSTClazzInfo;
+import org.nustaq.serialization.FSTObjectInput;
 import org.nustaq.serialization.FSTObjectOutput;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
@@ -22,7 +23,7 @@ import org.ray.runtime.util.RuntimeUtil;
  */
 public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
 
-  private final ObjectId id;
+  private ObjectId id;
 
   // In GC thread, we don't know which runtime this object binds to, so we need to store a reference
   // of the runtime for later uses.
@@ -83,10 +84,20 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
     static ThreadLocal<Set<ObjectId>> innerIds = ThreadLocal.withInitial(HashSet::new);
 
     @Override
-    public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo, FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
-      out.writeObject(toWrite);
+    public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
+                            FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
       RayObjectImpl object = (RayObjectImpl) toWrite;
+      out.writeObject(object.getId());
       innerIds.get().add(object.getId());
+    }
+
+    @Override
+    public void readObject(FSTObjectInput in, Object toRead, FSTClazzInfo clzInfo,
+                           FSTClazzInfo.FSTFieldInfo referencedBy) throws Exception {
+      super.readObject(in, toRead, clzInfo, referencedBy);
+      ObjectId id = (ObjectId) in.readObject(ObjectId.class);
+      RayObjectImpl object = (RayObjectImpl) toRead;
+      object.id = id;
     }
 
     public static List<ObjectId> getInnerObjectIds() {
