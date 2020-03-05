@@ -12,7 +12,6 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data.distributed import DistributedSampler
 
 from ray.util.sgd import TorchTrainer
 
@@ -59,21 +58,13 @@ def data_creator(config):
     """Returns training dataloader, validation dataloader."""
     train_dataset = LinearDataset(2, 5, size=config.get("data_size", 1000))
     val_dataset = LinearDataset(2, 5, size=config.get("val_size", 400))
-    train_sampler, val_sampler = None, None
-    if config.get("use_dist_sampler"):
-        train_sampler = DistributedSampler(train_dataset)
-        val_sampler = DistributedSampler(val_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=config.get("batch_size", 32),
-        shuffle=(train_sampler is None),
-        sampler=train_sampler
-        )
+    )
     validation_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=config.get("batch_size", 32),
-        shuffle=(val_sampler is None),
-        sampler=val_sampler)
+        batch_size=config.get("batch_size", 32))
     return train_loader, validation_loader
 
 
@@ -90,7 +81,6 @@ def train_example(num_workers=1, use_gpu=False):
             "lr": 1e-2, # used in optimizer_creator
             "hidden_size": 1,  # used in model_creator
             "batch_size": 4,  # used in data_creator
-            "use_dist_sampler": num_workers > 1  # used in data_creator
         },
         backend="gloo",
         scheduler_step_freq="epoch")

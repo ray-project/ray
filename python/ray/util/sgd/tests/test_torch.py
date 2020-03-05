@@ -256,8 +256,7 @@ def test_metrics(ray_start_2_cpus, num_workers):
             "key": "score",
             "batch_size": batch_size,
             "data_size": data_size,
-            "val_size": val_size,
-            "use_dist_sampler": num_workers > 1
+            "val_size": val_size
         },
         training_operator_cls=_TestMetricsOperator)
 
@@ -274,8 +273,8 @@ def test_metrics(ray_start_2_cpus, num_workers):
     val_stats = trainer.validate()
     # Test that we output mean and last of custom metrics in validation
     assert val_stats["last_score"] == 0
-    expected_score = num_workers * (sum(val_scores) /
-                                    (num_val_steps * batch_size))
+    expected_score = (sum(val_scores) /
+                      (num_val_steps * batch_size)) * num_workers
     assert np.allclose(val_stats["mean_score"], expected_score)
     assert val_stats[BATCH_COUNT] == np.ceil(num_val_steps / num_workers)
     assert val_stats[NUM_SAMPLES] == num_val_steps * batch_size
@@ -306,8 +305,7 @@ def test_metrics_nan(ray_start_2_cpus, num_workers):
             "key": "score",
             "batch_size": batch_size,
             "data_size": data_size,
-            "val_size": val_size,
-            "use_dist_sampler": num_workers > 1
+            "val_size": val_size
         },
         training_operator_cls=_TestMetricsOperator)
 
