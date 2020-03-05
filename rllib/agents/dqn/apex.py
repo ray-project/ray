@@ -95,6 +95,7 @@ def training_pipeline(workers, config):
     ], num_replay_buffer_shards)
 
     def update_prio_and_stats(item):
+        # TODO(ekl) update the source actor weights
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
         metrics = LocalIterator.get_metrics()
