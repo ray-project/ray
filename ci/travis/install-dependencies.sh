@@ -38,9 +38,10 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
   pip config --user set global.no-color True
   pip config --user set global.progress_bar off
   pip config --user set global.quiet True
-  # Install modules needed in all Travis builds.
-  pip install dm-tree
 fi
+
+# Install modules needed in all jobs.
+pip install dm-tree
 
 if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
