@@ -19,8 +19,8 @@ def bit_shift_generator(seq_length, shift, batch_size):
         yield seq, targets
 
 
-def make_model(seq_length, num_tokens, num_layers, attn_dim, num_heads, head_dim,
-               ff_hidden_dim):
+def make_model(seq_length, num_tokens, num_layers, attn_dim, num_heads,
+               head_dim, ff_hidden_dim):
 
     return tf.keras.Sequential((
         attention.make_TrXL(seq_length, num_layers, attn_dim, num_heads,
@@ -30,8 +30,8 @@ def make_model(seq_length, num_tokens, num_layers, attn_dim, num_heads, head_dim
 
 
 def train_loss(targets, outputs):
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
-                                                          logits=outputs)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        labels=targets, logits=outputs)
     return tf.reduce_mean(loss)
 
 
@@ -52,12 +52,10 @@ def train_bit_shift(seq_length, num_iterations, print_every_n):
     shift = 10
     train_batch = 10
     test_batch = 100
-    data_gen = bit_shift_generator(seq_length,
-                                   shift=shift,
-                                   batch_size=train_batch)
-    test_gen = bit_shift_generator(seq_length,
-                                   shift=shift,
-                                   batch_size=test_batch)
+    data_gen = bit_shift_generator(
+        seq_length, shift=shift, batch_size=train_batch)
+    test_gen = bit_shift_generator(
+        seq_length, shift=shift, batch_size=test_batch)
 
     @tf.function
     def update_step(inputs, targets):
@@ -66,7 +64,8 @@ def train_bit_shift(seq_length, num_iterations, print_every_n):
         optimizer.minimize(loss_fn, var_fn)
 
     for i, (inputs, targets) in zip(range(num_iterations), data_gen):
-        update_step(tf.convert_to_tensor(inputs), tf.convert_to_tensor(targets))
+        update_step(
+            tf.convert_to_tensor(inputs), tf.convert_to_tensor(targets))
 
         if i % print_every_n == 0:
             test_inputs, test_targets = next(test_gen)
