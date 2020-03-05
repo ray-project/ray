@@ -1,15 +1,12 @@
 package org.ray.streaming.api.stream;
 
 import java.io.Serializable;
-import java.util.Optional;
 import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.python.PythonPartition;
-import org.ray.streaming.python.stream.PythonStream;
 
 /**
  * Abstract base class of all stream types.
@@ -44,7 +41,8 @@ public abstract class Stream<T> implements Serializable {
   }
 
   /**
-   * Create a reference of referenced stream
+   * Create a reference of referenced stream.
+   * Changes in new stream will be reflected in referenced stream and vice versa
    */
   protected Stream(Stream<T> referencedStream) {
     this.referencedStream = referencedStream;
@@ -59,7 +57,7 @@ public abstract class Stream<T> implements Serializable {
         return new RoundRobinPartition<>();
       default:
         throw new UnsupportedOperationException(
-          "Unsupported language " + operator.getLanguage());
+            "Unsupported language " + operator.getLanguage());
     }
   }
 

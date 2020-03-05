@@ -236,8 +236,13 @@ class DataStream(Stream):
             call_method(self._j_stream, "sink", j_func)
         return StreamSink(self, j_stream, func)
 
-    def as_java_stream(self):
-        """Convert this python stream into a java DataStream"""
+    def as_java(self):
+        """
+        Convert this stream as a java JavaDataStream.
+        The converted stream and this stream are the same logical stream,
+        which has same stream id. Changes in converted stream will be reflected
+        in this stream and vice versa.
+        """
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, "asJavaStream")
         return JavaDataStream(self, j_stream)
@@ -293,8 +298,13 @@ class JavaDataStream(Stream):
         """See org.ray.streaming.api.stream.DataStream.sink"""
         return JavaStreamSink(self, self._unary_call("sink", java_func_class))
 
-    def as_python_stream(self):
-        """Convert this java stream into a python DataStream"""
+    def as_python(self):
+        """
+        Convert this stream as a python DataStream.
+        The converted stream and this stream are the same logical stream,
+        which has same stream id. Changes in converted stream will be reflected
+        in this stream and vice versa.
+        """
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, "asPythonStream")
         return DataStream(self, j_stream)
@@ -348,8 +358,13 @@ class KeyDataStream(DataStream):
             call_method(self._j_stream, "reduce", j_func)
         return DataStream(self, j_stream)
 
-    def as_java_stream(self):
-        """Convert this python stream into a java KeyDataStream"""
+    def as_java(self):
+        """
+        Convert this stream as a java KeyDataStream.
+        The converted stream and this stream are the same logical stream,
+        which has same stream id. Changes in converted stream will be reflected
+        in this stream and vice versa.
+        """
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, "asJavaStream")
         return JavaKeyDataStream(self, j_stream)
@@ -369,8 +384,13 @@ class JavaKeyDataStream(JavaDataStream):
         return JavaDataStream(self, super()._unary_call("reduce",
                                                         java_func_class))
 
-    def as_python_stream(self):
-        """Convert this java stream into a python KeyDataStream"""
+    def as_python(self):
+        """
+        Convert this stream as a python KeyDataStream.
+        The converted stream and this stream are the same logical stream,
+        which has same stream id. Changes in converted stream will be reflected
+        in this stream and vice versa.
+        """
         j_stream = self._gateway_client(). \
             call_method(self._j_stream, "asPythonStream")
         return KeyDataStream(self, j_stream)

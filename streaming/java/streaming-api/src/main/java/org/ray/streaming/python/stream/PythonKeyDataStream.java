@@ -1,5 +1,7 @@
 package org.ray.streaming.python.stream;
 
+import org.ray.streaming.api.stream.DataStream;
+import org.ray.streaming.api.stream.KeyDataStream;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonFunction.FunctionInterface;
 import org.ray.streaming.python.PythonOperator;
@@ -17,6 +19,14 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   }
 
   /**
+   * Create a python stream that reference passed python stream.
+   * Changes in new stream will be reflected in referenced stream and vice versa
+   */
+  public PythonKeyDataStream(DataStream referencedStream) {
+    super(referencedStream);
+  }
+
+  /**
    * Apply a reduce function to this stream.
    *
    * @param func The reduce function.
@@ -26,6 +36,16 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
     func.setFunctionInterface(FunctionInterface.REDUCE_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
   }
+
+  /**
+   * Convert this stream as a java stream.
+   * The converted stream and this stream are the same logical stream, which has same stream id.
+   * Changes in converted stream will be reflected in this stream and vice versa.
+   */
+  public KeyDataStream asJavaStream() {
+    return new KeyDataStream(this);
+  }
+
 
   public PythonKeyDataStream setParallelism(int parallelism) {
     super.setParallelism(parallelism);

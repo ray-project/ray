@@ -24,7 +24,7 @@ public class PythonDataStream extends Stream implements PythonStream {
   }
 
   /**
-   * Create a python reference stream of java stream.
+   * Create a python stream that reference passed java stream.
    * Changes in new stream will be reflected in referenced stream and vice versa
    */
   public PythonDataStream(DataStream referencedStream) {
@@ -108,6 +108,11 @@ public class PythonDataStream extends Stream implements PythonStream {
     return this;
   }
 
+  /**
+   * Convert this stream as a java stream.
+   * The converted stream and this stream are the same logical stream, which has same stream id.
+   * Changes in converted stream will be reflected in this stream and vice versa.
+   */
   public DataStream asJavaStream() {
     return new DataStream(this);
   }

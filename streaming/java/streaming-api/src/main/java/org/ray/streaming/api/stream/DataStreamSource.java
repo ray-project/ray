@@ -20,7 +20,7 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
   }
 
   public static <T> DataStreamSource<T> fromSource(
-    StreamingContext context, SourceFunction<T> sourceFunction) {
+      StreamingContext context, SourceFunction<T> sourceFunction) {
     return new DataStreamSource(context, sourceFunction);
   }
 
