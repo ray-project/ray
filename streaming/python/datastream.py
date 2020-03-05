@@ -214,8 +214,9 @@ class DataStream(Stream):
         If parent stream is a java stream, we can't call partition related
         methods in the python stream
         """
-        if self.input_stream.get_language() == function.Language.JAVA:
-            raise Exception("Partition related methods can't be called on a"
+        if self.input_stream is not None and \
+                self.input_stream.get_language() == function.Language.JAVA:
+            raise Exception("Partition related methods can't be called on a "
                             "python stream if parent stream is a java stream.")
 
     def sink(self, func):
@@ -314,7 +315,8 @@ class JavaDataStream(Stream):
         If parent stream is a python stream, we can't call partition related
         methods in the java stream
         """
-        if self.input_stream.get_language() == function.Language.JAVA:
+        if self.input_stream is not None and \
+                self.input_stream.get_language() == function.Language.PYTHON:
             raise Exception("Partition related methods can't be called on a"
                             "java stream if parent stream is a python stream.")
 

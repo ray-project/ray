@@ -20,7 +20,7 @@ import org.ray.streaming.python.stream.PythonDataStream;
 
 /**
  * Represents a stream of data.
- *
+ * <p>
  * This class defines all the streaming operations.
  *
  * @param <T> Type of data in the stream.
@@ -47,7 +47,7 @@ public class DataStream<T> extends Stream<T> {
    * Apply a map function to this stream.
    *
    * @param mapFunction The map function.
-   * @param <R> Type of data returned by the map function.
+   * @param <R>         Type of data returned by the map function.
    * @return A new DataStream.
    */
   public <R> DataStream<R> map(MapFunction<T, R> mapFunction) {
@@ -58,7 +58,7 @@ public class DataStream<T> extends Stream<T> {
    * Apply a flat-map function to this stream.
    *
    * @param flatMapFunction The FlatMapFunction
-   * @param <R> Type of data returned by the flatmap function.
+   * @param <R>             Type of data returned by the flatmap function.
    * @return A new DataStream
    */
   public <R> DataStream<R> flatMap(FlatMapFunction<T, R> flatMapFunction) {
@@ -83,8 +83,8 @@ public class DataStream<T> extends Stream<T> {
    * Apply a join transformation to this stream, with another stream.
    *
    * @param other Another stream.
-   * @param <O> The type of the other stream data.
-   * @param <R> The type of the data in the joined stream.
+   * @param <O>   The type of the other stream data.
+   * @param <R>   The type of the data in the joined stream.
    * @return A new JoinStream.
    */
   public <O, R> JoinStream<T, O, R> join(DataStream<O> other) {
@@ -110,10 +110,11 @@ public class DataStream<T> extends Stream<T> {
    * Apply a key-by function to this stream.
    *
    * @param keyFunction the key function.
-   * @param <K> The type of the key.
+   * @param <K>         The type of the key.
    * @return A new KeyDataStream.
    */
   public <K> KeyDataStream<K, T> keyBy(KeyFunction<T, K> keyFunction) {
+    checkPartitionCall();
     return new KeyDataStream<>(this, new KeyByOperator(keyFunction));
   }
 
@@ -123,6 +124,7 @@ public class DataStream<T> extends Stream<T> {
    * @return This stream.
    */
   public DataStream<T> broadcast() {
+    checkPartitionCall();
     super.setPartition(new BroadcastPartition<>());
     return this;
   }
@@ -134,8 +136,20 @@ public class DataStream<T> extends Stream<T> {
    * @return This stream.
    */
   public DataStream<T> partitionBy(Partition<T> partition) {
+    checkPartitionCall();
     super.setPartition(partition);
     return this;
+  }
+
+  /**
+   * If parent stream is a python stream, we can't call partition related methods
+   * in the java stream.
+   */
+  private void checkPartitionCall() {
+    if (getInputStream() != null && getInputStream().getLanguage() == Language.PYTHON) {
+      throw new RuntimeException("Partition related methods can't be called on a " +
+          "java stream if parent stream is a python stream.");
+    }
   }
 
   /**

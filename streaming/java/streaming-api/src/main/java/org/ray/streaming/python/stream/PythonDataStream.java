@@ -103,6 +103,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new KeyDataStream.
    */
   public PythonKeyDataStream keyBy(PythonFunction func) {
+    checkPartitionCall();
     func.setFunctionInterface(FunctionInterface.KEY_FUNCTION);
     return new PythonKeyDataStream(this, new PythonOperator(func));
   }
@@ -113,6 +114,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return This stream.
    */
   public PythonDataStream broadcast() {
+    checkPartitionCall();
     super.setPartition(PythonPartition.BroadcastPartition);
     return this;
   }
@@ -124,8 +126,20 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return This stream.
    */
   public PythonDataStream partitionBy(PythonPartition partition) {
+    checkPartitionCall();
     super.setPartition(partition);
     return this;
+  }
+
+  /**
+   * If parent stream is a python stream, we can't call partition related methods
+   * in the java stream.
+   */
+  private void checkPartitionCall() {
+    if (getInputStream() != null && getInputStream().getLanguage() == Language.JAVA) {
+      throw new RuntimeException("Partition related methods can't be called on a " +
+          "python stream if parent stream is a java stream.");
+    }
   }
 
   /**
