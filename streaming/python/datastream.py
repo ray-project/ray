@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 from ray.streaming import function
 from ray.streaming import partition
+from ray.streaming.runtime import gateway_client
 
 
 class Stream(ABC):
@@ -19,7 +20,6 @@ class Stream(ABC):
             self.streaming_context = input_stream.streaming_context
         else:
             self.streaming_context = streaming_context
-        self.parallelism = 1
 
     def get_streaming_context(self):
         return self.streaming_context
@@ -29,7 +29,9 @@ class Stream(ABC):
         Returns:
             the parallelism of this transformation
         """
-        return self.parallelism
+        bytes_data = self._gateway_client(). \
+            call_method(self._j_stream, "getParallelism")
+        return gateway_client.deserialize(bytes_data)
 
     def set_parallelism(self, parallelism: int):
         """Sets the parallelism of this transformation
@@ -40,7 +42,6 @@ class Stream(ABC):
         Returns:
             self
         """
-        self.parallelism = parallelism
         self._gateway_client(). \
             call_method(self._j_stream, "setParallelism", parallelism)
         return self
@@ -57,8 +58,9 @@ class Stream(ABC):
         Returns:
             An unique id identifies this stream.
         """
-        return self._gateway_client(). \
+        bytes_data = self._gateway_client(). \
             call_method(self._j_stream, "getId")
+        return gateway_client.deserialize(bytes_data)
 
     @abstractmethod
     def get_language(self):

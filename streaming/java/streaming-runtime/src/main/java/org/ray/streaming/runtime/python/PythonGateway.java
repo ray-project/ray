@@ -108,8 +108,12 @@ public class PythonGateway {
       Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
       Method method = ReflectionUtils.findMethod(clz, funcName);
       Object result = method.invoke(null, params.subList(2, params.size()).toArray());
-      referenceMap.put(getReferenceId(result), result);
-      return serializer.serialize(getReferenceId(result));
+      if (returnReference(result)) {
+        referenceMap.put(getReferenceId(result), result);
+        return serializer.serialize(getReferenceId(result));
+      } else {
+        return serializer.serialize(result);
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -124,11 +128,22 @@ public class PythonGateway {
       String methodName = (String) params.get(1);
       Method method = ReflectionUtils.findMethod(obj.getClass(), methodName);
       Object result = method.invoke(obj, params.subList(2, params.size()).toArray());
-      referenceMap.put(getReferenceId(result), result);
-      return serializer.serialize(getReferenceId(result));
+      if (returnReference(result)) {
+        referenceMap.put(getReferenceId(result), result);
+        return serializer.serialize(getReferenceId(result));
+      } else {
+        return serializer.serialize(result);
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private boolean returnReference(Object value) {
+    if (value instanceof Number || value instanceof String || value instanceof byte[]) {
+      return false;
+    }
+    return true;
   }
 
   public byte[] newInstance(byte[] classNameBytes) {
