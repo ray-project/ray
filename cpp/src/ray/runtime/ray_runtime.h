@@ -3,10 +3,9 @@
 
 #include <mutex>
 
-#include <ray/api/blob.h>
+#include <msgpack.hpp>
 #include <ray/api/ray_api.h>
 #include <ray/api/ray_config.h>
-#include <ray/util/type_util.h>
 #include "./context/worker_context.h"
 #include "./object/object_store.h"
 #include "./task/task_executer.h"
@@ -33,21 +32,21 @@ class RayRuntime : public RayApi {
 
   static RayRuntime &getInstance();
 
-  void put(std::vector< ::ray::blob> &&data, const UniqueId &objectId,
+  void put(std::shared_ptr<msgpack::sbuffer> data, const UniqueId &objectId,
            const UniqueId &taskId);
 
-  std::unique_ptr<UniqueId> put(std::vector< ::ray::blob> &&data);
+  std::unique_ptr<UniqueId> put(std::shared_ptr<msgpack::sbuffer> data);
 
-  del_unique_ptr< ::ray::blob> get(const UniqueId &objectId);
+  std::shared_ptr<msgpack::sbuffer> get(const UniqueId &objectId);
 
   std::unique_ptr<UniqueId> call(remote_function_ptr_holder &fptr,
-                                 std::vector< ::ray::blob> &&args);
+                                 std::shared_ptr<msgpack::sbuffer> args);
 
   std::unique_ptr<UniqueId> create(remote_function_ptr_holder &fptr,
-                                   std::vector< ::ray::blob> &&args);
+                                   std::shared_ptr<msgpack::sbuffer> args);
 
   std::unique_ptr<UniqueId> call(const remote_function_ptr_holder &fptr,
-                                 const UniqueId &actor, std::vector< ::ray::blob> &&args);
+                                 const UniqueId &actor, std::shared_ptr<msgpack::sbuffer> args);
 
   TaskSpec *getCurrentTask();
 

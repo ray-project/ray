@@ -1,29 +1,26 @@
 #include "invocation_executor.h"
 #include "../../agent.h"
-#include "../../util/blob_util.h"
 #include "../ray_runtime.h"
 
 namespace ray {
 
-void InvocationExecutor::execute(const TaskSpec &taskSpec, ::ray::blob *actor_blob) {
-  if (actor_blob != NULL) {
-    typedef std::vector< ::ray::blob> (*EXEC_FUNCTION)(
-        uintptr_t base_addr, int32_t func_offset, const ::ray::blob &args,
-        ::ray::blob &object);
+void InvocationExecutor::execute(const TaskSpec &taskSpec, std::shared_ptr<msgpack::sbuffer> actor) {
+  if (actor != NULL) {
+    typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
+        uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+        std::shared_ptr<msgpack::sbuffer> object);
     EXEC_FUNCTION exec_function =
         (EXEC_FUNCTION)(dylib_base_addr + taskSpec.get_exec_func_offset());
-    ::ray::blob args = blob_merge(taskSpec.args);
     auto data =
-        (*exec_function)(dylib_base_addr, taskSpec.get_func_offset(), args, *actor_blob);
+        (*exec_function)(dylib_base_addr, taskSpec.get_func_offset(), taskSpec.args, actor);
     RayRuntime &rayRuntime = RayRuntime::getInstance();
     rayRuntime.put(std::move(data), *taskSpec.returnIds.front(), taskSpec.taskId);
   } else {
-    typedef std::vector< ::ray::blob> (*EXEC_FUNCTION)(
-        uintptr_t base_addr, int32_t func_offset, const ::ray::blob &args);
+    typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
+        uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
     EXEC_FUNCTION exec_function =
         (EXEC_FUNCTION)(dylib_base_addr + taskSpec.get_exec_func_offset());
-    ::ray::blob args = blob_merge(taskSpec.args);
-    auto data = (*exec_function)(dylib_base_addr, taskSpec.get_func_offset(), args);
+    auto data = (*exec_function)(dylib_base_addr, taskSpec.get_func_offset(), taskSpec.args);
     RayRuntime &rayRuntime = RayRuntime::getInstance();
     rayRuntime.put(std::move(data), *taskSpec.returnIds.front(), taskSpec.taskId);
   }

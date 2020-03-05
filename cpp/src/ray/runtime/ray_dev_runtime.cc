@@ -3,7 +3,6 @@
 
 #include <ray/api.h>
 #include "../agent.h"
-#include "../util/blob_util.h"
 #include "./object/local_mode_object_store.h"
 #include "./object/object_store.h"
 #include "./task/local_mode_task_submitter.h"
@@ -20,8 +19,8 @@ RayDevRuntime::RayDevRuntime(std::shared_ptr<RayConfig> config) {
 }
 
 std::unique_ptr<UniqueId> RayDevRuntime::create(remote_function_ptr_holder &fptr,
-                                                std::vector< ::ray::blob> &&args) {
-  return _taskSubmitter.get()->createActor(fptr, std::move(args));
+                                                 std::shared_ptr<msgpack::sbuffer> args) {
+  return _taskSubmitter.get()->createActor(fptr, args);
 }
 
 char *RayDevRuntime::get_actor_ptr(const UniqueId &id) {

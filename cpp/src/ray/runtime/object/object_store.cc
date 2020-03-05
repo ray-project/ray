@@ -9,11 +9,11 @@ namespace ray {
 const int fetchSize = 10000;
 const int getTimeoutMs = 1000;
 
-void ObjectStore::put(const UniqueId &objectId, std::vector< ::ray::blob> &&data) {
-  putRaw(objectId, std::forward<std::vector< ::ray::blob> >(data));
+void ObjectStore::put(const UniqueId &objectId, std::shared_ptr<msgpack::sbuffer> data) {
+  putRaw(objectId, data);
 }
 
-del_unique_ptr< ::ray::blob> ObjectStore::get(const UniqueId &objectId, int timeoutMs) {
+std::shared_ptr< msgpack::sbuffer> ObjectStore::get(const UniqueId &objectId, int timeoutMs) {
   return getRaw(objectId, timeoutMs);
 }
 }  // namespace ray

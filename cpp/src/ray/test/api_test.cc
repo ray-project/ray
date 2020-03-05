@@ -13,6 +13,8 @@ class Foo {
  public:
   int count;
 
+  MSGPACK_DEFINE(count);
+
   Foo() { count = 0; }
 
   static Foo *create() {
@@ -33,25 +35,6 @@ class Foo {
 
   static int bar_s(int x, int y) { return x + y; }
 };
-
-namespace ray {
-
-inline void marshall(::ray::binary_writer &writer, const Foo &foo) {
-  writer.write((char *)&foo.count, sizeof(int));
-}
-
-inline void unmarshall(::ray::binary_reader &reader, Foo &foo) {
-  reader.read((char *)&foo.count, sizeof(int));
-}
-
-inline void marshall(::ray::binary_writer &writer, Foo *const &foo) {
-  writer.write((char *)&foo, sizeof(Foo *));
-}
-
-inline void unmarshall(::ray::binary_reader &reader, Foo *&foo) {
-  reader.read((char *)&foo, sizeof(Foo *));
-}
-}  // namespace ray
 
 TEST(ray_api_test_case, put_test) {
   Ray::init();

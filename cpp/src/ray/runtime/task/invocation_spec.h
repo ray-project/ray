@@ -1,9 +1,7 @@
 
 #pragma once
 
-#include <list>
-
-#include <ray/api/blob.h>
+#include <msgpack.hpp>
 #include <ray/api/uniqueId.h>
 
 namespace ray {
@@ -15,7 +13,7 @@ class InvocationSpec {
   int actorCounter;
   int32_t func_offset;
   int32_t exec_func_offset;
-  std::vector< ::ray::blob> args;
+  std::shared_ptr<msgpack::sbuffer> args;
   int returnCount;
 };
 }  // namespace ray

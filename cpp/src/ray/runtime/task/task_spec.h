@@ -3,13 +3,11 @@
 
 #include <list>
 #include <vector>
-
-#include <ray/api/blob.h>
+#include <msgpack.hpp>
 #include <ray/api/uniqueId.h>
+#include <ray/api/task_type.h>
 
 namespace ray {
-
-enum TaskType { NORMAL_TASK, ACTOR_CREATION_TASK, ACTOR_TASK, UNRECOGNIZED };
 
 class TaskSpec {
  public:
@@ -21,7 +19,7 @@ class TaskSpec {
   UniqueId actorId;
   int actorCounter;
   UniqueId functionId;
-  std::vector< ::ray::blob> args;
+  std::shared_ptr<msgpack::sbuffer> args;
   std::list<std::unique_ptr<UniqueId> > returnIds;
 
   TaskSpec();

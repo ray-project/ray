@@ -4,10 +4,9 @@
 #include <iostream>
 #include <memory>
 
-#include "api/blob.h"
-#include "api/impl/function_argument.h"
+#include <msgpack.hpp>
 #include "api/ray_api.h"
-#include "ray/util/type_util.h"
+#include "api/task_type.h"
 
 /**
  * ray api definition
@@ -64,11 +63,10 @@ class Arguments;
 
 template <typename T>
 inline std::unique_ptr<RayObject<T>> Ray::put(const T &obj) {
-  ::ray::binary_writer writer;
-  Arguments::wrap(writer, obj);
-  std::vector<::ray::blob> data;
-  writer.get_buffers(data);
-  auto id = _impl->put(std::move(data));
+  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
+  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
+  Arguments::wrap(packer, obj);
+  auto id = _impl->put(buffer);
   std::unique_ptr<RayObject<T>> ptr(new RayObject<T>(*id));
   return ptr;
 }
@@ -76,8 +74,11 @@ inline std::unique_ptr<RayObject<T>> Ray::put(const T &obj) {
 template <typename T>
 inline bool Ray::get(const UniqueId &id, T &obj) {
   auto data = _impl->get(id);
-  ::ray::binary_reader reader(*data.get());
-  Arguments::unwrap(reader, obj);
+  msgpack::unpacker unpacker;
+  unpacker.reserve_buffer(data->size());
+  memcpy(unpacker.buffer(), data->data(), data->size());
+  unpacker.buffer_consumed(data->size());
+  Arguments::unwrap(unpacker, obj);
   return true;
 }
 

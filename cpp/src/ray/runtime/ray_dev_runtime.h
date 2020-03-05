@@ -19,7 +19,7 @@ class RayDevRuntime : public RayRuntime {
   char *get_actor_ptr(const UniqueId &id);
 
   std::unique_ptr<UniqueId> create(remote_function_ptr_holder &fptr,
-                                   std::vector< ::ray::blob> &&args);
+                                   std::shared_ptr<msgpack::sbuffer> args);
 };
 
 }  // namespace ray

@@ -1,14 +1,13 @@
 
 #pragma once
 
-#include <ray/api/blob.h>
+#include <msgpack.hpp>
 #include <cstdint>
 #include <memory>
 #include <typeinfo>
 #include <vector>
 
 #include "ray/api/uniqueId.h"
-#include "ray/util/type_util.h"
 
 namespace ray {
 
@@ -22,15 +21,15 @@ struct remote_function_ptr_holder {
 
 class RayApi {
  public:
-  virtual std::unique_ptr<UniqueId> put(std::vector< ::ray::blob> &&data) = 0;
-  virtual del_unique_ptr< ::ray::blob> get(const UniqueId &id) = 0;
+  virtual std::unique_ptr<UniqueId> put(std::shared_ptr<msgpack::sbuffer> data) = 0;
+  virtual std::shared_ptr<msgpack::sbuffer> get(const UniqueId &id) = 0;
 
   virtual std::unique_ptr<UniqueId> call(remote_function_ptr_holder &fptr,
-                                         std::vector< ::ray::blob> &&args) = 0;
+                                         std::shared_ptr<msgpack::sbuffer> args) = 0;
   virtual std::unique_ptr<UniqueId> create(remote_function_ptr_holder &fptr,
-                                           std::vector< ::ray::blob> &&args) = 0;
+                                           std::shared_ptr<msgpack::sbuffer> args) = 0;
   virtual std::unique_ptr<UniqueId> call(const remote_function_ptr_holder &fptr,
                                          const UniqueId &actor,
-                                         std::vector< ::ray::blob> &&args) = 0;
+                                         std::shared_ptr<msgpack::sbuffer> args) = 0;
 };
 }  // namespace ray

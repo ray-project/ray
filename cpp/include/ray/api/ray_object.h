@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "uniqueId.h"
+#include <msgpack.hpp>
 
 namespace ray {
 
@@ -26,6 +27,8 @@ class RayObject {
   std::unique_ptr<T> get() const;
 
   bool operator==(const RayObject<T> &object) const;
+
+  MSGPACK_DEFINE(_id);
 
  private:
   UniqueId _id;

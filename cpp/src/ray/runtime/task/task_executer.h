@@ -8,7 +8,7 @@ namespace ray {
 
 class ActorContext {
  public:
-  std::unique_ptr<::ray::blob> currentActor = NULL;
+  std::shared_ptr<msgpack::sbuffer> currentActor = NULL;
 
   ActorContext() {}
 };

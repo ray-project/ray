@@ -1,8 +1,28 @@
 #include "example.h"
 #include <ray/api.h>
 #include <iostream>
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <chrono>
+#include <thread>
 
 using namespace ray;
+
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
 
 int foo0() { return 1; }
 int foo(int x) { return x + 1; }
@@ -10,12 +30,16 @@ int foo(int x) { return x + 1; }
 int bar(int x, int y) { return x + y; }
 
 int main() {
+  signal(SIGSEGV, handler);
+  signal(SIGTERM, handler);
+  signal(SIGINT, handler);
+  signal(SIGILL, handler);
+  signal(SIGABRT, handler);
+  signal(SIGFPE, handler);
   Ray::init();
 
   auto obj = Ray::put(123);
   auto getRsult = obj->get();
-
-  std::cout << "Get result: " << *getRsult << std::endl;
 
   auto r0 = Ray::call(foo0);
   auto r1 = Ray::call(foo, 1);

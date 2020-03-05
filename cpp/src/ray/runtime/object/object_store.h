@@ -3,9 +3,8 @@
 
 #include <memory>
 
-#include <ray/api/blob.h>
+#include <msgpack.hpp>
 #include <ray/api/uniqueId.h>
-#include <ray/util/type_util.h>
 
 namespace ray {
 
@@ -22,16 +21,16 @@ typedef struct WaitResult_s {
 class ObjectStore {
  private:
  public:
-  void put(const UniqueId &objectId, std::vector< ::ray::blob> &&data);
+  void put(const UniqueId &objectId, std::shared_ptr<msgpack::sbuffer> data);
 
-  del_unique_ptr< ::ray::blob> get(const UniqueId &objectId,
+  std::shared_ptr< msgpack::sbuffer> get(const UniqueId &objectId,
                                    int timeoutMs = getTimeoutMs);
 
-  virtual void putRaw(const UniqueId &objectId, std::vector< ::ray::blob> &&data) = 0;
+  virtual void putRaw(const UniqueId &objectId, std::shared_ptr<msgpack::sbuffer> data) = 0;
 
   virtual void del(const UniqueId &objectId) = 0;
 
-  virtual del_unique_ptr< ::ray::blob> getRaw(const UniqueId &objectId,
+  virtual std::shared_ptr< msgpack::sbuffer> getRaw(const UniqueId &objectId,
                                               int timeoutMs) = 0;
 
   virtual WaitResult wait(const UniqueId *ids, int count, int minNumReturns,

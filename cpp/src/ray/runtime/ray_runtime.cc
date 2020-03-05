@@ -42,24 +42,24 @@ RayRuntime &RayRuntime::getInstance() {
   return *_ins;
 }
 
-void RayRuntime::put(std::vector< ::ray::blob> &&data, const UniqueId &objectId,
+void RayRuntime::put(std::shared_ptr<msgpack::sbuffer> data, const UniqueId &objectId,
                      const UniqueId &taskId) {
-  _objectStore->put(objectId, std::forward<std::vector< ::ray::blob> >(data));
+  _objectStore->put(objectId, data);
 }
 
-std::unique_ptr<UniqueId> RayRuntime::put(std::vector< ::ray::blob> &&data) {
+std::unique_ptr<UniqueId> RayRuntime::put(std::shared_ptr<msgpack::sbuffer> data) {
   const UniqueId &taskId = _worker->getCurrentTaskId();
   std::unique_ptr<UniqueId> objectId = _worker->getCurrentTaskNextPutId();
-  put(std::forward<std::vector< ::ray::blob> >(data), *objectId, taskId);
+  put(data, *objectId, taskId);
   return objectId;
 }
 
-del_unique_ptr< ::ray::blob> RayRuntime::get(const UniqueId &objectId) {
+std::shared_ptr<msgpack::sbuffer> RayRuntime::get(const UniqueId &objectId) {
   return _objectStore->get(objectId, 0);
 }
 
 std::unique_ptr<UniqueId> RayRuntime::call(remote_function_ptr_holder &fptr,
-                                           std::vector< ::ray::blob> &&args) {
+                                           std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
   UniqueId uid;
   uid.random();
@@ -72,13 +72,13 @@ std::unique_ptr<UniqueId> RayRuntime::call(remote_function_ptr_holder &fptr,
 }
 
 std::unique_ptr<UniqueId> RayRuntime::create(remote_function_ptr_holder &fptr,
-                                             std::vector< ::ray::blob> &&args) {
-  return _ins->create(fptr, std::move(args));
+                                            std::shared_ptr<msgpack::sbuffer> args) {
+  return _ins->create(fptr, args);
 }
 
 std::unique_ptr<UniqueId> RayRuntime::call(const remote_function_ptr_holder &fptr,
                                            const UniqueId &actor,
-                                           std::vector< ::ray::blob> &&args) {
+                                           std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
   UniqueId uid;
   uid.random();

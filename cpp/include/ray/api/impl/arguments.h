@@ -2,7 +2,6 @@
 #pragma once
 
 
-#include <ray/api/blob.h>
 #include <msgpack.hpp>
 
 namespace ray {
@@ -26,30 +25,12 @@ class Arguments {
   template <typename Arg1Type, typename... OtherArgTypes>
   static void unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
                      OtherArgTypes &... args);
-
-  template <typename T>
-  static void wrap(::ray::binary_writer &writer, const T &val);
-
-  static void wrap(::ray::binary_writer &writer);
-
-  template <typename Arg1Type, typename... OtherArgTypes>
-  static void wrap(::ray::binary_writer &writer, const Arg1Type &arg1,
-                   const OtherArgTypes &... args);
-
-  template <typename T>
-  static void unwrap(::ray::binary_reader &reader, T &val);
-
-  static void unwrap(::ray::binary_reader &reader);
-
-  template <typename Arg1Type, typename... OtherArgTypes>
-  static void unwrap(::ray::binary_reader &reader, Arg1Type &arg1,
-                     OtherArgTypes &... args);
 };
 }  // namespace ray
 
 
 
-#include <ray/api/serialization.h>
+#include <iostream>
 
 namespace ray {
 
@@ -74,7 +55,10 @@ inline void Arguments::wrap(msgpack::packer<msgpack::sbuffer> &packer, const Arg
 template <typename T>
 inline void Arguments::unwrap(msgpack::unpacker &unpacker, T &val) {
   msgpack::object_handle oh;
-  pac.next(oh);
+  bool result = unpacker.next(oh);
+  if (result == false) {
+      // TODO: throw exception
+  }
   msgpack::object obj = oh.get();
   obj.convert(val);
   return;
@@ -87,38 +71,6 @@ inline void Arguments::unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
                               OtherArgTypes &... args) {
   unwrap(unpacker, arg1);
   unwrap(unpacker, args...);
-  return;
-}
-
-template <typename T>
-inline void Arguments::wrap(::ray::binary_writer &writer, const T &val) {
-  marshall(writer, val);
-  return;
-}
-
-inline void Arguments::wrap(::ray::binary_writer &writer) { return; }
-
-template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::wrap(::ray::binary_writer &writer, const Arg1Type &arg1,
-                            const OtherArgTypes &... args) {
-  wrap(writer, arg1);
-  wrap(writer, args...);
-  return;
-}
-
-template <typename T>
-inline void Arguments::unwrap(::ray::binary_reader &reader, T &val) {
-  unmarshall(reader, val);
-  return;
-}
-
-inline void Arguments::unwrap(::ray::binary_reader &reader) { return; }
-
-template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::unwrap(::ray::binary_reader &reader, Arg1Type &arg1,
-                              OtherArgTypes &... args) {
-  unwrap(reader, arg1);
-  unwrap(reader, args...);
   return;
 }
 
