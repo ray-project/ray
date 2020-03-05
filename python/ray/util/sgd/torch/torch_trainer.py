@@ -14,8 +14,9 @@ from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
 from ray.util.sgd import utils
+from ray.util.sgd.utils import NUM_SAMPLES
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NUM_SAMPLES
+from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10

@@ -13,9 +13,8 @@ from ray import tune
 from ray.util.sgd.torch import TorchTrainer, TorchTrainable
 from ray.util.sgd.torch.training_operator import (_TestingOperator,
                                                   _TestMetricsOperator)
-from ray.util.sgd.torch.constants import (BATCH_COUNT, SCHEDULER_STEP,
-                                          NUM_SAMPLES)
-from ray.util.sgd.utils import check_for_failure
+from ray.util.sgd.torch.constants import SCHEDULER_STEP
+from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_COUNT
 
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)

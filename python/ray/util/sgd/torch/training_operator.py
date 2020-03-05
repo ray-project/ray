@@ -1,10 +1,10 @@
 import collections
 import torch
 
-from ray.util.sgd.utils import TimerStat, AverageMeter
+from ray.util.sgd.utils import (
+    TimerStat, AverageMeter, AverageMeterCollection, NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,
-                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP,
-                                          BATCH_COUNT, NUM_SAMPLES)
+                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 amp = None
 
@@ -20,26 +20,6 @@ except ImportError:
 def _is_multiple(component):
     """Checks if a component (optimizer, model, etc) is not singular."""
     return isinstance(component, collections.Iterable) and len(component) > 1
-
-
-class AverageMeterCollection:
-    def __init__(self):
-        self._batch_count = 0
-        self.n = 0
-        self._meters = collections.defaultdict(AverageMeter)
-
-    def update(self, metrics, n=1):
-        self._batch_count += 1
-        self.n += n
-        for metric, value in metrics.items():
-            self._meters[metric].update(value, n=n)
-
-    def summary(self):
-        stats = {BATCH_COUNT: self._batch_count, NUM_SAMPLES: self.n}
-        for metric, meter in self._meters.items():
-            stats["mean_" + str(metric)] = meter.avg
-            stats["last_" + str(metric)] = meter.val
-        return stats
 
 
 class TrainingOperator:
@@ -73,10 +53,7 @@ class TrainingOperator:
                  schedulers=None,
                  use_fp16=False):
         # You are not expected to override this method.
-        self.timers = {
-            k: TimerStat()
-            for k in ["fwd", "grad", "apply", "eval_fwd"]
-        }
+        self.timers = defaultdict(TimerStat)
         self._validated_customization = False
         self._models = models  # List of models
         assert isinstance(models, collections.Iterable), (
@@ -114,16 +91,34 @@ class TrainingOperator:
         pass
 
     def train_epoch(self, iterator, info):
-        """Runs one standard training pass over the train_iterator.
+        """Runs one standard training pass over the train_loader.
 
         By default, this method will iterate over the given iterator and
-        call ``self.train_batch`` over each batch.
-
-        If ``scheduler_step_freq`` is set, this class will also step the
-        scheduler accordingly.
+        call ``self.train_batch`` over each batch. If ``scheduler_step_freq``
+        is set, this default method will also step the scheduler accordingly.
 
         You do not need to call ``train_batch`` in this method if you plan
         to implement a custom optimization/training routine here.
+
+        You may find ``ray.util.sgd.utils.AverageMeterCollection`` useful
+        when overriding this method. See example below:
+
+        .. code-block:: python
+
+            def train_epoch(self, ...):
+                meter_collection = AverageMeterCollection()
+                self.model.train()
+                for batch in iterator:
+                    # do some processing
+                    metrics = {"metric_1": 1, "metric_2": 3} # dict of metrics
+
+                    # This keeps track of all metrics across multiple batches
+                    meter_collection.update(metrics, n=len(batch))
+
+                # Returns stats of the meters.
+                stats = meter_collection.summary()
+                return stats
+
 
         Args:
             iterator (iter): Iterator over the training data for the entire
@@ -218,15 +213,15 @@ class TrainingOperator:
         """Runs one standard validation pass over the val_iterator.
 
         This will call ``model.eval()`` and ``torch.no_grad`` when iterating
-        over the validation dataset.
+        over the validation dataloader.
 
         If overriding this method, you can access model, criterion via
         ``self.model`` and ``self.criterion``. You also do not need to call
         ``validate_batch`` if overriding this method.
 
         Args:
-            val_iterator (iter): Iterable constructed over the
-                validation dataset.
+            val_iterator (iter): Iterable constructed from the
+                validation dataloader.
             info: (dict): Dictionary for information to be used for custom
                 validation operations.
 

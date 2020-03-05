@@ -9,6 +9,9 @@ from ray.exceptions import RayActorError
 
 logger = logging.getLogger(__name__)
 
+BATCH_COUNT = "batch_count"
+NUM_SAMPLES = "num_samples"
+
 
 class TimerStat:
     """A running stat for conveniently logging the duration of a code block.
@@ -127,6 +130,28 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+class AverageMeterCollection:
+    """A grouping of AverageMeter."""
+    def __init__(self):
+        self._batch_count = 0
+        self.n = 0
+        self._meters = collections.defaultdict(AverageMeter)
+
+    def update(self, metrics, n=1):
+        self._batch_count += 1
+        self.n += n
+        for metric, value in metrics.items():
+            self._meters[metric].update(value, n=n)
+
+    def summary(self):
+        """Returns a dict of average and most recent values for each metric."""
+        stats = {BATCH_COUNT: self._batch_count, NUM_SAMPLES: self.n}
+        for metric, meter in self._meters.items():
+            stats["mean_" + str(metric)] = meter.avg
+            stats["last_" + str(metric)] = meter.val
+        return stats
 
 
 def check_for_failure(remote_values):
