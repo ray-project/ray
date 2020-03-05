@@ -33,6 +33,8 @@ public class MsgPackSerializer {
           packer.packBoolean((Boolean) obj);
         } else if (clz == Byte.class) {
           packer.packByte((Byte) obj);
+        } else if (clz == Short.class) {
+          packer.packShort((Short) obj);
         } else if (clz == Integer.class) {
           packer.packInt((Integer) obj);
         } else if (clz == Long.class) {
@@ -88,6 +90,8 @@ public class MsgPackSerializer {
         IntegerValue iv = value.asIntegerValue();
         if (iv.isInByteRange()) {
           return iv.toByte();
+        } else if (iv.isInShortRange()) {
+          return iv.toShort();
         } else if (iv.isInIntRange()) {
           return iv.toInt();
         } else if (iv.isInLongRange()) {

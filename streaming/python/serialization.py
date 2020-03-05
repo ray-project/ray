@@ -6,19 +6,15 @@ _RECORD_TYPE_ID = 0
 _KEY_RECORD_TYPE_ID = 1
 
 
-class StreamElementSerializer:
+class XLangSerializer:
     """Serialize stream element between java/python"""
 
     def serialize(self, record):
         if type(record) is message.Record:
-            assert type(record.value) is bytes, "Only bytes value is supported"
-            fields = [_RECORD_TYPE_ID,
-                      record.stream, record.value]
+            fields = [_RECORD_TYPE_ID, record.stream, record.value]
         elif type(record) is message.KeyRecord:
-            assert type(record.key) is bytes, "Only bytes key is supported"
-            assert type(record.value) is bytes, "Only bytes value is supported"
-            fields = [_KEY_RECORD_TYPE_ID,
-                      record.stream, record.key, record.value]
+            fields = [_KEY_RECORD_TYPE_ID, record.stream, record.key,
+                      record.value]
         else:
             raise Exception("Unsupported value {}".format(record))
         return msgpack.packb(fields, use_bin_type=True)

@@ -17,15 +17,23 @@ public class MsgPackSerializerTest {
   public void testSerialize() {
     MsgPackSerializer serializer = new MsgPackSerializer();
 
+    assertEquals(serializer.deserialize(
+        serializer.serialize(1)), (byte)1);
+    assertEquals(serializer.deserialize
+        (serializer.serialize(Short.MAX_VALUE)), Short.MAX_VALUE);
+    assertEquals(serializer.deserialize(
+        serializer.serialize(Integer.MAX_VALUE)), Integer.MAX_VALUE);
+    assertEquals(serializer.deserialize(
+        serializer.serialize(Long.MAX_VALUE)), Long.MAX_VALUE);
+
     Map map = new HashMap();
     List list = new ArrayList<>();
     list.add(null);
     list.add(true);
-    list.add(1);
     list.add(1.0d);
     list.add("str");
     map.put("k1", "value1");
-    map.put("k2", 2);
+    map.put("k2", new HashMap<>());
     map.put("k3", list);
     byte[] bytes = serializer.serialize(map);
     Object o = serializer.deserialize(bytes);

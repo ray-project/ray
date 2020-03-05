@@ -1,35 +1,34 @@
 package org.ray.streaming.serialization;
 
-import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import java.util.List;
 import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
 
-public class StreamElementSerializer {
+/**
+ * A serializer for cross-lang serialization between java/python.
+ * TODO implements a more sophisticated serialization framework
+ */
+public class XLangSerializer {
   private static final byte RECORD_TYPE_ID = 0;
   private static final byte KEY_RECORD_TYPE_ID = 1;
 
   private MsgPackSerializer msgPackSerializer = new MsgPackSerializer();
 
   public byte[] serialize(Record record) {
-    Preconditions.checkArgument(record.getValue().getClass() == byte[].class,
-      "Only bytes is supported");
-    byte[] value = (byte[]) record.getValue();
+    Object value = record.getValue();
     Class<? extends Record> clz = record.getClass();
     if (clz == Record.class) {
       return msgPackSerializer.serialize(Arrays.asList(
-        RECORD_TYPE_ID, record.getStream(), value));
+          RECORD_TYPE_ID, record.getStream(), value));
     } else if (clz == KeyRecord.class) {
       KeyRecord keyRecord = (KeyRecord) record;
       Object key = keyRecord.getKey();
-      Preconditions.checkArgument(key.getClass() == byte[].class,
-        "Only bytes is supported");
       return msgPackSerializer.serialize(Arrays.asList(
-        KEY_RECORD_TYPE_ID, keyRecord.getStream(), key, value));
+          KEY_RECORD_TYPE_ID, keyRecord.getStream(), key, value));
     } else {
       throw new UnsupportedOperationException(
-        String.format("Serialize %s is unsupported.", record));
+          String.format("Serialize %s is unsupported.", record));
     }
   }
 
