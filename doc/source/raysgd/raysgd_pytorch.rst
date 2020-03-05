@@ -128,7 +128,27 @@ Now that the trainer is constructed, here's how to train the model.
         val_metrics = trainer.validate()
 
 
-Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``. Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
+Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``.
+
+You can also obtain profiling information:
+
+.. code-block:: python
+
+    >>> from ray.tune.logger import pretty_print
+    >>> print(pretty_print(trainer.train(profile=True)))
+
+    batch_count: 16
+    epoch: 3
+    last_train_loss: 0.15574650466442108
+    mean_train_loss: 7.475177114367485
+    num_samples: 1000
+    profile:
+      mean_apply_s: 2.639293670654297e-05
+      mean_fwd_s: 0.00012960433959960938
+      mean_grad_s: 0.00016553401947021483
+      train_epoch_s: 0.023712158203125
+
+Provide a custom training operator (:ref:`raysgd-custom-training`) to calculate custom metrics or customize the training/validation process.
 
 After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the Trainer:
 

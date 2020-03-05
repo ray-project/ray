@@ -90,7 +90,7 @@ class TrainingOperator:
         pass
 
     def train_epoch(self, iterator, info):
-        """Runs one standard training pass over the train_loader.
+        """Runs one standard training pass over the training dataloader.
 
         By default, this method will iterate over the given iterator and
         call ``self.train_batch`` over each batch. If ``scheduler_step_freq``
@@ -287,7 +287,7 @@ class TrainingOperator:
         stats = {}
         for k, t in self.timers.items():
             if t.count > 0:
-                stats["mean_" + k] = t.mean
+                stats["mean_%s_s" % k] = t.mean
             if reset:
                 t.reset()
         return stats

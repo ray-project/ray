@@ -166,7 +166,7 @@ class TorchTrainer:
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
-        logger.info("Using {} as backend.".format(backend))
+        logger.debug("Using {} as backend.".format(backend))
         self.backend = backend
 
         # TODO: Have an auto "use_gpu" option to detect and use GPUs.
@@ -189,7 +189,7 @@ class TorchTrainer:
         self._start_workers(self.max_replicas)
 
     def _start_workers(self, num_workers):
-        logger.info(f"start_workers: Setting %d workers." % num_workers)
+        logger.debug(f"start_workers: Setting %d workers." % num_workers)
         if num_workers == 1:
             # Generate actor class
             Runner = ray.remote(

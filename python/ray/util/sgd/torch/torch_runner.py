@@ -63,7 +63,7 @@ class TorchRunner:
             k: utils.TimerStat(window_size=1)
             for k in [
                 "setup_proc", "setup_model", "get_state", "set_state",
-                "validation", "training"
+                "validation", "train_epoch"
             ]
         }
         self.models = None
@@ -174,7 +174,7 @@ class TorchRunner:
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
         })
-        with self._timers["training"]:
+        with self._timers["train_epoch"]:
             iterator = self.train_loader
             if num_steps:
                 iterator = itertools.islice(iter(self.train_loader), num_steps)
@@ -206,8 +206,8 @@ class TorchRunner:
         """Returns a dictionary of time statistics collected."""
         stats = {}
         for k, t in self._timers.items():
-            stats["mean_" + k] = t.mean
-            stats["total_" + k] = t.sum
+            if t.count > 0:
+                stats["%s_s" % k] = t.mean
             if reset:
                 t.reset()
         stats.update(self.training_operator.time_stats())
