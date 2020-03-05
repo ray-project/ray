@@ -1,7 +1,6 @@
 package org.ray.runtime.actor;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import org.nustaq.serialization.FSTBasicObjectSerializer;
 import org.nustaq.serialization.FSTClazzInfo;
 import org.nustaq.serialization.FSTClazzInfo.FSTFieldInfo;
@@ -24,6 +23,5 @@ public class NativeRayActorSerializer extends FSTBasicObjectSerializer {
       FSTFieldInfo referencedBy) throws Exception {
     super.readObject(in, toRead, clzInfo, referencedBy);
     ((NativeRayActor) toRead).readExternal(in);
-    new ArrayList<String>(new ArrayList<String>());
   }
 }

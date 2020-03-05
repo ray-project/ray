@@ -1,7 +1,7 @@
 package org.ray.api;
 
 /**
- * A handle to an Java actor. <p>
+ * A handle to a Java actor. <p>
  *
  * A handle can be used to invoke a remote actor method, with the {@code "call"} method. For
  * example:
