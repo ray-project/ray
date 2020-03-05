@@ -99,6 +99,9 @@ def training_pipeline(workers, config):
         actor.update_priorities.remote(prio_dict)
         metrics = LocalIterator.get_metrics()
         metrics.counters[STEPS_TRAINED_COUNTER] += count
+        metrics.timers["learner_dequeue"] = learner_thread.queue_timer
+        metrics.timers["learner_grad"] = learner_thread.grad_timer
+        metrics.timers["learner_overall"] = learner_thread.overall_timer
 
     # Start the learner thread.
     learner_thread = LearnerThread(workers.local_worker())
@@ -113,7 +116,7 @@ def training_pipeline(workers, config):
     # learner thread via its in-queue.
     replay_op = ParallelReplay(replay_actors) \
         .zip_with_source_actor() \
-        .for_each(Enqueue(learner_thread.inqueue, name="learner_inqueue"))
+        .for_each(Enqueue(learner_thread.inqueue))
 
     # (3) Get priorities get back from learner thread and apply them to the
     # replay buffer actors.

@@ -620,31 +620,15 @@ class UpdateTargetNetwork:
 
 
 class Enqueue:
-    def __init__(self, output_queue, name="enqueue"):
+    def __init__(self, output_queue):
         if not isinstance(output_queue, queue.Queue):
             raise ValueError("Expected queue.Queue, got {}".format(
                 type(output_queue)))
         self.queue = output_queue
-        self.fetch_start_time = None
-        self.put_start_time = None
-        self.name = name
-
-    def _on_fetch_start(self):
-        self.fetch_start_time = time.perf_counter()
 
     def __call__(self, x):
-        metrics = LocalIterator.get_metrics()
-        if self.fetch_start_time is not None:
-            now = time.perf_counter()
-            metrics.timers["{}_fetch".format(
-                self.name)].push(now - self.fetch_start_time)
-            self.fetch_start_time = None
-            self.put_start_time = now
         try:
             self.queue.put_nowait(x)
-            now = time.perf_counter()
-            metrics.timers["{}_put".format(
-                self.name)].push(now - self.put_start_time)
         except queue.Full:
             return _NextValueNotReady()
 
