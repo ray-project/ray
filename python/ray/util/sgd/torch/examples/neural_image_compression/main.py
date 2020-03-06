@@ -20,12 +20,13 @@ def model_creator(config):
 
 def data_creator(config):
     from torch.utils.data import Dataset
-    from torchvision.datasets import STL10
+    from torchvision.datasets import CIFAR10
     from torchvision.transforms import Compose, RandomResizedCrop, ToTensor
 
-    stl = STL10(
+    stl = CIFAR10(
         '~/datasets',
-        split='train+unlabeled', download=True,
+        train=True,
+        download=True,
         transform=Compose([
             ToTensor()
         ]))

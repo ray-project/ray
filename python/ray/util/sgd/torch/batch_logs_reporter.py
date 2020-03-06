@@ -2,12 +2,17 @@ import asyncio
 
 import ray
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=0)
 class BatchLogsReporter:
     def __init__(self, world_rank):
         self.world_rank = world_rank
-        self._logs_ready = asyncio.Event()
-        self._read_finished = asyncio.Event()
+
+        self._logs = {
+            "done": False,
+            "new_data": False,
+            "world_rank": self.world_rank,
+            "data": None
+        }
 
     def _send(self, data, done=False):
         self._logs = {

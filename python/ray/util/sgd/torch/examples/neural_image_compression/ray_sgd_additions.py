@@ -165,15 +165,26 @@ class System():
                 if packet.packet_type == "tqdm_setup":
                     num_steps = kwargs.get("num_steps", packet.loader_len)
 
+                    unit = "batch"
+                    if self.args.progress_bar_units == "batches":
+                        unit = "batch"
+                    # todo: verify that it's one of these
+                    elif self.args.progress_bar_units == "samples":
+                        unit = "sample"
+                        num_steps *= self.args.total_batch_size
+
                     batch_pbar = tqdm(
                         total=num_steps,
                         desc="{}/{}e".format(epoch_idx+1, self.args.num_epochs),
-                        unit="batch"
+                        unit=unit
                     )
                     return
 
                 if packet.packet_type == "batch_logs":
-                    batch_pbar.n = packet.batch_idx+1
+                    if self.args.progress_bar_units == "batches":
+                        batch_pbar.n = packet.batch_idx+1
+                    elif self.args.progress_bar_units == "samples":
+                        batch_pbar.n = packet.batch_idx * self.args.total_batch_size + 1
                     # batch_pbar.refresh() # will be needed if set_postfix
                                            # is ever removed
                     batch_pbar.set_postfix(packet.pbar_logs)
@@ -281,7 +292,8 @@ class System():
             # todo: we cannot require GPU for now, that would require changing
             # TorchTrainer
             self._trainer_params["use_gpu"] = not self.args.no_gpu
-            self._trainer_params["batch_size"] = self.args.total_batch_size // self.args.number_of_workers
+            # will be divided by num of workers in trainer
+            self._trainer_params["batch_size"] = self.args.total_batch_size
             self._trainer_params["use_fp16"] = self.args.mixed_precision
 
             def populate_intervals(interval_strs, intervals_key):
@@ -410,6 +422,11 @@ class System():
             action="store_true",
             default=False,
             help="Use mixed precision (16-bit + 32-bit floating point) training using apex.")
+        p.add_argument(
+            "--progress-bar-units",
+            "--pbar-units",
+            default="batches",
+            help="What to measure the progress in for the progress bar (\"batches\" or \"samples\") [default=batches].")
 
         p.add_argument(
             "--log-interval",

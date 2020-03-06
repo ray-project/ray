@@ -3,9 +3,9 @@ cluster_name: sgd.pytorch.neural_image_compression
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 1
-initial_workers: 1
-max_workers: 1
+min_workers: 3
+initial_workers: 3
+max_workers: 3
 
 target_utilization_fraction: 0.9
 
@@ -45,16 +45,24 @@ worker_nodes:
 setup_commands:
     - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     - pip install -U ipdb ray[rllib] torch torchvision
+    - pip install tqdm wandb
     # Install apex.
     # - rm -rf apex || true
     # - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
 
 
 file_mounts:
-    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/pytorch/pytorch_runner.py": "../../pytroch_runner.py"
-    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/pytorch/distributed_pytorch_runner.py": "../../distributed_pytorch_runner.py"
-    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/pytorch/pytorch_trainer.py": "../../pytorch_trainer.py"
-    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/pytorch/training_operator.py": "../../training_operator.py"
+    "~/lookahead.py": "./lookahead.py"
+    "~/radam.py": "./radam.py"
+    "~/model.py": "./model.py"
+    "~/ml_logging.py": "./ml_logging.py"
+    "~/ray_sgd_additions.py": "./ray_sgd_additions.py"
+
+    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/batch_logs_reporter.py": "../../batch_logs_reporter.py"
+    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/torch_runner.py": "../../torch_runner.py"
+    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/distributed_torch_runner.py": "../../distributed_torch_runner.py"
+    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/torch_trainer.py": "../../torch_trainer.py"
+    "~/anaconda3/lib/python3.6/site-packages/ray/util/sgd/torch/training_operator.py": "../../training_operator.py"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

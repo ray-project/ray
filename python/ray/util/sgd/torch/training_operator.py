@@ -2,6 +2,7 @@ import collections
 
 import torch
 
+import time
 import ray
 
 from ray.util.sgd.utils import TimerStat, AverageMeter
@@ -81,6 +82,8 @@ class TrainingOperator:
         self._use_fp16 = use_fp16
         self.global_step = 0
 
+        self._last_batch_logs_send = 0
+
         if type(self) is TrainingOperator:
             for component in (models, schedulers, optimizers):
                 if _is_multiple(component):
@@ -98,6 +101,8 @@ class TrainingOperator:
         return self._send_batch_logs(data)
 
     def _send_batch_logs(self, data, done=False):
+        if not done and time.monotonic() - _last_batch_logs_send < .2:
+            return
         return ray.get(self._batch_logs_reporter._send.remote(data, done))
 
     def setup(self, config):
