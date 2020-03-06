@@ -6,7 +6,6 @@
 
 namespace ray {
 
-const int fetchSize = 10000;
 const int getTimeoutMs = 1000;
 
 void ObjectStore::put(const UniqueId &objectId, std::shared_ptr<msgpack::sbuffer> data) {
@@ -15,5 +14,10 @@ void ObjectStore::put(const UniqueId &objectId, std::shared_ptr<msgpack::sbuffer
 
 std::shared_ptr< msgpack::sbuffer> ObjectStore::get(const UniqueId &objectId, int timeoutMs) {
   return getRaw(objectId, timeoutMs);
+}
+
+std::vector<std::shared_ptr<msgpack::sbuffer>> ObjectStore::get(const std::vector<UniqueId> &objects,
+            int timeoutMs) {
+  return getRaw(objects, timeoutMs);
 }
 }  // namespace ray

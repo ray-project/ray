@@ -24,7 +24,7 @@ class RayObject {
 
   const UniqueId &id() const;
 
-  std::unique_ptr<T> get() const;
+  std::shared_ptr<T> get() const;
 
   bool operator==(const RayObject<T> &object) const;
 
@@ -34,7 +34,7 @@ class RayObject {
   UniqueId _id;
 
   template <typename TO>
-  std::unique_ptr<TO> doGet() const;
+  std::shared_ptr<TO> doGet() const;
 };
 
 }  // namespace ray
@@ -73,16 +73,15 @@ const UniqueId &RayObject<T>::id() const {
 }
 
 template <typename T>
-inline std::unique_ptr<T> RayObject<T>::get() const {
+inline std::shared_ptr<T> RayObject<T>::get() const {
   return doGet<T>();
 }
 
 template <typename T>
 template <typename TO>
-inline std::unique_ptr<TO> RayObject<T>::doGet() const {
-  std::unique_ptr<TO> pObj(new TO);
-  Ray::get(_id, *pObj);
-  return pObj;
+inline std::shared_ptr<TO> RayObject<T>::doGet() const {
+  RayObject<T> object(_id);
+  return Ray::get(object);
 }
 
 template <typename T>

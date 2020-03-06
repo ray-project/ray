@@ -40,6 +40,11 @@ std::shared_ptr< msgpack::sbuffer> LocalModeObjectStore::getRaw(const UniqueId &
   return ret;
 }
 
+std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::getRaw(const std::vector<UniqueId> &objects,
+                                              int timeoutMs) {
+  return std::vector<std::shared_ptr<msgpack::sbuffer>>();
+}
+
 void LocalModeObjectStore::waitInternal(const UniqueId *ids, int count, int minNumReturns,
                                         int timeoutMs) {
   static const int GET_CHECK_INTERVAL_MS = 100;
@@ -66,8 +71,7 @@ void LocalModeObjectStore::waitInternal(const UniqueId *ids, int count, int minN
   }
 }
 
-WaitResult LocalModeObjectStore::wait(const UniqueId *ids, int count, int minNumReturns,
-                                      int timeoutMs) {
-  return WaitResult();
+WaitResultInternal LocalModeObjectStore::wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) {
+  return WaitResultInternal();
 }
 }  // namespace ray

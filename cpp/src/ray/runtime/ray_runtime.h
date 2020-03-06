@@ -35,9 +35,13 @@ class RayRuntime : public RayApi {
   void put(std::shared_ptr<msgpack::sbuffer> data, const UniqueId &objectId,
            const UniqueId &taskId);
 
-  std::unique_ptr<UniqueId> put(std::shared_ptr<msgpack::sbuffer> data);
+  UniqueId put(std::shared_ptr<msgpack::sbuffer> data);
 
-  std::shared_ptr<msgpack::sbuffer> get(const UniqueId &objectId);
+  std::shared_ptr<msgpack::sbuffer> get(const UniqueId &id);
+
+  std::vector<std::shared_ptr<msgpack::sbuffer>> get(const std::vector<UniqueId> &objects);
+
+  WaitResultInternal wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms);
 
   std::unique_ptr<UniqueId> call(remote_function_ptr_holder &fptr,
                                  std::shared_ptr<msgpack::sbuffer> args);

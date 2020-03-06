@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ray/api/uniqueId.h"
+#include "ray/api/wait_result.h"
 
 namespace ray {
 
@@ -21,8 +22,12 @@ struct remote_function_ptr_holder {
 
 class RayApi {
  public:
-  virtual std::unique_ptr<UniqueId> put(std::shared_ptr<msgpack::sbuffer> data) = 0;
+  virtual UniqueId put(std::shared_ptr<msgpack::sbuffer> data) = 0;
   virtual std::shared_ptr<msgpack::sbuffer> get(const UniqueId &id) = 0;
+
+  virtual std::vector<std::shared_ptr<msgpack::sbuffer>> get(const std::vector<UniqueId> &objects) = 0;
+
+  virtual WaitResultInternal wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) = 0;
 
   virtual std::unique_ptr<UniqueId> call(remote_function_ptr_holder &fptr,
                                          std::shared_ptr<msgpack::sbuffer> args) = 0;

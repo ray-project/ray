@@ -39,7 +39,7 @@ int main() {
   Ray::init();
 
   auto obj = Ray::put(123);
-  auto getRsult = obj->get();
+  auto getRsult = obj.get();
 
   auto r0 = Ray::call(foo0);
   auto r1 = Ray::call(foo, 1);

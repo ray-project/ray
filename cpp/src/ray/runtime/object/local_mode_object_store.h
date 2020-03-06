@@ -25,7 +25,10 @@ class LocalModeObjectStore : public ObjectStore {
 
   std::shared_ptr< msgpack::sbuffer> getRaw(const UniqueId &objectId, int timeoutMs);
 
-  WaitResult wait(const UniqueId *ids, int count, int minNumReturns, int timeoutMs);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> getRaw(const std::vector<UniqueId> &objects,
+                                              int timeoutMs);
+
+  WaitResultInternal wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms);
 };
 
 }  // namespace ray

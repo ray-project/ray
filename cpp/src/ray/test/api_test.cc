@@ -40,7 +40,7 @@ TEST(ray_api_test_case, put_test) {
   Ray::init();
 
   auto obj1 = Ray::put(1);
-  auto i1 = obj1->get();
+  auto i1 = obj1.get();
   EXPECT_EQ(1, *i1);
 }
 

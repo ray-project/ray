@@ -20,6 +20,8 @@ template <typename T>
 class RayActor;
 template <typename F>
 class RayFunction;
+template <typename T>
+class WaitResult;
 
 class Ray {
   template <typename T>
@@ -29,7 +31,7 @@ class Ray {
   static RayApi *_impl;
 
   template <typename T>
-  static bool get(const UniqueId &id, T &obj);
+  static std::shared_ptr<T> get(const RayObject<T> &object);
 
  public:
   static void init();
@@ -37,10 +39,13 @@ class Ray {
   // static bool init(const RayConfig& rayConfig);
 
   template <typename T>
-  static std::unique_ptr<RayObject<T>> put(const T &obj);
+  static RayObject<T> put(const T &obj);
 
-  static uint64_t wait(const UniqueId *pids, int count, int minNumReturns,
-                       int timeoutMilliseconds);
+  template <typename T>
+  static std::vector<std::shared_ptr<T>> get(const std::vector<RayObject<T>> &objects);
+
+  template <typename T>
+  static WaitResult<T> wait(const std::vector<RayObject<T>> &objects, int num_objects, int64_t timeout_ms);
 
 #include "api/impl/call_funcs.generated.h"
 
@@ -57,29 +62,40 @@ class Ray {
 #include "api/ray_actor.h"
 #include "api/ray_function.h"
 #include "api/ray_object.h"
+#include <ray/api/wait_result.h>
 
 namespace ray {
 class Arguments;
 
 template <typename T>
-inline std::unique_ptr<RayObject<T>> Ray::put(const T &obj) {
+inline RayObject<T> Ray::put(const T &obj) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer, obj);
   auto id = _impl->put(buffer);
-  std::unique_ptr<RayObject<T>> ptr(new RayObject<T>(*id));
-  return ptr;
+  return RayObject<T>(id);
 }
 
 template <typename T>
-inline bool Ray::get(const UniqueId &id, T &obj) {
-  auto data = _impl->get(id);
+inline std::shared_ptr<T> Ray::get(const RayObject<T> &object) {
+  auto data = _impl->get(object.id());
   msgpack::unpacker unpacker;
   unpacker.reserve_buffer(data->size());
   memcpy(unpacker.buffer(), data->data(), data->size());
   unpacker.buffer_consumed(data->size());
-  Arguments::unwrap(unpacker, obj);
-  return true;
+  std::shared_ptr<T> rt(new T);
+  Arguments::unwrap(unpacker, *rt);
+  return rt;
+}
+
+template <typename T>
+inline std::vector<std::shared_ptr<T>> Ray::get(const std::vector<RayObject<T>> &objects) {
+  return std::vector<std::shared_ptr<T>>();
+}
+
+template <typename T>
+inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num_objects, int64_t timeout_ms) {
+  return WaitResult<T>();
 }
 
 #include "api/impl/call_funcs_impl.generated.h"

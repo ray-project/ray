@@ -47,15 +47,23 @@ void RayRuntime::put(std::shared_ptr<msgpack::sbuffer> data, const UniqueId &obj
   _objectStore->put(objectId, data);
 }
 
-std::unique_ptr<UniqueId> RayRuntime::put(std::shared_ptr<msgpack::sbuffer> data) {
+UniqueId RayRuntime::put(std::shared_ptr<msgpack::sbuffer> data) {
   const UniqueId &taskId = _worker->getCurrentTaskId();
   std::unique_ptr<UniqueId> objectId = _worker->getCurrentTaskNextPutId();
   put(data, *objectId, taskId);
-  return objectId;
+  return *objectId;
 }
 
 std::shared_ptr<msgpack::sbuffer> RayRuntime::get(const UniqueId &objectId) {
   return _objectStore->get(objectId, 0);
+}
+
+std::vector<std::shared_ptr<msgpack::sbuffer>> RayRuntime::get(const std::vector<UniqueId> &objects) {
+  return _objectStore->get(objects, 0);
+}
+
+WaitResultInternal RayRuntime::wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) {
+  return _objectStore->wait(objects, num_objects, timeout_ms);
 }
 
 std::unique_ptr<UniqueId> RayRuntime::call(remote_function_ptr_holder &fptr,
