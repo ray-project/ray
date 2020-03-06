@@ -7,7 +7,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.testng.Assert;
@@ -15,7 +14,6 @@ import org.testng.annotations.Test;
 
 public class DynamicResourceTest extends BaseTest {
 
-  @RayRemote
   public static String sayHi() {
     return "hi";
   }
