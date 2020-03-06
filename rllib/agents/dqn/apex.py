@@ -3,13 +3,11 @@ import collections
 import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.optimizers import AsyncReplayOptimizer
-from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.optimizers.async_replay_optimizer import ReplayActor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.experimental_dsl import (
-    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
-    ParallelReplay, TrainOneStep, StandardMetricsReporting,
+    ParallelRollouts, Concurrently, ParallelReplay, StandardMetricsReporting,
     StoreToReplayActors, UpdateTargetNetwork, Enqueue, Dequeue,
     STEPS_TRAINED_COUNTER)
 from ray.rllib.optimizers.async_replay_optimizer import LearnerThread
@@ -143,8 +141,9 @@ def training_pipeline(workers, config):
         .for_each(StoreToReplayActors(replay_actors)) \
         .zip_with_source_actor() \
         .for_each(UpdateWorkerWeights(
-            learner_thread, workers, max_weight_sync_delay=
-            config["optimizer"]["max_weight_sync_delay"]))
+            learner_thread, workers,
+            max_weight_sync_delay=config["optimizer"]["max_weight_sync_delay"])
+        )
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
@@ -154,7 +153,8 @@ def training_pipeline(workers, config):
 
     # (3) Get priorities get back from learner thread and apply them to the
     # replay buffer actors.
-    update_op = Dequeue(learner_thread.outqueue, check=learner_thread.is_alive) \
+    update_op = Dequeue(
+            learner_thread.outqueue, check=learner_thread.is_alive) \
         .for_each(update_prio_and_stats) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"],
