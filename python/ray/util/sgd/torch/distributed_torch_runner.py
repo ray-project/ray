@@ -39,17 +39,15 @@ class DistributedTorchRunner(TorchRunner):
         self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
-        with self._timers["setup_proc"]:
-            self.world_rank = world_rank
-            logger.debug(
-                "Connecting to {} world_rank: {} world_size: {}".format(
-                    url, world_rank, world_size))
-            logger.debug("using {}".format(self.backend))
-            dist.init_process_group(
-                backend=self.backend,
-                init_method=url,
-                rank=world_rank,
-                world_size=world_size)
+        self.world_rank = world_rank
+        logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
+            url, world_rank, world_size))
+        logger.debug("using {}".format(self.backend))
+        dist.init_process_group(
+            backend=self.backend,
+            init_method=url,
+            rank=world_rank,
+            world_size=world_size)
 
     def _setup_training(self):
         logger.debug("Creating model")

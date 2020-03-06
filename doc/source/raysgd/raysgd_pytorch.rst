@@ -481,7 +481,7 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
         return discriminator_opt, generator_opt
 
     class CustomOperator(TrainingOperator):
-        def train_epoch(self, dataloader, info):
+        def train_epoch(self, iterator, info):
             result = {}
             for i, (model, optimizer) in enumerate(
                     zip(self.models, self.optimizers)):
@@ -489,7 +489,7 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
                     model=model,
                     criterion=self.criterion,
                     optimizer=optimizer,
-                    dataloader=dataloader)
+                    dataloader=iterator)
             return result
 
     trainer = TorchTrainer(
@@ -499,7 +499,7 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
         loss_creator=nn.BCELoss,
         training_operator_cls=CustomOperator)
 
-    trainer.train()
+    stats = trainer.train()
 
 
 Feature Requests

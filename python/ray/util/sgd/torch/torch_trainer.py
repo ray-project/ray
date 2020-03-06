@@ -161,7 +161,6 @@ class TorchTrainer:
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
-        self.optimizer_timer = utils.TimerStat(window_size=1)
 
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
@@ -291,20 +290,19 @@ class TorchTrainer:
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers(checkpoint=checkpoint)
 
-        with self.optimizer_timer:
+        success, worker_stats = self._train_epoch(
+            num_steps=num_steps, profile=profile, info=info)
+        # Fault handling
+        for i in range(max_retries):
+            if success:
+                break
+            else:
+                self._num_failures += 1
+            self._resize_workers(checkpoint=checkpoint)
+            logger.info(
+                "Retrying training step with %d workers." % len(self.workers))
             success, worker_stats = self._train_epoch(
                 num_steps=num_steps, profile=profile, info=info)
-            # Fault handling
-            for i in range(max_retries):
-                if success:
-                    break
-                else:
-                    self._num_failures += 1
-                self._resize_workers(checkpoint=checkpoint)
-                logger.info("Retrying training step with %d workers." % len(
-                    self.workers))
-                success, worker_stats = self._train_epoch(
-                    num_steps=num_steps, profile=profile, info=info)
         if not success:
             raise RuntimeError("Training run failed.")
 

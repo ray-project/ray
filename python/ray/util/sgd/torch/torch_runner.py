@@ -58,14 +58,8 @@ class TorchRunner:
         self.training_operator_cls = training_operator_cls or TrainingOperator
         self.config = {} if config is None else config
 
+        self.timers = utils.TimerCollection()
         self.epochs = 0
-        self._timers = {
-            k: utils.TimerStat(window_size=1)
-            for k in [
-                "setup_proc", "setup_model", "get_state", "set_state",
-                "validation", "train_epoch"
-            ]
-        }
         self.models = None
         self.optimizers = None
         self.criterion = None
@@ -170,21 +164,23 @@ class TorchRunner:
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.epochs + 1))
         info = info or {}
+        self._toggle_profiling(profile=profile)
+
         info.update({
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
         })
-        with self._timers["train_epoch"]:
+        with self.timers.record("train_epoch"):
             iterator = self.train_loader
             if num_steps:
                 iterator = itertools.islice(iter(self.train_loader), num_steps)
             train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.epochs += 1
-        stats = {"epoch": self.epochs}
-        stats.update(train_stats)
+        # This is so that `epochs` is first in ordering.
+        stats = dict(epoch=self.epochs, **train_stats)
         if profile:
-            stats.update(profile=self.time_stats())
+            stats.update(profile=self.timers.stats())
         return stats
 
     def validate(self, num_steps=None, profile=False, info=None):
@@ -192,26 +188,27 @@ class TorchRunner:
         if self.validation_loader is None:
             raise ValueError("No validation dataloader provided.")
         info = info or {}
-        with self._timers["validation"]:
+        self._toggle_profiling(profile=profile)
+
+        with self.timers.record("validation"):
             iterator = self.validation_loader
             if num_steps:
                 iterator = itertools.islice(
                     iter(self.validation_loader), num_steps)
-            validation_stats = self.training_operator.validate(iterator, info)
+            validation_stats = self.training_operator.validate(
+                iterator, info=info)
         if profile:
-            validation_stats.update(profile=self.time_stats())
+            validation_stats.update(profile=self.timers.stats())
         return validation_stats
 
-    def time_stats(self, reset=True):
-        """Returns a dictionary of time statistics collected."""
-        stats = {}
-        for k, t in self._timers.items():
-            if t.count > 0:
-                stats["%s_s" % k] = t.mean
-            if reset:
-                t.reset()
-        stats.update(self.training_operator.time_stats())
-        return stats
+    def _toggle_profiling(self, profile=False):
+        """Enables/Disables and resets timing profiles."""
+        if profile:
+            self.timers.enable()
+            self.timers.reset()
+        else:
+            self.timers.disable()
+        self.training_operator._set_timers(self.timers)
 
     def _get_model_state_dicts(self):
         # This is so that we create a duplicate of weights into CPU rather than

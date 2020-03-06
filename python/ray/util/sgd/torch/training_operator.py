@@ -1,7 +1,8 @@
 import collections
 import torch
 
-from ray.util.sgd.utils import (TimerStat, AverageMeterCollection, NUM_SAMPLES)
+from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
+                                NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
@@ -52,8 +53,6 @@ class TrainingOperator:
                  schedulers=None,
                  use_fp16=False):
         # You are not expected to override this method.
-        self.timers = collections.defaultdict(TimerStat)
-        self._validated_customization = False
         self._models = models  # List of models
         assert isinstance(models, collections.Iterable), (
             "Components need to be iterable. Got: {}".format(type(models)))
@@ -77,8 +76,12 @@ class TrainingOperator:
                         "Need to provide a custom operator subclassing "
                         "TrainingOperator if using multi-scheduler, "
                         "multi-model or multi-optimizer training/validation.")
-
+        self.timers = TimerCollection()
         self.setup(config)
+
+    def _set_timers(self, timers):
+        """Passes in the timers from the Runner."""
+        self.timers = timers
 
     def setup(self, config):
         """Override this method to implement custom operator setup.
@@ -190,12 +193,12 @@ class TrainingOperator:
             target = target.cuda(non_blocking=True)
 
         # Compute output.
-        with self.timers["fwd"]:
+        with self.timers.record("fwd"):
             output = self.model(features)
             loss = self.criterion(output, target)
 
         # Compute gradients in a backward pass.
-        with self.timers["grad"]:
+        with self.timers.record("grad"):
             self.optimizer.zero_grad()
             if self.use_fp16:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -204,7 +207,7 @@ class TrainingOperator:
                 loss.backward()
 
         # Call step of optimizer to update model params.
-        with self.timers["apply"]:
+        with self.timers.record("apply"):
             self.optimizer.step()
         return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
@@ -269,7 +272,7 @@ class TrainingOperator:
 
         # compute output
 
-        with self.timers["eval_fwd"]:
+        with self.timers.record("eval_fwd"):
             output = self.model(features)
             loss = self.criterion(output, target)
             _, predicted = torch.max(output.data, 1)
@@ -281,16 +284,6 @@ class TrainingOperator:
             "val_accuracy": num_correct / num_samples,
             NUM_SAMPLES: num_samples
         }
-
-    def time_stats(self, reset=True):
-        """Returns a dictionary of time statistics collected."""
-        stats = {}
-        for k, t in self.timers.items():
-            if t.count > 0:
-                stats["mean_%s_s" % k] = t.mean
-            if reset:
-                t.reset()
-        return stats
 
     def state_dict(self):
         """Returns a serializable representation of the operator state."""

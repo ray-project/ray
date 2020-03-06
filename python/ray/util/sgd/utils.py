@@ -1,5 +1,5 @@
 import collections
-from contextlib import closing
+from contextlib import closing, contextmanager
 import logging
 import numpy as np
 import socket
@@ -107,6 +107,46 @@ class TimerStat:
         self.count = 0
 
 
+@contextmanager
+def _nullcontext(enter_result=None):
+    """Used for mocking timer context."""
+    yield enter_result
+
+
+class TimerCollection:
+    """A grouping of Timers."""
+
+    def __init__(self):
+        self._timers = collections.defaultdict(TimerStat)
+        self._enabled = True
+
+    def disable(self):
+        self._enabled = False
+
+    def enable(self):
+        self._enabled = True
+
+    def reset(self):
+        for timer in self._timers.values():
+            timer.reset()
+
+    def record(self, key):
+        if self._enabled:
+            return self._timers[key]
+        else:
+            return _nullcontext()
+
+    def stats(self, mean=True, last=False):
+        aggregates = {}
+        for k, t in self._timers.items():
+            if t.count > 0:
+                if mean:
+                    aggregates["mean_%s_s" % k] = t.mean
+                if last:
+                    aggregates["last_%s_s" % k] = t.last
+        return aggregates
+
+
 def find_free_port():
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
         s.bind(("", 0))
@@ -134,7 +174,7 @@ class AverageMeter:
 
 
 class AverageMeterCollection:
-    """A grouping of AverageMeter."""
+    """A grouping of AverageMeters."""
 
     def __init__(self):
         self._batch_count = 0
