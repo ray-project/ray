@@ -1,6 +1,5 @@
 # flake8: noqa
-"""
-This file holds code for the torch Trainer creator signatures.
+"""This file holds code for the TorchTrainer creator signatures.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
@@ -46,22 +45,26 @@ def optimizer_creator(model, config):
 
 
 # __torch_data_start__
+from torch.utils.data import DataLoader
 from ray.util.sgd.torch.examples.train_example import LinearDataset
 
 def data_creator(config):
-    """Constructs torch.utils.data.Dataset objects.
+    """Constructs Iterables for training and validation.
 
-    Note that even though two Dataset objects can be returned,
-    only one dataset will be used for training.
+    Note that even though two Iterable objects can be returned,
+    only one Iterable will be used for training.
 
     Args:
         config: Configuration dictionary passed into ``TorchTrainer``
 
     Returns:
-        One or Two Dataset objects. If only one Dataset object is provided,
+        One or Two Iterable objects. If only one Iterable object is provided,
         ``trainer.validate()`` will throw a ValueError.
     """
-    return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+    train_dataset, val_dataset = LinearDataset(2, 5), LinearDataset(2, 5)
+    train_loader = DataLoader(train_dataset, batch_size=config["batch_size"])
+    val_loader = DataLoader(val_dataset, batch_size=config["batch_size"])
+    return train_loader, val_loader
 # __torch_data_end__
 
 # __torch_loss_start__
@@ -111,11 +114,11 @@ ray.init()
 from ray.util.sgd import TorchTrainer
 
 trainer = TorchTrainer(
-    model_creator,
-    data_creator,
-    optimizer_creator,
+    model_creator=model_creator,
+    data_creator=data_creator,
+    optimizer_creator=optimizer_creator,
     loss_creator=nn.MSELoss,
     scheduler_creator=scheduler_creator,
-    config={"lr": 0.001})
+    config={"lr": 0.001, "batch_size": 64})
 
 # __torch_trainer_end__

@@ -32,7 +32,7 @@ def data_creator(config):
     if config.get("test_mode"):
         dataset = torch.utils.data.Subset(dataset, list(range(64)))
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=config.get("batch_size"))
+        dataset, batch_size=config.get("batch_size", 32))
     return dataloader
 
 

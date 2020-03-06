@@ -1,5 +1,4 @@
-"""
-This file holds code for a Training guide for PytorchSGD in the documentation.
+"""Example code for RaySGD Torch in the documentation.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
@@ -55,23 +54,32 @@ def scheduler_creator(optimizer, config):
 
 def data_creator(config):
     """Returns training dataloader, validation dataloader."""
+    train_dataset = LinearDataset(2, 5, size=config.get("data_size", 1000))
+    val_dataset = LinearDataset(2, 5, size=config.get("val_size", 400))
     train_loader = torch.utils.data.DataLoader(
-        LinearDataset(2, 5), config.get("batch_size", 64))
+        train_dataset,
+        batch_size=config.get("batch_size", 32),
+    )
     validation_loader = torch.utils.data.DataLoader(
-        LinearDataset(2, 5, size=400), config.get("batch_size", 64))
+        val_dataset,
+        batch_size=config.get("batch_size", 32))
     return train_loader, validation_loader
 
 
 def train_example(num_workers=1, use_gpu=False):
     trainer1 = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         scheduler_creator=scheduler_creator,
         num_workers=num_workers,
         use_gpu=use_gpu,
-        config={"lr": 1e-2, "hidden_size": 1, "batch_size": 4},
+        config={
+            "lr": 1e-2,  # used in optimizer_creator
+            "hidden_size": 1,  # used in model_creator
+            "batch_size": 4,  # used in data_creator
+        },
         backend="gloo",
         scheduler_step_freq="epoch")
     for i in range(5):

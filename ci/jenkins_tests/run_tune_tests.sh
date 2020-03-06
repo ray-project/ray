@@ -38,7 +38,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python -m pytest /ray/python/ray/util/sgd/tests
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/doc/examples/doc_code/raysgd_torch_signatures.py
+    python /ray/python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/train_example.py

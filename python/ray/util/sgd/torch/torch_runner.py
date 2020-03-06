@@ -26,10 +26,10 @@ class TorchRunner:
 
     Args:
         model_creator (dict -> Model(s)): see torch_trainer.py
+        data_creator (dict -> Iterable(s)): see torch_trainer.py.
         optimizer_creator ((models, dict) -> optimizers): see torch_trainer.py.
         loss_creator (torch.nn.*Loss class | dict -> loss):
             see torch_trainer.py.
-        data_creator (dict -> Iterable(s)): see torch_trainer.py.
         scheduler_creator ((optimizers, dict) -> scheduler): see
             torch_trainer.py.
         training_operator_cls: see torch_trainer.py
@@ -41,12 +41,11 @@ class TorchRunner:
 
     def __init__(self,
                  model_creator,
+                 data_creator,
                  optimizer_creator,
                  loss_creator=None,
-                 data_creator=None,
                  scheduler_creator=None,
                  training_operator_cls=None,
-                 profile=False,
                  config=None,
                  use_fp16=False,
                  apex_args=None,
@@ -58,16 +57,9 @@ class TorchRunner:
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls or TrainingOperator
         self.config = {} if config is None else config
-        self._profile = profile
 
+        self.timers = utils.TimerCollection()
         self.epochs = 0
-        self._timers = {
-            k: utils.TimerStat(window_size=1)
-            for k in [
-                "setup_proc", "setup_model", "get_state", "set_state",
-                "validation", "training"
-            ]
-        }
         self.models = None
         self.optimizers = None
         self.criterion = None
@@ -97,8 +89,6 @@ class TorchRunner:
 
     def _initialize_dataloaders(self):
         logger.debug("Instantiating dataloaders.")
-        if not self.data_creator:
-            return
         # When creating loaders, a filelock will be used to ensure no
         # race conditions in data downloading among different workers.
         with FileLock(os.path.expanduser("~/.ray_data.lock")):
@@ -108,9 +98,9 @@ class TorchRunner:
         self.train_loader, self.validation_loader = train_loader, val_loader
 
     def _create_loss(self):
-        logger.debug("Creating loss.")
         if not self.loss_creator:
             return
+        logger.debug("Creating loss.")
         if inspect.isclass(self.loss_creator) and issubclass(
                 self.loss_creator, torch.nn.modules.loss._Loss):
             self.criterion = self.loss_creator()
@@ -170,50 +160,55 @@ class TorchRunner:
         """Finds a free port on the current node."""
         return utils.find_free_port()
 
-    def train_epoch(self, num_steps=None, info=None):
+    def train_epoch(self, num_steps=None, profile=False, info=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Step {}".format(self.epochs + 1))
         info = info or {}
+        self._toggle_profiling(profile=profile)
+
         info.update({
             USE_FP16: self.use_fp16,
             SCHEDULER_STEP: self.scheduler_step_freq
         })
-        with self._timers["training"]:
+        with self.timers.record("train_epoch"):
             iterator = self.train_loader
             if num_steps:
                 iterator = itertools.islice(iter(self.train_loader), num_steps)
             train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.epochs += 1
-        stats = {"epoch": self.epochs}
-        stats.update(train_stats)
-        if self._profile:
-            stats.update(profile=self.time_stats)
+        # This is so that `epochs` is first in ordering.
+        stats = dict(epoch=self.epochs, **train_stats)
+        if profile:
+            stats.update(profile=self.timers.stats())
         return stats
 
-    def validate(self, num_steps=None, info=None):
+    def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set."""
         if self.validation_loader is None:
             raise ValueError("No validation dataloader provided.")
         info = info or {}
-        with self._timers["validation"]:
+        self._toggle_profiling(profile=profile)
+
+        with self.timers.record("validation"):
             iterator = self.validation_loader
             if num_steps:
                 iterator = itertools.islice(
                     iter(self.validation_loader), num_steps)
-            validation_stats = self.training_operator.validate(iterator, info)
-
-        validation_stats.update(self.time_stats())
+            validation_stats = self.training_operator.validate(
+                iterator, info=info)
+        if profile:
+            validation_stats.update(profile=self.timers.stats())
         return validation_stats
 
-    def time_stats(self):
-        """Returns a dictionary of time statistics collected."""
-        stats = {}
-        for k, t in self._timers.items():
-            stats["mean_" + k] = t.mean
-            stats["total_" + k] = t.sum
-            t.reset()
-        return stats
+    def _toggle_profiling(self, profile=False):
+        """Enables/Disables and resets timing profiles."""
+        if profile:
+            self.timers.enable()
+            self.timers.reset()
+        else:
+            self.timers.disable()
+        self.training_operator._set_timers(self.timers)
 
     def _get_model_state_dicts(self):
         # This is so that we create a duplicate of weights into CPU rather than
@@ -262,7 +257,7 @@ class TorchRunner:
 
         if self.use_fp16 and "amp" in state and amp:
             amp.load_state_dict(state["amp"])
-        self.epochs = state["stats"]["epoch"]
+        self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state_dict)
 
     def apply(self, fn):

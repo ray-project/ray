@@ -14,6 +14,7 @@ from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
 from ray.util.sgd import utils
+from ray.util.sgd.utils import NUM_SAMPLES
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
 
@@ -145,8 +146,8 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not model_creator or not optimizer_creator:
-            raise ValueError("Model and Optimizer creator must be provided.")
+        if not (model_creator and optimizer_creator and data_creator):
+            raise ValueError("Must provide a Model, Optimizer, Data creator.")
         self.model_creator = model_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
@@ -154,17 +155,12 @@ class TorchTrainer:
         self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls
 
-        if not training_operator_cls:
-            if not loss_creator:
-                raise ValueError("If a loss_creator is not provided, you must "
-                                 "provide a custom training operator.")
-            if not data_creator:
-                raise ValueError("If a data_creator is not provided, you must "
-                                 "provide a custom training operator.")
+        if not training_operator_cls and not loss_creator:
+            raise ValueError("If a loss_creator is not provided, you must "
+                             "provide a custom training operator.")
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
-        self.optimizer_timer = utils.TimerStat(window_size=1)
 
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
@@ -200,11 +196,11 @@ class TorchTrainer:
             # Start workers
             self.workers = [
                 Runner.remote(
-                    self.model_creator,
-                    self.optimizer_creator,
-                    self.loss_creator,
-                    self.data_creator,
-                    self.scheduler_creator,
+                    model_creator=self.model_creator,
+                    data_creator=self.data_creator,
+                    optimizer_creator=self.optimizer_creator,
+                    loss_creator=self.loss_creator,
+                    scheduler_creator=self.scheduler_creator,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,
                     use_fp16=self.use_fp16,
@@ -223,11 +219,11 @@ class TorchTrainer:
             # Start workers
             self.workers = [
                 Runner.remote(
-                    self.model_creator,
-                    self.optimizer_creator,
-                    self.loss_creator,
-                    self.data_creator,
-                    self.scheduler_creator,
+                    model_creator=self.model_creator,
+                    data_creator=self.data_creator,
+                    optimizer_creator=self.optimizer_creator,
+                    loss_creator=self.loss_creator,
+                    scheduler_creator=self.scheduler_creator,
                     backend=self.backend,
                     training_operator_cls=self.training_operator_cls,
                     config=self.config,
@@ -251,6 +247,7 @@ class TorchTrainer:
 
     def train(self,
               num_steps=None,
+              profile=False,
               max_retries=0,
               checkpoint="auto",
               info=None):
@@ -263,6 +260,7 @@ class TorchTrainer:
             num_steps (int): Number of batches to compute update steps on.
                 This corresponds also to the number of times
                 ``TrainingOperator.train_batch`` is called.
+            profile (bool): Returns time stats for the training procedure.
             max_retries (int): Must be non-negative. If set to N, will
                 kill all current workers, query the Ray global state for
                 total available resources, and re-launch up to the
@@ -292,37 +290,43 @@ class TorchTrainer:
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers(checkpoint=checkpoint)
 
-        with self.optimizer_timer:
+        success, worker_stats = self._train_epoch(
+            num_steps=num_steps, profile=profile, info=info)
+        # Fault handling
+        for i in range(max_retries):
+            if success:
+                break
+            else:
+                self._num_failures += 1
+            self._resize_workers(checkpoint=checkpoint)
+            logger.info(
+                "Retrying training step with %d workers." % len(self.workers))
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, info=info)
-            # Fault handling
-            for i in range(max_retries):
-                if success:
-                    break
-                else:
-                    self._num_failures += 1
-                self._resize_workers(checkpoint=checkpoint)
-                logger.info("Retrying training step with %d workers." % len(
-                    self.workers))
-                success, worker_stats = self._train_epoch(
-                    num_steps=num_steps, info=info)
+                num_steps=num_steps, profile=profile, info=info)
         if not success:
             raise RuntimeError("Training run failed.")
 
         worker_stats = ray.get(worker_stats)
+        return self._process_stats(worker_stats)
 
-        train_stats = {}
+    def _process_stats(self, worker_stats):
+        stats = {
+            NUM_SAMPLES: sum(
+                stats.pop(NUM_SAMPLES, np.nan) for stats in worker_stats)
+        }
+
         for stat_key in worker_stats[0]:
             if isinstance(worker_stats[0], numbers.Number):
-                train_stats[stat_key] = np.nanmean(
+                stats[stat_key] = np.nanmean(
                     [s.get(stat_key, np.nan) for s in worker_stats])
             else:
-                train_stats[stat_key] = worker_stats[0][stat_key]
-        return train_stats
+                stats[stat_key] = worker_stats[0][stat_key]
+        return stats
 
-    def _train_epoch(self, num_steps=None, info=None):
+    def _train_epoch(self, num_steps=None, profile=False, info=None):
         worker_stats = [
-            w.train_epoch.remote(num_steps=num_steps, info=info)
+            w.train_epoch.remote(
+                num_steps=num_steps, profile=profile, info=info)
             for w in self.workers
         ]
         success = utils.check_for_failure(worker_stats)
@@ -353,13 +357,14 @@ class TorchTrainer:
         """
         return ray.get([w.apply_operator.remote(fn) for w in self.workers])
 
-    def validate(self, num_steps=None, info=None):
+    def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set.
 
         Args:
             num_steps (int): Number of batches to compute update steps on.
                 This corresponds also to the number of times
                 ``TrainingOperator.validate_batch`` is called.
+            profile (bool): Returns time stats for the evaluation procedure.
             info (dict): Optional dictionary passed to the training
                 operator for `validate` and `validate_batch`.
 
@@ -369,15 +374,11 @@ class TorchTrainer:
                 ``training_operator_cls``.
         """
         worker_stats = ray.get([
-            w.validate.remote(num_steps=num_steps, info=info)
+            w.validate.remote(num_steps=num_steps, profile=profile, info=info)
             for w in self.workers
         ])
 
-        validation_stats = {}
-        for stat_key in worker_stats[0]:
-            validation_stats[stat_key] = np.nanmean(
-                [s.get(stat_key, np.nan) for s in worker_stats])
-        return validation_stats
+        return self._process_stats(worker_stats)
 
     def update_scheduler(self, metric):
         """Calls ``scheduler.step(metric)`` on all schedulers.

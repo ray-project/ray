@@ -1,7 +1,7 @@
 import os
 import tempfile
 from unittest.mock import patch
-
+import numpy as np
 import pytest
 import time
 import torch
@@ -11,9 +11,10 @@ import torch.distributed as dist
 import ray
 from ray import tune
 from ray.util.sgd.torch import TorchTrainer, TorchTrainable
-from ray.util.sgd.torch.training_operator import _TestingOperator
-from ray.util.sgd.torch.constants import BATCH_COUNT, SCHEDULER_STEP
-from ray.util.sgd.utils import check_for_failure
+from ray.util.sgd.torch.training_operator import (_TestingOperator,
+                                                  _TestMetricsOperator)
+from ray.util.sgd.torch.constants import SCHEDULER_STEP
+from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_COUNT
 
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
@@ -29,11 +30,11 @@ def ray_start_2_cpus():
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        num_replicas=1)
+        num_workers=1)
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
@@ -41,31 +42,29 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     assert val_metrics[BATCH_COUNT] == 1
 
 
-@pytest.mark.parametrize("num_replicas", [1, 2]
-                         if dist.is_available() else [1])
-def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        num_replicas=num_replicas)
+        num_workers=num_workers)
     for i in range(3):
         train_loss1 = trainer.train()["mean_train_loss"]
-    validation_loss1 = trainer.validate()["mean_validation_loss"]
+    validation_loss1 = trainer.validate()["mean_val_loss"]
 
     for i in range(3):
         train_loss2 = trainer.train()["mean_train_loss"]
-    validation_loss2 = trainer.validate()["mean_validation_loss"]
+    validation_loss2 = trainer.validate()["mean_val_loss"]
 
     assert train_loss2 <= train_loss1, (train_loss2, train_loss1)
     assert validation_loss2 <= validation_loss1, (validation_loss2,
                                                   validation_loss1)
 
 
-@pytest.mark.parametrize("num_replicas", [1, 2]
-                         if dist.is_available() else [1])
-def test_multi_model(ray_start_2_cpus, num_replicas):
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_multi_model(ray_start_2_cpus, num_workers):
     def train(*, model=None, criterion=None, optimizer=None, dataloader=None):
         model.train()
         train_loss = 0
@@ -108,13 +107,13 @@ def test_multi_model(ray_start_2_cpus, num_replicas):
         return opts[0], opts[1]
 
     trainer1 = TorchTrainer(
-        multi_model_creator,
-        data_creator,
-        multi_optimizer_creator,
+        model_creator=multi_model_creator,
+        data_creator=data_creator,
+        optimizer_creator=multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
-        num_replicas=num_replicas)
+        num_workers=num_workers)
     trainer1.train()
 
     filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
@@ -125,13 +124,13 @@ def test_multi_model(ray_start_2_cpus, num_replicas):
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(
-        multi_model_creator,
-        data_creator,
-        multi_optimizer_creator,
+        model_creator=multi_model_creator,
+        data_creator=data_creator,
+        optimizer_creator=multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
-        num_replicas=num_replicas)
+        num_workers=num_workers)
     trainer2.restore(filename)
 
     os.remove(filename)
@@ -151,9 +150,8 @@ def test_multi_model(ray_start_2_cpus, num_replicas):
     trainer2.shutdown()
 
 
-@pytest.mark.parametrize("num_replicas", [1, 2]
-                         if dist.is_available() else [1])
-def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
     def train_epoch(self, iterator, info):
         if self.config.get("models", 1) > 1:
             assert len(self.models) == self.config["models"], self.config
@@ -194,13 +192,13 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
         for optimizer_count in range(1, 3):
             for scheduler_count in range(1, 3):
                 trainer = TorchTrainer(
-                    multi_model_creator,
-                    data_creator,
-                    multi_optimizer_creator,
+                    model_creator=multi_model_creator,
+                    data_creator=data_creator,
+                    optimizer_creator=multi_optimizer_creator,
                     loss_creator=nn.MSELoss,
                     scheduler_creator=multi_scheduler_creator,
                     training_operator_cls=_TestingOperator,
-                    num_replicas=num_replicas,
+                    num_workers=num_workers,
                     config={
                         "models": model_count,
                         "optimizers": optimizer_count,
@@ -222,9 +220,9 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
             optimizer, step_size=30, gamma=0.1)
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
@@ -236,13 +234,113 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
     trainer.shutdown()
 
 
+def test_profiling(ray_start_2_cpus):  # noqa: F811
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss())
+
+    stats = trainer.train(profile=True)
+    assert "profile" in stats
+    stats = trainer.validate(profile=True)
+    assert "profile" in stats
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_metrics(ray_start_2_cpus, num_workers):
+    data_size, val_size = 600, 500
+    batch_size = 4
+
+    num_train_steps = int(data_size / batch_size)
+    num_val_steps = int(val_size / batch_size)
+
+    train_scores = [1] + ([0] * num_train_steps)
+    val_scores = [1] + ([0] * num_val_steps)
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=num_workers,
+        config={
+            "scores": train_scores,
+            "val_scores": val_scores,
+            "key": "score",
+            "batch_size": batch_size,
+            "data_size": data_size,
+            "val_size": val_size
+        },
+        training_operator_cls=_TestMetricsOperator)
+
+    stats = trainer.train(num_steps=num_train_steps)
+    # Test that we output mean and last of custom metrics in an epoch
+    assert "mean_score" in stats
+    assert stats["last_score"] == 0
+
+    assert stats[NUM_SAMPLES] == num_train_steps * batch_size
+    expected_score = num_workers * (sum(train_scores) /
+                                    (num_train_steps * batch_size))
+    assert np.allclose(stats["mean_score"], expected_score)
+
+    val_stats = trainer.validate()
+    # Test that we output mean and last of custom metrics in validation
+    assert val_stats["last_score"] == 0
+    expected_score = (sum(val_scores) /
+                      (num_val_steps * batch_size)) * num_workers
+    assert np.allclose(val_stats["mean_score"], expected_score)
+    assert val_stats[BATCH_COUNT] == np.ceil(num_val_steps / num_workers)
+    assert val_stats[NUM_SAMPLES] == num_val_steps * batch_size
+    assert val_stats[NUM_SAMPLES] == val_size
+
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_metrics_nan(ray_start_2_cpus, num_workers):
+    data_size, val_size = 100, 100
+    batch_size = 10
+
+    num_train_steps = int(data_size / batch_size)
+    num_val_steps = int(val_size / batch_size)
+
+    train_scores = [np.nan] + ([0] * num_train_steps)
+    val_scores = [np.nan] + ([0] * num_val_steps)
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=num_workers,
+        config={
+            "scores": train_scores,
+            "val_scores": val_scores,
+            "key": "score",
+            "batch_size": batch_size,
+            "data_size": data_size,
+            "val_size": val_size
+        },
+        training_operator_cls=_TestMetricsOperator)
+
+    stats = trainer.train(num_steps=num_train_steps)
+    assert "mean_score" in stats
+    assert stats["last_score"] == 0
+    assert np.isnan(stats["mean_score"])
+
+    stats = trainer.validate()
+    assert "mean_score" in stats
+    assert stats["last_score"] == 0
+    assert np.isnan(stats["mean_score"])
+
+
 def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer),
         training_operator_cls=_TestingOperator)
@@ -254,20 +352,19 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
     trainer.shutdown()
 
 
-@pytest.mark.parametrize("num_replicas", [1, 2]
-                         if dist.is_available() else [1])
-def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
 
     config = {
         "model_creator": model_creator,
         "data_creator": data_creator,
         "optimizer_creator": optimizer_creator,
         "loss_creator": lambda config: nn.MSELoss(),
-        "num_replicas": num_replicas,
+        "num_workers": num_workers,
         "use_gpu": False,
-        "batch_size": 512,
         "backend": "gloo",
         "config": {
+            "batch_size": 512,
             "lr": 0.001
         }
     }
@@ -283,22 +380,21 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     for path, df in analysis.trial_dataframes.items():
         mean_train_loss1 = df.loc[0, "mean_train_loss"]
         mean_train_loss2 = df.loc[1, "mean_train_loss"]
-        mean_validation_loss1 = df.loc[0, "mean_validation_loss"]
-        mean_validation_loss2 = df.loc[1, "mean_validation_loss"]
+        mean_val_loss1 = df.loc[0, "mean_val_loss"]
+        mean_val_loss2 = df.loc[1, "mean_val_loss"]
 
         assert mean_train_loss2 <= mean_train_loss1
-        assert mean_validation_loss2 <= mean_validation_loss1
+        assert mean_val_loss2 <= mean_val_loss1
 
 
-@pytest.mark.parametrize("num_replicas", [1, 2]
-                         if dist.is_available() else [1])
-def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
     trainer1 = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        num_replicas=num_replicas)
+        num_workers=num_workers)
     trainer1.train()
 
     filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
@@ -309,11 +405,11 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        num_replicas=num_replicas)
+        num_workers=num_workers)
     trainer2.restore(filename)
 
     os.remove(filename)
@@ -334,7 +430,9 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
         return
 
     def single_loader(config):
-        return LinearDataset(2, 5, size=1000000)
+        dataset = LinearDataset(2, 5, size=1000000)
+        return torch.utils.data.DataLoader(
+            dataset, batch_size=config.get("batch_size", 32))
 
     def step_with_fail(self, *args, **kwargs):
         worker_stats = [
@@ -348,12 +446,12 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
 
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
-            model_creator,
-            single_loader,
-            optimizer_creator,
-            batch_size=100000,
+            model_creator=model_creator,
+            data_creator=single_loader,
+            optimizer_creator=optimizer_creator,
             loss_creator=lambda config: nn.MSELoss(),
-            num_replicas=2)
+            config={"batch_size": 100000},
+            num_workers=2)
 
         with pytest.raises(RuntimeError):
             trainer1.train(max_retries=1)
@@ -364,7 +462,9 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
         return
 
     def single_loader(config):
-        return LinearDataset(2, 5, size=1000000)
+        dataset = LinearDataset(2, 5, size=1000000)
+        return torch.utils.data.DataLoader(
+            dataset, batch_size=config.get("batch_size", 32))
 
     def step_with_fail(self, *args, **kwargs):
         worker_stats = [
@@ -378,12 +478,12 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
 
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
-            model_creator,
-            single_loader,
-            optimizer_creator,
-            batch_size=100000,
+            model_creator=model_creator,
+            data_creator=single_loader,
+            optimizer_creator=optimizer_creator,
+            config=dict(batch_size=100000),
             loss_creator=lambda config: nn.MSELoss(),
-            num_replicas=2)
+            num_workers=2)
 
         @ray.remote
         def try_test():
@@ -400,7 +500,9 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
         return
 
     def single_loader(config):
-        return LinearDataset(2, 5, size=1000000)
+        dataset = LinearDataset(2, 5, size=1000000)
+        return torch.utils.data.DataLoader(
+            dataset, batch_size=config.get("batch_size", 32))
 
     def step_with_fail(self, *args, **kwargs):
         worker_stats = [
@@ -414,12 +516,12 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
 
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
-            model_creator,
-            single_loader,
-            optimizer_creator,
-            batch_size=100000,
+            model_creator=model_creator,
+            data_creator=single_loader,
+            optimizer_creator=optimizer_creator,
+            config=dict(batch_size=100000),
             loss_creator=lambda config: nn.MSELoss(),
-            num_replicas=2)
+            num_workers=2)
 
         trainer1.train(max_retries=2)
 
