@@ -72,12 +72,12 @@ int main() {
             << return2 << " " << return3 << " " << return4 << " " << std::endl;
 
   RayActor<Foo> fobj = Ray::create(Foo::create);
-  auto rt5 = Ray::call(&Foo::foo, fobj, 1);
-  auto rt6 = Ray::call(&Foo::bar, fobj, 1, rt5);
-  auto rt7 = Ray::call(&Foo::add, fobj, 4);
-  auto rt8 = Ray::call(&Foo::add, fobj, 1);
-  auto rt9 = Ray::call(&Foo::add, fobj, 1);
-  auto rt10 = Ray::call(&Foo::add, fobj, rt9);
+  auto rt5 = fobj.call(&Foo::foo, 1);
+  auto rt6 = fobj.call(&Foo::bar, 1, rt5);
+  auto rt7 = fobj.call(&Foo::add, 4);
+  auto rt8 = fobj.call(&Foo::add, 1);
+  auto rt9 = fobj.call(&Foo::add, 1);
+  auto rt10 = fobj.call(&Foo::add, rt9);
 
   int return5 = *(rt5.get());
   int return6 = *(rt6.get());

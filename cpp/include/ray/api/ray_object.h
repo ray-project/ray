@@ -80,8 +80,7 @@ inline std::shared_ptr<T> RayObject<T>::get() const {
 template <typename T>
 template <typename TO>
 inline std::shared_ptr<TO> RayObject<T>::doGet() const {
-  RayObject<T> object(_id);
-  return Ray::get(object);
+  return Ray::get(*this);
 }
 
 template <typename T>
