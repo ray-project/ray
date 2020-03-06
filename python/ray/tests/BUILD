@@ -204,6 +204,22 @@ py_test(
 )
 
 py_test(
+    name = "test_reference_counting_2",
+    size = "medium",
+    srcs = ["test_reference_counting_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_global_gc",
+    size = "small",
+    srcs = ["test_global_gc.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_global_state",
     size = "small",
     srcs = ["test_global_state.py"],

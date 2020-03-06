@@ -1,12 +1,9 @@
 # coding: utf-8
 import copy
-import gc
 import json
 import logging
 import os
-import signal
 import time
-import weakref
 
 import numpy as np
 
@@ -14,8 +11,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object, wait_for_condition
-from ray.internal.internal_api import global_gc
+from ray.test_utils import SignalActor, put_object
 
 logger = logging.getLogger(__name__)
 
@@ -74,121 +70,6 @@ def check_refcounts(expected, timeout=10):
                 raise e
             else:
                 time.sleep(0.1)
-
-
-def test_global_gc(shutdown_only):
-    cluster = ray.cluster_utils.Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=1, num_gpus=0)
-    ray.init(address=cluster.address)
-
-    class ObjectWithCyclicRef:
-        def __init__(self):
-            self.loop = self
-
-    @ray.remote(num_cpus=1)
-    class GarbageHolder:
-        def __init__(self):
-            gc.disable()
-            x = ObjectWithCyclicRef()
-            self.garbage = weakref.ref(x)
-
-        def has_garbage(self):
-            return self.garbage() is not None
-
-    try:
-        gc.disable()
-
-        # Local driver.
-        local_ref = weakref.ref(ObjectWithCyclicRef())
-
-        # Remote workers.
-        actors = [GarbageHolder.remote() for _ in range(2)]
-        assert local_ref() is not None
-        assert all(ray.get([a.has_garbage.remote() for a in actors]))
-
-        # GC should be triggered for all workers, including the local driver.
-        global_gc()
-
-        def check_refs_gced():
-            return (local_ref() is None and
-                    not any(ray.get([a.has_garbage.remote() for a in actors])))
-
-        wait_for_condition(check_refs_gced, timeout_ms=10000)
-    finally:
-        gc.enable()
-
-
-def test_global_gc_when_full(shutdown_only):
-    cluster = ray.cluster_utils.Cluster()
-    for _ in range(2):
-        cluster.add_node(
-            num_cpus=1, num_gpus=0, object_store_memory=100 * 1024 * 1024)
-    ray.init(address=cluster.address)
-
-    class LargeObjectWithCyclicRef:
-        def __init__(self):
-            self.loop = self
-            self.large_object = ray.put(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote(num_cpus=1)
-    class GarbageHolder:
-        def __init__(self):
-            gc.disable()
-            x = LargeObjectWithCyclicRef()
-            self.garbage = weakref.ref(x)
-
-        def has_garbage(self):
-            return self.garbage() is not None
-
-        def return_large_array(self):
-            return np.zeros(80 * 1024 * 1024, dtype=np.uint8)
-
-    try:
-        gc.disable()
-
-        # Local driver.
-        local_ref = weakref.ref(LargeObjectWithCyclicRef())
-
-        # Remote workers.
-        actors = [GarbageHolder.remote() for _ in range(2)]
-        assert local_ref() is not None
-        assert all(ray.get([a.has_garbage.remote() for a in actors]))
-
-        # GC should be triggered for all workers, including the local driver,
-        # when the driver tries to ray.put a value that doesn't fit in the
-        # object store. This should cause the captured ObjectIDs' numpy arrays
-        # to be evicted.
-        ray.put(np.zeros(80 * 1024 * 1024, dtype=np.uint8))
-
-        def check_refs_gced():
-            return (local_ref() is None and
-                    not any(ray.get([a.has_garbage.remote() for a in actors])))
-
-        wait_for_condition(check_refs_gced, timeout_ms=10000)
-
-        # Local driver.
-        local_ref = weakref.ref(LargeObjectWithCyclicRef())
-
-        # Remote workers.
-        actors = [GarbageHolder.remote() for _ in range(2)]
-
-        def check_refs_gced():
-            return (local_ref() is None and
-                    not any(ray.get([a.has_garbage.remote() for a in actors])))
-
-        wait_for_condition(check_refs_gced, timeout_ms=10000)
-
-        # GC should be triggered for all workers, including the local driver,
-        # when a remote task tries to put a return value that doesn't fit in
-        # the object store. This should cause the captured ObjectIDs' numpy
-        # arrays to be evicted.
-        ray.get(actors[0].return_large_array.remote())
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
-    finally:
-        gc.enable()
 
 
 def test_local_refcounts(ray_start_regular):
@@ -370,6 +251,61 @@ def test_feature_flag(shutdown_only):
     # The ray.get below fails with only LRU eviction, as the object
     # that was ray.put by the actor should have been evicted.
     _fill_object_store_and_get(actor.get_large_object.remote(), succeed=False)
+
+
+def test_out_of_band_serialized_object_id(one_worker_100MiB):
+    assert len(
+        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
+    oid = ray.put("hello")
+    _check_refcounts({oid: (1, 0)})
+    oid_str = ray.cloudpickle.dumps(oid)
+    _check_refcounts({oid: (2, 0)})
+    del oid
+    assert len(
+        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
+    assert ray.get(ray.cloudpickle.loads(oid_str)) == "hello"
+
+
+def test_captured_object_id(one_worker_100MiB):
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.wait.remote())
+        ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    oid = f.remote(signal)
+
+    # Delete local references.
+    del f
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(oid)
+
+    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+
+    @ray.remote
+    class Actor:
+        def get(self, signal):
+            ray.get(signal.wait.remote())
+            ray.get(captured_id)  # noqa: F821
+
+    signal = SignalActor.remote()
+    actor = Actor.remote()
+    oid = actor.get.remote(signal)
+
+    # Delete local references.
+    del Actor
+    del captured_id
+
+    # Test that the captured object ID is pinned despite having no local
+    # references.
+    ray.get(signal.send.remote())
+    _fill_object_store_and_get(oid)
 
 
 # Remote function takes serialized reference and doesn't hold onto it after
@@ -570,287 +506,6 @@ def test_basic_nested_ids(one_worker_100MiB):
     # Remove the outer reference and check that the inner object gets evicted.
     del outer_oid
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
-
-
-# Test that an object containing object IDs within it pins the inner IDs
-# recursively and for submitted tasks.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
-    @ray.remote(max_retries=1)
-    def recursive(ref, signal, max_depth, depth=0):
-        unwrapped = ray.get(ref[0])
-        if depth == max_depth:
-            ray.get(signal.wait.remote())
-            if failure:
-                os._exit(0)
-            return
-        else:
-            return recursive.remote(unwrapped, signal, max_depth, depth + 1)
-
-    signal = SignalActor.remote()
-
-    max_depth = 5
-    array_oid = put_object(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-    nested_oid = array_oid
-    for _ in range(max_depth):
-        nested_oid = ray.put([nested_oid])
-    head_oid = recursive.remote([nested_oid], signal, max_depth)
-
-    # Remove the local reference.
-    array_oid_bytes = array_oid.binary()
-    del array_oid, nested_oid
-
-    tail_oid = head_oid
-    for _ in range(max_depth):
-        tail_oid = ray.get(tail_oid)
-
-    # Check that the remote reference pins the object.
-    _fill_object_store_and_get(array_oid_bytes)
-
-    # Fulfill the dependency, causing the tail task to finish.
-    ray.get(signal.send.remote())
-    try:
-        ray.get(tail_oid)
-        assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnreconstructableError:
-        assert failure
-
-    # Reference should be gone, check that array gets evicted.
-    _fill_object_store_and_get(array_oid_bytes, succeed=False)
-
-
-# Test that serialized objectIDs returned from remote tasks are pinned until
-# they go out of scope on the caller side.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_return_object_id(one_worker_100MiB, use_ray_put, failure):
-    @ray.remote
-    def return_an_id():
-        return [
-            put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-        ]
-
-    @ray.remote(max_retries=1)
-    def exit():
-        os._exit(0)
-
-    outer_oid = return_an_id.remote()
-    inner_oid_binary = ray.get(outer_oid)[0].binary()
-
-    # Check that the inner ID is pinned by the outer ID.
-    _fill_object_store_and_get(inner_oid_binary)
-
-    # Check that taking a reference to the inner ID and removing the outer ID
-    # doesn't unpin the object.
-    inner_oid = ray.get(outer_oid)[0]  # noqa: F841
-    del outer_oid
-    _fill_object_store_and_get(inner_oid_binary)
-
-    if failure:
-        # Check that the owner dying unpins the object. This should execute on
-        # the same worker because there is only one started and the other tasks
-        # have finished.
-        with pytest.raises(ray.exceptions.RayWorkerError):
-            ray.get(exit.remote())
-    else:
-        # Check that removing the inner ID unpins the object.
-        del inner_oid
-    _fill_object_store_and_get(inner_oid_binary, succeed=False)
-
-
-# Test that serialized objectIDs returned from remote tasks are pinned if
-# passed into another remote task by the caller.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
-    @ray.remote
-    def return_an_id():
-        return [
-            put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-        ]
-
-    # TODO(edoakes): this fails with an ActorError with max_retries=1.
-    @ray.remote(max_retries=0)
-    def pending(ref, signal):
-        ray.get(signal.wait.remote())
-        ray.get(ref[0])
-        if failure:
-            os._exit(0)
-
-    signal = SignalActor.remote()
-    outer_oid = return_an_id.remote()
-    inner_oid_binary = ray.get(outer_oid)[0].binary()
-    pending_oid = pending.remote([outer_oid], signal)
-
-    # Remove the local reference to the returned ID.
-    del outer_oid
-
-    # Check that the inner ID is pinned by the remote task ID.
-    _fill_object_store_and_get(inner_oid_binary)
-
-    # Check that the task finishing unpins the object.
-    ray.get(signal.send.remote())
-    try:
-        ray.get(pending_oid)
-        assert not failure
-    except ray.exceptions.RayWorkerError:
-        assert failure
-    _fill_object_store_and_get(inner_oid_binary, succeed=False)
-
-
-# Call a recursive chain of tasks that pass a serialized reference that was
-# returned by another task to the end of the chain. The reference should still
-# exist while the final task in the chain is running and should be removed once
-# it finishes.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
-                                             failure):
-    @ray.remote
-    def return_an_id():
-        return [
-            put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-        ]
-
-    @ray.remote(max_retries=1)
-    def recursive(ref, signal, max_depth, depth=0):
-        ray.get(ref[0])
-        if depth == max_depth:
-            ray.get(signal.wait.remote())
-            if failure:
-                os._exit(0)
-            return
-        else:
-            return recursive.remote(ref, signal, max_depth, depth + 1)
-
-    max_depth = 5
-    outer_oid = return_an_id.remote()
-    inner_oid_bytes = ray.get(outer_oid)[0].binary()
-    signal = SignalActor.remote()
-    head_oid = recursive.remote([outer_oid], signal, max_depth)
-
-    # Remove the local reference.
-    del outer_oid
-
-    tail_oid = head_oid
-    for _ in range(max_depth):
-        tail_oid = ray.get(tail_oid)
-
-    # Check that the remote reference pins the object.
-    _fill_object_store_and_get(inner_oid_bytes)
-
-    # Fulfill the dependency, causing the tail task to finish.
-    ray.get(signal.send.remote())
-    try:
-        ray.get(tail_oid)
-        assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnreconstructableError:
-        assert failure
-
-    # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(inner_oid_bytes, succeed=False)
-
-
-# Call a recursive chain of tasks. The final task in the chain returns an
-# ObjectID returned by a task that it submitted. Every other task in the chain
-# returns the same ObjectID by calling ray.get() on its submitted task and
-# returning the result. The reference should still exist while the driver has a
-# reference to the final task's ObjectID.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put,
-                                               failure):
-    @ray.remote
-    def recursive(num_tasks_left):
-        if num_tasks_left == 0:
-            return put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8),
-                use_ray_put), os.getpid()
-
-        return ray.get(recursive.remote(num_tasks_left - 1))
-
-    max_depth = 5
-    head_oid = recursive.remote(max_depth)
-    final_oid, owner_pid = ray.get(head_oid)
-    final_oid_bytes = final_oid.binary()
-
-    # Check that the driver's reference pins the object.
-    _fill_object_store_and_get(final_oid_bytes)
-
-    # Remove the local reference and try it again.
-    _fill_object_store_and_get(final_oid_bytes)
-
-    if failure:
-        os.kill(owner_pid, signal.SIGKILL)
-    else:
-        # Remove all references.
-        del head_oid
-        del final_oid
-
-    # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(final_oid_bytes, succeed=False)
-
-
-def test_out_of_band_serialized_object_id(one_worker_100MiB):
-    assert len(
-        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
-    oid = ray.put("hello")
-    _check_refcounts({oid: (1, 0)})
-    oid_str = ray.cloudpickle.dumps(oid)
-    _check_refcounts({oid: (2, 0)})
-    del oid
-    assert len(
-        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
-    assert ray.get(ray.cloudpickle.loads(oid_str)) == "hello"
-
-
-def test_captured_object_id(one_worker_100MiB):
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    def f(signal):
-        ray.get(signal.wait.remote())
-        ray.get(captured_id)  # noqa: F821
-
-    signal = SignalActor.remote()
-    oid = f.remote(signal)
-
-    # Delete local references.
-    del f
-    del captured_id
-
-    # Test that the captured object ID is pinned despite having no local
-    # references.
-    ray.get(signal.send.remote())
-    _fill_object_store_and_get(oid)
-
-    captured_id = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-
-    @ray.remote
-    class Actor:
-        def get(self, signal):
-            ray.get(signal.wait.remote())
-            ray.get(captured_id)  # noqa: F821
-
-    signal = SignalActor.remote()
-    actor = Actor.remote()
-    oid = actor.get.remote(signal)
-
-    # Delete local references.
-    del Actor
-    del captured_id
-
-    # Test that the captured object ID is pinned despite having no local
-    # references.
-    ray.get(signal.send.remote())
-    _fill_object_store_and_get(oid)
 
 
 if __name__ == "__main__":
