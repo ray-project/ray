@@ -102,25 +102,22 @@ def find_redis_address_or_die():
     redis_addresses = set()
     for pid in pids:
         try:
-            cmdline = psutil.Process(pid).cmdline()
-
-            # (Workaround for UNIX idiosyncrasy)
-            # See: https://github.com/giampaolo/psutil/issues/1179
-            # Normally, cmdline() should work. But it seems that in some cases
-            # (due to setproctitle) the entire command-line is stored into
-            # the first argument, and lots of empty arguments follow.
-            # Explained here: https://unix.stackexchange.com/a/432681
-            # We try to detect this case and split manually ONLY in this case.
-            suspect = len(cmdline) > 1 and all(not arg for arg in cmdline[1:])
-            if suspect and not sys.platform.startswith("win32"):
-                # This can be incorrect (due to lack of quoting), but we can't
-                # do better. And in this _particular_ use case, this is
-                # unlikely to be problematic.
-                cmdline = shlex.split(cmdline[0])
-
-            for arg in cmdline:
-                if arg.startswith("--redis-address="):
-                    redis_addresses.add(arg.split("=", 1)[1])
+            proc = psutil.Process(pid)
+            # HACK: Workaround for UNIX idiosyncrasy
+            # Normally, cmdline() is supposed to return the argument list.
+            # But it in some cases (such as when setproctitle is called),
+            # an arbitrary string resembling a command-line is stored in
+            # the first argument.
+            # Explanation: https://unix.stackexchange.com/a/432681
+            # More info: https://github.com/giampaolo/psutil/issues/1179
+            for arglist in proc.cmdline():
+                # Given we're merely seeking --redis-address, we just split
+                # every argument on spaces for now.
+                for arg in arglist.split(" "):
+                    # TODO(ekl): Find a robust solution for locating Redis.
+                    if arg.startswith("--redis-address="):
+                        addr = arg.split("=")[1]
+                        redis_addresses.add(addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
