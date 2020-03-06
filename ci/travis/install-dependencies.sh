@@ -49,7 +49,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   "${ROOT_DIR}/install-strace.sh" || true
   pip install scipy tensorflow==$tf_version \
-    cython==0.29.0 gym dm-tree \
+    cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
@@ -60,7 +60,7 @@ elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install scipy tensorflow==$tf_version \
-    cython==0.29.0 gym dm-tree \
+    cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
@@ -90,6 +90,9 @@ else
   echo "Unrecognized environment."
   exit 1
 fi
+
+# Install modules needed in all jobs.
+pip install dm-tree
 
 # Additional RLlib dependencies.
 if [[ "$RLLIB_TESTING" == "1" ]]; then
