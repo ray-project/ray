@@ -505,6 +505,7 @@ class StoreToReplayActors:
     def __call__(self, batch: SampleBatchType):
         actor = random.choice(self.replay_actors)
         actor.add_batch.remote(batch)
+        return batch
 
 
 def ParallelReplay(replay_actors):

@@ -1,3 +1,6 @@
+import collections
+
+import ray
 from ray.rllib.agents.dqn.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.optimizers import AsyncReplayOptimizer
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
@@ -104,14 +107,44 @@ def training_pipeline(workers, config):
         metrics.timers["learner_grad"] = learner_thread.grad_timer
         metrics.timers["learner_overall"] = learner_thread.overall_timer
 
+    class UpdateWorkerWeights:
+        def __init__(self, learner_thread, workers, max_weight_sync_delay):
+            self.learner_thread = learner_thread
+            self.workers = workers
+            self.steps_since_update = collections.defaultdict(int)
+            self.max_weight_sync_delay = max_weight_sync_delay
+            self.weights = None
+
+        def __call__(self, item):
+            actor, batch = item
+            self.steps_since_update[actor] += batch.count
+            if self.steps_since_update[actor] >= self.max_weight_sync_delay:
+                # Note that it's important to pull new weights once
+                # updated to avoid excessive correlation between actors.
+                if self.weights is None or self.learner_thread.weights_updated:
+                    self.learner_thread.weights_updated = False
+                    self.weights = ray.put(
+                        self.workers.local_worker().get_weights())
+                actor.set_weights.remote(self.weights)
+                self.steps_since_update[actor] = 0
+                # Update metrics.
+                metrics = LocalIterator.get_metrics()
+                metrics.counters["num_weight_syncs"] += 1
+
     # Start the learner thread.
     learner_thread = LearnerThread(workers.local_worker())
     learner_thread.start()
 
     # We execute the following steps concurrently:
-    # (1) Generate rollouts and store them in our replay buffer actors.
-    rollouts = ParallelRollouts(workers)
-    store_op = rollouts.for_each(StoreToReplayActors(replay_actors))
+    # (1) Generate rollouts and store them in our replay buffer actors. Update
+    # the weights of the worker that generated the batch.
+    rollouts = ParallelRollouts(workers, mode="async")
+    store_op = rollouts \
+        .for_each(StoreToReplayActors(replay_actors)) \
+        .zip_with_source_actor() \
+        .for_each(UpdateWorkerWeights(
+            learner_thread, workers, max_weight_sync_delay=
+            config["optimizer"]["max_weight_sync_delay"]))
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
