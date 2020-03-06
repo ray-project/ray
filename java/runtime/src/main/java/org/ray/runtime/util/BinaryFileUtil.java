@@ -9,6 +9,8 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.NotImplementedException;
+import org.apache.commons.lang3.SystemUtils;
 
 public class BinaryFileUtil {
   public static final String REDIS_SERVER_BINARY_NAME = "redis-server";
@@ -23,6 +25,33 @@ public class BinaryFileUtil {
 
   public static final String CORE_WORKER_JAVA_LIBRARY =
       System.mapLibraryName("core_worker_library_java");
+
+  /**
+   * Get the full name of the specific name. This is used to load different
+   * binaries and libraries on different platform.
+   */
+  private static String getNameWithPlatformSuffix(String namePrefix) {
+    if (namePrefix.contains(".")) {
+      String[] tuple = namePrefix.split("\\.");
+      Preconditions.checkState(tuple.length == 2);
+      return tuple[0] + getPlatformSuffix() + "." + tuple[1];
+    } else {
+      return namePrefix + getPlatformSuffix();
+    }
+  }
+
+  /**
+   * Get the platform signed string.
+   */
+  private static String getPlatformSuffix() {
+    if (SystemUtils.IS_OS_MAC_OSX) {
+      return "_os_mac_osx";
+    } else if (SystemUtils.IS_OS_LINUX) {
+      return "_os_linux";
+    } else {
+      throw new NotImplementedException("We have not supported on current platform.");
+    }
+  }
 
   /**
    * Extract a resource file to <code>destDir</code>.
@@ -51,12 +80,26 @@ public class BinaryFileUtil {
       }
 
       // File does not exist.
-      try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + fileName)) {
-        Preconditions.checkNotNull(is, "{} doesn't exist.", fileName);
-        Files.copy(is, Paths.get(file.getCanonicalPath()));
+      boolean platformRelatedFileExists = false;
+      try (InputStream is = BinaryFileUtil.class.getResourceAsStream(
+        "/" + getNameWithPlatformSuffix(fileName))) {
+        if (is != null) {
+          Files.copy(is, Paths.get(file.getCanonicalPath()));
+          platformRelatedFileExists = true;
+        }
       } catch (IOException e) {
         throw new RuntimeException("Couldn't get temp file from resource " + fileName, e);
       }
+
+      if (!platformRelatedFileExists) {
+        try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + fileName)) {
+          Preconditions.checkNotNull(is, "File doesn't exist.");
+          Files.copy(is, Paths.get(file.getCanonicalPath()));
+        } catch (IOException e) {
+          throw new RuntimeException("Couldn't get temp file from resource " + fileName, e);
+        }
+      }
+
       return file;
     } catch (IOException e) {
       throw new RuntimeException(e);

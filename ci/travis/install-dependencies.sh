@@ -21,7 +21,13 @@ unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
   echo "Platform is linux."
   platform="linux"
+elif [[ "$unamestr" == "linux" ]]; then
+  echo "Platform is linux."
+  platform="linux"
 elif [[ "$unamestr" == "Darwin" ]]; then
+  echo "Platform is macosx."
+  platform="macosx"
+elif [[ "$unamestr" == "darwin" ]]; then
   echo "Platform is macosx."
   platform="macosx"
 else
@@ -53,7 +59,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist scikit-learn numba
+    blist scikit-learn numba oss2 wheel
 elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
@@ -64,7 +70,7 @@ elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist scikit-learn numba
+    blist scikit-learn numba oss2 wheel
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
@@ -106,11 +112,11 @@ if [[ "$RAY_CI_STREAMING_PYTHON_AFFECTED" == "1" ]]; then
   pip install -q msgpack>=0.6.2
 fi
 
-if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
-  # Install the latest version of Node.js in order to build the dashboard.
-  source "$HOME/.nvm/nvm.sh"
-  nvm install node
-fi
+#if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
+#  # Install the latest version of Node.js in order to build the dashboard.
+#  source "$HOME/.nvm/nvm.sh"
+#  nvm install node
+#fi
 
 pip install psutil setproctitle \
         --target="$ROOT_DIR/../../python/ray/thirdparty_files"

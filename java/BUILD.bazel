@@ -180,7 +180,7 @@ genrule(
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
         done
-        # Copy native dependecies.
+        # Copy native dependencies.
         NATIVE_DEPS_DIR="$$WORK_DIR/java/runtime/native_dependencies/"
         rm -rf "$$NATIVE_DEPS_DIR"
         mkdir -p "$$NATIVE_DEPS_DIR"
@@ -193,6 +193,8 @@ genrule(
     local = 1,
     tags = ["no-cache"],
 )
+
+
 
 genrule(
     name = "copy_pom_file",

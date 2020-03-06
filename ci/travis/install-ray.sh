@@ -7,6 +7,16 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 echo "PYTHON is $PYTHON"
 
+
+unamestr="$(uname)"
+if [[ "$unamestr" == "Linux" ]]; then
+  echo "Platform is linux."
+  source /home/runner/.bazel/bin/bazel-complete.bash
+elif [[ "$unamestr" == "linux" ]]; then
+  echo "Platform is linux."
+  source /home/runner/.bazel/bin/bazel-complete.bash
+fi
+
 # If we are in Travis, most of the compilation result will be cached.
 # This means we are I/O bounded. By default, Bazel set the number of concurrent
 # jobs to the the number cores on the machine, which are not efficient for
@@ -21,10 +31,10 @@ if [[ "$PYTHON" == "3.6" ]]; then
 
   pushd "$ROOT_DIR/../../python"
     pushd ray/dashboard/client
-      source $HOME/.nvm/nvm.sh
-      nvm use node
-      npm ci
-      npm run build
+#      source $HOME/.nvm/nvm.sh
+#      nvm use node
+#      npm ci
+#      npm run build
     popd
     pip install -e . --verbose
   popd
@@ -39,4 +49,3 @@ else
   echo "Unrecognized Python version."
   exit 1
 fi
-

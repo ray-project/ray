@@ -19,7 +19,8 @@ def gen_java_deps():
             "org.slf4j:slf4j-log4j12:1.7.25",
             "org.testng:testng:6.9.10",
             "redis.clients:jedis:2.8.0",
-            "net.java.dev.jna:jna:5.5.0"
+            "net.java.dev.jna:jna:5.5.0",
+            "org.apache.commons:commons-lang3:3.9"
         ],
         repositories = [
             "https://repo1.maven.org/maven2/",

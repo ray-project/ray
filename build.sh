@@ -5,6 +5,8 @@ set -x
 # Cause the script to exit if a single command fails.
 set -e
 
+pip install wheel
+
 # As the supported Python versions change, edit this array:
 SUPPORTED_PYTHONS=( "3.5" "3.6" "3.7" )
 
@@ -106,7 +108,7 @@ echo "Using Python executable $PYTHON_EXECUTABLE."
 
 # Find the bazel executable. The script ci/travis/install-bazel.sh doesn't
 # always put the bazel executable on the PATH.
-BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
+BAZEL_EXECUTABLE="$HOME/bin/bazel"
 echo "Using Bazel executable $BAZEL_EXECUTABLE."
 
 # Now we build everything.

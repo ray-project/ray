@@ -3,7 +3,7 @@ name: CI
 env:
   DEBIAN_FRONTEND: noninteractive
 
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
   iwyu:
@@ -89,3 +89,103 @@ jobs:
         bazel --batch build \
           --keep_going \
           "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
+
+  build_jar_on_os_mac_osx:
+    runs-on: macOS-10.14
+#    on:
+#      # Should be changed to on_pull before checkin.
+#      pull_request:
+#        branches:
+#          - master
+    env:
+      PYTHON: 3.6
+      RAY_BUILD_JAVA: "YES"
+      OSS_ACCESS_KEY: ${{ secrets.OSS_ACCESS_KEY }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+    steps:
+      - name: use checkout@v2 action
+        uses: actions/checkout@v2
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - name: Set up Python 3.6
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.6
+      - name: Upload native files
+        run: bash ./java/build_jars/build_and_upload_native_dependencies_with_platform.sh
+
+
+  build_jar_on_os_linux:
+    runs-on: ubuntu-latest
+    #    on:
+    #      # Should be changed to on_pull before checkin.
+    #      pull_request:
+    #        branches:
+    #          - master
+    env:
+      PYTHON: 3.6
+      RAY_BUILD_JAVA: "YES"
+      OSS_ACCESS_KEY: ${{ secrets.OSS_ACCESS_KEY }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+    steps:
+      - name: use checkout@v2 action
+        uses: actions/checkout@v2
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - name: Set up Python 3.6
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.6
+      - name: Upload native files
+        run: bash ./java/build_jars/build_and_upload_native_dependencies_with_platform.sh
+
+  build_all_in_one_jar:
+    runs-on: macOS-10.14
+    #    on:
+    #      # Should be changed to on_pull before checkin.
+    #      pull_request:
+    #        branches:
+    #          - master
+    needs: [build_jar_on_os_mac_osx, build_jar_on_os_linux]
+    env:
+      PYTHON: 3.6
+      RAY_BUILD_JAVA: "YES"
+      OSS_ACCESS_KEY: ${{ secrets.OSS_ACCESS_KEY }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+    steps:
+      - name: use checkout@v2 action
+        uses: actions/checkout@v2
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - name: Set up Python 3.6
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.6
+      - name: Build and upload jars.
+        run: bash ./java/build_jars/build_all_platform_dependencies_into_jar.sh
+#
+#  test_all_in_one_jar_on_os_mac_osx:
+#    runs-on: macOS-10.14
+#    on:
+#      # Should be changed to on_pull before checkin.
+#      pull_request:
+#        branches:
+#          - master
+#    needs: build_all_in_one_jar
+#    steps:
+#
+#  test_all_in_one_jar_on_os_linux:
+#    runs-on: ubuntu-16.04
+#    on:
+#      # Should be changed to on_pull before checkin.
+#      pull_request:
+#        branches:
+#          - master
+#    needs: build_all_in_one_jar
+#    steps:
