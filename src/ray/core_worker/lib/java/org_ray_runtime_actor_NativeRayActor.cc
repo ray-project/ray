@@ -50,8 +50,9 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSer
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   std::string output;
-  ray::Status status =
-      GetCoreWorker(nativeCoreWorkerPointer).SerializeActorHandle(actor_id, &output);
+  ObjectID actor_handle_id;
+  ray::Status status = GetCoreWorker(nativeCoreWorkerPointer)
+                           .SerializeActorHandle(actor_id, &output, &actor_handle_id);
   jbyteArray bytes = env->NewByteArray(output.size());
   env->SetByteArrayRegion(bytes, 0, output.size(),
                           reinterpret_cast<const jbyte *>(output.c_str()));
@@ -64,7 +65,8 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDes
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
   auto actor_id =
-      GetCoreWorker(nativeCoreWorkerPointer).DeserializeAndRegisterActorHandle(binary);
+      GetCoreWorker(nativeCoreWorkerPointer)
+          .DeserializeAndRegisterActorHandle(binary, /*outer_object_id=*/ObjectID::Nil());
 
   return IdToJavaByteArray<ray::ActorID>(env, actor_id);
 }
