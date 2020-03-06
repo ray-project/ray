@@ -287,10 +287,7 @@ Getting Involved
    :maxdepth: -1
    :caption: Ray Dashboard
 
-   dashboard/ray-dashboard.rst
-   dashboard/dashboard-getting-started.rst
-   dashboard/dashboard-usage.rst
-   dashboard/dashboard-concepts.rst
+   ray-dashboard.rst
 
 .. toctree::
    :maxdepth: -1
