@@ -10,8 +10,11 @@ import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.python.stream.PythonDataStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class JobGraphBuilder {
+  private static final Logger LOG = LoggerFactory.getLogger(JobGraphBuilder.class);
 
   private JobGraph jobGraph;
 
@@ -41,11 +44,15 @@ public class JobGraphBuilder {
   }
 
   private void processStream(Stream stream) {
+    while (stream.isReferenceStream()) {
+      LOG.info("Skip reference stream {} of id {}", stream, stream.getId());
+      stream = stream.getReferencedStream();
+    }
     int vertexId = stream.getId();
     int parallelism = stream.getParallelism();
 
     StreamOperator streamOperator = stream.getOperator();
-    JobVertex jobVertex = null;
+    JobVertex jobVertex;
 
     if (stream instanceof StreamSink) {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.SINK, streamOperator);

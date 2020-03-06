@@ -1,5 +1,6 @@
 package org.ray.streaming.api.stream;
 
+import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.StreamingContext;
@@ -100,6 +101,15 @@ public abstract class Stream<T> implements Serializable {
     } else {
       this.partition = partition;
     }
+  }
+
+  public boolean isReferenceStream() {
+    return referencedStream != null;
+  }
+
+  public Stream getReferencedStream() {
+    Preconditions.checkArgument(isReferenceStream());
+    return referencedStream;
   }
 
   public abstract Language getLanguage();
