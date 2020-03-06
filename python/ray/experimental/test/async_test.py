@@ -10,9 +10,6 @@ from ray.experimental import async_api
 
 @pytest.fixture
 def init():
-    import threading
-    print("IN INIT!!!!!!: ", threading.get_ident())
-    print(threading.enumerate())
     ray.init(num_cpus=4)
     async_api.init()
     asyncio.get_event_loop().set_debug(False)

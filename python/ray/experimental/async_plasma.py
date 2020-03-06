@@ -2,7 +2,6 @@ import asyncio
 
 import ray
 from ray.services import logger
-import threading
 from collections import defaultdict
 
 
@@ -21,7 +20,6 @@ class PlasmaEventHandler:
         self._waiting_dict = defaultdict(list)
 
     def _complete_future(self, ray_object_id):
-        print("IN comp future: ", threading.get_ident(), threading.enumerate())
         # TODO(ilr): Consider race condition between popping from the
         # waiting_dict and as_future appending to the waiting_dict's list.
         logger.debug(
@@ -41,8 +39,6 @@ class PlasmaEventHandler:
 
     def process_notifications(self, messages):
         """Process notifications."""
-        print("IN process notifications: ", threading.get_ident(),
-              threading.enumerate())
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id:
                 # This must be asynchronous to allow objects to be locally
@@ -62,7 +58,6 @@ class PlasmaEventHandler:
             self._complete_future(object_id)
 
     def as_future(self, object_id, check_ready=True):
-        print("IN as future: ", threading.get_ident(), threading.enumerate())
         """Turn an object_id into a Future object.
 
         Args:
