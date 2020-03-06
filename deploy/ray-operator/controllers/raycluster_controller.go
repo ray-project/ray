@@ -45,8 +45,8 @@ type RayClusterReconciler struct {
 // Reconcile reads that state of the cluster for a RayCluster object and makes changes based on it
 // and what is in the RayCluster.Spec
 // Automatically generate RBAC rules to allow the Controller to read and write workloads
-// +kubebuilder:rbac:groups=ray.io,resources=RayClusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ray.io,resources=RayClusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ray.io,resources=rayclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ray.io,resources=rayclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods/status,verbs=get;list;watch;create;update;patch;delete

@@ -272,7 +272,7 @@ def get_initial_state(config):
     }
 
 
-# TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
+# TODO(sven): Move this to generic Trainer. Every Algo should do this.
 def update_worker_exploration(trainer):
     """Sets epsilon exploration values in all policies to updated values.
 
