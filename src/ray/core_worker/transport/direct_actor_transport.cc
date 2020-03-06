@@ -135,7 +135,8 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
     rpc::KillActorRequest request;
     request.set_intended_actor_id(actor_id.Binary());
     request.set_force_kill(it->second);
-    RAY_CHECK_OK(client->KillActor(request, nullptr));
+    // It's okay if this fails because this means the worker is already dead.
+    RAY_UNUSED(client->KillActor(request, nullptr));
     pending_force_kills_.erase(it);
   }
 
