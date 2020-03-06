@@ -16,19 +16,21 @@ class LocalModeObjectStore : public ObjectStore {
 
   std::mutex _dataMutex;
 
-  WaitResultInternal waitInternal(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms);
+  WaitResultInternal waitInternal(const std::vector<UniqueId> &objects, int num_objects,
+                                  int64_t timeout_ms);
 
  public:
   void putRaw(const UniqueId &objectId, std::shared_ptr<msgpack::sbuffer> data);
 
   void del(const UniqueId &objectId);
 
-  std::shared_ptr< msgpack::sbuffer> getRaw(const UniqueId &objectId, int timeoutMs);
+  std::shared_ptr<msgpack::sbuffer> getRaw(const UniqueId &objectId, int timeoutMs);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> getRaw(const std::vector<UniqueId> &objects,
-                                              int timeoutMs);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> getRaw(
+      const std::vector<UniqueId> &objects, int timeoutMs);
 
-  WaitResultInternal wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms);
+  WaitResultInternal wait(const std::vector<UniqueId> &objects, int num_objects,
+                          int64_t timeout_ms);
 };
 
 }  // namespace ray

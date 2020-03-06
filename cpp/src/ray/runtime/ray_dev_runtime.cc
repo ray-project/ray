@@ -19,7 +19,7 @@ RayDevRuntime::RayDevRuntime(std::shared_ptr<RayConfig> config) {
 }
 
 std::unique_ptr<UniqueId> RayDevRuntime::create(remote_function_ptr_holder &fptr,
-                                                 std::shared_ptr<msgpack::sbuffer> args) {
+                                                std::shared_ptr<msgpack::sbuffer> args) {
   return _taskSubmitter.get()->createActor(fptr, args);
 }
 

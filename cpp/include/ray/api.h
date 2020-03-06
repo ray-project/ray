@@ -4,9 +4,9 @@
 #include <iostream>
 #include <memory>
 
-#include <msgpack.hpp>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/task_type.h>
+#include <msgpack.hpp>
 
 /**
  * ray api definition
@@ -45,7 +45,8 @@ class Ray {
   static std::vector<std::shared_ptr<T>> get(const std::vector<RayObject<T>> &objects);
 
   template <typename T>
-  static WaitResult<T> wait(const std::vector<RayObject<T>> &objects, int num_objects, int64_t timeout_ms);
+  static WaitResult<T> wait(const std::vector<RayObject<T>> &objects, int num_objects,
+                            int64_t timeout_ms);
 
 #include "api/impl/call_funcs.generated.h"
 
@@ -68,18 +69,20 @@ namespace ray {
 class Arguments;
 
 template <typename T>
-inline static std::vector<UniqueId> rayObject2UniqueId(const std::vector<RayObject<T>> &rayObjects) {
+inline static std::vector<UniqueId> rayObject2UniqueId(
+    const std::vector<RayObject<T>> &rayObjects) {
   std::vector<UniqueId> unqueIds;
-  for (auto it = rayObjects.begin();it!=rayObjects.end();it++) {
+  for (auto it = rayObjects.begin(); it != rayObjects.end(); it++) {
     unqueIds.push_back(it->id());
   }
   return unqueIds;
 }
 
 template <typename T>
-inline static std::vector<RayObject<T>> uniqueId2RayObject(const std::vector<UniqueId> &uniqueIds) {
+inline static std::vector<RayObject<T>> uniqueId2RayObject(
+    const std::vector<UniqueId> &uniqueIds) {
   std::vector<RayObject<T>> objects;
-  for (auto it = uniqueIds.begin();it!=uniqueIds.end();it++) {
+  for (auto it = uniqueIds.begin(); it != uniqueIds.end(); it++) {
     objects.push_back(RayObject<T>(*it));
   }
   return objects;
@@ -87,7 +90,8 @@ inline static std::vector<RayObject<T>> uniqueId2RayObject(const std::vector<Uni
 
 template <typename T>
 static WaitResult<T> waitResultFromInernal(const WaitResultInternal &internal) {
-  return WaitResult<T>(std::move(uniqueId2RayObject<T>(internal.readys)), std::move(uniqueId2RayObject<T>(internal.remains)));
+  return WaitResult<T>(std::move(uniqueId2RayObject<T>(internal.readys)),
+                       std::move(uniqueId2RayObject<T>(internal.remains)));
 }
 
 template <typename T>
@@ -112,11 +116,12 @@ inline std::shared_ptr<T> Ray::get(const RayObject<T> &object) {
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::get(const std::vector<RayObject<T>> &objects) {
+inline std::vector<std::shared_ptr<T>> Ray::get(
+    const std::vector<RayObject<T>> &objects) {
   auto uniqueVector = rayObject2UniqueId<T>(objects);
   auto result = _impl->get(uniqueVector);
   std::vector<std::shared_ptr<T>> rt;
-  for (auto it = result.begin(); it!=result.end();it++) {
+  for (auto it = result.begin(); it != result.end(); it++) {
     msgpack::unpacker unpacker;
     unpacker.reserve_buffer((*it)->size());
     memcpy(unpacker.buffer(), (*it)->data(), (*it)->size());
@@ -129,7 +134,8 @@ inline std::vector<std::shared_ptr<T>> Ray::get(const std::vector<RayObject<T>> 
 }
 
 template <typename T>
-inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num_objects, int64_t timeout_ms) {
+inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num_objects,
+                               int64_t timeout_ms) {
   auto uniqueVector = rayObject2UniqueId<T>(objects);
   auto result = _impl->wait(uniqueVector, num_objects, timeout_ms);
   return waitResultFromInernal<T>(result);

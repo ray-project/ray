@@ -1,18 +1,17 @@
 
 #pragma once
 
-#include <msgpack.hpp>
-#include <memory>
 #include <ray/core.h>
+#include <memory>
+#include <msgpack.hpp>
 
 namespace ray {
 
 class UniqueId {
-
  public:
-  bool operator==(const UniqueId& rhs) const;
-  const uint8_t* data() const;
-  uint8_t* mutable_data();
+  bool operator==(const UniqueId &rhs) const;
+  const uint8_t *data() const;
+  uint8_t *mutable_data();
   std::string hex() const;
   void random();
   std::unique_ptr<UniqueId> taskComputePutId(uint64_t l) const;

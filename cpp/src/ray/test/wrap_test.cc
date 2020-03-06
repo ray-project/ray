@@ -1,7 +1,7 @@
 
 #include <gtest/gtest.h>
-#include <ray/api/impl/arguments.h>
 #include <ray/api.h>
+#include <ray/api/impl/arguments.h>
 #include <iostream>
 
 using namespace ray;
@@ -12,7 +12,7 @@ TEST(ray_marshall, type_bool) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -29,7 +29,7 @@ TEST(ray_marshall, type_bool) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -39,7 +39,7 @@ TEST(ray_marshall, type_bool) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -57,7 +57,7 @@ TEST(ray_marshall, type_int8) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -74,7 +74,7 @@ TEST(ray_marshall, type_int8) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -84,7 +84,7 @@ TEST(ray_marshall, type_int8) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -102,7 +102,7 @@ TEST(ray_marshall, type_uint8) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -119,7 +119,7 @@ TEST(ray_marshall, type_uint8) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -129,7 +129,7 @@ TEST(ray_marshall, type_uint8) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -150,7 +150,7 @@ TEST(ray_marshall, type_int16) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -167,7 +167,7 @@ TEST(ray_marshall, type_int16) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -177,7 +177,7 @@ TEST(ray_marshall, type_int16) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -195,7 +195,7 @@ TEST(ray_marshall, type_uint16) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -212,7 +212,7 @@ TEST(ray_marshall, type_uint16) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -222,7 +222,7 @@ TEST(ray_marshall, type_uint16) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -240,7 +240,7 @@ TEST(ray_marshall, type_int32) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -257,7 +257,7 @@ TEST(ray_marshall, type_int32) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -267,7 +267,7 @@ TEST(ray_marshall, type_int32) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -285,7 +285,7 @@ TEST(ray_marshall, type_uint32) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -302,7 +302,7 @@ TEST(ray_marshall, type_uint32) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -312,7 +312,7 @@ TEST(ray_marshall, type_uint32) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -330,7 +330,7 @@ TEST(ray_marshall, type_int64) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -347,7 +347,7 @@ TEST(ray_marshall, type_int64) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -357,7 +357,7 @@ TEST(ray_marshall, type_int64) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -375,7 +375,7 @@ TEST(ray_marshall, type_uint64) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -392,7 +392,7 @@ TEST(ray_marshall, type_uint64) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -402,7 +402,7 @@ TEST(ray_marshall, type_uint64) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -420,7 +420,7 @@ TEST(ray_marshall, type_string) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -437,7 +437,7 @@ TEST(ray_marshall, type_string) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -447,7 +447,7 @@ TEST(ray_marshall, type_string) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -465,7 +465,7 @@ TEST(ray_marshall, type_hybrid) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -482,7 +482,7 @@ TEST(ray_marshall, type_hybrid) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -492,7 +492,7 @@ TEST(ray_marshall, type_hybrid) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
@@ -517,7 +517,7 @@ TEST(ray_marshall, type_ray_object) {
 
   // 0 args
   // marshall
-    msgpack::sbuffer buffer0;
+  msgpack::sbuffer buffer0;
   msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
   Arguments::wrap(pk0);
   // unmarshall
@@ -534,7 +534,7 @@ TEST(ray_marshall, type_ray_object) {
   upk1.reserve_buffer(buffer1.size());
   memcpy(upk1.buffer(), buffer1.data(), buffer1.size());
   upk1.buffer_consumed(buffer1.size());
-  
+
   Arguments::unwrap(upk1, out_arg1);
 
   EXPECT_EQ(in_arg1, out_arg1);
@@ -544,7 +544,7 @@ TEST(ray_marshall, type_ray_object) {
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
   Arguments::wrap(pk2, in_arg1, in_arg2);
- 
+
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());

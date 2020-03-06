@@ -1,7 +1,7 @@
 #pragma once
+#include <ray/api/impl/arguments.h>
 #include <ray/api/ray_object.h>
 #include <ray/api/task_type.h>
-#include <ray/api/impl/arguments.h>
 
 namespace ray {
 
@@ -10,7 +10,7 @@ namespace ray {
 // 0 args
 template <typename RT>
 std::shared_ptr<msgpack::sbuffer> exec_function(uintptr_t base_addr, int32_t func_offset,
-                                        std::shared_ptr<msgpack::sbuffer> args) {
+                                                std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   typedef RT (*FUNC)();
   FUNC func = (FUNC)(base_addr + func_offset);
@@ -25,14 +25,14 @@ std::shared_ptr<msgpack::sbuffer> exec_function(uintptr_t base_addr, int32_t fun
 // 1 args
 template <typename RT, typename T1>
 std::shared_ptr<msgpack::sbuffer> exec_function(uintptr_t base_addr, int32_t func_offset,
-                                        std::shared_ptr<msgpack::sbuffer> args) {
+                                                std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   T1 t1;
   msgpack::unpacker unpacker;
   unpacker.reserve_buffer(args->size());
   memcpy(unpacker.buffer(), args->data(), args->size());
   unpacker.buffer_consumed(args->size());
-  
+
   bool rayObjectFlag1;
   Arguments::unwrap(unpacker, rayObjectFlag1);
   if (rayObjectFlag1) {
@@ -55,7 +55,8 @@ std::shared_ptr<msgpack::sbuffer> exec_function(uintptr_t base_addr, int32_t fun
 // 2 args
 template <typename RT, typename T1, typename T2>
 std::shared_ptr<msgpack::sbuffer> exec_function(uintptr_t base_addr, int32_t func_offset,
-                                        std::shared_ptr<msgpack::sbuffer> args, TaskType type) {
+                                                std::shared_ptr<msgpack::sbuffer> args,
+                                                TaskType type) {
   RT rt;
   T1 t1;
   T2 t2;
@@ -94,8 +95,8 @@ std::shared_ptr<msgpack::sbuffer> exec_function(uintptr_t base_addr, int32_t fun
 
 // 0 args
 template <typename RT>
-std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(uintptr_t base_addr, int32_t func_offset,
-                                        std::shared_ptr<msgpack::sbuffer> args) {
+std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(
+    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   typedef RT (*FUNC)();
   FUNC func = (FUNC)(base_addr + func_offset);
@@ -109,15 +110,15 @@ std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(uintptr_t base_addr
 
 // 1 args
 template <typename RT, typename T1>
-std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(uintptr_t base_addr, int32_t func_offset,
-                                        std::shared_ptr<msgpack::sbuffer> args) {
+std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(
+    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   T1 t1;
   msgpack::unpacker unpacker;
   unpacker.reserve_buffer(args->size());
   memcpy(unpacker.buffer(), args->data(), args->size());
   unpacker.buffer_consumed(args->size());
-  
+
   bool rayObjectFlag1;
   Arguments::unwrap(unpacker, rayObjectFlag1);
   if (rayObjectFlag1) {
@@ -139,8 +140,8 @@ std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(uintptr_t base_addr
 
 // 2 args
 template <typename RT, typename T1, typename T2>
-std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(uintptr_t base_addr, int32_t func_offset,
-                                        std::shared_ptr<msgpack::sbuffer> args) {
+std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(
+    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   T1 t1;
   T2 t2;
@@ -179,9 +180,9 @@ std::shared_ptr<msgpack::sbuffer> create_actor_exec_function(uintptr_t base_addr
 
 // 0 args
 template <typename RT, typename O>
-std::shared_ptr<msgpack::sbuffer> actor_exec_function(uintptr_t base_addr, int32_t func_offset,
-                                              std::shared_ptr<msgpack::sbuffer> args,
-                                              std::shared_ptr<msgpack::sbuffer> object) {
+std::shared_ptr<msgpack::sbuffer> actor_exec_function(
+    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+    std::shared_ptr<msgpack::sbuffer> object) {
   msgpack::unpacker actor_unpacker;
   actor_unpacker.reserve_buffer(object->size());
   memcpy(actor_unpacker.buffer(), object->data(), object->size());
@@ -206,9 +207,9 @@ std::shared_ptr<msgpack::sbuffer> actor_exec_function(uintptr_t base_addr, int32
 
 // 1 args
 template <typename RT, typename O, typename T1>
-std::shared_ptr<msgpack::sbuffer> actor_exec_function(uintptr_t base_addr, int32_t func_offset,
-                                              std::shared_ptr<msgpack::sbuffer> args,
-                                              std::shared_ptr<msgpack::sbuffer> object) {
+std::shared_ptr<msgpack::sbuffer> actor_exec_function(
+    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+    std::shared_ptr<msgpack::sbuffer> object) {
   msgpack::unpacker actor_unpacker;
   actor_unpacker.reserve_buffer(object->size());
   memcpy(actor_unpacker.buffer(), object->data(), object->size());
@@ -223,7 +224,7 @@ std::shared_ptr<msgpack::sbuffer> actor_exec_function(uintptr_t base_addr, int32
   unpacker.reserve_buffer(args->size());
   memcpy(unpacker.buffer(), args->data(), args->size());
   unpacker.buffer_consumed(args->size());
-  
+
   bool rayObjectFlag1;
   Arguments::unwrap(unpacker, rayObjectFlag1);
   if (rayObjectFlag1) {
@@ -248,9 +249,9 @@ std::shared_ptr<msgpack::sbuffer> actor_exec_function(uintptr_t base_addr, int32
 
 // 2 args
 template <typename RT, typename O, typename T1, typename T2>
-std::shared_ptr<msgpack::sbuffer> actor_exec_function(uintptr_t base_addr, int32_t func_offset,
-                                              std::shared_ptr<msgpack::sbuffer> args,
-                                              std::shared_ptr<msgpack::sbuffer> object) {
+std::shared_ptr<msgpack::sbuffer> actor_exec_function(
+    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+    std::shared_ptr<msgpack::sbuffer> object) {
   msgpack::unpacker actor_unpacker;
   actor_unpacker.reserve_buffer(object->size());
   memcpy(actor_unpacker.buffer(), object->data(), object->size());
@@ -262,7 +263,7 @@ std::shared_ptr<msgpack::sbuffer> actor_exec_function(uintptr_t base_addr, int32
   RT rt;
   T1 t1;
   T2 t2;
-    msgpack::unpacker unpacker;
+  msgpack::unpacker unpacker;
   unpacker.reserve_buffer(args->size());
   memcpy(unpacker.buffer(), args->data(), args->size());
   unpacker.buffer_consumed(args->size());

@@ -1,12 +1,12 @@
 #include "example.h"
-#include <ray/api.h>
-#include <iostream>
-#include <stdio.h>
 #include <execinfo.h>
+#include <ray/api.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 using namespace ray;

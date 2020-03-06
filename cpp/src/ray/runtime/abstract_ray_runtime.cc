@@ -42,8 +42,8 @@ AbstractRayRuntime &AbstractRayRuntime::getInstance() {
   return *_ins;
 }
 
-void AbstractRayRuntime::put(std::shared_ptr<msgpack::sbuffer> data, const UniqueId &objectId,
-                     const UniqueId &taskId) {
+void AbstractRayRuntime::put(std::shared_ptr<msgpack::sbuffer> data,
+                             const UniqueId &objectId, const UniqueId &taskId) {
   _objectStore->put(objectId, data);
 }
 
@@ -58,16 +58,18 @@ std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::get(const UniqueId &object
   return _objectStore->get(objectId, -1);
 }
 
-std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::get(const std::vector<UniqueId> &objects) {
+std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::get(
+    const std::vector<UniqueId> &objects) {
   return _objectStore->get(objects, -1);
 }
 
-WaitResultInternal AbstractRayRuntime::wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) {
+WaitResultInternal AbstractRayRuntime::wait(const std::vector<UniqueId> &objects,
+                                            int num_objects, int64_t timeout_ms) {
   return _objectStore->wait(objects, num_objects, timeout_ms);
 }
 
-std::unique_ptr<UniqueId> AbstractRayRuntime::call(remote_function_ptr_holder &fptr,
-                                           std::shared_ptr<msgpack::sbuffer> args) {
+std::unique_ptr<UniqueId> AbstractRayRuntime::call(
+    remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
   UniqueId uid;
   uid.random();
@@ -79,14 +81,14 @@ std::unique_ptr<UniqueId> AbstractRayRuntime::call(remote_function_ptr_holder &f
   return _taskSubmitter->submitTask(invocationSpec);
 }
 
-std::unique_ptr<UniqueId> AbstractRayRuntime::create(remote_function_ptr_holder &fptr,
-                                            std::shared_ptr<msgpack::sbuffer> args) {
+std::unique_ptr<UniqueId> AbstractRayRuntime::create(
+    remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
   return _ins->create(fptr, args);
 }
 
-std::unique_ptr<UniqueId> AbstractRayRuntime::call(const remote_function_ptr_holder &fptr,
-                                           const UniqueId &actor,
-                                           std::shared_ptr<msgpack::sbuffer> args) {
+std::unique_ptr<UniqueId> AbstractRayRuntime::call(
+    const remote_function_ptr_holder &fptr, const UniqueId &actor,
+    std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
   UniqueId uid;
   uid.random();
@@ -98,7 +100,9 @@ std::unique_ptr<UniqueId> AbstractRayRuntime::call(const remote_function_ptr_hol
   return _taskSubmitter->submitActorTask(invocationSpec);
 }
 
-char *AbstractRayRuntime::get_actor_ptr(const UniqueId &id) { return _ins->get_actor_ptr(id); }
+char *AbstractRayRuntime::get_actor_ptr(const UniqueId &id) {
+  return _ins->get_actor_ptr(id);
+}
 
 TaskSpec *AbstractRayRuntime::getCurrentTask() { return _worker->getCurrentTask(); }
 
@@ -106,6 +110,8 @@ void AbstractRayRuntime::setCurrentTask(TaskSpec &task) { _worker->setCurrentTas
 
 int AbstractRayRuntime::getNextPutIndex() { return _worker->getNextPutIndex(); }
 
-const UniqueId &AbstractRayRuntime::getCurrentTaskId() { return _worker->getCurrentTaskId(); }
+const UniqueId &AbstractRayRuntime::getCurrentTaskId() {
+  return _worker->getCurrentTaskId();
+}
 
 }  // namespace ray

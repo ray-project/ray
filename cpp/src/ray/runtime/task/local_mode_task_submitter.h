@@ -5,11 +5,11 @@
 #include <mutex>
 #include <queue>
 
+#include <ray/api/task_type.h>
 #include "invocation_spec.h"
 #include "task_executer.h"
 #include "task_spec.h"
 #include "task_submitter.h"
-#include <ray/api/task_type.h>
 
 namespace ray {
 

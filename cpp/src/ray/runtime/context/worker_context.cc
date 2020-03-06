@@ -14,7 +14,7 @@ Worker::Worker(std::shared_ptr<RayConfig> config) {
   UniqueId uid;
   uid.random();                  // TODO: make it deterministic
   _currentTask->driverId = uid;  // TODO: parse for config
-  uid.random();  // TODO: make it deterministic
+  uid.random();                  // TODO: make it deterministic
   _currentTask->taskId = uid;
   _config = *config;
 }

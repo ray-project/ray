@@ -6,9 +6,9 @@ namespace ray {
 
 UniqueId nilUniqueId;
 
-const uint8_t* UniqueId::data() const { return _id; }
+const uint8_t *UniqueId::data() const { return _id; }
 
-uint8_t* UniqueId::mutable_data() { return _id; }
+uint8_t *UniqueId::mutable_data() { return _id; }
 
 std::string UniqueId::hex() const {
   constexpr char hex[] = "0123456789abcdef";
@@ -21,7 +21,7 @@ std::string UniqueId::hex() const {
   return result;
 }
 
-bool UniqueId::operator==(const UniqueId& rhs) const {
+bool UniqueId::operator==(const UniqueId &rhs) const {
   return std::memcmp(data(), rhs.data(), plasma::kUniqueIDSize) == 0;
 }
 

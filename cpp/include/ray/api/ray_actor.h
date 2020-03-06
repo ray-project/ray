@@ -11,7 +11,7 @@ class RayActor : public RayObject<O> {
   RayActor(UniqueId id) : RayObject<O>(id) {}
   MSGPACK_DEFINE(MSGPACK_BASE(RayObject<O>));
 
-  #include <ray/api/impl/actor_call.generated.h>
+#include <ray/api/impl/actor_call.generated.h>
 };
 
 #include <ray/api/impl/actor_call_impl.generated.h>

@@ -22,4 +22,5 @@ template <typename T, typename T1, typename T2>
 static RayActor<T> createActor(T *(*func)(T1, T2), T1 arg1, RayObject<T2> &arg2);
 
 template <typename T, typename T1, typename T2>
-static RayActor<T> createActor(T *(*func)(T1, T2), RayObject<T1> &arg1, RayObject<T2> &arg2);
+static RayActor<T> createActor(T *(*func)(T1, T2), RayObject<T1> &arg1,
+                               RayObject<T2> &arg2);
