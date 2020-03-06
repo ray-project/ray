@@ -72,7 +72,9 @@ class Training(TrainingOperator):
             self.optimizer.step()
 
         # print("Running warmup...")
-        timeit.timeit(benchmark, number=args.num_warmup_batches)
+        if self.global_step == 0:
+            timeit.timeit(benchmark, number=args.num_warmup_batches)
+            self.global_step += 1
         # print("Running benchmark...")
         time = timeit.timeit(benchmark, number=args.num_batches_per_iter)
         img_sec = args.batch_size * args.num_batches_per_iter / time
@@ -82,6 +84,7 @@ class Training(TrainingOperator):
 if __name__ == "__main__":
     ray.init(address=None if args.local else "auto")
     num_workers = 2 if args.local else int(ray.cluster_resources().get(device))
+    from ray.util.sgd.torch.examples.train_example import LinearDataset
 
     print("Model: %s" % args.model)
     print("Batch size: %d" % args.batch_size)
@@ -91,6 +94,7 @@ if __name__ == "__main__":
         model_creator=lambda cfg: getattr(models, args.model)(),
         optimizer_creator=lambda model, cfg: optim.SGD(
             model.parameters(), lr=0.01 * cfg.get("lr_scaler")),
+        data_creator=lambda cfg: LinearDataset(4, 2),
         initialization_hook=init_hook,
         config=dict(
             lr_scaler=num_workers),

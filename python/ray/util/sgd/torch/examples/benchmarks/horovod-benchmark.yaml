@@ -62,7 +62,7 @@ setup_commands:
     - pip install ray[rllib]  # enable autoscaling
     - git clone https://github.com/horovod/horovod || true
     - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
-    - tmux new -d -s my-session "pip install horovod"
+    - tmux new -d -s my-session "HOROVOD_GPU_ALLREDUCE=NCCL HOROVOD_GPU_BROADCAST=NCCL pip install horovod"
 
 
 file_mounts: {}
