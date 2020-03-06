@@ -329,11 +329,12 @@ def test_incorrect_method_calls(ray_start_regular):
 
 
 def test_worker_raising_exception(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_calls=2)
     def f():
         # This is the only reasonable variable we can set here that makes the
         # execute_task function fail after the task got executed.
-        ray.experimental.signal.reset = None
+        worker = ray.worker.global_worker
+        worker.function_actor_manager.increase_task_counter = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.

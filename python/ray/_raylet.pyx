@@ -80,7 +80,6 @@ from ray.includes.ray_config cimport RayConfig
 import ray
 from ray.async_compat import (sync_to_async,
                               AsyncGetResponse, AsyncMonitorState)
-import ray.experimental.signal as ray_signal
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -475,17 +474,6 @@ cdef execute_task(
                 ray_constants.TASK_PUSH_ERROR,
                 str(failure_object),
                 job_id=worker.current_job_id)
-
-            # Send signal with the error.
-            ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
-
-    # Don't need to reset `current_job_id` if the worker is an
-    # actor. Because the following tasks should all have the
-    # same driver id.
-    if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        # Reset signal counters so that the next task can get
-        # all past signals.
-        ray_signal.reset()
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
