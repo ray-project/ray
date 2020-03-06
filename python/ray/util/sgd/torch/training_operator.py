@@ -2,6 +2,8 @@ import collections
 
 import torch
 
+import ray
+
 from ray.util.sgd.utils import TimerStat, AverageMeter
 from ray.util.sgd.torch.constants import (
     SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT)
@@ -96,7 +98,7 @@ class TrainingOperator:
         return self._send_batch_logs(data)
 
     def _send_batch_logs(self, data, done=False):
-        return self._batch_logs_reporter._send.remote(data, done)
+        return ray.get(self._batch_logs_reporter._send.remote(data, done))
 
     def setup(self, config):
         """Override this method to implement custom operator setup.
@@ -164,7 +166,7 @@ class TrainingOperator:
         })
 
         # todo: should we block here?
-        ray.get(self._send_batch_logs(None, done=True))
+        self._send_batch_logs(None, done=True)
         return stats
 
     def forward(self, features, target):

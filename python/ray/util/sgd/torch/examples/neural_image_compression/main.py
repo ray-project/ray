@@ -89,4 +89,4 @@ sys.create_trainer(
     loss_creator)
 # todo: use torch.utils.data.Subset or equivalent instead of num_steps? that would
 # allow us to use its len() property
-sys.train(info=dict(num_steps=20))
+sys.train()

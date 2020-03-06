@@ -9,23 +9,22 @@ class BatchLogsReporter:
         self._logs_ready = asyncio.Event()
         self._read_finished = asyncio.Event()
 
-    async def _send(self, data, done=False):
-        print('Send called')
+    def _send(self, data, done=False):
         self._logs = {
             "done": done,
+            "new_data": True,
             "world_rank": self.world_rank,
             "data": data
         }
-        self._logs_ready.set()
-        # await self._read_finished.wait()
-        # self._read_finished.clear()
 
-    async def _read(self):
-        print('Read called')
-        await self._logs_ready.wait()
-        self._logs_ready.clear()
-        print('Read returned', self._logs)
-        return self._logs
+    def _read(self):
+        res = self._logs
 
-    async def _finish_read(self):
-        self._read_finished.set()
+        self._logs = {
+            "done": res["done"],
+            "new_data": False,
+            "world_rank": self.world_rank,
+            "data": None
+        }
+
+        return res

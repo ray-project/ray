@@ -4,6 +4,8 @@ import sys
 
 from tqdm import tqdm, trange
 
+from torch.utils.data import Subset
+
 import ray
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
@@ -27,11 +29,9 @@ class _TrainingOperator(TrainingOperator):
         if self.world_rank == 0:
             tqdm_setup = Namespace()
             tqdm_setup.packet_type = "tqdm_setup"
-            tqdm_setup.kwargs = {
-                "loader_len": len(self.train_loader)
-            }
+            tqdm_setup.loader_len = len(self.train_loader)
 
-            ray.get(self.send_batch_logs(tqdm_setup))
+            self.send_batch_logs(tqdm_setup)
 
         return super().train_epoch(iterator, info)
 
@@ -78,7 +78,7 @@ class _TrainingOperator(TrainingOperator):
             self.batch_logs.batch_idx = batch_idx
             self.batch_logs.pbar_logs = pbar_logs
 
-            ray.get(self.send_batch_logs(self.batch_logs))
+            self.send_batch_logs(self.batch_logs)
 
             self.logger.log_object("Train loss", logs["loss"])
             self.logger.commit_batch()
@@ -155,25 +155,27 @@ class System():
             info = dict(_system_training_op_info=training_op_info)
             if "info" in kwargs:
                 info.update(kwargs["info"])
-                kwargs["info"] = info
+            kwargs["info"] = info
 
 
             batch_pbar = None
             def handle_head_packet(packet):
-                print('Packet received')
-                if packet.packet_type == "tqdm_setup":
-                    num_steps = kwargs.get("num_steps", packet["loader_len"])
+                nonlocal batch_pbar
 
-                    batch_pbar = tqdm({
-                        "total": num_steps,
-                        "desc": "{}/{}e".format(epoch_idx+1, self.args.num_epochs),
-                        "unit": "batch"
-                    })
+                if packet.packet_type == "tqdm_setup":
+                    num_steps = kwargs.get("num_steps", packet.loader_len)
+
+                    batch_pbar = tqdm(
+                        total=num_steps,
+                        desc="{}/{}e".format(epoch_idx+1, self.args.num_epochs),
+                        unit="batch"
+                    )
                     return
 
                 if packet.packet_type == "batch_logs":
-                    batch_pbar.n = packet.batch_idx
-                    # batch_pbar.refresh() # may be needed
+                    batch_pbar.n = packet.batch_idx+1
+                    # batch_pbar.refresh() # will be needed if set_postfix
+                                           # is ever removed
                     batch_pbar.set_postfix(packet.pbar_logs)
 
             kwargs["batch_logs_handler"] = handle_head_packet
@@ -255,7 +257,7 @@ class System():
         def possibly_truncated_data_creator(config):
             res = data_creator(config)
             if self.args.debug_batch: # fixme: some modes might not even have this option
-                res = torch.utils.data.Subset([0])
+                res = Subset(res, [0])
             return res
 
         self.trainer = TorchTrainer(

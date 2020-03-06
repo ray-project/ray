@@ -345,50 +345,38 @@ class TorchTrainer:
         return train_stats
 
     def _train_epoch(self, num_steps=None, info=None, batch_logs_handler=None):
-        batch_log_reads = [
-            r._read.remote()
-            for r in self.batch_reporters
-        ]
         worker_trains = [
             w.train_epoch.remote(num_steps=num_steps, info=info)
             for w in self.workers
         ]
+        unfinished_worker_idxs = [
+            i for i in range(len(self.workers))
+        ]
 
-        unfinished_trains_n = len(worker_trains)
-        unfinished = worker_trains + batch_log_reads
+        unfinished = worker_trains
         try:
-            while unfinished_trains_n > 0:
-                finished, unfinished = ray.wait(unfinished)
+            while len(unfinished) > 0:
+                finished, unfinished = ray.wait(unfinished, timeout=.2)
 
-                finished_trains = []
-                finished_log_reads = []
+                # throw errors on agent failure
+                finished = ray.get(finished)
 
-                # todo: is this expensive?
-                for f in finished:
-                    if f in worker_trains:
-                        finished_trains.append(f)
-                        unfinished_trains_n -= 1
-                    else:
-                        finished_log_reads.append(f)
+                log_reads = ray.get([
+                    self.batch_reporters[i]._read.remote()
+                    for i in unfinished_worker_idxs
+                ])
+                unfinished_worker_idxs = []
 
-                # todo: why do we ray.get the train calls?
-                finished_trains = ray.get(finished_trains)
-                finished_log_reads = ray.get(finished_log_reads)
-
-                finish_reads = []
-                for log_read in finished_log_reads:
+                for log_read in log_reads:
                     r = self.batch_reporters[log_read["world_rank"]]
-                    finish_reads.append(r._finish_read.remote())
 
                     if log_read["done"]:
                         continue
 
-                    if batch_logs_handler is not None:
+                    if batch_logs_handler is not None and log_read["new_data"]:
                         batch_logs_handler(log_read["data"])
 
-                    unfinished.append(r._read.remote())
-
-                ray.get(finish_reads)
+                    unfinished_worker_idxs.append(log_read["world_rank"])
 
             ray.get(unfinished) # and ignore all the dones
 
