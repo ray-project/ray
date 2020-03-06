@@ -98,9 +98,9 @@ class TorchRunner:
         self.train_loader, self.validation_loader = train_loader, val_loader
 
     def _create_loss(self):
-        logger.debug("Creating loss.")
         if not self.loss_creator:
             return
+        logger.debug("Creating loss.")
         if inspect.isclass(self.loss_creator) and issubclass(
                 self.loss_creator, torch.nn.modules.loss._Loss):
             self.criterion = self.loss_creator()
