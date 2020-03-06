@@ -270,8 +270,15 @@ class Worker:
                 "call 'put' on it (or return it).")
 
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id, pin_object=pin_object)
+        # This *must* be the first place that we construct this python
+        # ObjectID because an entry with 0 local references is created when
+        # the object is Put() in the core worker, expecting that this python
+        # reference will be created. If another reference is created and
+        # removed before this one, it will corrupt the state in the
+        # reference counter.
+        return ray.ObjectID(
+            self.core_worker.put_serialized_object(
+                serialized_value, object_id=object_id, pin_object=pin_object))
 
     def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
