@@ -1175,7 +1175,6 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 use_pickle=False,
                  fate_share=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1208,7 +1207,6 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (str): The command options for Java worker.
-        use_pickle (bool): If True, use cloudpickle for serialization.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1275,8 +1273,6 @@ def start_raylet(redis_address,
 
     if load_code_from_local:
         start_worker_command += " --load-code-from-local "
-    if use_pickle:
-        start_worker_command += " --use-pickle "
 
     command = [
         RAYLET_EXECUTABLE,
