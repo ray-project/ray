@@ -182,17 +182,6 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Kill the actor immediately. This will cause any outstanding tasks submitted to the actor to
-   * fail and the actor to exit in the same way as if it crashed.
-   *
-   * @param actor The actor to be killed.
-   * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
-   */
-  public static void killActor(RayActor<?> actor, boolean noReconstruction) {
-    runtime.killActor(actor, noReconstruction);
-  }
-
-  /**
    * Get the runtime context.
    */
   public static RuntimeContext getRuntimeContext() {

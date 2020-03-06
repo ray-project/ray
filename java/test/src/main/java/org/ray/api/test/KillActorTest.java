@@ -39,21 +39,20 @@ public class KillActorTest extends BaseTest {
     }
   }
 
-  @RayRemote
   public static class KillerActor {
 
     public void kill(RayActor<?> actor, boolean noReconstruction) {
-      Ray.killActor(actor, noReconstruction);
+      actor.kill(noReconstruction);
     }
   }
 
   private static void localKill(RayActor<?> actor, boolean noReconstruction) {
-    Ray.killActor(actor, noReconstruction);
+    actor.kill(noReconstruction);
   }
 
   private static void remoteKill(RayActor<?> actor, boolean noReconstruction) {
     RayActor<KillerActor> killer = Ray.createActor(KillerActor::new);
-    Ray.call(KillerActor::kill, killer, actor, noReconstruction);
+    killer.call(KillerActor::kill, actor, noReconstruction);
   }
 
   private void testKillActor(BiConsumer<RayActor<?>, Boolean> kill, boolean noReconstruction) {
