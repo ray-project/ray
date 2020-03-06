@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import os
 import sys
 import unittest
 
@@ -61,7 +58,7 @@ class TrialRunnerTest(unittest.TestCase):
             trial_generator.add_configurations({name: spec})
             for trial in trial_generator.next_trials():
                 trial_executor.start_trial(trial)
-                self.assertLessEqual(len(trial.logdir), 200)
+                self.assertLessEqual(len(os.path.basename(trial.logdir)), 200)
                 trial_executor.stop_trial(trial)
 
     def testExtraResources(self):

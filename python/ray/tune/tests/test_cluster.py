@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import inspect
 import json
 import time
@@ -150,14 +146,15 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     trial = Trial("__fake", **kwargs)
     runner.add_trial(trial)
 
-    runner.step()  # run 1
+    runner.step()  # Start trial
     assert trial.status == Trial.RUNNING
     cluster.remove_node(node)
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
 
-    for i in range(3):
+    # Process result (x2), process save, process result.
+    for _ in range(4):
         runner.step()
     assert trial.status == Trial.TERMINATED
 
@@ -241,39 +238,45 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     # Test recovery of trial that hasn't been checkpointed
     t = Trial(trainable_id, **kwargs)
     runner.add_trial(t)
-    runner.step()  # start
-    runner.step()  # 1 result
+    runner.step()  # Start trial
+    runner.step()  # Process result
     assert t.last_result
     node2 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
     cluster.wait_for_nodes()
+    # TODO(ujvl): Node failure does not propagate until a step after it
+    #  actually should. This is possibly a problem with `Cluster`.
+    runner.step()
     runner.step()  # Recovery step
 
     # TODO(rliaw): This assertion is not critical but will not pass
     #   because checkpoint handling is messy and should be refactored
     #   rather than hotfixed.
     # assert t.last_result is None, "Trial result not restored correctly."
-    for i in range(4):
+
+    # Process result (x2), process save, process result (x2), process save
+    for _ in range(6):
         runner.step()
 
-    assert t.status == Trial.TERMINATED
+    assert t.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that has been checkpointed
     t2 = Trial(trainable_id, **kwargs)
     runner.add_trial(t2)
-    runner.step()  # start
-    runner.step()  # 1 result
-    runner.step()  # 2 result and checkpoint
+    # Start trial, process result (x2), process save
+    for _ in range(4):
+        runner.step()
     assert t2.has_checkpoint()
     node3 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node2)
     cluster.wait_for_nodes()
-    runner.step()  # 3 result + start and fail 4 result
-    runner.step()  # Recovery step
-    runner.step()  # Process recovery
-    runner.step()  # result
+    runner.step()  # Process result 3 + start and fail 4 result
+    runner.step()  # Dispatch restore
+    runner.step()  # Process restore
+    runner.step()  # Process result 5
     if t2.status != Trial.TERMINATED:
-        runner.step()
+        runner.step()  # Process result 6, dispatch save
+        runner.step()  # Process save
     assert t2.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that won't be checkpointed
@@ -286,8 +289,8 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     }
     t3 = Trial(trainable_id, **kwargs)
     runner.add_trial(t3)
-    runner.step()  # start
-    runner.step()  # 1 result
+    runner.step()  # Start trial
+    runner.step()  # Process result 1
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node3)
     cluster.wait_for_nodes()
@@ -322,13 +325,16 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     for t in trials:
         runner.add_trial(t)
 
-    runner.step()  # start
-    runner.step()  # 1 result
+    runner.step()  # Start trial
+    runner.step()  # Process result, dispatch save
+    runner.step()  # Process save
 
     cluster.remove_node(node)
     cluster.wait_for_nodes()
-    runner.step()
-    assert all(t.status == Trial.PENDING for t in trials)
+    runner.step()  # Process result, dispatch save
+    runner.step()  # Process save (detect error), requeue trial
+    assert all(
+        t.status == Trial.PENDING for t in trials), runner.debug_string()
 
     with pytest.raises(TuneError):
         runner.step()
@@ -378,19 +384,21 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
             # Test recovery of trial that has been checkpointed
             t1 = Trial(trainable_id, **kwargs)
             runner.add_trial(t1)
-            runner.step()  # start
-            runner.step()  # 1 result
-            runner.step()  # 2 result and checkpoint
+
+            # Start trial, process result (x2), process save
+            for _ in range(4):
+                runner.step()
             assert t1.has_checkpoint()
+
             cluster.add_node(num_cpus=1)
             cluster.remove_node(node)
             cluster.wait_for_nodes()
             shutil.rmtree(os.path.dirname(t1.checkpoint.value))
 
-            runner.step()  # collect result 3, kick off + fail result 4
-            runner.step()  # Recovery step
-            runner.step()  # Process Recovery + step 4
-            for i in range(3):
+            runner.step()  # Collect result 3, kick off + fail result 4
+            runner.step()  # Dispatch restore
+            runner.step()  # Process restore + step 4
+            for _ in range(3):
                 if t1.status != Trial.TERMINATED:
                     runner.step()
     assert t1.status == Trial.TERMINATED, runner.debug_string()
@@ -418,9 +426,9 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
     for t in trials:
         runner.add_trial(t)
 
-    runner.step()  # start
-    runner.step()  # start2
-    runner.step()  # step
+    # Start trial (x2), process result, process save
+    for _ in range(4):
+        runner.step()
     assert all(t.status == Trial.RUNNING for t in runner.get_trials())
     runner.checkpoint()
 
@@ -429,11 +437,12 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
 
     cluster = _start_new_cluster()
     runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
-    runner.step()  # start
-    runner.step()  # process restore
-    runner.step()  # start2
+    # Start trial, process restore, process result, process save
+    for _ in range(4):
+        runner.step()
 
-    for i in range(3):
+    # Start trial 2, process result, process save, process result, process save
+    for i in range(5):
         runner.step()
 
     with pytest.raises(TuneError):
@@ -559,6 +568,8 @@ tune.run(
     cluster.shutdown()
 
 
+# TODO(ujvl): Fix test.
+@pytest.mark.skip(reason="Not very consistent.")
 def test_cluster_interrupt(start_connected_cluster, tmpdir):
     """Tests run_experiment on cluster shutdown with actual interrupt.
 

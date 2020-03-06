@@ -3,8 +3,6 @@
 
 #include <ray/gcs/redis_gcs_client.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
-#include <ray/rpc/grpc_server.h>
-#include <string>
 
 namespace ray {
 namespace gcs {
@@ -40,6 +38,9 @@ class GcsServer {
   /// Get the port of this gcs server.
   int GetPort() const { return rpc_server_.GetPort(); }
 
+  /// Check if gcs server is started
+  bool IsStarted() const { return is_started_; }
+
  protected:
   /// Initialize the backend storage client
   /// The gcs server is just the proxy between the gcs client and reliable storage
@@ -58,7 +59,26 @@ class GcsServer {
   /// The object info handler
   virtual std::unique_ptr<rpc::ObjectInfoHandler> InitObjectInfoHandler();
 
+  /// The task info handler
+  virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
+
+  /// The stats handler
+  virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
+
+  /// The error info handler
+  virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
+
+  /// The worker info handler
+  virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
+
  private:
+  /// Store the address of GCS server in Redis.
+  ///
+  /// Clients will look up this address in Redis and use it to connect to GCS server.
+  /// TODO(ffbin): Once we entirely migrate to service-based GCS, we should pass GCS
+  /// server address directly to raylets and get rid of this lookup.
+  void StoreGcsServerAddressInRedis();
+
   /// Gcs server configuration
   GcsServerConfig config_;
   /// The grpc server
@@ -77,8 +97,22 @@ class GcsServer {
   /// Object info handler and service
   std::unique_ptr<rpc::ObjectInfoHandler> object_info_handler_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
+  /// Task info handler and service
+  std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
+  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
+  /// Stats handler and service
+  std::unique_ptr<rpc::StatsHandler> stats_handler_;
+  std::unique_ptr<rpc::StatsGrpcService> stats_service_;
+  /// Error info handler and service
+  std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
+  std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
+  /// Worker info handler and service
+  std::unique_ptr<rpc::WorkerInfoHandler> worker_info_handler_;
+  std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
+  /// Gcs service init flag
+  bool is_started_ = false;
 };
 
 }  // namespace gcs

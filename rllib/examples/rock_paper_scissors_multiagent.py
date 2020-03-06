@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """A simple multi-agent env with two agents playing rock paper scissors.
 
 This demonstrates running the following policies in competition:
@@ -10,6 +7,7 @@ This demonstrates running the following policies in competition:
     (4) LSTM policy with custom entropy loss
 """
 
+import argparse
 import random
 from gym.spaces import Discrete
 
@@ -25,6 +23,9 @@ tf = try_import_tf()
 ROCK = 0
 PAPER = 1
 SCISSORS = 2
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--stop", type=int, default=400000)
 
 
 class RockPaperScissorsEnv(MultiAgentEnv):
@@ -81,15 +82,12 @@ class RockPaperScissorsEnv(MultiAgentEnv):
 class AlwaysSameHeuristic(Policy):
     """Pick a random move and stick with it for the entire episode."""
 
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
-
     def get_initial_state(self):
         return [random.choice([ROCK, PAPER, SCISSORS])]
 
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -110,12 +108,9 @@ class AlwaysSameHeuristic(Policy):
 class BeatLastHeuristic(Policy):
     """Play the move that would beat the last move of the opponent."""
 
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
-
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -162,13 +157,14 @@ def run_heuristic_vs_learned(use_lstm=False, trainer="PG"):
         else:
             return random.choice(["always_same", "beat_last"])
 
+    args = parser.parse_args()
     tune.run(
         trainer,
-        stop={"timesteps_total": 400000},
+        stop={"timesteps_total": args.stop},
         config={
             "env": RockPaperScissorsEnv,
             "gamma": 0.9,
-            "num_workers": 4,
+            "num_workers": 0,
             "num_envs_per_worker": 4,
             "sample_batch_size": 10,
             "train_batch_size": 200,

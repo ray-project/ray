@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import OrderedDict
 
 from ray.rllib.env.constants import GROUP_REWARDS, GROUP_INFO

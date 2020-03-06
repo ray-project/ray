@@ -9,11 +9,19 @@ void DefaultNodeInfoHandler::HandleRegisterNode(
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
-  Status status = gcs_client_.Nodes().Register(request.node_info());
+
+  auto on_done = [node_id, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to register node info: " << status.ToString()
+                     << ", node id = " << node_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status = gcs_client_.Nodes().AsyncRegister(request.node_info(), on_done);
   if (!status.ok()) {
-    RAY_LOG(DEBUG) << "Failed to register node info, node id = " << node_id;
+    on_done(status);
   }
-  send_reply_callback(status, nullptr, nullptr);
   RAY_LOG(DEBUG) << "Finished registering node info, node id = " << node_id;
 }
 
@@ -144,12 +152,13 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
     const UpdateResourcesRequest &request, UpdateResourcesReply *reply,
     SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
+  RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
+
   gcs::NodeInfoAccessor::ResourceMap resources;
   for (auto resource : request.resources()) {
     resources[resource.first] = std::make_shared<rpc::ResourceTableData>(resource.second);
   }
 
-  RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
   auto on_done = [node_id, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to update node resources: " << status.ToString()

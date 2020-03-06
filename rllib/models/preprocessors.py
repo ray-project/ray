@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import OrderedDict
 import cv2
 import logging
@@ -147,7 +143,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation):
         self.check_shape(observation)
-        arr = np.zeros(self._obs_space.n)
+        arr = np.zeros(self._obs_space.n, dtype=np.float32)
         arr[observation] = 1
         return arr
 

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 import time
@@ -88,6 +84,9 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_monitor()
     ray.worker._global_node.kill_raylet_monitor()
 
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        ray.worker._global_node.kill_gcs_server()
+
     # If the driver can reach the tearDown method, then it is still alive.
 
 
@@ -96,12 +95,24 @@ def test_driver_lives_sequential(ray_start_regular):
     reason="Hanging with new GCS API.")
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
-    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
-    assert len(process_infos) == 5
+
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        process_infos = (
+            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+            all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+            all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
+        assert len(process_infos) == 6
+    else:
+        process_infos = (
+            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+            all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
+        assert len(process_infos) == 5
 
     # Kill all the components in parallel.
     for process_info in process_infos:

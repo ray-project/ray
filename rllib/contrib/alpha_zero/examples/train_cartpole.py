@@ -1,13 +1,9 @@
 """Example of using training on CartPole."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
+import ray
 from ray import tune
-
 from ray.rllib.contrib.alpha_zero.models.custom_torch_models import DenseModel
 from ray.rllib.contrib.alpha_zero.environments.cartpole import CartPole
 from ray.rllib.models.catalog import ModelCatalog
@@ -16,7 +12,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-workers", default=6, type=int)
     parser.add_argument("--training-iteration", default=10000, type=int)
+    parser.add_argument("--ray-num-cpus", default=7, type=int)
     args = parser.parse_args()
+    ray.init(num_cpus=args.ray_num_cpus)
 
     ModelCatalog.register_custom_model("dense_model", DenseModel)
 

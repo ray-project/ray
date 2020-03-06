@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
@@ -9,19 +5,20 @@ import six.moves.queue as queue
 import threading
 import time
 
+from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.policy.policy import TupleActions
+from ray.rllib.policy.policy import clip_action
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.policy.policy import clip_action
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +266,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         if not horizon:
             horizon = (base_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        logger.debug("no episode horizon specified, assuming inf")
+        logger.debug("No episode horizon specified, assuming inf.")
     if not horizon:
         horizon = float("inf")
 
@@ -357,6 +354,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
     active_envs = set()
     to_eval = defaultdict(list)
     outputs = []
+    large_batch_threshold = max(1000, unroll_length * 10) if \
+        unroll_length != float("inf") else 5000
 
     # For each environment
     for env_id, agent_obs in unfiltered_obs.items():
@@ -367,18 +366,21 @@ def _process_observations(base_env, policies, batch_builder_pool,
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
-        if (episode.batch_builder.total() > max(1000, unroll_length * 10)
+        if (episode.batch_builder.total() > large_batch_threshold
                 and log_once("large_batch_warning")):
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
                 "the sampler. If this is more than you expected, check that "
-                "that you set a horizon on your environment correctly. Note "
-                "that in multi-agent environments, `sample_batch_size` sets "
+                "that you set a horizon on your environment correctly and that"
+                " it terminates at some point. "
+                "Note: In multi-agent environments, `sample_batch_size` sets "
                 "the batch size based on environment steps, not the steps of "
                 "individual agents, which can result in unexpectedly large "
-                "batches.")
+                "batches. Also, you may be in evaluation waiting for your Env "
+                "to terminate (batch_mode=`complete_episodes`). Make sure it "
+                "does at some point.")
 
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
@@ -394,13 +396,14 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 outputs.append(
                     RolloutMetrics(episode.length, episode.total_reward,
                                    dict(episode.agent_rewards),
-                                   episode.custom_metrics, {}))
+                                   episode.custom_metrics, {},
+                                   episode.hist_data))
         else:
             hit_horizon = False
             all_done = False
             active_envs.add(env_id)
 
-        # For each agent in the environment
+        # For each agent in the environment.
         for agent_id, raw_obs in agent_obs.items():
             policy_id = episode.policy_for(agent_id)
             prep_obs = _get_or_raise(preprocessors,
@@ -453,7 +456,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
 
         # Cut the batch if we're not packing multiple episodes into one,
         # or if we've exceeded the requested batch size.
-        if episode.batch_builder.has_pending_data():
+        if episode.batch_builder.has_pending_agent_data():
             if dones[env_id]["__all__"] and not no_done_at_end:
                 episode.batch_builder.check_missing_dones()
             if (all_done and not pack) or \
@@ -528,24 +531,36 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
             summarize(to_eval)))
 
     for policy_id, eval_data in to_eval.items():
-        rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
+        rnn_in = [t.rnn_state for t in eval_data]
         policy = _get_or_raise(policies, policy_id)
         if builder and (policy.compute_actions.__code__ is
                         TFPolicy.compute_actions.__code__):
+            rnn_in_cols = _to_column_format(rnn_in)
             # TODO(ekl): how can we make info batch available to TF code?
+            # TODO(sven): Return dict from _build_compute_actions.
+            # it's becoming more and more unclear otherwise, what's where in
+            # the return tuple.
             pending_fetches[policy_id] = policy._build_compute_actions(
-                builder, [t.obs for t in eval_data],
-                rnn_in_cols,
+                builder,
+                obs_batch=[t.obs for t in eval_data],
+                state_batches=rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
-                prev_reward_batch=[t.prev_reward for t in eval_data])
+                prev_reward_batch=[t.prev_reward for t in eval_data],
+                timestep=policy.global_timestep)
         else:
+            # TODO(sven): Does this work for LSTM torch?
+            rnn_in_cols = [
+                np.stack([row[i] for row in rnn_in])
+                for i in range(len(rnn_in[0]))
+            ]
             eval_results[policy_id] = policy.compute_actions(
                 [t.obs for t in eval_data],
-                rnn_in_cols,
+                state_batches=rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 info_batch=[t.info for t in eval_data],
-                episodes=[active_episodes[t.env_id] for t in eval_data])
+                episodes=[active_episodes[t.env_id] for t in eval_data],
+                timestep=policy.global_timestep)
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
@@ -575,7 +590,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id][:3]
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
@@ -624,7 +639,7 @@ def _fetch_atari_metrics(base_env):
         if not monitor:
             return None
         for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}, {}))
+            atari_out.append(RolloutMetrics(eps_len, eps_rew))
     return atari_out
 
 
@@ -647,6 +662,13 @@ def _to_column_format(rnn_state_rows):
 
 
 def _get_or_raise(mapping, policy_id):
+    """Returns a Policy object under key `policy_id` in `mapping`.
+
+    Throws an error if `policy_id` cannot be found.
+
+    Returns:
+        Policy: The found Policy object.
+    """
     if policy_id not in mapping:
         raise ValueError(
             "Could not find policy for agent: agent policy id `{}` not "

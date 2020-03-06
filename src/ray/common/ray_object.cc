@@ -11,7 +11,7 @@ std::shared_ptr<LocalMemoryBuffer> MakeErrorMetadataBuffer(rpc::ErrorType error_
 }
 
 RayObject::RayObject(rpc::ErrorType error_type)
-    : RayObject(nullptr, MakeErrorMetadataBuffer(error_type)) {}
+    : RayObject(nullptr, MakeErrorMetadataBuffer(error_type), {}) {}
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {
   if (metadata_ == nullptr) {

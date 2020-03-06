@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Ray constants used in the Python code."""
 
 import logging
@@ -16,21 +13,11 @@ def env_integer(key, default):
     return default
 
 
-def direct_call_enabled():
-    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "1")))
-
-
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9
-# The default number of retries to call `put` when the object store is full.
-DEFAULT_PUT_OBJECT_RETRIES = 5
-# The default seconds for delay between calls to retry `put` when
-# the object store is full. This delay is exponentially doubled up to
-# DEFAULT_PUT_OBJECT_RETRIES times.
-DEFAULT_PUT_OBJECT_DELAY = 1
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -62,7 +49,7 @@ DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 40000
+MAX_RESOURCE_QUANTITY = 100000
 
 # Each memory "resource" counts as this many bytes of memory.
 MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
@@ -183,6 +170,7 @@ PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
+PROCESS_TYPE_GCS_SERVER = "gcs_server"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
@@ -202,3 +190,11 @@ REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
+
+# The Mach kernel page size in bytes.
+MACH_PAGE_SIZE_BYTES = 4096
+
+# RAY_GCS_SERVICE_ENABLED only set in ci job.
+# TODO(ffbin): Once we entirely migrate to service-based GCS, we should
+# remove it.
+RAY_GCS_SERVICE_ENABLED = "RAY_GCS_SERVICE_ENABLED"

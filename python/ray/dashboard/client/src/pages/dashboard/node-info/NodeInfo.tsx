@@ -9,22 +9,14 @@ import TableRow from "@material-ui/core/TableRow";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { connect } from "react-redux";
-import { getNodeInfo, getRayletInfo } from "../../../api";
 import { StoreState } from "../../../store";
-import { dashboardActions } from "../state";
-import LastUpdated from "./LastUpdated";
+import Errors from "./dialogs/errors/Errors";
+import Logs from "./dialogs/logs/Logs";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
 
 const styles = (theme: Theme) =>
   createStyles({
-    root: {
-      backgroundColor: theme.palette.background.paper,
-      padding: theme.spacing(2),
-      "& > :not(:first-child)": {
-        marginTop: theme.spacing(2)
-      }
-    },
     table: {
       marginTop: theme.spacing(1)
     },
@@ -42,41 +34,41 @@ const mapStateToProps = (state: StoreState) => ({
   rayletInfo: state.dashboard.rayletInfo
 });
 
-const mapDispatchToProps = dashboardActions;
+interface State {
+  logDialog: { hostname: string; pid: number | null } | null;
+  errorDialog: { hostname: string; pid: number | null } | null;
+}
 
 class NodeInfo extends React.Component<
-  WithStyles<typeof styles> &
-    ReturnType<typeof mapStateToProps> &
-    typeof mapDispatchToProps
+  WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>
 > {
-  refreshNodeInfo = async () => {
-    try {
-      const [nodeInfo, rayletInfo] = await Promise.all([
-        getNodeInfo(),
-        getRayletInfo()
-      ]);
-      this.props.setNodeInfoAndRayletInfo({ nodeInfo, rayletInfo });
-      this.props.setError(null);
-    } catch (error) {
-      this.props.setError(error.toString());
-    } finally {
-      setTimeout(this.refreshNodeInfo, 1000);
-    }
+  state: State = {
+    logDialog: null,
+    errorDialog: null
   };
 
-  async componentDidMount() {
-    await this.refreshNodeInfo();
-  }
+  setLogDialog = (hostname: string, pid: number | null) => {
+    this.setState({ logDialog: { hostname, pid } });
+  };
+
+  clearLogDialog = () => {
+    this.setState({ logDialog: null });
+  };
+
+  setErrorDialog = (hostname: string, pid: number | null) => {
+    this.setState({ errorDialog: { hostname, pid } });
+  };
+
+  clearErrorDialog = () => {
+    this.setState({ errorDialog: null });
+  };
 
   render() {
     const { classes, nodeInfo, rayletInfo } = this.props;
+    const { logDialog, errorDialog } = this.state;
 
     if (nodeInfo === null || rayletInfo === null) {
-      return (
-        <Typography className={classes.root} color="textSecondary">
-          Loading...
-        </Typography>
-      );
+      return <Typography color="textSecondary">Loading...</Typography>;
     }
 
     const logCounts: {
@@ -125,8 +117,7 @@ class NodeInfo extends React.Component<
     }
 
     return (
-      <div>
-        <Typography>Node information:</Typography>
+      <React.Fragment>
         <Table className={classes.table}>
           <TableHead>
             <TableRow>
@@ -148,10 +139,16 @@ class NodeInfo extends React.Component<
               <NodeRowGroup
                 key={client.ip}
                 node={client}
-                raylet={client.ip in rayletInfo ? rayletInfo[client.ip] : null}
+                raylet={
+                  client.ip in rayletInfo.nodes
+                    ? rayletInfo.nodes[client.ip]
+                    : null
+                }
                 logCounts={logCounts[client.ip]}
                 errorCounts={errorCounts[client.ip]}
-                initialExpanded={nodeInfo.clients.length <= 4}
+                setLogDialog={this.setLogDialog}
+                setErrorDialog={this.setErrorDialog}
+                initialExpanded={nodeInfo.clients.length <= 1}
               />
             ))}
             <TotalRow
@@ -161,13 +158,23 @@ class NodeInfo extends React.Component<
             />
           </TableBody>
         </Table>
-        <LastUpdated />
-      </div>
+        {logDialog !== null && (
+          <Logs
+            clearLogDialog={this.clearLogDialog}
+            hostname={logDialog.hostname}
+            pid={logDialog.pid}
+          />
+        )}
+        {errorDialog !== null && (
+          <Errors
+            clearErrorDialog={this.clearErrorDialog}
+            hostname={errorDialog.hostname}
+            pid={errorDialog.pid}
+          />
+        )}
+      </React.Fragment>
     );
   }
 }
 
-export default connect(
-  mapStateToProps,
-  mapDispatchToProps
-)(withStyles(styles)(NodeInfo));
+export default connect(mapStateToProps)(withStyles(styles)(NodeInfo));

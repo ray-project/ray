@@ -1,29 +1,26 @@
-#include <thread>
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "ray/common/buffer.h"
-#include "ray/common/ray_object.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
-
-#include "ray/core_worker/store_provider/memory_store/memory_store.h"
-
-#include "ray/raylet/raylet_client.h"
-#include "src/ray/protobuf/core_worker.pb.h"
-#include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/util/test_util.h"
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
+#include <thread>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
+#include "ray/common/buffer.h"
+#include "ray/common/ray_object.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/raylet/raylet_client.h"
 #include "ray/util/test_util.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/util/test_util.h"
 
 namespace {
 
@@ -32,6 +29,7 @@ std::string raylet_executable;
 int node_manager_port = 0;
 std::string raylet_monitor_executable;
 std::string mock_worker_executable;
+std::string gcs_server_executable;
 
 }  // namespace
 
@@ -53,18 +51,21 @@ ActorID CreateActorHelper(CoreWorker &worker,
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func(ray::Language::PYTHON, {"actor creation task"});
+  RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                              "actor creation task", "", "", ""));
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
+  args.emplace_back(TaskArg::PassByValue(
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
-  ActorCreationOptions actor_options{
-      max_reconstructions,   is_direct_call,
-      /*max_concurrency*/ 1, resources,           resources, {},
-      /*is_detached*/ false, /*is_asyncio*/ false};
+  ActorCreationOptions actor_options{max_reconstructions,   is_direct_call,
+                                     /*max_concurrency*/ 1, resources,      resources, {},
+                                     /*is_detached*/ false,
+                                     /*is_asyncio*/ false};
 
   // Create an actor.
   ActorID actor_id;
-  RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, &actor_id));
+  RAY_CHECK_OK(
+      worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
   return actor_id;
 }
 
@@ -76,6 +77,9 @@ std::string MetadataToString(std::shared_ptr<RayObject> obj) {
 class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest(int num_nodes) : gcs_options_("127.0.0.1", 6379, "") {
+#ifdef _WIN32
+    RAY_CHECK(false) << "port system() calls to Windows before running this test";
+#endif
     // flush redis first.
     flushall_redis();
 
@@ -93,6 +97,11 @@ class CoreWorkerTest : public ::testing::Test {
     // core worker test relies on node resources. It's important that one raylet can
     // receive the heartbeat from another. So starting raylet monitor is required here.
     raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
+
+    // start gcs server
+    if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+      gcs_server_pid_ = StartGcsServer("127.0.0.1");
+    }
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
@@ -114,6 +123,10 @@ class CoreWorkerTest : public ::testing::Test {
 
     if (!raylet_monitor_pid_.empty()) {
       StopRayletMonitor(raylet_monitor_pid_);
+    }
+
+    if (!gcs_server_pid_.empty()) {
+      StopGcsServer(gcs_server_pid_);
     }
   }
 
@@ -195,6 +208,30 @@ class CoreWorkerTest : public ::testing::Test {
     std::string kill_9 = "kill -9 `cat " + raylet_monitor_pid + "`";
     RAY_LOG(DEBUG) << kill_9;
     ASSERT_TRUE(system(kill_9.c_str()) == 0);
+    ASSERT_TRUE(system(("rm -f " + raylet_monitor_pid).c_str()) == 0);
+  }
+
+  std::string StartGcsServer(std::string redis_address) {
+    std::string gcs_server_pid =
+        "/tmp/gcs_server" + ObjectID::FromRandom().Hex() + ".pid";
+    std::string gcs_server_start_cmd = gcs_server_executable;
+    gcs_server_start_cmd.append(" --redis_address=" + redis_address)
+        .append(" --redis_port=6379")
+        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
+        .append(" & echo $! > " + gcs_server_pid);
+
+    RAY_LOG(DEBUG) << "Starting GCS server, command: " << gcs_server_start_cmd;
+    RAY_CHECK(system(gcs_server_start_cmd.c_str()) == 0);
+    usleep(200 * 1000);
+    RAY_LOG(INFO) << "GCS server started.";
+    return gcs_server_pid;
+  }
+
+  void StopGcsServer(std::string gcs_server_pid) {
+    std::string kill_9 = "kill -9 `cat " + gcs_server_pid + "`";
+    RAY_LOG(DEBUG) << kill_9;
+    ASSERT_TRUE(system(kill_9.c_str()) == 0);
+    ASSERT_TRUE(system(("rm -f " + gcs_server_pid).c_str()) == 0);
   }
 
   void SetUp() {}
@@ -233,6 +270,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::vector<std::string> raylet_store_socket_names_;
   std::string raylet_monitor_pid_;
   gcs::GcsClientOptions gcs_options_;
+  std::string gcs_server_pid_;
 };
 
 bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
@@ -252,7 +290,8 @@ int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
   std::vector<TaskArg> args;
   TaskOptions options{1, is_direct_call, resources};
   std::vector<ObjectID> return_ids;
-  RayFunction func{Language::PYTHON, {"GetWorkerPid"}};
+  RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                         "GetWorkerPid", "", "", "")};
 
   RAY_CHECK_OK(worker.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -282,14 +321,16 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       auto buffer2 = GenerateRandomBuffer();
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr), &object_id));
+      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr, std::vector<ObjectID>()), {},
+                              &object_id));
 
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       options.is_direct_call = true;
 
@@ -330,14 +371,15 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -370,17 +412,19 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
 
     ObjectID object_id;
-    RAY_CHECK_OK(driver.Put(RayObject(buffer1, nullptr), &object_id));
+    RAY_CHECK_OK(
+        driver.Put(RayObject(buffer1, nullptr, std::vector<ObjectID>()), {}, &object_id));
 
     // Create arguments with PassByRef and PassByValue.
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByReference(object_id));
-    args.emplace_back(
-        TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                "MergeInputArgsAsOutput", "", "", ""));
     auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
     ASSERT_TRUE(status.ok());
 
@@ -440,12 +484,13 @@ void CoreWorkerTest::TestActorReconstruction(
 
       // Create arguments with PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -485,12 +530,13 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(
-          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+      args.emplace_back(TaskArg::PassByValue(
+          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -542,7 +588,8 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   ASSERT_EQ(by_ref.GetReference(), id);
   // Test by-value argument.
   auto buffer = GenerateRandomBuffer();
-  TaskArg by_value = TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr));
+  TaskArg by_value = TaskArg::PassByValue(
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>()));
   ASSERT_FALSE(by_value.IsPassedByReference());
   auto data = by_value.GetValue().GetData();
   ASSERT_TRUE(data != nullptr);
@@ -555,9 +602,11 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // to benchmark performance.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction function(ray::Language::PYTHON, {});
+  RayFunction function(ray::Language::PYTHON,
+                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
+  args.emplace_back(TaskArg::PassByValue(
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0,
@@ -571,7 +620,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), job_id,
                            ObjectID::FromRandom(), function.GetLanguage(), true,
-                           function.GetFunctionDescriptor());
+                           function.GetFunctionDescriptor(), "");
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -634,11 +683,13 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     int64_t array[] = {SHOULD_CHECK_MESSAGE_ORDER, i};
     auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(array),
                                                       sizeof(array));
-    args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                "MergeInputArgsAsOutput", "", "", ""));
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
@@ -685,7 +736,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   JobID job_id = NextJobId();
   ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), job_id,
                        ObjectID::FromRandom(), Language::PYTHON, /*is_direct_call=*/false,
-                       {});
+                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "");
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
@@ -708,9 +759,11 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
-                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
+                       std::vector<ObjectID>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
-                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
+                       std::vector<ObjectID>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -833,13 +886,15 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
-                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
+                       std::vector<ObjectID>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
-                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
+                       std::vector<ObjectID>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(core_worker.Put(buffers[i], &ids[i]));
+    RAY_CHECK_OK(core_worker.Put(buffers[i], {}, &ids[i]));
   }
 
   // Test Get().
@@ -859,10 +914,12 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   char error_buffer[error_string.size()];
   size_t len = error_string.copy(error_buffer, error_string.size(), 0);
   buffers_with_exception.emplace_back(
-      nullptr, std::make_shared<LocalMemoryBuffer>(
-                   reinterpret_cast<uint8_t *>(error_buffer), len));
+      nullptr,
+      std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(error_buffer), len),
+      std::vector<ObjectID>());
 
-  RAY_CHECK_OK(core_worker.Put(buffers_with_exception.back(), ids_with_exception.back()));
+  RAY_CHECK_OK(
+      core_worker.Put(buffers_with_exception.back(), {}, ids_with_exception.back()));
   RAY_CHECK_OK(core_worker.Get(ids_with_exception, -1, &results));
 
   // Test Wait().
@@ -889,72 +946,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // to process the command.
   usleep(200 * 1000);
   ASSERT_TRUE(core_worker.Get(ids, 0, &results).IsTimedOut());
-  ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
-}
-
-TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
-  CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                     node_manager_port, nullptr);
-
-  CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
-                     raylet_socket_names_[1], NextJobId(), gcs_options_, "", "127.0.0.1",
-                     node_manager_port, nullptr);
-
-  uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
-
-  std::vector<std::shared_ptr<LocalMemoryBuffer>> buffers;
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)));
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)));
-
-  std::vector<ObjectID> ids(buffers.size());
-  for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Put(RayObject(buffers[i], nullptr), &ids[i]));
-  }
-
-  // Test Get() from remote node.
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(worker2.Get(ids, -1, &results));
-
-  ASSERT_EQ(results.size(), 2);
-  for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i]->Size());
-    ASSERT_EQ(*(results[i]->GetData()), *buffers[i]);
-  }
-
-  // Test Wait() from remote node.
-  ObjectID non_existent_id = ObjectID::FromRandom();
-  std::vector<ObjectID> all_ids(ids);
-  all_ids.push_back(non_existent_id);
-
-  std::vector<bool> wait_results;
-  RAY_CHECK_OK(worker2.Wait(all_ids, 2, -1, &wait_results));
-  ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
-
-  RAY_CHECK_OK(worker2.Wait(all_ids, 3, 100, &wait_results));
-  ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
-
-  // Test Delete() from all machines.
-  // clear the reference held by PlasmaBuffer.
-  results.clear();
-  RAY_CHECK_OK(worker2.Delete(ids, false, false));
-
-  // Note that Delete() calls RayletClient::FreeObjects and would not
-  // wait for objects being deleted, so wait a while for plasma store
-  // to process the command.
-  usleep(1000 * 1000);
-  // Verify objects are deleted from both machines.
-  ASSERT_TRUE(worker2.Get(ids, 0, &results).IsTimedOut());
-  ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
-
-  ASSERT_TRUE(worker1.Get(ids, 0, &results).IsTimedOut());
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
@@ -1019,11 +1010,12 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 6);
+  RAY_CHECK(argc == 7);
   store_executable = std::string(argv[1]);
   raylet_executable = std::string(argv[2]);
   node_manager_port = std::stoi(std::string(argv[3]));
   raylet_monitor_executable = std::string(argv[4]);
   mock_worker_executable = std::string(argv[5]);
+  gcs_server_executable = std::string(argv[6]);
   return RUN_ALL_TESTS();
 }

@@ -15,7 +15,7 @@ class LightActor:
         pass
 
     def sample(self):
-        return np.zeros(1 * MB, dtype=np.uint8)
+        return np.zeros(5 * MB, dtype=np.uint8)
 
 
 @ray.remote
@@ -29,9 +29,8 @@ class GreedyActor:
 
 class TestMemoryLimits(unittest.TestCase):
     def testWithoutQuota(self):
+        self._run(100 * MB, None, None)
         self.assertRaises(OBJECT_EVICTED, lambda: self._run(None, None, None))
-        self.assertRaises(OBJECT_EVICTED,
-                          lambda: self._run(100 * MB, None, None))
         self.assertRaises(OBJECT_EVICTED,
                           lambda: self._run(None, 100 * MB, None))
 
@@ -66,14 +65,11 @@ class TestMemoryLimits(unittest.TestCase):
             z = ray.put("hi", weakref=True)
             a = LightActor._remote(object_store_memory=a_quota)
             b = GreedyActor._remote(object_store_memory=b_quota)
-            oids = [z]
             for _ in range(5):
                 r_a = a.sample.remote()
                 for _ in range(20):
                     new_oid = b.sample.remote()
-                    oids.append(new_oid)
                     ray.get(new_oid)
-                oids.append(r_a)
                 ray.get(r_a)
             ray.get(z)
         except Exception as e:

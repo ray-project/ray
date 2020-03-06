@@ -129,7 +129,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// \param gcs_client A Ray GCS client to request object and client
   /// information from.
   ObjectDirectory(boost::asio::io_service &io_service,
-                  std::shared_ptr<gcs::RedisGcsClient> &gcs_client);
+                  std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   virtual ~ObjectDirectory() {}
 
@@ -178,7 +178,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// Reference to the event loop.
   boost::asio::io_service &io_service_;
   /// Reference to the gcs client.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
 };

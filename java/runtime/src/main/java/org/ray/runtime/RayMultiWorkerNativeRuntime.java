@@ -1,10 +1,8 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.concurrent.Callable;
-
-import com.google.common.base.Preconditions;
-
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -141,18 +139,23 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
+  public void killActor(RayActor<?> actor) {
+    getCurrentRuntime().killActor(actor);
+  }
+
+  @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     return getCurrentRuntime().call(func, args, options);
   }
 
   @Override
-  public RayObject call(RayFunc func, RayActor<?> actor, Object[] args) {
-    return getCurrentRuntime().call(func, actor, args);
+  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
+    return getCurrentRuntime().callActor(func, actor, args);
   }
 
   @Override
   public <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
-      ActorCreationOptions options) {
+                                     ActorCreationOptions options) {
     return getCurrentRuntime().createActor(actorFactoryFunc, args, options);
   }
 
@@ -163,7 +166,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   @Override
   public RayObject callPy(String moduleName, String functionName, Object[] args,
-      CallOptions options) {
+                          CallOptions options) {
     return getCurrentRuntime().callPy(moduleName, functionName, args, options);
   }
 
@@ -174,7 +177,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   @Override
   public RayPyActor createPyActor(String moduleName, String className, Object[] args,
-      ActorCreationOptions options) {
+                                  ActorCreationOptions options) {
     return getCurrentRuntime().createPyActor(moduleName, className, args, options);
   }
 
@@ -185,7 +188,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   @Override
   public void setAsyncContext(Object asyncContext) {
-    currentThreadRuntime.set((RayNativeRuntime)asyncContext);
+    currentThreadRuntime.set((RayNativeRuntime) asyncContext);
   }
 
   @Override

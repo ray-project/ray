@@ -18,21 +18,6 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClient {
-  // TODO(micafan) Will remove those friend classes after we replace RedisGcsClient
-  // with interface class GcsClient in raylet.
-  friend class RedisActorInfoAccessor;
-  friend class RedisJobInfoAccessor;
-  friend class RedisTaskInfoAccessor;
-  friend class RedisNodeInfoAccessor;
-  friend class RedisObjectInfoAccessor;
-  friend class SubscriptionExecutorTest;
-  friend class LogSubscribeTestHelper;
-  friend class TaskTableTestHelper;
-  friend class ClientTableTestHelper;
-  friend class SetTestHelper;
-  friend class HashTableTestHelper;
-  friend class ActorCheckpointIdTable;
-
  public:
   /// Constructor of RedisGcsClient.
   /// Connect() must be called(and return ok) before you call any other methods.
@@ -56,20 +41,15 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Must be single-threaded io_service (get more information from RedisAsioClient).
   ///
   /// \return Status
-  Status Connect(boost::asio::io_service &io_service);
+  Status Connect(boost::asio::io_service &io_service) override;
 
   /// Disconnect with GCS Service. Non-thread safe.
-  void Disconnect();
+  void Disconnect() override;
 
-  // TODO: Some API for getting the error on the driver
-  TaskReconstructionLog &task_reconstruction_log();
-  TaskLeaseTable &task_lease_table();
-  ErrorTable &error_table();
-  ProfileTable &profile_table();
-  /// Used only for direct calls. Tasks submitted through the raylet transport
-  /// should use Actors(), which has a requirement on the order in which
-  /// entries can be appended to the log.
-  DirectActorTable &direct_actor_table();
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const override;
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -82,31 +62,36 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
-  /// Returns debug string for class.
-  ///
-  /// \return string.
-  std::string DebugString() const;
+  /// The following xxx_table methods implement the Accessor interfaces.
+  /// Implements the Actors() interface.
+  ActorTable &actor_table();
+  ActorCheckpointTable &actor_checkpoint_table();
+  ActorCheckpointIdTable &actor_checkpoint_id_table();
+  /// Implements the Jobs() interface.
+  JobTable &job_table();
+  /// Implements the Objects() interface.
+  ObjectTable &object_table();
+  /// Implements the Nodes() interface.
+  ClientTable &client_table();
+  HeartbeatTable &heartbeat_table();
+  HeartbeatBatchTable &heartbeat_batch_table();
+  DynamicResourceTable &resource_table();
+  /// Implements the Tasks() interface.
+  raylet::TaskTable &raylet_task_table();
+  TaskLeaseTable &task_lease_table();
+  TaskReconstructionLog &task_reconstruction_log();
+  /// Implements the Errors() interface.
+  // TODO: Some API for getting the error on the driver
+  ErrorTable &error_table();
+  /// Implements the Stats() interface.
+  ProfileTable &profile_table();
+  /// Implements the Workers() interface.
+  WorkerFailureTable &worker_failure_table();
 
  private:
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
   void Attach(boost::asio::io_service &io_service);
-
-  /// The following three methods will be deprecated, use method Actors() instead.
-  ActorTable &actor_table();
-  ActorCheckpointTable &actor_checkpoint_table();
-  ActorCheckpointIdTable &actor_checkpoint_id_table();
-  /// This method will be deprecated, use method Jobs() instead.
-  JobTable &job_table();
-  /// This method will be deprecated, use method Objects() instead
-  ObjectTable &object_table();
-  /// The following four methods will be deprecated, use method Nodes() instead.
-  ClientTable &client_table();
-  HeartbeatTable &heartbeat_table();
-  HeartbeatBatchTable &heartbeat_batch_table();
-  DynamicResourceTable &resource_table();
-  /// This method will be deprecated, use method Tasks() instead.
-  raylet::TaskTable &raylet_task_table();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
@@ -115,7 +100,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
-  std::unique_ptr<DirectActorTable> direct_actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
@@ -126,6 +110,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
+  std::unique_ptr<WorkerFailureTable> worker_failure_table_;
   // The following contexts write to the data shard
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;

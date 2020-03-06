@@ -77,6 +77,13 @@ public interface RayRuntime {
   void setResource(String resourceName, double capacity, UniqueId nodeId);
 
   /**
+   * Kill the actor immediately.
+   *
+   * @param actor The actor to be killed.
+   */
+  void killActor(RayActor<?> actor);
+
+  /**
    * Invoke a remote function.
    *
    * @param func The remote function to run.
@@ -94,7 +101,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject call(RayFunc func, RayActor<?> actor, Object[] args);
+  RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args);
 
   /**
    * Create an actor on a remote node.

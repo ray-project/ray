@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Simple example of writing experiences to a file using JsonWriter."""
 
 # __sphinx_doc_begin__

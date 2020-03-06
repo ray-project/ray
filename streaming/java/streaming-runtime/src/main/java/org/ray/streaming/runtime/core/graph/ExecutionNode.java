@@ -3,18 +3,18 @@ package org.ray.streaming.runtime.core.graph;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import org.ray.streaming.plan.VertexType;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
+import org.ray.streaming.api.Language;
+import org.ray.streaming.jobgraph.VertexType;
+import org.ray.streaming.operator.StreamOperator;
 
 /**
  * A node in the physical execution graph.
  */
 public class ExecutionNode implements Serializable {
-
   private int nodeId;
   private int parallelism;
   private NodeType nodeType;
-  private StreamProcessor streamProcessor;
+  private StreamOperator streamOperator;
   private List<ExecutionTask> executionTasks;
   private List<ExecutionEdge> inputsEdges;
   private List<ExecutionEdge> outputEdges;
@@ -59,7 +59,7 @@ public class ExecutionNode implements Serializable {
     this.outputEdges = outputEdges;
   }
 
-  public void addExecutionEdge(ExecutionEdge executionEdge) {
+  public void addOutputEdge(ExecutionEdge executionEdge) {
     this.outputEdges.add(executionEdge);
   }
 
@@ -71,12 +71,16 @@ public class ExecutionNode implements Serializable {
     return inputsEdges;
   }
 
-  public StreamProcessor getStreamProcessor() {
-    return streamProcessor;
+  public StreamOperator getStreamOperator() {
+    return streamOperator;
   }
 
-  public void setStreamProcessor(StreamProcessor streamProcessor) {
-    this.streamProcessor = streamProcessor;
+  public void setStreamOperator(StreamOperator streamOperator) {
+    this.streamOperator = streamOperator;
+  }
+
+  public Language getLanguage() {
+    return streamOperator.getLanguage();
   }
 
   public NodeType getNodeType() {
@@ -92,7 +96,7 @@ public class ExecutionNode implements Serializable {
         this.nodeType = NodeType.SINK;
         break;
       default:
-        this.nodeType = NodeType.PROCESS;
+        this.nodeType = NodeType.TRANSFORM;
     }
   }
 
@@ -102,14 +106,14 @@ public class ExecutionNode implements Serializable {
     sb.append("nodeId=").append(nodeId);
     sb.append(", parallelism=").append(parallelism);
     sb.append(", nodeType=").append(nodeType);
-    sb.append(", streamProcessor=").append(streamProcessor);
+    sb.append(", streamOperator=").append(streamOperator);
     sb.append('}');
     return sb.toString();
   }
 
   public enum NodeType {
     SOURCE,
-    PROCESS,
+    TRANSFORM,
     SINK,
   }
 }

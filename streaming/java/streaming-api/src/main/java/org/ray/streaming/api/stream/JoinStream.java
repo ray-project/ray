@@ -1,10 +1,8 @@
 package org.ray.streaming.api.stream;
 
 import java.io.Serializable;
-import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.JoinFunction;
 import org.ray.streaming.api.function.impl.KeyFunction;
-import org.ray.streaming.operator.StreamOperator;
 
 /**
  * Represents a DataStream of two joined DataStream.
@@ -14,10 +12,6 @@ import org.ray.streaming.operator.StreamOperator;
  * @param <J> Type of the data in the joined stream.
  */
 public class JoinStream<L, R, J> extends DataStream<L> {
-
-  public JoinStream(StreamingContext streamingContext, StreamOperator streamOperator) {
-    super(streamingContext, streamOperator);
-  }
 
   public JoinStream(DataStream<L> leftStream, DataStream<R> rightStream) {
     super(leftStream, null);
@@ -68,7 +62,7 @@ public class JoinStream<L, R, J> extends DataStream<L> {
     private KeyFunction<R, K> rightKeyByFunction;
 
     public Equal(JoinStream<L, R, J> joinStream, KeyFunction<L, K> leftKeyByFunction,
-        KeyFunction<R, K> rightKeyByFunction) {
+                 KeyFunction<R, K> rightKeyByFunction) {
       this.joinStream = joinStream;
       this.leftKeyByFunction = leftKeyByFunction;
       this.rightKeyByFunction = rightKeyByFunction;

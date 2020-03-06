@@ -45,6 +45,16 @@ message ForwardTaskRequest {
 message ForwardTaskReply {
 }
 
+message PinObjectIDsRequest {
+  // Address of the owner to ask when to unpin the objects.
+  Address owner_address = 1;
+  // ObjectIDs to pin.
+  repeated bytes object_ids = 2;
+}
+
+message PinObjectIDsReply {
+}
+
 message GetNodeStatsRequest {
 }
 
@@ -57,37 +67,18 @@ message WorkerStats {
   CoreWorkerStats core_worker_stats = 3;
 }
 
-message ViewData {
-  message Measure {
-    // A short string that describes the tags for this mesaure, e.g.,
-    // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
-    string tags = 1;
-    // Int64 type value (if present).
-    int64 int_value = 2;
-    // Double type value (if present).
-    double double_value = 3;
-    // Distribution type value (if present).
-    double distribution_min = 4;
-    double distribution_mean = 5;
-    double distribution_max = 6;
-    double distribution_count = 7;
-    repeated double distribution_bucket_boundaries = 8;
-    repeated double distribution_bucket_counts = 9;
-  }
-
-  // The name of this Census view.
-  string view_name = 1;
-  // The list of measures recorded under this view.
-  repeated Measure measures = 2;
-}
-
 message GetNodeStatsReply {
   repeated WorkerStats workers_stats = 1;
   repeated ViewData view_data = 2;
-  map<string, double> available_resources = 3;
-  map<string, double> total_resources = 4;
-  uint32 num_workers = 5;
-  repeated TaskSpec infeasible_tasks = 6;
+  uint32 num_workers = 3;
+  repeated TaskSpec infeasible_tasks = 4;
+  repeated TaskSpec ready_tasks = 5;
+}
+
+message GlobalGCRequest {
+}
+
+message GlobalGCReply {
 }
 
 // Service for inter-node-manager communication.
@@ -98,6 +89,10 @@ service NodeManagerService {
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
+  // Pin the provided object IDs.
+  rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
+  // Trigger garbage collection in all workers across the cluster.
+  rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
 }

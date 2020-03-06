@@ -3,7 +3,7 @@
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
-                                 std::shared_ptr<gcs::RedisGcsClient> &gcs_client)
+                                 std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
 namespace {
@@ -17,7 +17,7 @@ using ray::rpc::ObjectTableData;
 /// object table entries up to but not including this notification.
 void UpdateObjectLocations(bool is_added,
                            const std::vector<ObjectTableData> &location_updates,
-                           std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                           std::shared_ptr<gcs::GcsClient> gcs_client,
                            std::unordered_set<ClientID> *node_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is

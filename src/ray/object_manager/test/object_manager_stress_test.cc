@@ -34,7 +34,7 @@ class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
-             std::shared_ptr<gcs::RedisGcsClient> gcs_client)
+             std::shared_ptr<gcs::GcsClient> gcs_client)
       : node_id_(ClientID::FromRandom()),
         config_(object_manager_config),
         gcs_client_(gcs_client),
@@ -62,13 +62,17 @@ class MockServer {
 
   ClientID node_id_;
   ObjectManagerConfig config_;
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   ObjectManager object_manager_;
 };
 
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {}
+  TestObjectManagerBase() {
+#ifdef _WIN32
+    RAY_CHECK(false) << "port system() calls to Windows before running this test";
+#endif
+  }
 
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
@@ -106,8 +110,7 @@ class TestObjectManagerBase : public ::testing::Test {
     // start first server
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
                                          /*is_test_client=*/true);
-    gcs_client_1 =
-        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
+    gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
@@ -119,8 +122,7 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 =
-        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
+    gcs_client_2 = std::make_shared<gcs::RedisGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
@@ -170,8 +172,8 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_1;
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_2;
+  std::shared_ptr<gcs::GcsClient> gcs_client_1;
+  std::shared_ptr<gcs::GcsClient> gcs_client_2;
   std::unique_ptr<MockServer> server1;
   std::unique_ptr<MockServer> server2;
 

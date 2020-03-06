@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
@@ -19,7 +15,6 @@ DEFAULT_CONFIG = with_common_config({
     "vtrace": True,
     "vtrace_clip_rho_threshold": 1.0,
     "vtrace_clip_pg_rho_threshold": 1.0,
-
     # System params.
     #
     # == Overview of data flow in IMPALA ==
@@ -96,6 +91,10 @@ def choose_policy(config):
 
 
 def validate_config(config):
+    # PyTorch check.
+    if config["use_pytorch"]:
+        raise ValueError(
+            "IMPALA does not support PyTorch yet! Use tf instead.")
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
 

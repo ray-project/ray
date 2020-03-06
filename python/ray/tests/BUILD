@@ -7,6 +7,14 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_advanced",
+    size = "medium",
+    srcs = ["test_actor_advanced.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_pool",
     size = "small",
     srcs = ["test_actor_pool.py"],
@@ -16,7 +24,7 @@ py_test(
 
 py_test(
     name = "test_iter",
-    size = "small",
+    size = "medium",
     srcs = ["test_iter.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -188,9 +196,9 @@ py_test(
 )
 
 py_test(
-    name = "test_garbage_collection",
-    size = "small",
-    srcs = ["test_garbage_collection.py"],
+    name = "test_reference_counting",
+    size = "medium",
+    srcs = ["test_reference_counting.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -255,6 +263,14 @@ py_test(
     name = "test_multiprocessing",
     size = "medium",
     srcs = ["test_multiprocessing.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_joblib",
+    size = "medium",
+    srcs = ["test_joblib.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -348,6 +364,22 @@ py_test(
     name = "test_webui",
     size = "small",
     srcs = ["test_webui.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_args",
+    size = "small",
+    srcs = ["test_args.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_asyncio",
+    size = "small",
+    srcs = ["test_asyncio.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

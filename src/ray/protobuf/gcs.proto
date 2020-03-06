@@ -27,7 +27,8 @@ enum TablePrefix {
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
   DIRECT_ACTOR = 18;
-  TABLE_PREFIX_MAX = 19;
+  WORKER_FAILURE = 19;
+  TABLE_PREFIX_MAX = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -46,7 +47,8 @@ enum TablePubsub {
   JOB_PUBSUB = 11;
   NODE_RESOURCE_PUBSUB = 12;
   DIRECT_ACTOR_PUBSUB = 13;
-  TABLE_PUBSUB_MAX = 14;
+  WORKER_FAILURE_PUBSUB = 14;
+  TABLE_PUBSUB_MAX = 15;
 }
 
 enum GcsChangeMode {
@@ -68,10 +70,12 @@ message ObjectTableData {
 }
 
 message TaskReconstructionData {
+  // The ID of task.
+  bytes task_id = 1;
   // The number of times this task has been reconstructed so far.
-  uint64 num_reconstructions = 1;
+  uint64 num_reconstructions = 2;
   // The node manager that is trying to reconstruct the task.
-  bytes node_manager_id = 2;
+  bytes node_manager_id = 3;
 }
 
 message TaskTableData {
@@ -113,6 +117,8 @@ message ActorTableData {
   bool is_direct_call = 11;
   // Whether the actor is persistent.
   bool is_detached = 12;
+  // Timestamp that the actor is created or reconstructed.
+  double timestamp = 13;
 }
 
 message ErrorTableData {
@@ -205,6 +211,8 @@ message HeartbeatTableData {
   repeated double resource_load_capacity = 7;
   // Object IDs that are in use by workers on this node manager's node.
   repeated bytes active_object_id = 8;
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 9;
 }
 
 message HeartbeatBatchTableData {
@@ -213,14 +221,16 @@ message HeartbeatBatchTableData {
 
 // Data for a lease on task execution.
 message TaskLeaseData {
+  // The task ID.
+  bytes task_id = 1;
   // Node manager client ID.
-  bytes node_manager_id = 1;
+  bytes node_manager_id = 2;
   // The time that the lease was last acquired at. NOTE(swang): This is the
   // system clock time according to the node that added the entry and is not
   // synchronized with other nodes.
-  uint64 acquired_at = 2;
+  uint64 acquired_at = 3;
   // The period that the lease is active for.
-  uint64 timeout = 3;
+  uint64 timeout = 4;
 }
 
 message JobTableData {
@@ -266,6 +276,13 @@ message ActorCheckpointIdData {
   repeated bytes checkpoint_ids = 2;
   // A list of the timestamps for each of the above `checkpoint_ids`.
   repeated uint64 timestamps = 3;
+}
+
+message WorkerFailureData {
+  // Address of the worker that failed.
+  Address worker_address = 1;
+  // The UNIX timestamp at which the worker failed.
+  int64 timestamp = 3;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating

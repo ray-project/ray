@@ -28,10 +28,6 @@ multi_from_logits method accepts lists of tensors instead of just
 tensors.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from ray.rllib.models.tf.tf_action_dist import Categorical

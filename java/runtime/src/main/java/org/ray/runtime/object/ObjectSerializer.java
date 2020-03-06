@@ -45,9 +45,9 @@ public class ObjectSerializer {
       if (Arrays.equals(meta, RAW_TYPE_META)) {
         return data;
       } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
-        return RayWorkerException.INSTANCE;
+        return new RayWorkerException();
       } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-        return RayActorException.INSTANCE;
+        return new RayActorException();
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {

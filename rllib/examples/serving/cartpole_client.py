@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Example of querying a policy server. Copy this file for your use case.
 
 To try this out, in two separate shells run:

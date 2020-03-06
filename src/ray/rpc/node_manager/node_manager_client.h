@@ -1,9 +1,9 @@
 #ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
 #define RAY_RPC_NODE_MANAGER_CLIENT_H
 
-#include <thread>
-
 #include <grpcpp/grpcpp.h>
+
+#include <thread>
 
 #include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"
@@ -33,11 +33,10 @@ class NodeManagerClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, request, callback, grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, grpc_client_, )
 
   /// Get current node stats.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, request, callback,
-                         grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
 
   void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
     GetNodeStatsRequest request;
@@ -69,11 +68,16 @@ class NodeManagerWorkerClient
   }
 
   /// Request a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, request, callback,
-                    grpc_client_)
+  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
 
   /// Return a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, request, callback, grpc_client_)
+  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
+
+  /// Notify the raylet to pin the provided object IDs.
+  RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
+
+  /// Trigger global GC across the cluster.
+  RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
 
  private:
   /// Constructor.

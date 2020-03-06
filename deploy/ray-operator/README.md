@@ -115,28 +115,39 @@ Below gives a guide for user to submit RayCluster step by step:
 kustomize build config/crd | kubectl apply -f -
 ```
 
-### Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-* For this version controller will run in system namespace, which maybe can't be tolerated in production.  
-* We will add more detailed RBAC file to control the namespace used in production, and the controller will run in that namespace to control the permission.  
-* Also we will provide the more detailed guide for user to run in a controlled way.
+### Build manager docker image
+View Makefile for more command and info.
 ```shell script
-cd config/manager 
+make docker-build
+```
+
+### Push manager docker image to some docker repo
+View Makefile for more command and info.
+```shell script
+make docker-push
+```
+
+### Deploy the controller in the configured Kubernetes cluster in ~/.kube/config
+* For this version controller will run in ray-operator-system namespace, which maybe can't be tolerated in production.  
+* We will add more detailed RBAC file to control the namespace used in production, and the controller will run in that namespace to control the permission.  
+* Also, we will provide the more detailed guide for user to run in a controlled way.
+```shell script
 kustomize build config/default | kubectl apply -f -
 ```
 
 ### Submit RayCluster to Kubernetes
 ```shell script
-kubectl create -f config/samples/ray_v1_raycluster.mini.yaml
+kubectl create -f config/samples/ray_v1_raycluster.mini.yaml -n ray-operator-system
 ```
 
 ### Apply RayCluster to Kubernetes
 ```shell script
-kubectl apply -f config/samples/ray_v1_raycluster.mini.yaml
+kubectl apply -f config/samples/ray_v1_raycluster.mini.yaml -n ray-operator-system
 ```
 
 ### Delete RayCluster to Kubernetes
 ```shell script
-kubectl delete -f config/samples/ray_v1_raycluster.mini.yaml
+kubectl delete -f config/samples/ray_v1_raycluster.mini.yaml -n ray-operator-system
 ```
 
 ### Build with bazel

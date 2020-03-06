@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=200)
 parser.add_argument("--use-prev-action-reward", action="store_true")
 parser.add_argument("--run", type=str, default="PPO")
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class CartPoleStatelessEnv(gym.Env):
@@ -164,7 +165,7 @@ if __name__ == "__main__":
 
     tune.register_env("cartpole_stateless", lambda _: CartPoleStatelessEnv())
 
-    ray.init()
+    ray.init(num_cpus=args.num_cpus or None)
 
     configs = {
         "PPO": {

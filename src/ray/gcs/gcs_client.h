@@ -60,6 +60,9 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
+  /// Return client information for debug.
+  virtual std::string DebugString() const { return ""; }
+
   /// Get the sub-interface for accessing actor information in GCS.
   /// This function is thread safe.
   ActorInfoAccessor &Actors() {
@@ -95,6 +98,27 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *task_accessor_;
   }
 
+  /// Get the sub-interface for accessing error information in GCS.
+  /// This function is thread safe.
+  ErrorInfoAccessor &Errors() {
+    RAY_CHECK(error_accessor_ != nullptr);
+    return *error_accessor_;
+  }
+
+  /// Get the sub-interface for accessing stats information in GCS.
+  /// This function is thread safe.
+  StatsInfoAccessor &Stats() {
+    RAY_CHECK(stats_accessor_ != nullptr);
+    return *stats_accessor_;
+  }
+
+  /// Get the sub-interface for accessing worker information in GCS.
+  /// This function is thread safe.
+  WorkerInfoAccessor &Workers() {
+    RAY_CHECK(worker_accessor_ != nullptr);
+    return *worker_accessor_;
+  }
+
  protected:
   /// Constructor of GcsClient.
   ///
@@ -111,6 +135,9 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ObjectInfoAccessor> object_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
+  std::unique_ptr<ErrorInfoAccessor> error_accessor_;
+  std::unique_ptr<StatsInfoAccessor> stats_accessor_;
+  std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
 };
 
 }  // namespace gcs

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import sys
 import time
@@ -19,7 +15,7 @@ def test_get_webui(shutdown_only):
     webui_url = addresses["webui_url"]
     assert ray.get_webui_url() == webui_url
 
-    assert re.match(r"^(localhost|\d+\.\d+\.\d+\.\d+):8265$", webui_url)
+    assert re.match(r"^(localhost|\d+\.\d+\.\d+\.\d+):\d+$", webui_url)
 
     start_time = time.time()
     while True:

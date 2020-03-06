@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import numpy as np
 import os
@@ -336,8 +332,7 @@ def test_driver_put_errors(ray_start_object_store_memory):
     # were evicted and whose originating tasks are still running, this
     # for-loop should hang on its first iteration and push an error to the
     # driver.
-    ray.worker.global_worker.raylet_client.fetch_or_reconstruct([args[0]],
-                                                                False)
+    ray.wait([args[0]], timeout=30)
 
     def error_check(errors):
         return len(errors) > 1

@@ -6,10 +6,6 @@ This example shows:
 You can visualize experiment results in ~/ray_results using TensorBoard.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray import tune
 from ray.rllib.agents.ppo import PPOTrainer

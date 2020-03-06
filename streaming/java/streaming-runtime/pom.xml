@@ -47,6 +47,21 @@
   <version>3.8.0</version>
 </dependency>
 <dependency>
+  <groupId>de.ruedigermoeller</groupId>
+  <artifactId>fst</artifactId>
+  <version>2.57</version>
+</dependency>
+<dependency>
+  <groupId>org.aeonbits.owner</groupId>
+  <artifactId>owner</artifactId>
+  <version>1.0.10</version>
+</dependency>
+<dependency>
+  <groupId>org.msgpack</groupId>
+  <artifactId>msgpack-core</artifactId>
+  <version>0.8.20</version>
+</dependency>
+<dependency>
   <groupId>org.slf4j</groupId>
   <artifactId>slf4j-api</artifactId>
   <version>1.7.25</version>

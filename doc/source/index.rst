@@ -11,18 +11,20 @@ Ray
 
 **Ray is a fast and simple framework for building and running distributed applications.**
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `Distributed Training <distributed_training.html>`__
+- `RaySGD`_: Distributed Training Wrappers
 
 
 Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
+.. _`RaySGD`: raysgd/raysgd.html
+
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 
 Quick Start
@@ -233,11 +235,11 @@ Getting Involved
    :maxdepth: -1
    :caption: Ray Core
 
+   walkthrough.rst
    using-ray.rst
    configure.rst
    cluster-index.rst
-   Tutorials <https://github.com/ray-project/tutorial>
-   Examples <auto_examples/overview.rst>
+   Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
 
 .. toctree::
@@ -251,9 +253,9 @@ Getting Involved
    tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-package-ref.rst
    tune-design.rst
    tune-examples.rst
+   tune-package-ref.rst
    tune-contrib.rst
 
 .. toctree::
@@ -269,22 +271,27 @@ Getting Involved
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
-   rllib-dev.rst
    rllib-package-ref.rst
+   rllib-dev.rst
 
 .. toctree::
    :maxdepth: -1
-   :caption: Experimental
+   :caption: Ray SGD
 
-   distributed_training.rst
-   tf_distributed_training.rst
-   pandas_on_ray.rst
-   projects.rst
-   signals.rst
-   async_api.rst
-   serve.rst
-   iter.rst
+   raysgd/raysgd.rst
+   raysgd/raysgd_pytorch.rst
+   raysgd/raysgd_tensorflow.rst
+   raysgd/raysgd_ref.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: Other Libraries
+
    multiprocessing.rst
+   joblib.rst
+   iter.rst
+   pandas_on_ray.rst
+   serve.rst
 
 .. toctree::
    :maxdepth: -1

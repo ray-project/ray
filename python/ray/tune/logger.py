@@ -1,24 +1,19 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import csv
 import json
 import logging
 import os
 import yaml
-import distutils.version
 import numbers
-
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.tune.util import flatten_dict
-from ray.tune.syncer import get_node_syncer
+from ray.util.debug import log_once
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
                              EXPR_RESULT_FILE)
+from ray.tune.syncer import get_node_syncer
+from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -136,148 +131,6 @@ class JsonLogger(Logger):
             cloudpickle.dump(self.config, f)
 
 
-def tf2_compat_logger(config, logdir, trial=None):
-    """Chooses TensorBoard logger depending on imported TF version."""
-    global tf
-    if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
-        logger.warning("Not importing TensorFlow for test purposes")
-        tf = None
-        raise RuntimeError("Not importing TensorFlow for test purposes")
-    else:
-        import tensorflow as tf
-        use_tf2_api = (distutils.version.LooseVersion(tf.__version__) >=
-                       distutils.version.LooseVersion("1.15.0"))
-        if use_tf2_api:
-            # This is temporarily for RLlib because it disables v2 behavior...
-            from tensorflow.python import tf2
-            if not tf2.enabled():
-                tf = tf.compat.v1
-                return TFLogger(config, logdir, trial)
-            tf = tf.compat.v2  # setting this for TF2.0
-            return TF2Logger(config, logdir, trial)
-        else:
-            return TFLogger(config, logdir, trial)
-
-
-class TF2Logger(Logger):
-    """TensorBoard Logger for TF version >= 2.0.0.
-
-    Automatically flattens nested dicts to show on TensorBoard:
-
-        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
-
-    If you need to do more advanced logging, it is recommended
-    to use a Summary Writer in the Trainable yourself.
-    """
-
-    def _init(self):
-        global tf
-        if tf is None:
-            import tensorflow as tf
-            tf = tf.compat.v2  # setting this for TF2.0
-        self._file_writer = None
-        self._hp_logged = False
-
-    def on_result(self, result):
-        if self._file_writer is None:
-            from tensorflow.python.eager import context
-            from tensorboard.plugins.hparams import api as hp
-            self._context = context
-            self._file_writer = tf.summary.create_file_writer(self.logdir)
-        with tf.device("/CPU:0"):
-            with tf.summary.record_if(True), self._file_writer.as_default():
-                step = result.get(
-                    TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
-
-                tmp = result.copy()
-                if not self._hp_logged:
-                    if self.trial and self.trial.evaluated_params:
-                        try:
-                            hp.hparams(
-                                self.trial.evaluated_params,
-                                trial_id=self.trial.trial_id)
-                        except Exception as exc:
-                            logger.error("HParams failed with %s", exc)
-                    self._hp_logged = True
-
-                for k in [
-                        "config", "pid", "timestamp", TIME_TOTAL_S,
-                        TRAINING_ITERATION
-                ]:
-                    if k in tmp:
-                        del tmp[k]  # not useful to log these
-
-                flat_result = flatten_dict(tmp, delimiter="/")
-                path = ["ray", "tune"]
-                for attr, value in flat_result.items():
-                    if type(value) in VALID_SUMMARY_TYPES:
-                        tf.summary.scalar(
-                            "/".join(path + [attr]), value, step=step)
-        self._file_writer.flush()
-
-    def flush(self):
-        if self._file_writer is not None:
-            self._file_writer.flush()
-
-    def close(self):
-        if self._file_writer is not None:
-            self._file_writer.close()
-
-
-def to_tf_values(result, path):
-    flat_result = flatten_dict(result, delimiter="/")
-    values = [
-        tf.Summary.Value(tag="/".join(path + [attr]), simple_value=value)
-        for attr, value in flat_result.items()
-        if type(value) in VALID_SUMMARY_TYPES
-    ]
-    return values
-
-
-class TFLogger(Logger):
-    """TensorBoard Logger for TF version < 2.0.0.
-
-    Automatically flattens nested dicts to show on TensorBoard:
-
-        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
-
-    If you need to do more advanced logging, it is recommended
-    to use a Summary Writer in the Trainable yourself.
-    """
-
-    def _init(self):
-        global tf
-        if tf is None:
-            import tensorflow as tf
-            tf = tf.compat.v1  # setting this for regular TF logger
-        logger.debug("Initializing TFLogger instead of TF2Logger.")
-        self._file_writer = tf.summary.FileWriter(self.logdir)
-
-    def on_result(self, result):
-        tmp = result.copy()
-        for k in [
-                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
-        ]:
-            if k in tmp:
-                del tmp[k]  # not useful to tf log these
-        values = to_tf_values(tmp, ["ray", "tune"])
-        train_stats = tf.Summary(value=values)
-        t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
-        self._file_writer.add_summary(train_stats, t)
-        iteration_value = to_tf_values({
-            TRAINING_ITERATION: result[TRAINING_ITERATION]
-        }, ["ray", "tune"])
-        iteration_stats = tf.Summary(value=iteration_value)
-        self._file_writer.add_summary(iteration_stats, t)
-        self._file_writer.flush()
-
-    def flush(self):
-        self._file_writer.flush()
-
-    def close(self):
-        self._file_writer.close()
-
-
 class CSVLogger(Logger):
     """Logs results to progress.csv under the trial directory.
 
@@ -319,7 +172,8 @@ class CSVLogger(Logger):
 class TBXLogger(Logger):
     """TensorBoardX Logger.
 
-    Automatically flattens nested dicts to show on TensorBoard:
+    Note that hparams will be written only after a trial has terminated.
+    This logger automatically flattens nested dicts to show on TensorBoard:
 
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
@@ -328,7 +182,7 @@ class TBXLogger(Logger):
         try:
             from tensorboardX import SummaryWriter
         except ImportError:
-            logger.error("pip install tensorboardX to see TensorBoard files.")
+            logger.error("pip install 'ray[tune]' to see TensorBoard files.")
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
@@ -345,14 +199,28 @@ class TBXLogger(Logger):
 
         flat_result = flatten_dict(tmp, delimiter="/")
         path = ["ray", "tune"]
-        valid_result = {
-            "/".join(path + [attr]): value
-            for attr, value in flat_result.items()
-            if type(value) in VALID_SUMMARY_TYPES
-        }
+        valid_result = {}
 
-        for attr, value in valid_result.items():
-            self._file_writer.add_scalar(attr, value, global_step=step)
+        for attr, value in flat_result.items():
+            full_attr = "/".join(path + [attr])
+            if type(value) in VALID_SUMMARY_TYPES:
+                valid_result[full_attr] = value
+                self._file_writer.add_scalar(
+                    full_attr, value, global_step=step)
+            elif type(value) is list and len(value) > 0:
+                valid_result[full_attr] = value
+                try:
+                    self._file_writer.add_histogram(
+                        full_attr, value, global_step=step)
+                # In case TensorboardX still doesn't think it's a valid value
+                # (e.g. `[[]]`), warn and move on.
+                except (ValueError, TypeError):
+                    if log_once("invalid_tbx_value"):
+                        logger.warning(
+                            "You are trying to log an invalid value ({}={}) "
+                            "via {}!".format(full_attr, value,
+                                             type(self).__name__))
+
         self.last_result = valid_result
         self._file_writer.flush()
 
@@ -363,17 +231,29 @@ class TBXLogger(Logger):
     def close(self):
         if self._file_writer is not None:
             if self.trial and self.trial.evaluated_params and self.last_result:
-                from tensorboardX.summary import hparams
-                experiment_tag, session_start_tag, session_end_tag = hparams(
-                    hparam_dict=self.trial.evaluated_params,
-                    metric_dict=self.last_result)
-                self._file_writer.file_writer.add_summary(experiment_tag)
-                self._file_writer.file_writer.add_summary(session_start_tag)
-                self._file_writer.file_writer.add_summary(session_end_tag)
+                scrubbed_result = {
+                    k: value
+                    for k, value in self.last_result.items()
+                    if type(value) in VALID_SUMMARY_TYPES
+                }
+                self._try_log_hparams(scrubbed_result)
             self._file_writer.close()
 
+    def _try_log_hparams(self, result):
+        # TBX currently errors if the hparams value is None.
+        scrubbed_params = {
+            k: v
+            for k, v in self.trial.evaluated_params.items() if v is not None
+        }
+        from tensorboardX.summary import hparams
+        experiment_tag, session_start_tag, session_end_tag = hparams(
+            hparam_dict=scrubbed_params, metric_dict=result)
+        self._file_writer.file_writer.add_summary(experiment_tag)
+        self._file_writer.file_writer.add_summary(session_start_tag)
+        self._file_writer.file_writer.add_summary(session_end_tag)
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
+
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
 
 class UnifiedLogger(Logger):
@@ -497,6 +377,7 @@ class _SafeFallbackEncoder(json.JSONEncoder):
 def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print
+    result.update(hist_stats=None)  # drop hist_stats from pretty print
     out = {}
     for k, v in result.items():
         if v is not None:

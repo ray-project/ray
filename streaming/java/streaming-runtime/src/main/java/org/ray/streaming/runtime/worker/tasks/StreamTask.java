@@ -9,6 +9,7 @@ import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.runtime.core.collector.OutputCollector;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -64,7 +65,7 @@ public abstract class StreamTask implements Runnable {
     List<Collector> collectors = new ArrayList<>();
     for (ExecutionEdge edge : outputEdges) {
       Map<String, ActorId> outputActorIds = new HashMap<>();
-      Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
+      Map<Integer, RayActor> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
         String queueName = ChannelID.genIdStr(taskId, targetTaskId, executionGraph.getBuildTime());
@@ -81,7 +82,8 @@ public abstract class StreamTask implements Runnable {
         DataWriter writer = new DataWriter(channelIDs, toActorIds, queueConf);
         LOG.info("Create DataWriter succeed.");
         writers.put(edge, writer);
-        collectors.add(new OutputCollector(channelIDs, writer, edge.getPartition()));
+        Partition partition = edge.getPartition();
+        collectors.add(new OutputCollector(channelIDs, writer, partition));
       }
     }
 
@@ -89,7 +91,7 @@ public abstract class StreamTask implements Runnable {
     List<ExecutionEdge> inputEdges = executionNode.getInputsEdges();
     Map<String, ActorId> inputActorIds = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
-      Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
+      Map<Integer, RayActor> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
       taskId2Worker.forEach((srcTaskId, srcActor) -> {
         String queueName = ChannelID.genIdStr(srcTaskId, taskId, executionGraph.getBuildTime());

@@ -1,14 +1,12 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from datetime import datetime
 
 import copy
 import io
 import logging
+import glob
 import os
 import pickle
+import pandas as pd
 from six import string_types
 import shutil
 import tempfile
@@ -21,8 +19,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
-
-from ray.tune.util import UtilMonitor
+from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +74,36 @@ class TrainableUtil:
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+    @staticmethod
+    def get_checkpoints_paths(logdir):
+        """ Finds the checkpoints within a specific folder.
+
+        Returns a pandas DataFrame of training iterations and checkpoint
+        paths within a specific folder.
+
+        Raises:
+            FileNotFoundError if the directory is not found.
+        """
+        marker_paths = glob.glob(
+            os.path.join(logdir, "checkpoint_*/.is_checkpoint"))
+        iter_chkpt_pairs = []
+        for marker_path in marker_paths:
+            chkpt_dir = os.path.dirname(marker_path)
+            metadata_file = glob.glob(
+                os.path.join(chkpt_dir, "*.tune_metadata"))
+            if len(metadata_file) != 1:
+                raise ValueError(
+                    "{} has zero or more than one tune_metadata.".format(
+                        chkpt_dir))
+
+            chkpt_path = metadata_file[0][:-len(".tune_metadata")]
+            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
+            iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
+
+        chkpt_df = pd.DataFrame(
+            iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
+        return chkpt_df
 
 
 class Trainable:
@@ -524,7 +551,7 @@ class Trainable:
         Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors
         before execution.
 
-        >>> from ray.tune.util import validate_save_restore
+        >>> from ray.tune.utils import validate_save_restore
         >>> validate_save_restore(MyTrainableClass)
         >>> validate_save_restore(MyTrainableClass, use_object_store=True)
 

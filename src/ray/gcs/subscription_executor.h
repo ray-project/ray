@@ -18,7 +18,7 @@ namespace gcs {
 template <typename ID, typename Data, typename Table>
 class SubscriptionExecutor {
  public:
-  SubscriptionExecutor(Table &table) : table_(table) {}
+  explicit SubscriptionExecutor(Table &table) : table_(table) {}
 
   ~SubscriptionExecutor() {}
 

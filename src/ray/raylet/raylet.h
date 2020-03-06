@@ -41,7 +41,7 @@ class Raylet {
          int redis_port, const std::string &redis_password,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<gcs::RedisGcsClient> gcs_client);
+         std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// Start this raylet.
   void Start();
@@ -69,7 +69,7 @@ class Raylet {
   GcsNodeInfo self_node_info_;
 
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object table. This is shared between the object manager and node
   /// manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;

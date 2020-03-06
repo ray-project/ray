@@ -2,8 +2,8 @@ package org.ray.streaming.runtime.worker;
 
 import java.io.Serializable;
 import java.util.Map;
+
 import org.ray.api.Ray;
-import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -11,6 +11,7 @@ import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.core.processor.OneInputProcessor;
+import org.ray.streaming.runtime.core.processor.ProcessBuilder;
 import org.ray.streaming.runtime.core.processor.SourceProcessor;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.transfer.TransferHandler;
@@ -26,7 +27,6 @@ import org.slf4j.LoggerFactory;
 /**
  * The stream job worker, it is a ray actor.
  */
-@RayRemote
 public class JobWorker implements Serializable {
   private static final Logger LOGGER = LoggerFactory.getLogger(JobWorker.class);
 
@@ -35,7 +35,7 @@ public class JobWorker implements Serializable {
   }
 
   private int taskId;
-  private Map<String, Object> config;
+  private Map<String, String> config;
   private WorkerContext workerContext;
   private ExecutionNode executionNode;
   private ExecutionTask executionTask;
@@ -54,7 +54,8 @@ public class JobWorker implements Serializable {
     this.executionNode = executionGraph.getExecutionNodeByTaskId(taskId);
 
     this.nodeType = executionNode.getNodeType();
-    this.streamProcessor = executionNode.getStreamProcessor();
+    this.streamProcessor = ProcessBuilder
+        .buildProcessor(executionNode.getStreamOperator());
     LOGGER.debug("Initializing StreamWorker, taskId: {}, operator: {}.", taskId, streamProcessor);
 
     String channelType = (String) this.config.getOrDefault(
@@ -86,7 +87,7 @@ public class JobWorker implements Serializable {
     return taskId;
   }
 
-  public Map<String, Object> getConfig() {
+  public Map<String, String> getConfig() {
     return config;
   }
 

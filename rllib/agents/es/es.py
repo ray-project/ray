@@ -1,10 +1,6 @@
 # Code in this file is copied and adapted from
 # https://github.com/openai/evolution-strategies-starter.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import logging
 import numpy as np
@@ -172,6 +168,11 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
+        # PyTorch check.
+        if config["use_pytorch"]:
+            raise ValueError(
+                "ES does not support PyTorch yet! Use tf instead.")
+
         policy_params = {"action_noise_std": 0.01}
 
         env = env_creator(config["env_config"])
@@ -290,7 +291,7 @@ class ESTrainer(Trainer):
         return result
 
     @override(Trainer)
-    def compute_action(self, observation):
+    def compute_action(self, observation, *args, **kwargs):
         return self.policy.compute(observation, update=False)[0]
 
     @override(Trainer)

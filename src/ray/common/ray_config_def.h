@@ -40,6 +40,48 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 /// type of task from starving other types (see issue #3664).
 RAY_CONFIG(bool, fair_queueing_enabled, true)
 
+/// Whether to enable object pinning for plasma objects. When this is
+/// enabled, objects in scope in the cluster will not be LRU evicted.
+RAY_CONFIG(bool, object_pinning_enabled, true)
+
+/// Whether to enable distributed reference counting for objects. When this is
+/// enabled, an object's ref count will include any references held by other
+/// processes, such as when an ObjectID is serialized and passed as an argument
+/// to another task. It will also include any references due to nesting, i.e.
+/// if the object ID is nested inside another object that is still in scope.
+/// When this is disabled, an object's ref count will include only local
+/// information:
+///  1. Local Python references to the ObjectID.
+///  2. Pending tasks submitted by the local process that depend on the object.
+/// If both this flag and object_pinning_enabled are turned on, then an object
+/// will not be LRU evicted until it is out of scope in ALL processes in the
+/// cluster and all objects that contain it are also out of scope. If this flag
+/// is off and object_pinning_enabled is turned on, then an object will not be
+/// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
+RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. If set, then this is the duration between attempts to flush the
+/// local cache. If this is set to 0, then the objects will be freed as soon as
+/// they enter the cache. To disable eager eviction, set this to -1.
+/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
+/// likely cause spurious object lost errors for Object IDs that were
+/// serialized, then either passed as an argument or returned from a task.
+/// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
+/// this should be set to a value larger than
+/// raylet_heartbeat_timeout_milliseconds.
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
+
+/// If object_pinning_enabled is on, then objects that have been unpinned are
+/// added to a local cache. When the cache is flushed, all objects in the cache
+/// will be eagerly evicted in a batch by freeing all plasma copies in the
+/// cluster. This is the maximum number of objects in the local cache before it
+/// is flushed. To disable eager eviction, set free_objects_period_milliseconds
+/// to -1.
+RAY_CONFIG(size_t, free_objects_batch_size, 100)
+
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
@@ -48,6 +90,10 @@ RAY_CONFIG(bool, new_scheduler_enabled, false)
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
+
+// The max gRPC message size (the gRPC internal default is 4MB). We use a higher
+// limit in Ray to avoid crashing with many small inlined task arguments.
+RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
 
 // The min number of retries for direct actor creation tasks. The actual number
 // of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
@@ -63,11 +109,9 @@ RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 /// for direct task submission until it must be returned to the raylet.
 RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 
-/// The duration between heartbeats sent from the workers to the raylet.
-/// If set to a negative value, the heartbeats will not be sent.
-/// These are used to report active object IDs for garbage collection and
-/// to ensure that workers go down when the raylet dies unexpectedly.
-RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 1000)
+/// The interval at which the workers will check if their raylet has gone down.
+/// When this happens, they will kill themselves.
+RAY_CONFIG(int64_t, raylet_death_check_interval_milliseconds, 1000)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
@@ -119,11 +163,6 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// This is a timeout used to cause failures in the plasma manager and raylet
 /// when certain event loop handlers take too long.
 RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000)
-
-/// This is used by the Python extension when serializing objects as part of
-/// a task spec.
-RAY_CONFIG(int64_t, size_limit, 10000)
-RAY_CONFIG(int64_t, num_elements_limit, 10000)
 
 /// This is used to cause failures when a certain loop in redis.cc which
 /// synchronously looks up object manager addresses in redis is slow.
@@ -194,3 +233,15 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
+
+/// Allow up to 5 seconds for connecting to gcs service.
+/// Note: this only takes effect when gcs service is enabled.
+RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
+RAY_CONFIG(int64_t, gcs_service_connect_wait_milliseconds, 100)
+
+/// Maximum number of times to retry putting an object when the plasma store is full.
+/// Can be set to -1 to enable unlimited retries.
+RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
+/// Duration to sleep after failing to put an object in plasma because it is full.
+/// This will be exponentially increased for each retry.
+RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)

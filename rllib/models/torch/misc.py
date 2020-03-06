@@ -1,8 +1,4 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from ray.rllib.utils import try_import_torch

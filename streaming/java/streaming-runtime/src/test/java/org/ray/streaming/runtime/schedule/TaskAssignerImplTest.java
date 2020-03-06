@@ -1,45 +1,36 @@
 package org.ray.streaming.runtime.schedule;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.google.common.collect.Lists;
-import org.ray.api.RayActor;
-import org.ray.api.id.ActorId;
-import org.ray.api.id.ObjectId;
-import org.ray.runtime.actor.LocalModeRayActor;
+import java.util.List;
+import org.ray.api.Ray;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
-import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSink;
+import org.ray.streaming.api.stream.DataStreamSource;
+import org.ray.streaming.jobgraph.JobGraph;
+import org.ray.streaming.jobgraph.JobGraphBuilder;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
-import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class TaskAssignerImplTest {
+public class TaskAssignerImplTest extends BaseUnitTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskAssignerImplTest.class);
 
   @Test
   public void testTaskAssignImpl() {
-    Plan plan = buildDataSyncPlan();
-
-    List<RayActor<JobWorker>> workers = new ArrayList<>();
-    for(int i = 0; i < plan.getPlanVertexList().size(); i++) {
-      workers.add(new LocalModeRayActor(ActorId.fromRandom(), ObjectId.fromRandom()));
-    }
+    Ray.init();
+    JobGraph jobGraph = buildDataSyncPlan();
 
     TaskAssigner taskAssigner = new TaskAssignerImpl();
-    ExecutionGraph executionGraph = taskAssigner.assign(plan, workers);
+    ExecutionGraph executionGraph = taskAssigner.assign(jobGraph);
 
     List<ExecutionNode> executionNodeList = executionGraph.getExecutionNodeList();
 
@@ -60,16 +51,17 @@ public class TaskAssignerImplTest {
     Assert.assertEquals(sinkNode.getNodeType(), NodeType.SINK);
     Assert.assertEquals(sinkNode.getExecutionTasks().size(), 1);
     Assert.assertEquals(sinkNode.getOutputEdges().size(), 0);
+
+    Ray.shutdown();
   }
 
-  public Plan buildDataSyncPlan() {
+  public JobGraph buildDataSyncPlan() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
-    StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
-    PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
+    DataStreamSink streamSink = dataStream.sink(LOGGER::info);
+    JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
-    Plan plan = planBuilder.buildPlan();
-    return plan;
+    return jobGraphBuilder.build();
   }
 }

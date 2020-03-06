@@ -1,12 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import shutil
 import time
 import pytest
 import ray
+import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 
 
@@ -102,12 +99,18 @@ def test_raylet_tempfiles(shutdown_only):
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
-    assert log_files.issuperset({
+    log_files_expected = {
         "log_monitor.out", "log_monitor.err", "plasma_store.out",
         "plasma_store.err", "monitor.out", "monitor.err", "raylet_monitor.out",
         "raylet_monitor.err", "redis-shard_0.out", "redis-shard_0.err",
         "redis.out", "redis.err", "raylet.out", "raylet.err"
-    })  # with raylet logs
+    }
+
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        log_files_expected.update({"gcs_server.out", "gcs_server.err"})
+
+    assert log_files.issuperset(log_files_expected)
+
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
@@ -118,12 +121,8 @@ def test_raylet_tempfiles(shutdown_only):
     assert top_levels.issuperset({"sockets", "logs"})
     time.sleep(3)  # wait workers to start
     log_files = set(os.listdir(node.get_logs_dir_path()))
-    assert log_files.issuperset({
-        "log_monitor.out", "log_monitor.err", "plasma_store.out",
-        "plasma_store.err", "monitor.out", "monitor.err", "raylet_monitor.out",
-        "raylet_monitor.err", "redis-shard_0.out", "redis-shard_0.err",
-        "redis.out", "redis.err", "raylet.out", "raylet.err"
-    })  # with raylet logs
+
+    assert log_files.issuperset(log_files_expected)
 
     # Check numbers of worker log file.
     assert sum(

@@ -1,9 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
-import itertools
 import logging
 import json
 import math
@@ -184,9 +179,9 @@ class PopulationBasedTraining(FIFOScheduler):
                  custom_explore_fn=None,
                  log_config=True):
         for value in hyperparam_mutations.values():
-            if not (isinstance(value, list) or callable(value)):
+            if not (isinstance(value, (list, dict)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
-                                "a List or callable.")
+                                "a List, Dict, or callable.")
 
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
@@ -274,9 +269,8 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trial_name, trial_to_clone_name = (trial_state.orig_tag,
                                            new_state.orig_tag)
-        trial_id = "".join(itertools.takewhile(str.isdigit, trial_name))
-        trial_to_clone_id = "".join(
-            itertools.takewhile(str.isdigit, trial_to_clone_name))
+        trial_id = trial.trial_id
+        trial_to_clone_id = trial_to_clone.trial_id
         trial_path = os.path.join(trial.local_dir,
                                   "pbt_policy_" + trial_id + ".txt")
         trial_to_clone_path = os.path.join(
@@ -328,14 +322,12 @@ class PopulationBasedTraining(FIFOScheduler):
         reset_successful = trial_executor.reset_trial(trial, new_config,
                                                       new_tag)
         if reset_successful:
-            trial_executor.restore(
-                trial, Checkpoint.from_object(new_state.last_checkpoint))
+            trial_executor.restore(trial, new_state.last_checkpoint)
         else:
             trial_executor.stop_trial(trial, stop_logger=False)
             trial.config = new_config
             trial.experiment_tag = new_tag
-            trial_executor.start_trial(
-                trial, Checkpoint.from_object(new_state.last_checkpoint))
+            trial_executor.start_trial(trial, new_state.last_checkpoint)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well

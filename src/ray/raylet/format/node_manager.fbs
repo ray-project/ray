@@ -80,8 +80,8 @@ enum MessageType:int {
   ConnectClient,
   // Set dynamic custom resource.
   SetResourceRequest,
-  // Update the active set of object IDs in use on this worker.
-  ReportActiveObjectIDs,
+  // Subscribe to Plasma updates
+  SubscribePlasmaReady,
 }
 
 table TaskExecutionSpecification {
@@ -266,7 +266,7 @@ table SetResourceRequest {
   client_id: string;
 }
 
-table ReportActiveObjectIDs {
-  // Object IDs that are active in the worker.
-  object_ids: [string];
+table SubscribePlasmaReady {
+  // ObjectID to wait for 
+  object_id: string;
 }

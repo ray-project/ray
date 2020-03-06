@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import atoma
 from flask import Flask, jsonify, request
 from flask_cors import CORS

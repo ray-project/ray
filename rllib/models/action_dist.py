@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
@@ -31,6 +27,15 @@ class ActionDistribution:
     @DeveloperAPI
     def sample(self):
         """Draw a sample from the action distribution."""
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def deterministic_sample(self):
+        """
+        Get the deterministic "sampling" output from the distribution.
+        This is usually the max likelihood output, i.e. mean for Normal, argmax
+        for Categorical, etc..
+        """
         raise NotImplementedError
 
     @DeveloperAPI

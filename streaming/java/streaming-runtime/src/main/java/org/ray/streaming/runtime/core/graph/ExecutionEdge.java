@@ -1,14 +1,12 @@
 package org.ray.streaming.runtime.core.graph;
 
 import java.io.Serializable;
-
 import org.ray.streaming.api.partition.Partition;
 
 /**
  * An edge in the physical execution graph.
  */
 public class ExecutionEdge implements Serializable {
-
   private int srcNodeId;
   private int targetNodeId;
   private Partition partition;

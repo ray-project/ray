@@ -1,9 +1,5 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import numpy as np
 import argparse
@@ -121,6 +117,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.ray_address:
         ray.init(address=args.ray_address)
+    else:
+        ray.init(num_cpus=2 if args.smoke_test else None)
     sched = AsyncHyperBandScheduler(
         time_attr="training_iteration", metric="mean_accuracy")
     analysis = tune.run(

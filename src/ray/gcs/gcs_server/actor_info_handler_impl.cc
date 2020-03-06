@@ -13,8 +13,9 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
   auto on_done = [actor_id, reply, send_reply_callback](
                      Status status, const boost::optional<ActorTableData> &result) {
     if (status.ok()) {
-      RAY_DCHECK(result);
-      reply->mutable_actor_table_data()->CopyFrom(*result);
+      if (result) {
+        reply->mutable_actor_table_data()->CopyFrom(*result);
+      }
     } else {
       RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
                      << ", actor id = " << actor_id;

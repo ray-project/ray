@@ -1,13 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from contextlib import contextmanager
 import colorama
 import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import os
@@ -30,6 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 
@@ -37,6 +36,7 @@ from ray import (
     ActorID,
     JobID,
     ObjectID,
+    Language,
 )
 from ray import import_thread
 from ray import profiling
@@ -65,11 +65,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
 
 
 class ActorCheckpointInfo:
@@ -209,7 +204,6 @@ class Worker:
             if job_id not in self.serialization_context_map:
                 self.serialization_context_map[
                     job_id] = serialization.SerializationContext(self)
-                self.serialization_context_map[job_id].initialize()
             return self.serialization_context_map[job_id]
 
     def check_connected(self):
@@ -242,7 +236,7 @@ class Worker:
         """
         self.mode = mode
 
-    def put_object(self, value, object_id=None):
+    def put_object(self, value, object_id=None, pin_object=True):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -256,6 +250,7 @@ class Worker:
             value: The value to put in the object store.
             object_id (object_id.ObjectID): The object ID of the value to be
                 put. If None, one will be generated.
+            pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
             object_id.ObjectID: The object ID the object was put under.
@@ -275,16 +270,19 @@ class Worker:
                 "call 'put' on it (or return it).")
 
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id)
+        # This *must* be the first place that we construct this python
+        # ObjectID because an entry with 0 local references is created when
+        # the object is Put() in the core worker, expecting that this python
+        # reference will be created. If another reference is created and
+        # removed before this one, it will corrupt the state in the
+        # reference counter.
+        return ray.ObjectID(
+            self.core_worker.put_serialized_object(
+                serialized_value, object_id=object_id, pin_object=pin_object))
 
-    def deserialize_objects(self,
-                            data_metadata_pairs,
-                            object_ids,
-                            error_timeout=10):
+    def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids,
-                                           error_timeout)
+        return context.deserialize_objects(data_metadata_pairs, object_ids)
 
     def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
@@ -526,6 +524,7 @@ def print_failed_task(task_status):
 
 def init(address=None,
          redis_address=None,
+         redis_port=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -545,6 +544,7 @@ def init(address=None,
          redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
+         include_java=False,
          include_webui=None,
          webui_host="localhost",
          job_id=None,
@@ -582,6 +582,8 @@ def init(address=None,
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_address (str): Deprecated; same as address.
+        redis_port (int): The port that the primary Redis shard should listen
+            to. If None, then a random port will be chosen.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -624,6 +626,7 @@ def init(address=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        include_java: Boolean flag indicating whether to enable java worker.
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this argument
             is None, then the UI will be started if the relevant dependencies
@@ -703,6 +706,7 @@ def init(address=None,
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
+            redis_port=redis_port,
             node_ip_address=node_ip_address,
             object_id_seed=object_id_seed,
             local_mode=local_mode,
@@ -717,6 +721,7 @@ def init(address=None,
             redis_password=redis_password,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
+            include_java=include_java,
             include_webui=include_webui,
             webui_host=webui_host,
             memory=memory,
@@ -1102,8 +1107,11 @@ def connect(node,
     assert worker.cached_functions_to_run is not None, error_message
 
     # Enable nice stack traces on SIGSEGV etc.
-    if not faulthandler.is_enabled():
-        faulthandler.enable(all_threads=False)
+    try:
+        if not faulthandler.is_enabled():
+            faulthandler.enable(all_threads=False)
+    except io.UnsupportedOperation:
+        pass  # ignore
 
     ray._raylet.set_internal_config(internal_config)
 
@@ -1246,7 +1254,6 @@ def connect(node,
         node.node_ip_address,
         node.node_manager_port,
     )
-    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1344,6 +1351,7 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
+    ray.actor.ActorClassMethodMetadata.reset_cache()
 
 
 @contextmanager
@@ -1416,7 +1424,7 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
-def show_in_webui(message):
+def show_in_webui(message, key="", dtype="text"):
     """Display message in dashboard.
 
     Display message for the current task or actor in the dashboard.
@@ -1425,10 +1433,23 @@ def show_in_webui(message):
 
     Args:
         message (str): Message to be displayed.
+        key (str): The key name for the message. Multiple message under
+            different keys will be displayed at the same time. Messages
+            under the same key will be overriden.
+        data_type (str): The type of message for rendering. One of the
+            following: text, html.
     """
     worker = global_worker
     worker.check_connected()
-    worker.core_worker.set_webui_display(message.encode())
+
+    acceptable_dtypes = {"text", "html"}
+    assert dtype in acceptable_dtypes, "dtype accepts only: {}".format(
+        acceptable_dtypes)
+
+    message_wrapped = {"message": message, "dtype": dtype}
+    message_encoded = json.dumps(message_wrapped).encode()
+
+    worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
 def get(object_ids, timeout=None):
@@ -1439,6 +1460,10 @@ def get(object_ids, timeout=None):
     object store, it will be shipped from an object store that has it (once the
     object has been created). If object_ids is a list, then the objects
     corresponding to each object in the list will be returned.
+
+    This method will error will error if it's running inside async context,
+    you can use ``await object_id`` instead of ``ray.get(object_id)``. For
+    a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
 
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
@@ -1500,8 +1525,6 @@ def put(value, weakref=False):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
-    Note that this pinning only applies to the particular object ID returned
-    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
@@ -1519,7 +1542,7 @@ def put(value, weakref=False):
             object_id = worker.local_mode_manager.put_object(value)
         else:
             try:
-                object_id = worker.put_object(value)
+                object_id = worker.put_object(value, pin_object=not weakref)
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
@@ -1528,26 +1551,11 @@ def put(value, weakref=False):
                     "ray.put(value, weakref=True) to allow object data to "
                     "be evicted early.")
                 raise
-        # Pin the object buffer with the returned id. This avoids put returns
-        # from getting evicted out from under the id.
-        # TODO(edoakes): we should be able to avoid this extra IPC by holding
-        # a reference to the buffer created when putting the object, but the
-        # buffer returned by the plasma store create method doesn't prevent
-        # the object from being evicted.
-        if not weakref and not worker.mode == LOCAL_MODE:
-            object_id.set_buffer_ref(
-                worker.core_worker.get_objects([object_id],
-                                               worker.current_task_id))
         return object_id
 
 
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
-
-    .. warning::
-
-        The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
 
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
@@ -1564,6 +1572,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
 
+    This method will error if it's running inside an async context. Instead of
+    ``ray.wait(object_ids)``, you can use ``await asyncio.wait(object_ids)``.
+
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
@@ -1577,9 +1588,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
-    if hasattr(
-            worker,
-            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+    if hasattr(worker,
+               "core_worker") and worker.core_worker.current_actor_is_asyncio(
+               ) and timeout != 0:
         raise RayError("Using blocking ray.wait inside async method. "
                        "This blocks the event loop. Please use `await` "
                        "on object id with asyncio.wait. ")
@@ -1593,11 +1604,6 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got {}".format(
                 type(object_ids)))
-
-    if isinstance(timeout, int) and timeout != 0:
-        logger.warning("The 'timeout' argument now requires seconds instead "
-                       "of milliseconds. This message can be suppressed by "
-                       "passing in a float.")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
@@ -1642,6 +1648,29 @@ def wait(object_ids, num_returns=1, timeout=None):
         return ready_ids, remaining_ids
 
 
+def kill(actor):
+    """Kill an actor forcefully.
+
+    This will interrupt any running tasks on the actor, causing them to fail
+    immediately. Any atexit handlers installed in the actor will still be run.
+
+    If you want to kill the actor but let pending tasks finish,
+    you can call ``actor.__ray_terminate__.remote()`` instead to queue a
+    termination task.
+
+    If this actor is reconstructable, it will be attempted to be reconstructed.
+
+    Args:
+        actor (ActorHandle): Handle to the actor to kill.
+    """
+    if not isinstance(actor, ray.actor.ActorHandle):
+        raise ValueError("ray.kill() only supported for actors. "
+                         "Got: {}.".format(type(actor)))
+
+    worker = ray.worker.get_global_worker()
+    worker.core_worker.kill_actor(actor._ray_actor_id)
+
+
 def _mode(worker=global_worker):
     """This is a wrapper around worker.mode.
 
@@ -1676,9 +1705,9 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls,
-                max_retries)
+                Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
+                memory, object_store_memory, resources, num_return_vals,
+                max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1736,7 +1765,12 @@ def remote(*args, **kwargs):
       number of times that the actor should be reconstructed when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. And the maximum valid
-      value is ray.ray_constants.INFINITE_RECONSTRUCTIONS.
+      value is ray.ray_constants.INFINITE_RECONSTRUCTION.
+    * **max_retries**: Only for *remote functions*. This specifies the maximum
+      number of times that the remote function should be rerun when the worker
+      process executing it crashes unexpectedly. The minimum valid value is 0,
+      the default is 4 (default), and the maximum valid value is
+      ray.ray_constants.INFINITE_RECONSTRUCTION.
 
     This can be done as follows:
 
@@ -1771,7 +1805,7 @@ def remote(*args, **kwargs):
     Running remote actors will be terminated when the actor handle to them
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you want to kill them immediately, you can
-    also call ``actor_handle.__ray_kill__()``.
+    also call ``ray.kill(actor)``.
     """
     worker = get_global_worker()
 

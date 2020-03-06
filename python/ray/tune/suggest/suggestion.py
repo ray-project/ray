@@ -1,17 +1,13 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import copy
 
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
-from ray.tune.util import merge_dicts, flatten_dict
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
+from ray.tune.trial import Trial
+from ray.tune.utils import merge_dicts, flatten_dict
 
 
 class SuggestionAlgorithm(SearchAlgorithm):

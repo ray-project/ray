@@ -1,12 +1,13 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import convert_to_non_torch_type
+
+torch, _ = try_import_torch()
 
 
 @DeveloperAPI
@@ -71,9 +72,13 @@ def build_torch_policy(name,
             if make_model_and_action_dist:
                 self.model, self.dist_class = make_model_and_action_dist(
                     self, obs_space, action_space, config)
+                # Make sure, we passed in a correct Model factory.
+                assert isinstance(self.model, TorchModelV2), \
+                    "ERROR: TorchPolicy::make_model_and_action_dist must " \
+                    "return a TorchModelV2 object!"
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-                    action_space, self.config["model"], torch=True)
+                    action_space, self.config["model"], framework="torch")
                 self.model = ModelCatalog.get_model_v2(
                     obs_space,
                     action_space,
@@ -81,8 +86,10 @@ def build_torch_policy(name,
                     self.config["model"],
                     framework="torch")
 
-            TorchPolicy.__init__(self, obs_space, action_space, self.model,
-                                 loss_fn, self.dist_class)
+            TorchPolicy.__init__(
+                self, obs_space, action_space, config, self.model,
+                loss_fn, self.dist_class
+            )
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
@@ -94,8 +101,12 @@ def build_torch_policy(name,
                                    episode=None):
             if not postprocess_fn:
                 return sample_batch
-            return postprocess_fn(self, sample_batch, other_agent_batches,
-                                  episode)
+
+            # Do all post-processing always with no_grad().
+            # Not using this here will introduce a memory leak (issue #6962).
+            with torch.no_grad():
+                return postprocess_fn(self, sample_batch, other_agent_batches,
+                                      episode)
 
         @override(TorchPolicy)
         def extra_grad_process(self):
@@ -105,13 +116,18 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, input_dict, state_batches, model):
-            if extra_action_out_fn:
-                return extra_action_out_fn(self, input_dict, state_batches,
-                                           model)
-            else:
-                return TorchPolicy.extra_action_out(self, input_dict,
-                                                    state_batches, model)
+        def extra_action_out(self, input_dict, state_batches, model,
+                             action_dist=None):
+            with torch.no_grad():
+                if extra_action_out_fn:
+                    stats_dict = extra_action_out_fn(
+                        self, input_dict, state_batches, model, action_dist
+                    )
+                else:
+                    stats_dict = TorchPolicy.extra_action_out(
+                        self, input_dict, state_batches, model, action_dist
+                    )
+                return convert_to_non_torch_type(stats_dict)
 
         @override(TorchPolicy)
         def optimizer(self):
@@ -122,16 +138,17 @@ def build_torch_policy(name,
 
         @override(TorchPolicy)
         def extra_grad_info(self, train_batch):
-            if stats_fn:
-                return stats_fn(self, train_batch)
-            else:
-                return TorchPolicy.extra_grad_info(self, train_batch)
+            with torch.no_grad():
+                if stats_fn:
+                    stats_dict = stats_fn(self, train_batch)
+                else:
+                    stats_dict = TorchPolicy.extra_grad_info(self, train_batch)
+                return convert_to_non_torch_type(stats_dict)
 
-    @staticmethod
     def with_updates(**overrides):
         return build_torch_policy(**dict(original_kwargs, **overrides))
 
-    policy_cls.with_updates = with_updates
+    policy_cls.with_updates = staticmethod(with_updates)
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls

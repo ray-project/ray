@@ -9,6 +9,8 @@ from ray.rllib.optimizers.sync_batch_replay_optimizer import \
     SyncBatchReplayOptimizer
 from ray.rllib.optimizers.microbatch_optimizer import MicrobatchOptimizer
 from ray.rllib.optimizers.multi_gpu_optimizer import LocalMultiGPUOptimizer
+from ray.rllib.optimizers.torch_distributed_data_parallel_optimizer import \
+    TorchDistributedDataParallelOptimizer
 
 __all__ = [
     "PolicyOptimizer",
@@ -20,4 +22,5 @@ __all__ = [
     "SyncReplayOptimizer",
     "LocalMultiGPUOptimizer",
     "SyncBatchReplayOptimizer",
+    "TorchDistributedDataParallelOptimizer",
 ]

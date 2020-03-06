@@ -47,7 +47,7 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 interface Props {
   node: Node;
-  raylet: RayletInfoResponse[keyof RayletInfoResponse] | null;
+  raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
     perWorker: { [pid: string]: number };
     total: number;
@@ -56,6 +56,8 @@ interface Props {
     perWorker: { [pid: string]: number };
     total: number;
   };
+  setLogDialog: (hostname: string, pid: number | null) => void;
+  setErrorDialog: (hostname: string, pid: number | null) => void;
   initialExpanded: boolean;
 }
 
@@ -78,7 +80,15 @@ class NodeRowGroup extends React.Component<
   };
 
   render() {
-    const { classes, node, raylet, logCounts, errorCounts } = this.props;
+    const {
+      classes,
+      node,
+      raylet,
+      logCounts,
+      errorCounts,
+      setLogDialog,
+      setErrorDialog
+    } = this.props;
     const { expanded } = this.state;
 
     const features = [
@@ -91,12 +101,12 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
       { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
       {
-        NodeFeature: makeNodeLogs(logCounts),
-        WorkerFeature: makeWorkerLogs(logCounts)
+        NodeFeature: makeNodeLogs(logCounts, setLogDialog),
+        WorkerFeature: makeWorkerLogs(logCounts, setLogDialog)
       },
       {
-        NodeFeature: makeNodeErrors(errorCounts),
-        WorkerFeature: makeWorkerErrors(errorCounts)
+        NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
+        WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog)
       }
     ];
 

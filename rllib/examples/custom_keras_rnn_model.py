@@ -1,9 +1,5 @@
 """Example of using a custom RNN keras model."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 from gym.spaces import Discrete
 import numpy as np
@@ -25,6 +21,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--stop", type=int, default=90)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class MyKerasRNN(RecurrentTFModelV2):
@@ -146,8 +143,8 @@ class RepeatAfterMeEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    ray.init()
     args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("rnn", MyKerasRNN)
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     register_env("RepeatInitialEnv", lambda _: RepeatInitialEnv())

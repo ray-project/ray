@@ -183,9 +183,10 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
   rpc::Address address;
-  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON, {"", "", ""}, JobID::Nil(),
-                            RandomTaskId(), 0, RandomTaskId(), address, num_returns,
-                            false, {}, {});
+  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON,
+                            ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                            JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
+                            num_returns, false, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
   }

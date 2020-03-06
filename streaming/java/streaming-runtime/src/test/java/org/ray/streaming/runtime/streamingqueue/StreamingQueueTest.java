@@ -20,7 +20,8 @@ import org.ray.api.options.ActorCreationOptions.Builder;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSource;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.util.EnvUtil;
 import org.ray.streaming.util.Config;
@@ -32,7 +33,8 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class StreamingQueueTest implements Serializable {
+public class StreamingQueueTest extends BaseUnitTest implements Serializable {
+
   private static Logger LOGGER = LoggerFactory.getLogger(StreamingQueueTest.class);
 
   static {
@@ -99,11 +101,11 @@ public class StreamingQueueTest implements Serializable {
         builder.createActorCreationOptions());
 
     LOGGER.info("call getName on writerActor: {}",
-        Ray.call(WriterWorker::getName, writerActor).get());
+        writerActor.call(WriterWorker::getName).get());
     LOGGER.info("call getName on readerActor: {}",
-        Ray.call(ReaderWorker::getName, readerActor).get());
+        readerActor.call(ReaderWorker::getName).get());
 
-    // LOGGER.info(Ray.call(WriterWorker::testCallReader, writerActor, readerActor).get());
+    // LOGGER.info(writerActor.call(WriterWorker::testCallReader, readerActor).get());
     List<String> outputQueueList = new ArrayList<>();
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
@@ -116,17 +118,17 @@ public class StreamingQueueTest implements Serializable {
     }
 
     final int msgCount = 100;
-    Ray.call(ReaderWorker::init, readerActor, inputQueueList, writerActor, msgCount);
+    readerActor.call(ReaderWorker::init, inputQueueList, writerActor, msgCount);
     try {
       Thread.sleep(1000);
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
-    Ray.call(WriterWorker::init, writerActor, outputQueueList, readerActor, msgCount);
+    writerActor.call(WriterWorker::init, outputQueueList, readerActor, msgCount);
 
     long time = 0;
     while (time < 20000 &&
-        Ray.call(ReaderWorker::getTotalMsg, readerActor).get() < msgCount * queueNum) {
+        readerActor.call(ReaderWorker::getTotalMsg).get() < msgCount * queueNum) {
       try {
         Thread.sleep(1000);
         time += 1000;
@@ -136,7 +138,7 @@ public class StreamingQueueTest implements Serializable {
     }
 
     Assert.assertEquals(
-        Ray.call(ReaderWorker::getTotalMsg, readerActor).get().intValue(),
+        readerActor.call(ReaderWorker::getTotalMsg).get().intValue(),
         msgCount * queueNum);
   }
 
@@ -149,14 +151,14 @@ public class StreamingQueueTest implements Serializable {
 
     Map<String, Integer> wordCount = new ConcurrentHashMap<>();
     StreamingContext streamingContext = StreamingContext.buildContext();
-    Map<String, Object> config = new HashMap<>();
-    config.put(Config.STREAMING_BATCH_MAX_COUNT, 1);
+    Map<String, String> config = new HashMap<>();
+    config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
     config.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     config.put(Config.CHANNEL_SIZE, "100000");
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    StreamSource<String> streamSource = StreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");
@@ -175,7 +177,7 @@ public class StreamingQueueTest implements Serializable {
           serializeResultToFile(resultFile, wordCount);
         });
 
-    streamingContext.execute();
+    streamingContext.execute("testWordCount");
 
     Map<String, Integer> checkWordCount =
         (Map<String, Integer>) deserializeResultFromFile(resultFile);

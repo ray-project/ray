@@ -8,31 +8,6 @@ namespace ray {
 
 namespace gcs {
 
-std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec, const rpc::Address &address,
-    gcs::ActorTableData::ActorState state, uint64_t remaining_reconstructions) {
-  RAY_CHECK(task_spec.IsActorCreationTask());
-  auto actor_id = task_spec.ActorCreationId();
-  auto actor_info_ptr = std::make_shared<ray::gcs::ActorTableData>();
-  // Set all of the static fields for the actor. These fields will not change
-  // even if the actor fails or is reconstructed.
-  actor_info_ptr->set_actor_id(actor_id.Binary());
-  actor_info_ptr->set_parent_id(task_spec.CallerId().Binary());
-  actor_info_ptr->set_actor_creation_dummy_object_id(
-      task_spec.ActorDummyObject().Binary());
-  actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-  actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
-  actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
-  // Set the fields that change when the actor is restarted.
-  actor_info_ptr->set_remaining_reconstructions(remaining_reconstructions);
-  actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
-  actor_info_ptr->mutable_address()->CopyFrom(address);
-  actor_info_ptr->mutable_owner_address()->CopyFrom(
-      task_spec.GetMessage().caller_address());
-  actor_info_ptr->set_state(state);
-  return actor_info_ptr;
-}
-
 RedisActorInfoAccessor::RedisActorInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), actor_sub_executor_(client_impl_->actor_table()) {}
 
@@ -247,7 +222,9 @@ Status RedisJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 }
 
 RedisTaskInfoAccessor::RedisTaskInfoAccessor(RedisGcsClient *client_impl)
-    : client_impl_(client_impl), task_sub_executor_(client_impl->raylet_task_table()) {}
+    : client_impl_(client_impl),
+      task_sub_executor_(client_impl->raylet_task_table()),
+      task_lease_sub_executor_(client_impl->task_lease_table()) {}
 
 Status RedisTaskInfoAccessor::AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
                                        const StatusCallback &callback) {
@@ -284,6 +261,9 @@ Status RedisTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
                                           const StatusCallback &callback) {
   raylet::TaskTable &task_table = client_impl_->raylet_task_table();
   task_table.Delete(JobID::Nil(), task_ids);
+  if (callback) {
+    callback(Status::OK());
+  }
   // TODO(micafan) Always return OK here.
   // Confirm if we need to handle the deletion failure and how to handle it.
   return Status::OK();
@@ -299,6 +279,55 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
 Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                const StatusCallback &done) {
   return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+Status RedisTaskInfoAccessor::AsyncAddTaskLease(
+    const std::shared_ptr<TaskLeaseData> &data_ptr, const StatusCallback &callback) {
+  TaskLeaseTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const TaskID &id,
+                         const TaskLeaseData &data) { callback(Status::OK()); };
+  }
+  TaskID task_id = TaskID::FromBinary(data_ptr->task_id());
+  TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();
+  return task_lease_table.Add(JobID::Nil(), task_id, data_ptr, on_done);
+}
+
+Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
+    const TaskID &task_id,
+    const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+}
+
+Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                                        const StatusCallback &done) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+Status RedisTaskInfoAccessor::AttemptTaskReconstruction(
+    const std::shared_ptr<TaskReconstructionData> &data_ptr,
+    const StatusCallback &callback) {
+  TaskReconstructionLog::WriteCallback on_success = nullptr;
+  TaskReconstructionLog::WriteCallback on_failure = nullptr;
+  if (callback != nullptr) {
+    on_success = [callback](RedisGcsClient *client, const TaskID &id,
+                            const TaskReconstructionData &data) {
+      callback(Status::OK());
+    };
+    on_failure = [callback](RedisGcsClient *client, const TaskID &id,
+                            const TaskReconstructionData &data) {
+      callback(Status::Invalid("Updating task reconstruction failed."));
+    };
+  }
+
+  TaskID task_id = TaskID::FromBinary(data_ptr->task_id());
+  int reconstruction_attempt = data_ptr->num_reconstructions();
+  TaskReconstructionLog &task_reconstruction_log =
+      client_impl_->task_reconstruction_log();
+  return task_reconstruction_log.AppendAt(JobID::Nil(), task_id, data_ptr, on_success,
+                                          on_failure, reconstruction_attempt);
 }
 
 RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
@@ -391,9 +420,15 @@ const GcsNodeInfo &RedisNodeInfoAccessor::GetSelfInfo() const {
   return client_table.GetLocalClient();
 }
 
-Status RedisNodeInfoAccessor::Register(const GcsNodeInfo &node_info) {
+Status RedisNodeInfoAccessor::AsyncRegister(const GcsNodeInfo &node_info,
+                                            const StatusCallback &callback) {
+  ClientTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &id,
+                         const GcsNodeInfo &data) { callback(Status::OK()); };
+  }
   ClientTable &client_table = client_impl_->client_table();
-  return client_table.Register(node_info);
+  return client_table.MarkConnected(node_info, on_done);
 }
 
 Status RedisNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
@@ -552,6 +587,61 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+}
+
+RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RedisErrorInfoAccessor::AsyncReportJobError(
+    const std::shared_ptr<ErrorTableData> &data_ptr, const StatusCallback &callback) {
+  ErrorTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const JobID &job_id,
+                         const ErrorTableData &data) { callback(Status::OK()); };
+  }
+
+  JobID job_id = JobID::FromBinary(data_ptr->job_id());
+  ErrorTable &error_table = client_impl_->error_table();
+  return error_table.Append(job_id, job_id, data_ptr, on_done);
+}
+
+RedisStatsInfoAccessor::RedisStatsInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RedisStatsInfoAccessor::AsyncAddProfileData(
+    const std::shared_ptr<ProfileTableData> &data_ptr, const StatusCallback &callback) {
+  ProfileTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const UniqueID &id,
+                         const ProfileTableData &data) { callback(Status::OK()); };
+  }
+
+  ProfileTable &profile_table = client_impl_->profile_table();
+  return profile_table.Append(JobID::Nil(), UniqueID::FromRandom(), data_ptr, on_done);
+}
+
+RedisWorkerInfoAccessor::RedisWorkerInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl),
+      worker_failure_sub_executor_(client_impl->worker_failure_table()) {}
+
+Status RedisWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
+    const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+}
+
+Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
+    const std::shared_ptr<WorkerFailureData> &data_ptr, const StatusCallback &callback) {
+  WorkerFailureTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const WorkerID &id,
+                         const WorkerFailureData &data) { callback(Status::OK()); };
+  }
+
+  WorkerID worker_id = WorkerID::FromBinary(data_ptr->worker_address().worker_id());
+  WorkerFailureTable &worker_failure_table = client_impl_->worker_failure_table();
+  return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
 }
 
 }  // namespace gcs

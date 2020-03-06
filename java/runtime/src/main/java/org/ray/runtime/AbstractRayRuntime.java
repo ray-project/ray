@@ -1,12 +1,10 @@
 package org.ray.runtime;
 
-import java.util.List;
-import java.util.concurrent.Callable;
-
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
-
+import java.util.List;
+import java.util.concurrent.Callable;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -100,7 +98,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject call(RayFunc func, RayActor<?> actor, Object[] args) {
+  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;

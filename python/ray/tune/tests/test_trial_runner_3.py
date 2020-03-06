@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import shutil
 import sys
@@ -301,8 +297,9 @@ class TrialRunnerTest3(unittest.TestCase):
                 checkpoint_freq=1)
         ]
         runner.add_trial(trials[0])
-        runner.step()  # start
-        runner.step()
+        runner.step()  # Start trial
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         self.assertEquals(trials[0].status, Trial.TERMINATED)
 
         trials += [
@@ -314,9 +311,10 @@ class TrialRunnerTest3(unittest.TestCase):
                 config={"mock_error": True})
         ]
         runner.add_trial(trials[1])
-        runner.step()
-        runner.step()
-        runner.step()
+        runner.step()  # Start trial
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
+        runner.step()  # Error
         self.assertEquals(trials[1].status, Trial.ERROR)
 
         trials += [
@@ -327,7 +325,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 checkpoint_freq=1)
         ]
         runner.add_trial(trials[2])
-        runner.step()
+        runner.step()  # Start trial
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEquals(trials[2].status, Trial.RUNNING)
 
@@ -340,9 +338,11 @@ class TrialRunnerTest3(unittest.TestCase):
         restored_trial = runner2.get_trial("trial_succ")
         self.assertEqual(Trial.PENDING, restored_trial.status)
 
-        runner2.step()
-        runner2.step()
-        runner2.step()
+        runner2.step()  # Start trial
+        runner2.step()  # Process result, dispatch save
+        runner2.step()  # Process save
+        runner2.step()  # Process result, dispatch save
+        runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
         shutil.rmtree(tmpdir)
 
@@ -448,18 +448,19 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
         trials = runner.get_trials()
 
-        runner.step()
+        runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        runner.step()  # 0
+        runner.step()  # Process result
         self.assertFalse(trials[0].has_checkpoint())
-        runner.step()  # 1
+        runner.step()  # Process result
         self.assertFalse(trials[0].has_checkpoint())
-        runner.step()  # 2
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         self.assertTrue(trials[0].has_checkpoint())
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
-        runner2.step()
+        runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
         shutil.rmtree(tmpdir)

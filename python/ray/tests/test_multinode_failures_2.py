@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import os
 import sys
@@ -13,12 +9,8 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
-
-@pytest.mark.skipif(
-    RAY_FORCE_DIRECT,
-    reason="No reconstruction for objects placed in plasma yet")
+@pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [{
@@ -28,7 +20,7 @@ RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
         "object_store_memory": 1000 * 1024 * 1024,
         "_internal_config": json.dumps({
             # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100,
+            "num_heartbeats_timeout": 10,
             "object_manager_pull_timeout_ms": 1000,
             "object_manager_push_timeout_ms": 1000,
             "object_manager_repeated_push_delay_ms": 1000,

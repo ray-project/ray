@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 import random
 
@@ -51,6 +47,7 @@ class MultiAgentEpisode:
         self.agent_rewards = defaultdict(float)
         self.custom_metrics = {}
         self.user_data = {}
+        self.hist_data = {}
         self._policies = policies
         self._policy_mapping_fn = policy_mapping_fn
         self._next_agent_index = 0

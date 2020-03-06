@@ -1,13 +1,11 @@
-Tune: A Scalable Hyperparameter Tuning Library
-==============================================
-
-.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
+Tune: Scalable Hyperparameter Tuning
+====================================
 
 .. image:: images/tune.png
     :scale: 30%
     :align: center
 
-Tune is a Python library for hyperparameter tuning at any scale. Core features:
+Tune is a Python library for experiment execution and hyperparameter tuning at any scale. Core features:
 
   * Launch a multi-node `distributed hyperparameter sweep <tune-distributed.html>`_ in less than 10 lines of code.
   * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras. See `examples here <tune-examples.html>`_.
@@ -40,7 +38,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune] torch torchvision filelock
+    $ pip install 'ray[tune]' torch torchvision
 
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
@@ -83,7 +81,7 @@ Below are some blog posts and talks about Tune:
  - [blog] `Simple hyperparameter and architecture search in tensorflow with Ray Tune <http://louiskirsch.com/ai/ray-tune>`_
  - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
  - [video] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
- - [slides] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_
+ - [video] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://www.youtube.com/watch?v=10uz5U3Gy6E>`_ (`slides <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_)
 
 Open Source Projects using Tune
 -------------------------------
@@ -95,6 +93,7 @@ Here are some of the popular open source repositories and research projects that
  - `Population Based Augmentation <https://github.com/arcelien/pba>`_: Population Based Augmentation (PBA) is a algorithm that quickly and efficiently learns data augmentation functions for neural network training. PBA matches state-of-the-art results on CIFAR with one thousand times less compute.
  - `Fast AutoAugment by Kakao <https://github.com/kakaobrain/fast-autoaugment>`_: Fast AutoAugment (Accepted at NeurIPS 2019) learns augmentation policies using a more efficient search strategy based on density matching.
  - `Allentune <https://github.com/allenai/allentune>`_: Hyperparameter Search for AllenNLP from AllenAI.
+ - `machinable <https://github.com/frthjf/machinable>`_: A modular configuration system for machine learning research. See `machinable.org <machinable.org>`_.
 
 Citing Tune
 -----------

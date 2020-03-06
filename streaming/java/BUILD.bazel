@@ -101,6 +101,9 @@ define_java_module(
         ":org_ray_ray_streaming-api",
         ":org_ray_ray_streaming-runtime",
         "@ray_streaming_maven//:com_google_guava_guava",
+        "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
+        "@ray_streaming_maven//:org_aeonbits_owner_owner",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
         "@ray_streaming_maven//:org_testng_testng",
@@ -113,6 +116,9 @@ define_java_module(
         "@ray_streaming_maven//:com_github_davidmoten_flatbuffers_java",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:com_google_protobuf_protobuf_java",
+        "@ray_streaming_maven//:de_ruedigermoeller_fst",
+        "@ray_streaming_maven//:org_aeonbits_owner_owner",
+        "@ray_streaming_maven//:org_msgpack_msgpack_core",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
     ],
@@ -139,9 +145,15 @@ java_proto_compile(
     deps = ["//streaming:streaming_proto"],
 )
 
+java_proto_compile(
+    name = "remote_call_java_proto",
+    deps = ["//streaming:remote_call_proto"],
+)
+
 filegroup(
     name = "all_java_proto",
     srcs = [
+        ":remote_call_java_proto",
         ":streaming_java_proto",
     ],
 )
@@ -155,10 +167,10 @@ genrule(
     outs = ["copy_pom_file.out"],
     cmd = """
         set -x
-        WORK_DIR=$$(pwd)
-        cp -f $(location //streaming/java:org_ray_ray_streaming-api_pom) $$WORK_DIR/streaming/java/streaming-api/pom.xml
-        cp -f $(location //streaming/java:org_ray_ray_streaming-runtime_pom) $$WORK_DIR/streaming/java/streaming-runtime/pom.xml
-        echo $$(date) > $@
+        WORK_DIR="$$(pwd)"
+        cp -f $(location //streaming/java:org_ray_ray_streaming-api_pom) "$$WORK_DIR/streaming/java/streaming-api/pom.xml"
+        cp -f $(location //streaming/java:org_ray_ray_streaming-runtime_pom) "$$WORK_DIR/streaming/java/streaming-runtime/pom.xml"
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -173,15 +185,15 @@ genrule(
     outs = ["cp_java_generated.out"],
     cmd = """
         set -x
-        WORK_DIR=$$(pwd)
-        GENERATED_DIR=$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
+        WORK_DIR="$$(pwd)"
+        GENERATED_DIR="$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated"
+        rm -rf "$$GENERATED_DIR"
+        mkdir -p "$$GENERATED_DIR"
         # Copy protobuf-generated files.
         for f in $(locations //streaming/java:all_java_proto); do
-            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/streaming/java/streaming-runtime/src/main/java
+            unzip -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -197,17 +209,18 @@ genrule(
     outs = ["gen_maven_deps.out"],
     cmd = """
         set -x
-        WORK_DIR=$$(pwd)
+        WORK_DIR="$$(pwd)"
         # Copy native dependencies.
-        NATIVE_DEPS_DIR=$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/
-        rm -rf $$NATIVE_DEPS_DIR
-        mkdir -p $$NATIVE_DEPS_DIR
+        NATIVE_DEPS_DIR="$$WORK_DIR/streaming/java/streaming-runtime/native_dependencies/"
+        rm -rf "$$NATIVE_DEPS_DIR"
+        mkdir -p "$$NATIVE_DEPS_DIR"
         for f in $(locations //streaming/java:java_native_deps); do
-            chmod +w $$f
-            cp $$f $$NATIVE_DEPS_DIR
+            chmod +w "$$f"
+            cp "$$f" "$$NATIVE_DEPS_DIR"
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
+    visibility = ["//visibility:public"],
 )

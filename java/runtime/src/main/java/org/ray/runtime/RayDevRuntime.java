@@ -2,6 +2,7 @@ package org.ray.runtime;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.ray.api.RayActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
@@ -40,11 +41,17 @@ public class RayDevRuntime extends AbstractRayRuntime {
       taskSubmitter = null;
     }
     taskExecutor = null;
+    RayConfig.reset();
   }
 
   @Override
   public void setResource(String resourceName, double capacity, UniqueId nodeId) {
     LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
+  }
+
+  @Override
+  public void killActor(RayActor<?> actor) {
+    throw new UnsupportedOperationException();
   }
 
   @Override

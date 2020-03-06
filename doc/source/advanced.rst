@@ -259,7 +259,7 @@ driver:
 
 .. code-block:: python
 
-  counter = ray.experimental.get_actor("CounterActor")
+  counter = ray.util.get_actor("CounterActor")
   print(ray.get(counter.get_counter.remote()))
 
 Note that just creating a named actor is allowed, this actor will be cleaned

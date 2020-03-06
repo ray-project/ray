@@ -1,13 +1,9 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 import logging
 import os
-import setproctitle
 import shutil
+import json
 import sys
 import socket
 import subprocess
@@ -19,10 +15,10 @@ import pickle
 import pytest
 
 import ray
-from ray import signature
 import ray.ray_constants as ray_constants
 import ray.cluster_utils
 import ray.test_utils
+import setproctitle
 
 from ray.test_utils import RayTestTimeoutException
 
@@ -154,14 +150,13 @@ def test_global_state_api(shutdown_only):
     assert len(task_table) == 1
     assert driver_task_id == list(task_table.keys())[0]
     task_spec = task_table[driver_task_id]["TaskSpec"]
-    nil_unique_id_hex = ray.UniqueID.nil().hex()
     nil_actor_id_hex = ray.ActorID.nil().hex()
 
     assert task_spec["TaskID"] == driver_task_id
     assert task_spec["ActorID"] == nil_actor_id_hex
     assert task_spec["Args"] == []
     assert task_spec["JobID"] == job_id.hex()
-    assert task_spec["FunctionID"] == nil_unique_id_hex
+    assert task_spec["FunctionDescriptor"]["type"] == "EmptyFunctionDescriptor"
     assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.nodes()
@@ -175,7 +170,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    _ = Actor.remote()
+    _ = Actor.remote()  # noqa: F841
     # Wait for actor to be created
     wait_for_num_actors(1)
 
@@ -193,69 +188,6 @@ def test_global_state_api(shutdown_only):
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
     assert job_table[0]["NodeManagerAddress"] == node_ip_address
-
-
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(),
-    reason="object and task API not supported")
-def test_global_state_task_object_api(shutdown_only):
-    ray.init()
-
-    job_id = ray.utils.compute_job_id_from_driver(
-        ray.WorkerID(ray.worker.global_worker.worker_id))
-    driver_task_id = ray.worker.global_worker.current_task_id.hex()
-
-    nil_actor_id_hex = ray.ActorID.nil().hex()
-
-    @ray.remote
-    def f(*xs):
-        return 1
-
-    x_id = ray.put(1)
-    result_id = f.remote(1, "hi", x_id)
-
-    # Wait for one additional task to complete.
-    wait_for_num_tasks(1 + 1)
-    task_table = ray.tasks()
-    assert len(task_table) == 1 + 1
-    task_id_set = set(task_table.keys())
-    task_id_set.remove(driver_task_id)
-    task_id = list(task_id_set)[0]
-
-    task_spec = task_table[task_id]["TaskSpec"]
-    assert task_spec["ActorID"] == nil_actor_id_hex
-    assert task_spec["Args"] == [
-        signature.DUMMY_TYPE, 1, signature.DUMMY_TYPE, "hi",
-        signature.DUMMY_TYPE, x_id
-    ]
-    assert task_spec["JobID"] == job_id.hex()
-    assert task_spec["ReturnObjectIDs"] == [result_id]
-
-    assert task_table[task_id] == ray.tasks(task_id)
-
-    # Wait for two objects, one for the x_id and one for result_id.
-    wait_for_num_objects(2)
-
-    def wait_for_object_table():
-        timeout = 10
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            object_table = ray.objects()
-            tables_ready = (object_table[x_id]["ManagerIDs"] is not None and
-                            object_table[result_id]["ManagerIDs"] is not None)
-            if tables_ready:
-                return
-            time.sleep(0.1)
-        raise RayTestTimeoutException(
-            "Timed out while waiting for object table to "
-            "update.")
-
-    object_table = ray.objects()
-    assert len(object_table) == 2
-
-    assert object_table[x_id] == ray.objects(x_id)
-    object_table_entry = ray.objects(result_id)
-    assert object_table[result_id] == object_table_entry
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
@@ -418,7 +350,12 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1,
+        object_store_memory=int(10**8),
+        _internal_config=json.dumps({
+            "object_pinning_enabled": 0
+        }))
 
     @ray.remote
     def f():
@@ -577,21 +514,21 @@ def test_shutdown_disconnect_global_state():
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
     x_id = ray.put("HI")
-    x_copy = ray.ObjectID(x_id.binary())
-    assert ray.get(x_copy) == "HI"
+    x_binary = x_id.binary()
+    assert ray.get(ray.ObjectID(x_binary)) == "HI"
 
     # x cannot be evicted since x_id pins it
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert ray.get(x_id) == "HI"
-    assert ray.get(x_copy) == "HI"
+    assert ray.get(ray.ObjectID(x_binary)) == "HI"
 
-    # now it can be evicted since x_id pins it but x_copy does not
+    # now it can be evicted since x_id pins it but x_binary does not
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(x_copy)
+    assert not ray.worker.global_worker.core_worker.object_exists(
+        ray.ObjectID(x_binary))
 
     # weakref put
     y_id = ray.put("HI", weakref=True)
@@ -599,14 +536,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(y_id)
-
-    @ray.remote
-    def check_no_buffer_ref(x):
-        assert x[0].get_buffer_ref() is None
-
-    z_id = ray.put("HI")
-    assert z_id.get_buffer_ref() is not None
-    ray.get(check_no_buffer_ref.remote([z_id]))
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
@@ -16,14 +12,15 @@ from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.logger import pretty_print, UnifiedLogger
-from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.trainable import TrainableUtil
+from ray.tune.utils import flatten_dict
+from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
@@ -92,7 +89,13 @@ def checkpoint_deleter(trial_id, runner):
             checkpoint_path = checkpoint.value
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
-                shutil.rmtree(checkpoint_path)
+                try:
+                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                        checkpoint_path)
+                    shutil.rmtree(checkpoint_dir)
+                except FileNotFoundError:
+                    logger.warning("Checkpoint dir not found during deletion.")
+
             # TODO(ujvl): Batch remote deletes.
             runner.delete_checkpoint.remote(checkpoint.value)
 
@@ -191,6 +194,7 @@ class Trial:
         self.custom_trial_name = None
 
         # Checkpointing fields
+        self.saving_to = None
         if remote_checkpoint_dir:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
@@ -198,16 +202,15 @@ class Trial:
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.sync_on_checkpoint = sync_on_checkpoint
-        newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(str(self), self.runner))
-        self.checkpoint_manager.newest_checkpoint = newest_checkpoint
+            checkpoint_deleter(self._trainable_name(), self.runner))
+        checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
+        self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
 
         # Restoration fields
         self.restoring_from = None
         self.num_failures = 0
-        self.num_consecutive_start_attempts = 0
 
         # AutoML fields
         self.results = None
@@ -232,7 +235,16 @@ class Trial:
 
     @property
     def checkpoint(self):
-        return self.checkpoint_manager.newest_checkpoint
+        """Returns the most recent checkpoint.
+
+        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
+        Otherwise, it is the most recent PERSISTENT checkpoint.
+        """
+        if self.status == Trial.PAUSED:
+            assert self.checkpoint_manager.newest_memory_checkpoint.value
+            return self.checkpoint_manager.newest_memory_checkpoint
+        else:
+            return self.checkpoint_manager.newest_persistent_checkpoint
 
     @classmethod
     def generate_id(cls):
@@ -258,7 +270,9 @@ class Trial:
         """Init logger."""
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = Trial.create_logdir(str(self), self.local_dir)
+                self.logdir = Trial.create_logdir(
+                    self._trainable_name() + "_" + self.experiment_tag,
+                    self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
@@ -283,7 +297,8 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(str(self), runner)
+        self.checkpoint_manager.delete = checkpoint_deleter(
+            self._trainable_name(), runner)
 
     def set_location(self, location):
         """Sets the location of the trial."""
@@ -316,9 +331,6 @@ class Trial:
         """Whether the given result meets this trial's stopping criteria."""
         if result.get(DONE):
             return True
-
-        if callable(self.stopping_criterion):
-            return self.stopping_criterion(self.trial_id, result)
 
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
@@ -355,7 +367,6 @@ class Trial:
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
-            # TODO(ujvl): Handle this separately to avoid restoration failure.
             self.checkpoint_manager.on_checkpoint(checkpoint)
             return
         if self.sync_on_checkpoint:
@@ -368,7 +379,7 @@ class Trial:
                 # checkpoint, so it should just be logged.
                 logger.error(
                     "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait.", str(e))
+                    "checkpoint pre-sync wait - %s", self, str(e))
             # Force sync down and wait before tracking the new checkpoint.
             try:
                 if self.result_logger.sync_down():
@@ -451,10 +462,17 @@ class Trial:
     def is_restoring(self):
         return self.restoring_from is not None
 
+    @property
+    def is_saving(self):
+        return self.saving_to is not None
+
     def __repr__(self):
-        return str(self)
+        return self._trainable_name(include_trial_id=True)
 
     def __str__(self):
+        return self._trainable_name(include_trial_id=True)
+
+    def _trainable_name(self, include_trial_id=False):
         """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
         Can be overridden with a custom string creator.
@@ -469,7 +487,8 @@ class Trial:
             identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
-        identifier += "_" + self.trial_id
+        if include_trial_id:
+            identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
     def __getstate__(self):
@@ -488,6 +507,9 @@ class Trial:
 
         state["runner"] = None
         state["result_logger"] = None
+        # Avoid waiting for events that will never occur on resume.
+        state["resuming_from"] = None
+        state["saving_to"] = None
         if self.result_logger:
             self.result_logger.flush(sync_down=False)
             state["__logger_started__"] = True

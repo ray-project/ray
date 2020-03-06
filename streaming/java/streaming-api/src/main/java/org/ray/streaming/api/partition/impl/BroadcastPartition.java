@@ -1,7 +1,6 @@
 package org.ray.streaming.api.partition.impl;
 
 import java.util.stream.IntStream;
-
 import org.ray.streaming.api.partition.Partition;
 
 /**

@@ -1,8 +1,4 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
@@ -16,13 +12,41 @@ import numpy as np
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
 import ray.cluster_utils
 import ray.test_utils
 
 from ray.test_utils import RayTestTimeoutException
 
 logger = logging.getLogger(__name__)
+
+
+# issue https://github.com/ray-project/ray/issues/7105
+def test_internal_free(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Sampler:
+        def sample(self):
+            return [1, 2, 3, 4, 5]
+
+        def sample_big(self):
+            return np.zeros(1024 * 1024)
+
+    sampler = Sampler.remote()
+
+    # Free does not delete from in-memory store.
+    obj_id = sampler.sample.remote()
+    ray.get(obj_id)
+    ray.internal.free(obj_id)
+    assert ray.get(obj_id) == [1, 2, 3, 4, 5]
+
+    # Free deletes big objects from plasma store.
+    big_id = sampler.sample_big.remote()
+    ray.get(big_id)
+    ray.internal.free(big_id)
+    time.sleep(1)  # wait for delete RPC to propagate
+    with pytest.raises(Exception):
+        ray.get(big_id)
 
 
 def test_wait_iterables(ray_start_regular):
@@ -222,7 +246,7 @@ def test_wait_cluster(ray_start_cluster):
     assert len(unready) == 0
 
 
-@pytest.mark.skipif(ray_constants.direct_call_enabled(), reason="TODO(ekl)")
+@pytest.mark.skip(reason="TODO(ekl)")
 def test_object_transfer_dump(ray_start_cluster):
     cluster = ray_start_cluster
 
@@ -480,93 +504,6 @@ def test_multithreading(ray_start_2_cpus):
     actor = MultithreadedActor.remote()
     actor.spawn.remote()
     ray.get(actor.join.remote()) == "ok"
-
-
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(), reason="uses task and object table")
-def test_free_objects_multi_node(ray_start_cluster):
-    # This test will do following:
-    # 1. Create 3 raylets that each hold an actor.
-    # 2. Each actor creates an object which is the deletion target.
-    # 3. Wait 0.1 second for the objects to be deleted.
-    # 4. Check that the deletion targets have been deleted.
-    # Caution: if remote functions are used instead of actor methods,
-    # one raylet may create more than one worker to execute the
-    # tasks, so the flushing operations may be executed in different
-    # workers and the plasma client holding the deletion target
-    # may not be flushed.
-    cluster = ray_start_cluster
-    config = json.dumps({"object_manager_repeated_push_delay_ms": 1000})
-    for i in range(3):
-        cluster.add_node(
-            num_cpus=1,
-            resources={"Custom{}".format(i): 1},
-            _internal_config=config)
-    ray.init(address=cluster.address)
-
-    class RawActor:
-        def get(self):
-            return ray.worker.global_worker.node.unique_id
-
-    ActorOnNode0 = ray.remote(resources={"Custom0": 1})(RawActor)
-    ActorOnNode1 = ray.remote(resources={"Custom1": 1})(RawActor)
-    ActorOnNode2 = ray.remote(resources={"Custom2": 1})(RawActor)
-
-    def create(actors):
-        a = actors[0].get.remote()
-        b = actors[1].get.remote()
-        c = actors[2].get.remote()
-        (l1, l2) = ray.wait([a, b, c], num_returns=3)
-        assert len(l1) == 3
-        assert len(l2) == 0
-        return (a, b, c)
-
-    def run_one_test(actors, local_only, delete_creating_tasks):
-        (a, b, c) = create(actors)
-        # The three objects should be generated on different object stores.
-        assert ray.get(a) != ray.get(b)
-        assert ray.get(a) != ray.get(c)
-        assert ray.get(c) != ray.get(b)
-        ray.internal.free(
-            [a, b, c],
-            local_only=local_only,
-            delete_creating_tasks=delete_creating_tasks)
-        # Wait for the objects to be deleted.
-        time.sleep(0.1)
-        return (a, b, c)
-
-    actors = [
-        ActorOnNode0.remote(),
-        ActorOnNode1.remote(),
-        ActorOnNode2.remote()
-    ]
-    # Case 1: run this local_only=False. All 3 objects will be deleted.
-    (a, b, c) = run_one_test(actors, False, False)
-    (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=1)
-    # All the objects are deleted.
-    assert len(l1) == 0
-    assert len(l2) == 3
-    # Case 2: run this local_only=True. Only 1 object will be deleted.
-    (a, b, c) = run_one_test(actors, True, False)
-    (l1, l2) = ray.wait([a, b, c], timeout=0.01, num_returns=3)
-    # One object is deleted and 2 objects are not.
-    assert len(l1) == 2
-    assert len(l2) == 1
-    # The deleted object will have the same store with the driver.
-    local_return = ray.worker.global_worker.node.unique_id
-    for object_id in l1:
-        assert ray.get(object_id) != local_return
-
-    # Case3: These cases test the deleting creating tasks for the object.
-    (a, b, c) = run_one_test(actors, False, False)
-    task_table = ray.tasks()
-    for obj in [a, b, c]:
-        assert ray._raylet.compute_task_id(obj).hex() in task_table
-
-    (a, b, c) = run_one_test(actors, False, True)
-    task_table = ray.tasks()
-    for obj in [a, b, c]:
-        assert ray._raylet.compute_task_id(obj).hex() not in task_table
 
 
 def test_local_mode(shutdown_only):

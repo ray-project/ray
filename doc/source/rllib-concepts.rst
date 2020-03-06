@@ -6,7 +6,7 @@ This page describes the internal concepts used to implement algorithms in RLlib.
 Policies
 --------
 
-Policy classes encapsulate the core numerical components of RL algorithms. This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences. For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_policy.py>`__.
+Policy classes encapsulate the core numerical components of RL algorithms. This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences. For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_tf_policy.py>`__.
 
 Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks. To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates. You can also write your own from scratch. Here is an example:
 
@@ -418,11 +418,22 @@ Finally, note that you do not have to use ``build_tf_policy`` to define a Tensor
 Building Policies in TensorFlow Eager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Policies built with ``build_tf_policy`` (most of the reference algorithms are) can be run in eager mode by setting the ``"eager": True`` / ``"eager_tracing": True`` config options or using ``rllib train --eager [--trace]``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+Policies built with ``build_tf_policy`` (most of the reference algorithms are)
+can be run in eager mode by setting
+the ``"eager": True`` / ``"eager_tracing": True`` config options or
+using ``rllib train --eager [--trace]``.
+This will tell RLlib to execute the model forward pass, action distribution,
+loss, and stats functions in eager mode.
 
-Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it can be slower than graph mode unless tracing is enabled.
+Eager mode makes debugging much easier, since you can now use line-by-line
+debugging with breakpoints or Python ``print()`` to inspect
+intermediate tensor values.
+However, eager can be slower than graph mode unless tracing is enabled.
 
-You can also selectively leverage eager operations within graph mode execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager ops embedded `within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
+You can also selectively leverage eager operations within graph mode
+execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__.
+Here's an example of using eager ops embedded
+`within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -526,7 +537,7 @@ You can use the ``with_updates`` method on Trainers and Policy objects built wit
 .. code-block:: python
 
     from ray.rllib.agents.ppo import PPOTrainer
-    from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+    from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 
     CustomPolicy = PPOTFPolicy.with_updates(
         name="MyCustomPPOTFPolicy",

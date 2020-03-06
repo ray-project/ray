@@ -364,109 +364,115 @@ class TaskTableTestHelper {
 
 TEST_TASK_TABLE_MACRO(TestGcsWithAsio, TestTableLookup);
 
-void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  // Append some entries to the log at an object ID.
-  TaskID task_id = RandomTaskId();
-  std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
-  for (auto &node_manager_id : node_manager_ids) {
-    auto data = std::make_shared<TaskReconstructionData>();
-    data->set_node_manager_id(node_manager_id);
-    // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
-                                        const TaskReconstructionData &d) {
+class LogLookupTestHelper {
+ public:
+  static void TestLogLookup(const JobID &job_id,
+                            std::shared_ptr<gcs::RedisGcsClient> client) {
+    // Append some entries to the log at an object ID.
+    TaskID task_id = RandomTaskId();
+    std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
+    for (auto &node_manager_id : node_manager_ids) {
+      auto data = std::make_shared<TaskReconstructionData>();
+      data->set_node_manager_id(node_manager_id);
+      // Check that we added the correct object entries.
+      auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
+                                          const TaskReconstructionData &d) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+    }
+
+    // Check that lookup returns the added object entries.
+    auto lookup_callback = [task_id, node_manager_ids](
+                               gcs::RedisGcsClient *client, const TaskID &id,
+                               const std::vector<TaskReconstructionData> &data) {
       ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
+      for (const auto &entry : data) {
+        ASSERT_EQ(entry.node_manager_id(), node_manager_ids[test->NumCallbacks()]);
+        test->IncrementNumCallbacks();
+      }
+      if (test->NumCallbacks() == node_manager_ids.size()) {
+        test->Stop();
+      }
     };
+
+    // Do a lookup at the object ID.
     RAY_CHECK_OK(
-        client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    // Run the event loop. The loop will only stop if the Lookup callback is
+    // called (or an assertion failure).
+    test->Start();
+    ASSERT_EQ(test->NumCallbacks(), node_manager_ids.size());
   }
 
-  // Check that lookup returns the added object entries.
-  auto lookup_callback = [task_id, node_manager_ids](
-                             gcs::RedisGcsClient *client, const TaskID &id,
-                             const std::vector<TaskReconstructionData> &data) {
-    ASSERT_EQ(id, task_id);
-    for (const auto &entry : data) {
-      ASSERT_EQ(entry.node_manager_id(), node_manager_ids[test->NumCallbacks()]);
-      test->IncrementNumCallbacks();
+  static void TestLogAppendAt(const JobID &job_id,
+                              std::shared_ptr<gcs::RedisGcsClient> client) {
+    TaskID task_id = RandomTaskId();
+    std::vector<std::string> node_manager_ids = {"A", "B"};
+    std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
+    for (const auto &node_manager_id : node_manager_ids) {
+      auto data = std::make_shared<TaskReconstructionData>();
+      data->set_node_manager_id(node_manager_id);
+      data_log.push_back(data);
     }
-    if (test->NumCallbacks() == node_manager_ids.size()) {
-      test->Stop();
-    }
-  };
 
-  // Do a lookup at the object ID.
-  RAY_CHECK_OK(
-      client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  // Run the event loop. The loop will only stop if the Lookup callback is
-  // called (or an assertion failure).
-  test->Start();
-  ASSERT_EQ(test->NumCallbacks(), node_manager_ids.size());
-}
+    // Check that we added the correct task.
+    auto failure_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
+                                      const TaskReconstructionData &d) {
+      ASSERT_EQ(id, task_id);
+      test->IncrementNumCallbacks();
+    };
+
+    // Will succeed.
+    RAY_CHECK_OK(client->task_reconstruction_log().Append(job_id, task_id,
+                                                          data_log.front(),
+                                                          /*done callback=*/nullptr));
+    // Append at index 0 will fail.
+    RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
+        job_id, task_id, data_log[1],
+        /*done callback=*/nullptr, failure_callback, /*log_length=*/0));
+
+    // Append at index 2 will fail.
+    RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
+        job_id, task_id, data_log[1],
+        /*done callback=*/nullptr, failure_callback, /*log_length=*/2));
+
+    // Append at index 1 will succeed.
+    RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
+        job_id, task_id, data_log[1],
+        /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
+
+    auto lookup_callback = [node_manager_ids](
+                               gcs::RedisGcsClient *client, const TaskID &id,
+                               const std::vector<TaskReconstructionData> &data) {
+      std::vector<std::string> appended_managers;
+      for (const auto &entry : data) {
+        appended_managers.push_back(entry.node_manager_id());
+      }
+      ASSERT_EQ(appended_managers, node_manager_ids);
+      test->Stop();
+    };
+    RAY_CHECK_OK(
+        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    // Run the event loop. The loop will only stop if the Lookup callback is
+    // called (or an assertion failure).
+    test->Start();
+    ASSERT_EQ(test->NumCallbacks(), 2);
+  }
+};
 
 TEST_F(TestGcsWithAsio, TestLogLookup) {
   test = this;
-  TestLogLookup(job_id_, client_);
+  LogLookupTestHelper::TestLogLookup(job_id_, client_);
 }
 
 TEST_TASK_TABLE_MACRO(TestGcsWithAsio, TestTableLookupFailure);
 
-void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = RandomTaskId();
-  std::vector<std::string> node_manager_ids = {"A", "B"};
-  std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
-  for (const auto &node_manager_id : node_manager_ids) {
-    auto data = std::make_shared<TaskReconstructionData>();
-    data->set_node_manager_id(node_manager_id);
-    data_log.push_back(data);
-  }
-
-  // Check that we added the correct task.
-  auto failure_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
-                                    const TaskReconstructionData &d) {
-    ASSERT_EQ(id, task_id);
-    test->IncrementNumCallbacks();
-  };
-
-  // Will succeed.
-  RAY_CHECK_OK(client->task_reconstruction_log().Append(job_id, task_id, data_log.front(),
-                                                        /*done callback=*/nullptr));
-  // Append at index 0 will fail.
-  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
-      job_id, task_id, data_log[1],
-      /*done callback=*/nullptr, failure_callback, /*log_length=*/0));
-
-  // Append at index 2 will fail.
-  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
-      job_id, task_id, data_log[1],
-      /*done callback=*/nullptr, failure_callback, /*log_length=*/2));
-
-  // Append at index 1 will succeed.
-  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
-      job_id, task_id, data_log[1],
-      /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
-
-  auto lookup_callback = [node_manager_ids](
-                             gcs::RedisGcsClient *client, const TaskID &id,
-                             const std::vector<TaskReconstructionData> &data) {
-    std::vector<std::string> appended_managers;
-    for (const auto &entry : data) {
-      appended_managers.push_back(entry.node_manager_id());
-    }
-    ASSERT_EQ(appended_managers, node_manager_ids);
-    test->Stop();
-  };
-  RAY_CHECK_OK(
-      client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  // Run the event loop. The loop will only stop if the Lookup callback is
-  // called (or an assertion failure).
-  test->Start();
-  ASSERT_EQ(test->NumCallbacks(), 2);
-}
-
 TEST_F(TestGcsWithAsio, TestLogAppendAt) {
   test = this;
-  TestLogAppendAt(job_id_, client_);
+  LogLookupTestHelper::TestLogAppendAt(job_id_, client_);
 }
 
 class SetTestHelper {
@@ -806,52 +812,55 @@ TEST_F(TestGcsWithAsio, TestSet) {
   SetTestHelper::TestSet(job_id_, client_);
 }
 
-void TestDeleteKeysFromLog(
-    const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client,
-    std::vector<std::shared_ptr<TaskReconstructionData>> &data_vector) {
-  std::vector<TaskID> ids;
-  TaskID task_id;
-  for (auto &data : data_vector) {
-    task_id = RandomTaskId();
-    ids.push_back(task_id);
-    // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
-                                        const TaskReconstructionData &d) {
-      ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(
-        client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+class LogDeleteTestHelper {
+ public:
+  static void TestDeleteKeysFromLog(
+      const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client,
+      std::vector<std::shared_ptr<TaskReconstructionData>> &data_vector) {
+    std::vector<TaskID> ids;
+    TaskID task_id;
+    for (auto &data : data_vector) {
+      task_id = RandomTaskId();
+      ids.push_back(task_id);
+      // Check that we added the correct object entries.
+      auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
+                                          const TaskReconstructionData &d) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+    }
+    for (const auto &task_id : ids) {
+      // Check that lookup returns the added object entries.
+      auto lookup_callback = [task_id, data_vector](
+                                 gcs::RedisGcsClient *client, const TaskID &id,
+                                 const std::vector<TaskReconstructionData> &data) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_EQ(data.size(), 1);
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    }
+    if (ids.size() == 1) {
+      client->task_reconstruction_log().Delete(job_id, ids[0]);
+    } else {
+      client->task_reconstruction_log().Delete(job_id, ids);
+    }
+    for (const auto &task_id : ids) {
+      auto lookup_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
+                                       const std::vector<TaskReconstructionData> &data) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_TRUE(data.size() == 0);
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    }
   }
-  for (const auto &task_id : ids) {
-    // Check that lookup returns the added object entries.
-    auto lookup_callback = [task_id, data_vector](
-                               gcs::RedisGcsClient *client, const TaskID &id,
-                               const std::vector<TaskReconstructionData> &data) {
-      ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data.size(), 1);
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(
-        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  }
-  if (ids.size() == 1) {
-    client->task_reconstruction_log().Delete(job_id, ids[0]);
-  } else {
-    client->task_reconstruction_log().Delete(job_id, ids);
-  }
-  for (const auto &task_id : ids) {
-    auto lookup_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
-                                     const std::vector<TaskReconstructionData> &data) {
-      ASSERT_EQ(id, task_id);
-      ASSERT_TRUE(data.size() == 0);
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(
-        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  }
-}
+};
 
 // Test delete function for keys of Log or Table.
 void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
@@ -867,7 +876,7 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   // Test one element case.
   AppendTaskReconstructionData(1);
   ASSERT_EQ(task_reconstruction_vector.size(), 1);
-  TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
+  LogDeleteTestHelper::TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than one elements and less than
   // maximum_gcs_deletion_batch_size.
   AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() /
@@ -875,14 +884,14 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   ASSERT_GT(task_reconstruction_vector.size(), 1);
   ASSERT_LT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
-  TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
+  LogDeleteTestHelper::TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than maximum_gcs_deletion_batch_size.
   // The Delete function will split the data into two commands.
   AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() /
                                2);
   ASSERT_GT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
-  TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
+  LogDeleteTestHelper::TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
 
   // Test delete function for keys of Table.
   std::vector<std::shared_ptr<TaskTableData>> task_vector;

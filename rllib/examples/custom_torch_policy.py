@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
 import ray
@@ -12,6 +8,7 @@ from ray.rllib.policy.torch_policy_template import build_torch_policy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iters", type=int, default=200)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):
@@ -32,8 +29,8 @@ MyTrainer = build_trainer(
 )
 
 if __name__ == "__main__":
-    ray.init()
     args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
     tune.run(
         MyTrainer,
         stop={"training_iteration": args.iters},

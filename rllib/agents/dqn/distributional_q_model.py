@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -71,18 +67,17 @@ class DistributionalQModel(TFModelV2):
                         action_out = self._noisy_layer(
                             "hidden_%d" % i, action_out, q_hiddens[i], sigma0)
                     elif parameter_noise:
-                        import tensorflow.contrib.layers as layers
-                        action_out = layers.fully_connected(
-                            action_out,
-                            num_outputs=q_hiddens[i],
+                        action_out = tf.keras.layers.Dense(
+                            units=q_hiddens[i],
                             activation_fn=tf.nn.relu,
-                            normalizer_fn=layers.layer_norm)
+                            normalizer_fn=tf.keras.layers.LayerNormalization
+                        )(action_out)
                     else:
-                        action_out = tf.layers.dense(
-                            action_out,
+                        action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
                             activation=tf.nn.relu,
-                            name="hidden_%d" % i)
+                            name="hidden_%d" % i
+                        )(action_out)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
@@ -95,10 +90,10 @@ class DistributionalQModel(TFModelV2):
                     sigma0,
                     non_linear=False)
             elif q_hiddens:
-                action_scores = tf.layers.dense(
-                    action_out,
+                action_scores = tf.keras.layers.Dense(
                     units=self.action_space.n * num_atoms,
-                    activation=None)
+                    activation=None
+                )(action_out)
             else:
                 action_scores = model_out
             if num_atoms > 1:
@@ -131,14 +126,15 @@ class DistributionalQModel(TFModelV2):
                                                   state_out, q_hiddens[i],
                                                   sigma0)
                 elif parameter_noise:
-                    state_out = tf.contrib.layers.fully_connected(
-                        state_out,
-                        num_outputs=q_hiddens[i],
+                    state_out = tf.keras.layers.Dense(
+                        units=q_hiddens[i],
                         activation_fn=tf.nn.relu,
-                        normalizer_fn=tf.contrib.layers.layer_norm)
+                        normalizer_fn=tf.contrib.layers.layer_norm
+                    )(state_out)
                 else:
-                    state_out = tf.layers.dense(
-                        state_out, units=q_hiddens[i], activation=tf.nn.relu)
+                    state_out = tf.keras.layers.Dense(
+                        units=q_hiddens[i], activation=tf.nn.relu
+                    )(state_out)
             if use_noisy:
                 state_score = self._noisy_layer(
                     "dueling_output",
@@ -147,8 +143,9 @@ class DistributionalQModel(TFModelV2):
                     sigma0,
                     non_linear=False)
             else:
-                state_score = tf.layers.dense(
-                    state_out, units=num_atoms, activation=None)
+                state_score = tf.keras.layers.Dense(
+                    units=num_atoms, activation=None
+                )(state_out)
             return state_score
 
         if tf.executing_eagerly():
@@ -185,14 +182,12 @@ class DistributionalQModel(TFModelV2):
                         name + "/state_value", reuse=tf.AUTO_REUSE):
                     return build_state_score(model_out)
 
-        # TODO(ekl) we shouldn't need to use lambda layers here
-        q_out = tf.keras.layers.Lambda(build_action_value_in_scope)(
-            self.model_out)
+        q_out = build_action_value_in_scope(self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
         self.register_variables(self.q_value_head.variables)
 
         if dueling:
-            state_out = tf.keras.layers.Lambda(build_state_score_in_scope)(
+            state_out = build_state_score_in_scope(
                 self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
@@ -225,14 +220,12 @@ class DistributionalQModel(TFModelV2):
                      non_linear=True):
         """
         a common dense layer: y = w^{T}x + b
-        a noisy layer: y = (w + \epsilon_w*\sigma_w)^{T}x +
-            (b+\epsilon_b*\sigma_b)
+        a noisy layer: y = (w + \\epsilon_w*\\sigma_w)^{T}x +
+            (b+\\epsilon_b*\\sigma_b)
         where \epsilon are random variables sampled from factorized normal
-        distributions and \sigma are trainable variables which are expected to
+        distributions and \\sigma are trainable variables which are expected to
         vanish along the training procedure
         """
-        import tensorflow.contrib.layers as layers
-
         in_size = int(action_in.shape[1])
 
         epsilon_in = tf.random_normal(shape=[in_size])
@@ -263,7 +256,7 @@ class DistributionalQModel(TFModelV2):
             name=prefix + "_fc_w",
             shape=[in_size, out_size],
             dtype=tf.float32,
-            initializer=layers.xavier_initializer())
+            initializer=tf.initializers.GlorotUniform())
         b = tf.get_variable(
             name=prefix + "_fc_b",
             shape=[out_size],

@@ -42,6 +42,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     const auto &actor_id = task_spec.ActorId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    request->mutable_caller_address()->CopyFrom(rpc_address_);
     // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
@@ -77,9 +78,10 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Update the mapping so new RPCs go out with the right intended worker id.
   worker_ids_[actor_id] = address.worker_id();
   // Create a new connection to the actor.
+  // TODO(edoakes): are these clients cleaned up properly?
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
-        client_factory_(address.ip_address(), address.port()));
+    rpc_clients_[actor_id] =
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   }
   if (pending_requests_.count(actor_id) > 0) {
     SendPendingTasks(actor_id);
@@ -150,13 +152,14 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
   auto it = worker_ids_.find(actor_id);
   RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
   request->set_intended_worker_id(it->second);
+  rpc::Address addr(client.Addr());
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
-      [this, task_id](Status status, const rpc::PushTaskReply &reply) {
+      [this, addr, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, nullptr);
+          task_finisher_->CompletePendingTask(task_id, reply, addr);
         }
       }));
 }
@@ -168,66 +171,22 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
-                                        rpc::ClientFactoryFn client_factory,
+void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
                                         rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(raylet_client));
+  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
-  local_raylet_client_ = raylet_client;
 }
-
-void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
-  if (max_concurrency != max_concurrency_) {
-    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
-    RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
-    pool_.reset(new BoundedExecutor(max_concurrency));
-    max_concurrency_ = max_concurrency;
-  }
-}
-
-void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
-  if (!is_asyncio_) {
-    RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
-
-    // The main thread will be used the creating new fibers.
-    // The fiber_runner_thread_ will run all fibers.
-    // boost::fibers::algo::shared_work allows two threads to transparently
-    // share all the fibers.
-    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-
-    fiber_runner_thread_ = std::thread([&]() {
-      boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-
-      // The event here is used to make sure fiber_runner_thread_ never terminates.
-      // Because fiber_shutdown_event_ is never notified, fiber_runner_thread_ will
-      // immediately start working on any ready fibers.
-      fiber_shutdown_event_.Wait();
-    });
-    fiber_rate_limiter_.reset(new FiberRateLimiter(max_concurrency));
-    max_concurrency_ = max_concurrency;
-    is_asyncio_ = true;
-  }
-};
 
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  RAY_LOG(DEBUG) << "Received task " << task_spec.DebugString();
   if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;
-  }
-
-  // Only call SetMaxActorConcurrency to configure threadpool size when the
-  // actor is not async actor. Async actor is single threaded.
-  if (worker_context_.CurrentActorIsAsync()) {
-    SetActorAsAsync(worker_context_.CurrentActorMaxConcurrency());
-  } else {
-    SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
   }
 
   std::vector<ObjectID> dependencies;
@@ -265,7 +224,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    auto status = task_handler_(task_spec, resource_ids, &return_objects);
+    auto status = task_handler_(task_spec, resource_ids, &return_objects,
+                                reply->mutable_borrowed_refs());
+
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
       for (size_t i = 0; i < return_objects.size(); i++) {
@@ -277,7 +238,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
         // The object is nullptr if it already existed in the object store.
         const auto &result = return_objects[i];
-        if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+        if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
         } else {
           if (result->GetData() != nullptr) {
@@ -287,9 +248,11 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
             return_object->set_metadata(result->GetMetadata()->Data(),
                                         result->GetMetadata()->Size());
           }
+          for (const auto &nested_id : result->GetNestedIds()) {
+            return_object->add_nested_inlined_ids(nested_id.Binary());
+          }
         }
       }
-
       if (task_spec.IsActorCreationTask()) {
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                       << ", actor_id: " << task_spec.ActorCreationId();
@@ -335,9 +298,8 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
+        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                  task_main_io_service_, *waiter_, worker_context_)));
     it = result.first;
   }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),

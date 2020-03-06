@@ -1,12 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
@@ -17,8 +14,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     after the floating point. Uses assertions.
 
     Args:
-        x (any): The first value to be compared (to `y`).
-        y (any): The second value to be compared (to `x`).
+        x (any): The value to be compared (to the expectation: `y`). This
+            may be a Tensor.
+        y (any): The expected value to be compared to `x`. This must not
+            be a Tensor.
         decimals (int): The number of digits after the floating point up to
             which all numeric values have to match.
         atol (float): Absolute tolerance of the difference between x and y
@@ -35,8 +34,13 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         for key, value in x.items():
             assert key in y, \
                 "ERROR: y does not have x's key='{}'! y={}".format(key, y)
-            check(value, y[key], decimals=decimals, atol=atol, rtol=rtol,
-                  false=false)
+            check(
+                value,
+                y[key],
+                decimals=decimals,
+                atol=atol,
+                rtol=rtol,
+                false=false)
             y_keys.remove(key)
         assert not y_keys, \
             "ERROR: y contains keys ({}) that are not in x! y={}".\
@@ -49,8 +53,13 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             "ERROR: y does not have the same length as x ({} vs {})!".\
             format(len(y), len(x))
         for i, value in enumerate(x):
-            check(value, y[i], decimals=decimals, atol=atol, rtol=rtol,
-                  false=false)
+            check(
+                value,
+                y[i],
+                decimals=decimals,
+                atol=atol,
+                rtol=rtol,
+                false=false)
     # Boolean comparison.
     elif isinstance(x, (np.bool_, bool)):
         if false is True:
@@ -59,8 +68,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert bool(x) is bool(y), \
                 "ERROR: x ({}) is not y ({})!".format(x, y)
-    # Nones.
-    elif x is None or y is None:
+    # Nones or primitives.
+    elif x is None or y is None or isinstance(x, (str, int)):
         if false is True:
             assert x != y, "ERROR: x ({}) is the same as y ({})!".format(x, y)
         else:
@@ -76,13 +85,38 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         except AssertionError as e:
             if false is False:
                 raise e
-    # Everything else (assume numeric).
+    # Everything else (assume numeric or tf/torch.Tensor).
     else:
-        # Numpyize tensors if necessary.
-        if tf is not None and isinstance(x, tf.Tensor):
-            x = x.numpy()
-        if tf is not None and isinstance(y, tf.Tensor):
-            y = y.numpy()
+        if tf is not None:
+            # y should never be a Tensor (y=expected value).
+            if isinstance(y, tf.Tensor):
+                raise ValueError("`y` (expected value) must not be a Tensor. "
+                                 "Use numpy.ndarray instead")
+            if isinstance(x, tf.Tensor):
+                # In eager mode, numpyize tensors.
+                if tf.executing_eagerly():
+                    x = x.numpy()
+                # Otherwise, use a quick tf-session.
+                else:
+                    with tf.Session() as sess:
+                        x = sess.run(x)
+                        return check(
+                            x,
+                            y,
+                            decimals=decimals,
+                            atol=atol,
+                            rtol=rtol,
+                            false=false)
+        if torch is not None:
+            # y should never be a Tensor (y=expected value).
+            if isinstance(y, torch.Tensor):
+                raise ValueError("`y` (expected value) must not be a Tensor. "
+                                 "Use numpy.ndarray instead")
+            if isinstance(x, torch.Tensor):
+                try:
+                    x = x.numpy()
+                except RuntimeError:
+                    x = x.detach().numpy()
 
         # Using decimals.
         if atol is None and rtol is None:

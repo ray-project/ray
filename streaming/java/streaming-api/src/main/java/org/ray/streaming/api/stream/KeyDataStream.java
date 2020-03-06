@@ -1,6 +1,5 @@
 package org.ray.streaming.api.stream;
 
-import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.AggregateFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.partition.impl.KeyPartition;
@@ -14,10 +13,6 @@ import org.ray.streaming.operator.impl.ReduceOperator;
  * @param <T> Type of the data.
  */
 public class KeyDataStream<K, T> extends DataStream<T> {
-
-  public KeyDataStream(StreamingContext streamingContext, StreamOperator streamOperator) {
-    super(streamingContext, streamOperator);
-  }
 
   public KeyDataStream(DataStream<T> input, StreamOperator streamOperator) {
     super(input, streamOperator);

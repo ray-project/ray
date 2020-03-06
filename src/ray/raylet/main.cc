@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "gflags/gflags.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -7,7 +8,7 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 
-#include "gflags/gflags.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -123,8 +124,12 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
+  node_manager_config.free_objects_period_ms =
+      RayConfig::instance().free_objects_period_milliseconds();
   node_manager_config.fair_queueing_enabled =
       RayConfig::instance().fair_queueing_enabled();
+  node_manager_config.object_pinning_enabled =
+      RayConfig::instance().object_pinning_enabled();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
   node_manager_config.temp_dir = temp_dir;
@@ -155,7 +160,17 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
-  auto gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
+
+  std::unique_ptr<std::thread> thread_io_service;
+  boost::asio::io_service io_service;
+
+  // RAY_GCS_SERVICE_ENABLED only set in ci job, so we just check if it is null.
+  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+    gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+  } else {
+    gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(

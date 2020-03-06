@@ -1,16 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import os
 import sys
 import time
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+# Import ray before psutil will make sure we use psutil's bundled version
+import ray  # noqa F401
+import psutil  # noqa E402
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +104,6 @@ class MemoryMonitor:
         self.worker_name = worker_name
 
     def raise_if_low_memory(self):
-        if psutil is None:
-            return  # nothing we can do
-
         if time.time() - self.last_checked > self.check_interval:
             if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
                 return  # escape hatch, not intended for user use

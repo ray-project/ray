@@ -1,9 +1,5 @@
 """Registry of algorithm names for `rllib train --run=<alg_name>`"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
@@ -17,6 +13,11 @@ def _import_sac():
 def _import_appo():
     from ray.rllib.agents import ppo
     return ppo.APPOTrainer
+
+
+def _import_ddppo():
+    from ray.rllib.agents import ppo
+    return ppo.DDPPOTrainer
 
 
 def _import_qmix():
@@ -117,6 +118,7 @@ ALGORITHMS = {
     "QMIX": _import_qmix,
     "APEX_QMIX": _import_apex_qmix,
     "APPO": _import_appo,
+    "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
 }
 

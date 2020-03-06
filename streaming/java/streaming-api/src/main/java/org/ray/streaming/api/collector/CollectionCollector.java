@@ -1,7 +1,6 @@
 package org.ray.streaming.api.collector;
 
 import java.util.List;
-import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.message.Record;
 
 /**

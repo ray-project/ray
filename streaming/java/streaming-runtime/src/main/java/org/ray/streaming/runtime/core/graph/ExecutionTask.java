@@ -1,9 +1,7 @@
 package org.ray.streaming.runtime.core.graph;
 
 import java.io.Serializable;
-
 import org.ray.api.RayActor;
-import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
  * ExecutionTask is minimal execution unit.
@@ -11,12 +9,11 @@ import org.ray.streaming.runtime.worker.JobWorker;
  * An ExecutionNode has n ExecutionTasks if parallelism is n.
  */
 public class ExecutionTask implements Serializable {
-
   private int taskId;
   private int taskIndex;
-  private RayActor<JobWorker> worker;
+  private RayActor worker;
 
-  public ExecutionTask(int taskId, int taskIndex, RayActor<JobWorker> worker) {
+  public ExecutionTask(int taskId, int taskIndex, RayActor worker) {
     this.taskId = taskId;
     this.taskIndex = taskIndex;
     this.worker = worker;
@@ -38,11 +35,11 @@ public class ExecutionTask implements Serializable {
     this.taskIndex = taskIndex;
   }
 
-  public RayActor<JobWorker> getWorker() {
+  public RayActor getWorker() {
     return worker;
   }
 
-  public void setWorker(RayActor<JobWorker> worker) {
+  public void setWorker(RayActor worker) {
     this.worker = worker;
   }
 }

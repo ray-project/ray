@@ -61,6 +61,17 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "reporter_proto",
+    srcs = ["src/ray/protobuf/reporter.proto"],
+    deps = [":common_proto"],
+)
+
+python_grpc_compile(
+    name = "reporter_py_proto",
+    deps = [":reporter_proto"],
+)
+
+proto_library(
     name = "gcs_service_proto",
     srcs = ["src/ray/protobuf/gcs_service.proto"],
     deps = [":gcs_proto"],
@@ -85,6 +96,11 @@ proto_library(
     name = "core_worker_proto",
     srcs = ["src/ray/protobuf/core_worker.proto"],
     deps = [":common_proto"],
+)
+
+python_grpc_compile(
+    name = "core_worker_py_proto",
+    deps = [":core_worker_proto"],
 )
 
 cc_proto_library(
@@ -313,6 +329,7 @@ cc_binary(
         "src/ray/gcs/gcs_server/gcs_server_main.cc",
     ],
     copts = COPTS,
+    visibility = ["//java:__subpackages__"],
     deps = [
         ":gcs_server_lib",
         "@com_github_gflags_gflags//:gflags",
@@ -396,6 +413,7 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "@boost//:asio",
@@ -650,6 +668,27 @@ cc_test(
 )
 
 cc_test(
+    name = "url_test",
+    srcs = ["src/ray/util/url_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "sequencer_test",
+    srcs = ["src/ray/util/sequencer_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
@@ -671,6 +710,40 @@ cc_test(
     ],
     deps = [
         ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "service_based_gcs_client_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/gcs_client/service_based_*.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/gcs_client/service_based_*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+    ],
+)
+
+cc_test(
+    name = "gcs_server_test",
+    srcs = ["src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -764,10 +837,44 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":platform_shims",
         ":sha256",
+        "@boost//:asio",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
+    ],
+)
+
+filegroup(
+    name = "iwyu_sh",
+    srcs = ["ci/travis/iwyu.sh"],
+)
+
+filegroup(
+    name = "extra_actions_base_proto",
+    srcs = [
+        # TODO: Replace our file with the built-in copy once this issue is resolved:
+        #   https://github.com/bazelbuild/bazel/issues/8738
+        "thirdparty/protobuf/extra_actions_base.proto",
+        #"@bazel_tools//src/main/protobuf:extra_actions_base.proto",
+    ],
+)
+
+action_listener(
+    name = "iwyu_cpp",
+    extra_actions = [":iwyu_action"],
+    mnemonics = ["CppCompile"],
+)
+
+extra_action(
+    name = "iwyu_action",
+    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
+    tools = [
+        ":extra_actions_base_proto",
+        ":iwyu_sh",
+        "@com_google_protobuf//:protoc",
     ],
 )
 
@@ -932,7 +1039,7 @@ FLATC_ARGS = [
 
 flatbuffer_cc_library(
     name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
+    srcs = ["@plasma//:cpp/src/plasma/common.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/common/",
 )
@@ -963,10 +1070,10 @@ pyx_library(
     # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
-    cc_kwargs = {
-        "linkstatic": 1,
+    cc_kwargs = dict(
+        copts = COPTS,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
-        "linkopts": select({
+        linkopts = select({
             "@bazel_tools//src/conditions:darwin": [
                 "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
             ],
@@ -976,10 +1083,11 @@ pyx_library(
                 "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
             ],
         }),
-    },
-    copts = COPTS,
+        linkstatic = 1,
+    ),
     deps = [
         "//:core_worker_lib",
+        "//:ray_util",
         "//:raylet_lib",
         "//:serialization_cc_proto",
         "//:src/ray/ray_exported_symbols.lds",
@@ -999,7 +1107,9 @@ pyx_library(
         "python/ray/streaming/includes/*.pxd",
         "python/ray/streaming/includes/*.pxi",
     ]),
-    copts = COPTS,
+    cc_kwargs = dict(
+        copts = COPTS,
+    ),
     deps = [
         "//streaming:streaming_lib",
     ],
@@ -1017,6 +1127,7 @@ cc_binary(
         "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
     }),
+    copts = COPTS,
     includes = [
         "src",
         "external/bazel_tools/tools/jdk/include",
@@ -1042,6 +1153,7 @@ cc_binary(
         "//:core_worker_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "//streaming:jni",
     ],
 )
 
@@ -1077,6 +1189,7 @@ filegroup(
         "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/dashboard/dashboard.py",
         "python/ray/experimental/*.py",
+        "python/ray/util/*.py",
         "python/ray/internal/*.py",
         "python/ray/projects/*.py",
         "python/ray/projects/schema.json",
@@ -1089,19 +1202,37 @@ filegroup(
 
 genrule(
     name = "redis",
+    srcs = [
+    ] + select({
+        # Windows is not supported yet, so make stubs for it
+        "@bazel_tools//src/conditions:windows": [
+            "@win-redis-bin//file",
+        ],
+        "//conditions:default": [
+            "@redis-src//file",
+        ],
+    }),
     outs = [
         "redis-server",
         "redis-cli",
     ],
-    cmd = """
-        set -x &&
-        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
-        make &&
-        mv ./src/redis-server $(location redis-server) &&
-        chmod +x $(location redis-server) &&
-        mv ./src/redis-cli $(location redis-cli) &&
-        chmod +x $(location redis-cli)
-    """,
+    cmd = select({
+        # Windows is not supported yet, so make stubs for it
+        "@bazel_tools//src/conditions:windows": """
+            unzip -q -o -- $(location @win-redis-bin//file) redis-server.exe redis-cli.exe &&
+            mv -f -- redis-server.exe $(location redis-server) &&
+            mv -f -- redis-cli.exe    $(location redis-cli)
+        """,
+        "//conditions:default": """
+            set -x &&
+            tar -xzf $(location @redis-src//file) --strip-components=1 -C . &&
+            make &&
+            mv ./src/redis-server $(location redis-server) &&
+            chmod +x $(location redis-server) &&
+            mv ./src/redis-cli $(location redis-cli) &&
+            chmod +x $(location redis-cli)
+        """,
+    }),
     visibility = ["//java:__subpackages__"],
 )
 
@@ -1126,8 +1257,10 @@ filegroup(
     name = "all_py_proto",
     srcs = [
         "common_py_proto",
+        "core_worker_py_proto",
         "gcs_py_proto",
         "node_manager_py_proto",
+        "reporter_py_proto",
     ],
 )
 
@@ -1166,6 +1299,7 @@ genrule(
         "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_monitor",
+        "//:gcs_server",
         "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ] + select({
@@ -1175,8 +1309,19 @@ genrule(
     outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
-        WORK_DIR=$$(pwd) &&
-        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
+        WORK_DIR="$$(pwd)" &&
+        RAYDIR="$$WORK_DIR/python/ray"
+        RAYLET="$(location python/ray/_raylet.so)"
+        RAYLET_TARGET_FILENAME="$${RAYLET##*/}" &&
+        if [ "$${OSTYPE-}" = "msys" ]; then
+            # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}" &&
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd" &&
+            if [ -f "$${RAYLET%.*}.pdb" ]; then
+                cp -f "$${RAYLET%.*}.pdb" "$${RAYDIR}";
+            fi;
+        fi &&
+        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
@@ -1185,6 +1330,7 @@ genrule(
         cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
         for f in $(locations //:all_py_proto); do
             cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";
@@ -1195,6 +1341,10 @@ genrule(
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2_grpc.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/core_worker_pb2_grpc.py" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,

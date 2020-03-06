@@ -28,8 +28,11 @@ class ObjectStoreNotificationManager {
   ///
   /// \param io_service The asio service to be used.
   /// \param store_socket_name The store socket to connect to.
+  /// \param exit_on_error The manager will exit with error when it fails
+  ///                      to process messages from socket.
   ObjectStoreNotificationManager(boost::asio::io_service &io_service,
-                                 const std::string &store_socket_name);
+                                 const std::string &store_socket_name,
+                                 bool exit_on_error = true);
 
   ~ObjectStoreNotificationManager();
 
@@ -45,6 +48,9 @@ class ObjectStoreNotificationManager {
   ///
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
+
+  /// Explicitly shutdown the manager.
+  void Shutdown();
 
   /// Returns debug string for class.
   ///
@@ -66,12 +72,18 @@ class ObjectStoreNotificationManager {
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 
   plasma::PlasmaClient store_client_;
-  int c_socket_;
   int64_t length_;
   int64_t num_adds_processed_;
   int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
   local_stream_protocol::socket socket_;
+
+  /// Flag to indicate whether or not to exit the process when received socket
+  /// error. When it is false, socket error will be ignored. This flag is needed
+  /// when running object store notification manager in core worker. On core worker
+  /// exit, plasma store will be killed before deconstructor of this manager. So we
+  /// we have to silence the errors.
+  bool exit_on_error_;
 };
 
 }  // namespace ray

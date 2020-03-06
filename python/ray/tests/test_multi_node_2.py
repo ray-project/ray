@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import pytest
 import time
@@ -65,7 +61,6 @@ def setup_monitor(address):
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
     monitor.update_raylet_map(_append_port=True)
-    monitor._maybe_flush_gcs()
     return monitor
 
 
@@ -181,7 +176,8 @@ def test_worker_plasma_store_failure(ray_start_cluster_head):
     cluster.wait_for_nodes()
     worker.kill_reporter()
     worker.kill_plasma_store()
-    worker.kill_reaper()
+    if ray_constants.PROCESS_TYPE_REAPER in worker.all_processes:
+        worker.kill_reaper()
     worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
     assert not worker.any_processes_alive(), worker.live_processes()
 

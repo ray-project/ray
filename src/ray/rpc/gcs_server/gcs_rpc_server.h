@@ -9,45 +9,35 @@
 namespace ray {
 namespace rpc {
 
-#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                           \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                         \
-      new ServerCallFactoryImpl<JobInfoGcsService, JobInfoHandler, HANDLER##Request, \
-                                HANDLER##Reply>(                                     \
-          service_, &JobInfoGcsService::AsyncService::Request##HANDLER,              \
-          service_handler_, &JobInfoHandler::Handle##HANDLER, cq, main_service_));   \
-  server_call_factories_and_concurrencies->emplace_back(                             \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER, CONCURRENCY)
 
-#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                             \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                             \
-      new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler, HANDLER##Request, \
-                                HANDLER##Reply>(                                         \
-          service_, &ActorInfoGcsService::AsyncService::Request##HANDLER,                \
-          service_handler_, &ActorInfoHandler::Handle##HANDLER, cq, main_service_));     \
-  server_call_factories_and_concurrencies->emplace_back(                                 \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, CONCURRENCY)
 
-#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                            \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                           \
-      new ServerCallFactoryImpl<NodeInfoGcsService, NodeInfoHandler, HANDLER##Request, \
-                                HANDLER##Reply>(                                       \
-          service_, &NodeInfoGcsService::AsyncService::Request##HANDLER,               \
-          service_handler_, &NodeInfoHandler::Handle##HANDLER, cq, main_service_));    \
-  server_call_factories_and_concurrencies->emplace_back(                               \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER, CONCURRENCY)
 
-#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                         \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                          \
-      new ServerCallFactoryImpl<ObjectInfoGcsService, ObjectInfoHandler,              \
-                                HANDLER##Request, HANDLER##Reply>(                    \
-          service_, &ObjectInfoGcsService::AsyncService::Request##HANDLER,            \
-          service_handler_, &ObjectInfoHandler::Handle##HANDLER, cq, main_service_)); \
-  server_call_factories_and_concurrencies->emplace_back(                              \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER, CONCURRENCY)
 
-class JobInfoHandler {
+#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER, CONCURRENCY)
+
+#define STATS_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(StatsGcsService, HANDLER, CONCURRENCY)
+
+#define ERROR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(ErrorInfoGcsService, HANDLER, CONCURRENCY)
+
+#define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER, CONCURRENCY)
+
+#define SERVER_CALL_CONCURRENCY 9999
+
+class JobInfoGcsServiceHandler {
  public:
-  virtual ~JobInfoHandler() = default;
+  virtual ~JobInfoGcsServiceHandler() = default;
 
   virtual void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
                             SendReplyCallback send_reply_callback) = 0;
@@ -64,7 +54,7 @@ class JobInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit JobInfoGrpcService(boost::asio::io_service &io_service,
-                              JobInfoHandler &handler)
+                              JobInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -74,20 +64,20 @@ class JobInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    JOB_INFO_SERVICE_RPC_HANDLER(AddJob, 1);
-    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished, 1);
+    JOB_INFO_SERVICE_RPC_HANDLER(AddJob, SERVER_CALL_CONCURRENCY);
+    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished, SERVER_CALL_CONCURRENCY);
   }
 
  private:
   /// The grpc async service object.
   JobInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  JobInfoHandler &service_handler_;
+  JobInfoGcsServiceHandler &service_handler_;
 };
 
-class ActorInfoHandler {
+class ActorInfoGcsServiceHandler {
  public:
-  virtual ~ActorInfoHandler() = default;
+  virtual ~ActorInfoGcsServiceHandler() = default;
 
   virtual void HandleGetActorInfo(const GetActorInfoRequest &request,
                                   GetActorInfoReply *reply,
@@ -121,7 +111,7 @@ class ActorInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit ActorInfoGrpcService(boost::asio::io_service &io_service,
-                                ActorInfoHandler &handler)
+                                ActorInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -131,24 +121,24 @@ class ActorInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpoint, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpointID, 1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo, SERVER_CALL_CONCURRENCY);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo, SERVER_CALL_CONCURRENCY);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo, SERVER_CALL_CONCURRENCY);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint, SERVER_CALL_CONCURRENCY);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpoint, SERVER_CALL_CONCURRENCY);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpointID, SERVER_CALL_CONCURRENCY);
   }
 
  private:
   /// The grpc async service object.
   ActorInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  ActorInfoHandler &service_handler_;
+  ActorInfoGcsServiceHandler &service_handler_;
 };
 
-class NodeInfoHandler {
+class NodeInfoGcsServiceHandler {
  public:
-  virtual ~NodeInfoHandler() = default;
+  virtual ~NodeInfoGcsServiceHandler() = default;
 
   virtual void HandleRegisterNode(const RegisterNodeRequest &request,
                                   RegisterNodeReply *reply,
@@ -190,7 +180,7 @@ class NodeInfoGrpcService : public GrpcService {
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit NodeInfoGrpcService(boost::asio::io_service &io_service,
-                               NodeInfoHandler &handler)
+                               NodeInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -200,26 +190,26 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportBatchHeartbeat, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetResources, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode, SERVER_CALL_CONCURRENCY);
+    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode, SERVER_CALL_CONCURRENCY);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo, SERVER_CALL_CONCURRENCY);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat, SERVER_CALL_CONCURRENCY);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportBatchHeartbeat, SERVER_CALL_CONCURRENCY);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetResources, SERVER_CALL_CONCURRENCY);
+    NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources, SERVER_CALL_CONCURRENCY);
+    NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources, SERVER_CALL_CONCURRENCY);
   }
 
  private:
   /// The grpc async service object.
   NodeInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  NodeInfoHandler &service_handler_;
+  NodeInfoGcsServiceHandler &service_handler_;
 };
 
-class ObjectInfoHandler {
+class ObjectInfoGcsServiceHandler {
  public:
-  virtual ~ObjectInfoHandler() = default;
+  virtual ~ObjectInfoGcsServiceHandler() = default;
 
   virtual void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
                                         GetObjectLocationsReply *reply,
@@ -234,14 +224,14 @@ class ObjectInfoHandler {
                                           SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcService` for `ObjectInfoHandler`.
+/// The `GrpcService` for `ObjectInfoGcsServiceHandler`.
 class ObjectInfoGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
   explicit ObjectInfoGrpcService(boost::asio::io_service &io_service,
-                                 ObjectInfoHandler &handler)
+                                 ObjectInfoGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -251,17 +241,188 @@ class ObjectInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations, 1);
-    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation, 1);
-    OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation, 1);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations, SERVER_CALL_CONCURRENCY);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation, SERVER_CALL_CONCURRENCY);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation, SERVER_CALL_CONCURRENCY);
   }
 
  private:
   /// The grpc async service object.
   ObjectInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  ObjectInfoHandler &service_handler_;
+  ObjectInfoGcsServiceHandler &service_handler_;
 };
+
+class TaskInfoGcsServiceHandler {
+ public:
+  virtual ~TaskInfoGcsServiceHandler() = default;
+
+  virtual void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
+                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
+                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDeleteTasks(const DeleteTasksRequest &request,
+                                 DeleteTasksReply *reply,
+                                 SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
+                                  AddTaskLeaseReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAttemptTaskReconstruction(
+      const AttemptTaskReconstructionRequest &request,
+      AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `TaskInfoGcsService`.
+class TaskInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit TaskInfoGrpcService(boost::asio::io_service &io_service,
+                               TaskInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) override {
+    TASK_INFO_SERVICE_RPC_HANDLER(AddTask, SERVER_CALL_CONCURRENCY);
+    TASK_INFO_SERVICE_RPC_HANDLER(GetTask, SERVER_CALL_CONCURRENCY);
+    TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks, SERVER_CALL_CONCURRENCY);
+    TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease, SERVER_CALL_CONCURRENCY);
+    TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction, SERVER_CALL_CONCURRENCY);
+  }
+
+ private:
+  /// The grpc async service object.
+  TaskInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  TaskInfoGcsServiceHandler &service_handler_;
+};
+
+class StatsGcsServiceHandler {
+ public:
+  virtual ~StatsGcsServiceHandler() = default;
+
+  virtual void HandleAddProfileData(const AddProfileDataRequest &request,
+                                    AddProfileDataReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `StatsGcsService`.
+class StatsGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit StatsGrpcService(boost::asio::io_service &io_service,
+                            StatsGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) override {
+    STATS_SERVICE_RPC_HANDLER(AddProfileData, SERVER_CALL_CONCURRENCY);
+  }
+
+ private:
+  /// The grpc async service object.
+  StatsGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  StatsGcsServiceHandler &service_handler_;
+};
+
+class ErrorInfoGcsServiceHandler {
+ public:
+  virtual ~ErrorInfoGcsServiceHandler() = default;
+
+  virtual void HandleReportJobError(const ReportJobErrorRequest &request,
+                                    ReportJobErrorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `ErrorInfoGcsService`.
+class ErrorInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit ErrorInfoGrpcService(boost::asio::io_service &io_service,
+                                ErrorInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) override {
+    ERROR_INFO_SERVICE_RPC_HANDLER(ReportJobError, SERVER_CALL_CONCURRENCY);
+  }
+
+ private:
+  /// The grpc async service object.
+  ErrorInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  ErrorInfoGcsServiceHandler &service_handler_;
+};
+
+class WorkerInfoGcsServiceHandler {
+ public:
+  virtual ~WorkerInfoGcsServiceHandler() = default;
+
+  virtual void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
+                                         ReportWorkerFailureReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `WorkerInfoGcsService`.
+class WorkerInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit WorkerInfoGrpcService(boost::asio::io_service &io_service,
+                                 WorkerInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) override {
+    WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure, SERVER_CALL_CONCURRENCY);
+  }
+
+ private:
+  /// The grpc async service object.
+  WorkerInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  WorkerInfoGcsServiceHandler &service_handler_;
+};
+
+using JobInfoHandler = JobInfoGcsServiceHandler;
+using ActorInfoHandler = ActorInfoGcsServiceHandler;
+using NodeInfoHandler = NodeInfoGcsServiceHandler;
+using ObjectInfoHandler = ObjectInfoGcsServiceHandler;
+using TaskInfoHandler = TaskInfoGcsServiceHandler;
+using StatsHandler = StatsGcsServiceHandler;
+using ErrorInfoHandler = ErrorInfoGcsServiceHandler;
+using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

@@ -1,7 +1,5 @@
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/actor_info_handler_impl.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/gcs_server/job_info_handler_impl.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/test_util.h"
 
@@ -237,7 +235,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
                           [&resources, &promise](const Status &status,
                                                  const rpc::GetResourcesReply &reply) {
                             RAY_CHECK_OK(status);
-                            for (auto resource : reply.resources()) {
+                            for (auto &resource : reply.resources()) {
                               resources[resource.first] = resource.second;
                             }
                             promise.set_value(true);
@@ -289,6 +287,95 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return object_locations;
   }
 
+  bool AddTask(const rpc::AddTaskRequest &request) {
+    std::promise<bool> promise;
+    client_->AddTask(request,
+                     [&promise](const Status &status, const rpc::AddTaskReply &reply) {
+                       RAY_CHECK_OK(status);
+                       promise.set_value(true);
+                     });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  rpc::TaskTableData GetTask(const std::string &task_id) {
+    rpc::TaskTableData task_data;
+    rpc::GetTaskRequest request;
+    request.set_task_id(task_id);
+    std::promise<bool> promise;
+    client_->GetTask(request, [&task_data, &promise](const Status &status,
+                                                     const rpc::GetTaskReply &reply) {
+      if (status.ok()) {
+        task_data.CopyFrom(reply.task_data());
+      }
+      promise.set_value(true);
+    });
+
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return task_data;
+  }
+
+  bool DeleteTasks(const rpc::DeleteTasksRequest &request) {
+    std::promise<bool> promise;
+    client_->DeleteTasks(
+        request, [&promise](const Status &status, const rpc::DeleteTasksReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
+    std::promise<bool> promise;
+    client_->AddTaskLease(
+        request, [&promise](const Status &status, const rpc::AddTaskLeaseReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool AttemptTaskReconstruction(const rpc::AttemptTaskReconstructionRequest &request) {
+    std::promise<bool> promise;
+    client_->AttemptTaskReconstruction(
+        request, [&promise](const Status &status,
+                            const rpc::AttemptTaskReconstructionReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool AddProfileData(const rpc::AddProfileDataRequest &request) {
+    std::promise<bool> promise;
+    client_->AddProfileData(
+        request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportJobError(const rpc::ReportJobErrorRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportJobError(
+        request, [&promise](const Status &status, const rpc::ReportJobErrorReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportWorkerFailure(
+        request,
+        [&promise](const Status &status, const rpc::ReportWorkerFailureReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -321,6 +408,26 @@ class GcsServerTest : public RedisServiceManagerForTest {
     gcs_node_info.set_node_id(node_id);
     gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
     return gcs_node_info;
+  }
+
+  rpc::TaskTableData GenTaskTableData(const std::string &job_id,
+                                      const std::string &task_id) {
+    rpc::TaskTableData task_table_data;
+    rpc::Task task;
+    rpc::TaskSpec task_spec;
+    task_spec.set_job_id(job_id);
+    task_spec.set_task_id(task_id);
+    task.mutable_task_spec()->CopyFrom(task_spec);
+    task_table_data.mutable_task()->CopyFrom(task);
+    return task_table_data;
+  }
+
+  rpc::TaskLeaseData GenTaskLeaseData(const std::string &task_id,
+                                      const std::string &node_id) {
+    rpc::TaskLeaseData task_lease_data;
+    task_lease_data.set_task_id(task_id);
+    task_lease_data.set_node_manager_id(node_id);
+    return task_lease_data;
   }
 
  protected:
@@ -446,7 +553,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   delete_resources_request.add_resource_name_list(resource_name);
   ASSERT_TRUE(DeleteResources(delete_resources_request));
   resources = GetResources(node_id.Binary());
-  ASSERT_TRUE(resources.size() == 0);
+  ASSERT_TRUE(resources.empty());
 }
 
 TEST_F(GcsServerTest, TestObjectInfo) {
@@ -478,6 +585,72 @@ TEST_F(GcsServerTest, TestObjectInfo) {
   object_locations = GetObjectLocations(object_id.Binary());
   ASSERT_TRUE(object_locations.size() == 1);
   ASSERT_TRUE(object_locations[0].manager() == node2_id.Binary());
+}
+
+TEST_F(GcsServerTest, TestTaskInfo) {
+  // Create task_table_data
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id = TaskID::ForDriverTask(job_id);
+  rpc::TaskTableData job_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
+
+  // Add task
+  rpc::AddTaskRequest add_task_request;
+  add_task_request.mutable_task_data()->CopyFrom(job_table_data);
+  ASSERT_TRUE(AddTask(add_task_request));
+  rpc::TaskTableData result = GetTask(task_id.Binary());
+  ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
+
+  // Delete task
+  rpc::DeleteTasksRequest delete_tasks_request;
+  delete_tasks_request.add_task_id_list(task_id.Binary());
+  ASSERT_TRUE(DeleteTasks(delete_tasks_request));
+  result = GetTask(task_id.Binary());
+  ASSERT_TRUE(!result.has_task());
+
+  // Add task lease
+  ClientID node_id = ClientID::FromRandom();
+  rpc::TaskLeaseData task_lease_data =
+      GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  rpc::AddTaskLeaseRequest add_task_lease_request;
+  add_task_lease_request.mutable_task_lease_data()->CopyFrom(task_lease_data);
+  ASSERT_TRUE(AddTaskLease(add_task_lease_request));
+
+  // Attempt task reconstruction
+  rpc::AttemptTaskReconstructionRequest attempt_task_reconstruction_request;
+  rpc::TaskReconstructionData task_reconstruction_data;
+  task_reconstruction_data.set_task_id(task_id.Binary());
+  task_reconstruction_data.set_node_manager_id(node_id.Binary());
+  task_reconstruction_data.set_num_reconstructions(0);
+  attempt_task_reconstruction_request.mutable_task_reconstruction()->CopyFrom(
+      task_reconstruction_data);
+  ASSERT_TRUE(AttemptTaskReconstruction(attempt_task_reconstruction_request));
+}
+
+TEST_F(GcsServerTest, TestStats) {
+  rpc::ProfileTableData profile_table_data;
+  profile_table_data.set_component_id(ClientID::FromRandom().Binary());
+  rpc::AddProfileDataRequest add_profile_data_request;
+  add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
+  ASSERT_TRUE(AddProfileData(add_profile_data_request));
+}
+
+TEST_F(GcsServerTest, TestErrorInfo) {
+  // Report error
+  rpc::ReportJobErrorRequest report_error_request;
+  rpc::ErrorTableData error_table_data;
+  JobID job_id = JobID::FromInt(1);
+  error_table_data.set_job_id(job_id.Binary());
+  report_error_request.mutable_error_data()->CopyFrom(error_table_data);
+  ASSERT_TRUE(ReportJobError(report_error_request));
+}
+
+TEST_F(GcsServerTest, TestWorkerInfo) {
+  rpc::WorkerFailureData worker_failure_data;
+  worker_failure_data.mutable_worker_address()->set_ip_address("127.0.0.1");
+  worker_failure_data.mutable_worker_address()->set_port(5566);
+  rpc::ReportWorkerFailureRequest report_worker_failure_request;
+  report_worker_failure_request.mutable_worker_failure()->CopyFrom(worker_failure_data);
+  ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
 }
 
 }  // namespace ray

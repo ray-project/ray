@@ -153,7 +153,7 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
 }
 
 LineageCache::LineageCache(const ClientID &self_node_id,
-                           std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                           std::shared_ptr<gcs::GcsClient> gcs_client,
                            uint64_t max_lineage_size)
     : self_node_id_(self_node_id), gcs_client_(gcs_client) {}
 

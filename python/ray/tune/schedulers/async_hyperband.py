@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import numpy as np
 
@@ -145,7 +141,8 @@ class _Bracket():
     def cutoff(self, recorded):
         if not recorded:
             return None
-        return np.percentile(list(recorded.values()), (1 - 1 / self.rf) * 100)
+        return np.nanpercentile(
+            list(recorded.values()), (1 - 1 / self.rf) * 100)
 
     def on_result(self, trial, cur_iter, cur_rew):
         action = TrialScheduler.CONTINUE

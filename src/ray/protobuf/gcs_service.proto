@@ -22,9 +22,9 @@ message MarkJobFinishedReply {
 
 // Service for job info access.
 service JobInfoGcsService {
-  // Add job to gcs server.
+  // Add job to GCS Service.
   rpc AddJob(AddJobRequest) returns (AddJobReply);
-  // Mark job as finished to gcs server.
+  // Mark job as finished to GCS Service.
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
 }
 
@@ -217,4 +217,94 @@ service ObjectInfoGcsService {
   // Remove location of object from GCS Service.
   rpc RemoveObjectLocation(RemoveObjectLocationRequest)
       returns (RemoveObjectLocationReply);
+}
+
+message AddTaskRequest {
+  TaskTableData task_data = 1;
+}
+
+message AddTaskReply {
+}
+
+message GetTaskRequest {
+  bytes task_id = 1;
+}
+
+message GetTaskReply {
+  TaskTableData task_data = 1;
+}
+
+message DeleteTasksRequest {
+  repeated bytes task_id_list = 1;
+}
+
+message DeleteTasksReply {
+}
+
+message AddTaskLeaseRequest {
+  TaskLeaseData task_lease_data = 1;
+}
+
+message AddTaskLeaseReply {
+}
+
+message AttemptTaskReconstructionRequest {
+  TaskReconstructionData task_reconstruction = 1;
+}
+
+message AttemptTaskReconstructionReply {
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add a task to GCS Service.
+  rpc AddTask(AddTaskRequest) returns (AddTaskReply);
+  // Get task information from GCS Service.
+  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
+  // Delete tasks from GCS Service.
+  rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
+  // Add a task lease to GCS Service.
+  rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
+  // Attempt task reconstruction to GCS Service.
+  rpc AttemptTaskReconstruction(AttemptTaskReconstructionRequest)
+      returns (AttemptTaskReconstructionReply);
+}
+
+message AddProfileDataRequest {
+  ProfileTableData profile_data = 1;
+}
+
+message AddProfileDataReply {
+}
+
+// Service for stats access.
+service StatsGcsService {
+  // Add profile data to GCS Service.
+  rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
+}
+
+message ReportJobErrorRequest {
+  ErrorTableData error_data = 1;
+}
+
+message ReportJobErrorReply {
+}
+
+// Service for error info access.
+service ErrorInfoGcsService {
+  // Report a job error to GCS Service.
+  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
+}
+
+message ReportWorkerFailureRequest {
+  WorkerFailureData worker_failure = 1;
+}
+
+message ReportWorkerFailureReply {
+}
+
+// Service for worker info access.
+service WorkerInfoGcsService {
+  // Report a worker failure to GCS Service.
+  rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
 }

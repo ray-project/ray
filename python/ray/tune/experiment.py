@@ -1,18 +1,13 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
-import inspect
 import logging
 import os
 import six
-import types
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import sample_from
+from ray.tune.stopper import FunctionStopper, Stopper
 
 logger = logging.getLogger(__name__)
 
@@ -111,18 +106,6 @@ class Experiment:
             _raise_deprecation_note(
                 "sync_function", "sync_to_driver", soft=False)
 
-        stop = stop or {}
-        if not isinstance(stop, dict) and not callable(stop):
-            raise ValueError("Invalid stop criteria: {}. Must be a callable "
-                             "or dict".format(stop))
-        if callable(stop):
-            nargs = len(inspect.getargspec(stop).args)
-            is_method = isinstance(stop, types.MethodType)
-            if (is_method and nargs != 3) or (not is_method and nargs != 2):
-                raise ValueError(
-                    "Invalid stop criteria: {}. Callable "
-                    "criteria must take exactly 2 parameters.".format(stop))
-
         config = config or {}
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
@@ -131,11 +114,30 @@ class Experiment:
         else:
             self.remote_checkpoint_dir = None
 
+        self._stopper = None
+        stopping_criteria = {}
+        if not stop:
+            pass
+        elif isinstance(stop, dict):
+            stopping_criteria = stop
+        elif callable(stop):
+            if FunctionStopper.is_valid_function(stop):
+                self._stopper = FunctionStopper(stop)
+            elif issubclass(type(stop), Stopper):
+                self._stopper = stop
+            else:
+                raise ValueError("Provided stop object must be either a dict, "
+                                 "a function, or a subclass of "
+                                 "`ray.tune.Stopper`.")
+        else:
+            raise ValueError("Invalid stop criteria: {}. Must be a "
+                             "callable or dict".format(stop))
+
         _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
         spec = {
             "run": self._run_identifier,
-            "stop": stop,
+            "stop": stopping_criteria,
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
@@ -219,6 +221,10 @@ class Experiment:
             raise TuneError("Improper 'run' - not string nor trainable.")
 
     @property
+    def stopper(self):
+        return self._stopper
+
+    @property
     def local_dir(self):
         return self.spec.get("local_dir")
 
@@ -263,8 +269,9 @@ def convert_to_experiment_list(experiments):
     if (type(exp_list) is list
             and all(isinstance(exp, Experiment) for exp in exp_list)):
         if len(exp_list) > 1:
-            logger.warning("All experiments will be "
-                           "using the same SearchAlgorithm.")
+            logger.info(
+                "Running with multiple concurrent experiments. "
+                "All experiments will be using the same SearchAlgorithm.")
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
