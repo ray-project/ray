@@ -40,9 +40,6 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
   pip config --user set global.quiet True
 fi
 
-# Install modules needed in all jobs.
-pip install dm-tree
-
 if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb libunwind-dev
@@ -93,6 +90,9 @@ else
   echo "Unrecognized environment."
   exit 1
 fi
+
+# Install modules needed in all jobs.
+pip install dm-tree
 
 # Additional RLlib dependencies.
 if [[ "$RLLIB_TESTING" == "1" ]]; then
