@@ -44,9 +44,11 @@ class TorchCategorical(TorchDistributionWrapper):
     """Wrapper class for PyTorch Categorical distribution."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs, model):
-        super().__init__(inputs, model)
-        self.dist = torch.distributions.categorical.Categorical(logits=inputs)
+    def __init__(self, inputs, model=None, temperature=1.0):
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+        super().__init__(inputs / temperature, model)
+        self.dist = torch.distributions.categorical.Categorical(
+            logits=self.inputs)
 
     @override(ActionDistribution)
     def deterministic_sample(self):

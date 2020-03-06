@@ -45,7 +45,7 @@ class Categorical(TFActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
-        assert temperature >= 0.0
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
         self.n = inputs.shape[-1]
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.

@@ -50,7 +50,6 @@ class TestDistributions(unittest.TestCase):
             shape=(num_sub_distributions, batch_size),
             dtype=np.int32)
 
-        # The Component to test.
         inputs = inputs_space.sample()
         input_lengths = [num_categories] * num_sub_distributions
         inputs_split = np.split(inputs, num_sub_distributions, axis=1)
@@ -58,6 +57,7 @@ class TestDistributions(unittest.TestCase):
         for fw in ["tf", "eager", "torch"]:
             print("framework={}".format(fw))
 
+            # Create the correct distribution object.
             cls = MultiCategorical if fw != "torch" else TorchMultiCategorical
             multi_categorical = cls(inputs, None, input_lengths)
 
