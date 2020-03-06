@@ -257,15 +257,22 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def export_model(self, export_dir):
-        """TODO: implement for torch.
+        """TODO(sven): implement for torch.
         """
         raise NotImplementedError
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
-        """TODO: implement for torch.
+        """TODO(sven): implement for torch.
         """
         raise NotImplementedError
+
+    @override(Policy)
+    def import_model_from_h5(self, export_dir):
+        """TODO(sven): implement for torch.
+        """
+        raise NotImplementedError
+
 
 
 @DeveloperAPI

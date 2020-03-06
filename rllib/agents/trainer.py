@@ -622,12 +622,6 @@ class Trainer(Trainable):
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
 
-        print("weights-in-policy={}".format(
-            self.get_weights()["default_policy"]["default_policy/value/kernel"]))
-        with self.get_policy().model.context():
-            print("weights-in-model={}".format(self.get_policy().model.base_model.get_weights()[0]))
-            self.get_policy().model.base_model.save_weights(os.path.join(checkpoint_dir, "weights.h5"))
-
         return checkpoint_path
 
     @override(Trainable)
@@ -868,6 +862,24 @@ class Trainer(Trainable):
             export_dir, filename_prefix, policy_id)
 
     @DeveloperAPI
+    def import_policy_model_from_h5(self, import_file,
+                                    policy_id=DEFAULT_POLICY_ID):
+        """Imports a policy's model with given policy_id from a local h5 file.
+
+        Arguments:
+            import_file (str): The h5 file to import from.
+            policy_id (string): Optional policy id to import into.
+
+        Example:
+            >>> trainer = MyTrainer()
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
+            >>> for _ in range(10):
+            >>>     trainer.train()
+        """
+        self.workers.local_worker().import_policy_model_from_h5(
+            import_file, policy_id)
+
+    @DeveloperAPI
     def collect_metrics(self, selected_workers=None):
         """Collects metrics from the remote workers of this agent.
 
@@ -973,6 +985,14 @@ class Trainer(Trainable):
             self.export_policy_model(path)
             exported[ExportFormat.MODEL] = path
         return exported
+
+    @override(Trainable)
+    def _import_model(self, import_format, import_file):
+        ExportFormat.validate([import_format])
+        if import_format != ExportFormat.H5:
+            raise NotImplementedError
+        else:
+            return self.import_policy_model_from_h5(import_file)
 
     def __getstate__(self):
         state = {}

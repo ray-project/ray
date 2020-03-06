@@ -367,6 +367,14 @@ class TFPolicy(Policy):
             saver = tf.train.Saver()
             saver.save(self._sess, save_path)
 
+    @override(Policy)
+    def import_model_from_h5(self, import_file):
+        """Imports weights into tf model."""
+        # Make sure the session is the right one (see issue #7046).
+        with self._sess.graph.as_default():
+            with self._sess.as_default():
+                return self.model.import_from_h5(import_file)
+
     @DeveloperAPI
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders.
