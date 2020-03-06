@@ -4,12 +4,12 @@
 #include <ray/api/uniqueId.h>
 #include <ray/core.h>
 #include <unordered_map>
-#include "ray_runtime.h"
+#include "abstract_ray_runtime.h"
 
 namespace ray {
 
-class RayDevRuntime : public RayRuntime {
-  friend class RayRuntime;
+class RayDevRuntime : public AbstractRayRuntime {
+  friend class AbstractRayRuntime;
 
  private:
   static std::unordered_map<UniqueId, char *> _actors;

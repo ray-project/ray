@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "../../agent.h"
-#include "../ray_runtime.h"
+#include "../abstract_ray_runtime.h"
 #include "invocation_executor.h"
 #include "local_mode_task_submitter.h"
 
@@ -32,7 +32,7 @@ std::unique_ptr<UniqueId> LocalModeTaskSubmitter::submit(const InvocationSpec &i
   ts->taskId = invocation.taskId;
   ts->actorId = invocation.actorId;
   ts->actorCounter = invocation.actorCounter;
-  RayRuntime &rayRuntime = RayRuntime::getInstance();
+  AbstractRayRuntime &rayRuntime = AbstractRayRuntime::getInstance();
   TaskSpec *current = rayRuntime.getCurrentTask();
   ts->driverId = current->driverId;
   ts->parentTaskId = current->taskId;
@@ -63,7 +63,7 @@ std::unique_ptr<UniqueId> LocalModeTaskSubmitter::submitTask(
 
 std::unique_ptr<UniqueId> LocalModeTaskSubmitter::createActor(
     remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
-  RayRuntime &runtime = RayRuntime::getInstance();
+  AbstractRayRuntime &runtime = AbstractRayRuntime::getInstance();
   std::unique_ptr<UniqueId> id = runtime.getCurrentTaskId().taskComputeReturnId(0);
   typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
       uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args);

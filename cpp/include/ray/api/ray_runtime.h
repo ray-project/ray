@@ -20,7 +20,7 @@ struct remote_function_ptr_holder {
   uintptr_t value[2];
 };
 
-class RayApi {
+class RayRuntime {
  public:
   virtual UniqueId put(std::shared_ptr<msgpack::sbuffer> data) = 0;
   virtual std::shared_ptr<msgpack::sbuffer> get(const UniqueId &id) = 0;

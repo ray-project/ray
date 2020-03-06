@@ -66,7 +66,7 @@ int main() {
   std::cout << "Ray::call with reference results: " << return0 << " " << return1 << " "
             << return2 << " " << return3 << " " << return4 << " " << std::endl;
 
-  RayActor<Foo> fobj = Ray::create(Foo::create);
+  RayActor<Foo> fobj = Ray::createActor(Foo::create);
   auto rt5 = fobj.call(&Foo::foo, 1);
   auto rt6 = fobj.call(&Foo::bar, 1, rt5);
   auto rt7 = fobj.call(&Foo::add, 4);

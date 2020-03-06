@@ -1,12 +1,12 @@
 
 #pragma once
 
-#include "ray_runtime.h"
+#include "abstract_ray_runtime.h"
 
 namespace ray {
 
-class RayNativeRuntime : public RayRuntime {
-  friend class RayRuntime;
+class RayNativeRuntime : public AbstractRayRuntime {
+  friend class AbstractRayRuntime;
 
  private:
   RayNativeRuntime(std::shared_ptr<RayConfig> config);

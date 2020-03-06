@@ -4,7 +4,7 @@
 #include <mutex>
 
 #include <msgpack.hpp>
-#include <ray/api/ray_api.h>
+#include <ray/api/ray_runtime.h>
 #include <ray/api/ray_config.h>
 #include "./context/worker_context.h"
 #include "./object/object_store.h"
@@ -13,12 +13,12 @@
 
 namespace ray {
 
-class RayRuntime : public RayApi {
+class AbstractRayRuntime : public RayRuntime {
   friend class Ray;
 
  private:
  protected:
-  static std::unique_ptr<RayRuntime> _ins;
+  static std::unique_ptr<AbstractRayRuntime> _ins;
   static std::once_flag isInited;
 
   std::shared_ptr<RayConfig> _config;
@@ -28,9 +28,9 @@ class RayRuntime : public RayApi {
   std::unique_ptr<ObjectStore> _objectStore;
 
  public:
-  static RayRuntime &init(std::shared_ptr<RayConfig> config);
+  static AbstractRayRuntime &init(std::shared_ptr<RayConfig> config);
 
-  static RayRuntime &getInstance();
+  static AbstractRayRuntime &getInstance();
 
   void put(std::shared_ptr<msgpack::sbuffer> data, const UniqueId &objectId,
            const UniqueId &taskId);
@@ -60,10 +60,10 @@ class RayRuntime : public RayApi {
 
   const UniqueId &getCurrentTaskId();
 
-  virtual ~RayRuntime(){};
+  virtual ~AbstractRayRuntime(){};
 
  private:
-  static RayRuntime &doInit(std::shared_ptr<RayConfig> config);
+  static AbstractRayRuntime &doInit(std::shared_ptr<RayConfig> config);
 
   virtual char *get_actor_ptr(const UniqueId &id);
 

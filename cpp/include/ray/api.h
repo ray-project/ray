@@ -5,7 +5,7 @@
 #include <memory>
 
 #include <msgpack.hpp>
-#include <ray/api/ray_api.h>
+#include <ray/api/ray_runtime.h>
 #include <ray/api/task_type.h>
 
 /**
@@ -28,7 +28,7 @@ class Ray {
   friend class RayObject;
 
  private:
-  static RayApi *_impl;
+  static RayRuntime *_impl;
 
   template <typename T>
   static std::shared_ptr<T> get(const RayObject<T> &object);
