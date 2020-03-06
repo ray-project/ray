@@ -274,7 +274,6 @@ class TorchPolicy(Policy):
         raise NotImplementedError
 
 
-
 @DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""

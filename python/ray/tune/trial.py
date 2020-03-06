@@ -66,8 +66,10 @@ class ExportFormat:
         """
         for i in range(len(formats)):
             formats[i] = formats[i].strip().lower()
-            if formats[i] not in [ExportFormat.CHECKPOINT,
-                                         ExportFormat.MODEL, ExportFormat.H5]:
+            if formats[i] not in [
+                    ExportFormat.CHECKPOINT, ExportFormat.MODEL,
+                    ExportFormat.H5
+            ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])
 

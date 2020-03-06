@@ -862,7 +862,8 @@ class Trainer(Trainable):
             export_dir, filename_prefix, policy_id)
 
     @DeveloperAPI
-    def import_policy_model_from_h5(self, import_file,
+    def import_policy_model_from_h5(self,
+                                    import_file,
                                     policy_id=DEFAULT_POLICY_ID):
         """Imports a policy's model with given policy_id from a local h5 file.
 

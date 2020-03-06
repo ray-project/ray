@@ -495,7 +495,7 @@ class Trainable:
         if not os.path.exists(import_file):
             raise FileNotFoundError(
                 "`import_file` '{}' does not exist! Can't import Model.".
-                    format(import_file))
+                format(import_file))
         # Get the format of the given file.
         import_format = "h5"  # TODO(sven): Support checkpoint loading.
         return self._import_model(import_format, import_file)
