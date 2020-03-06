@@ -28,10 +28,6 @@ class Arguments {
 };
 }  // namespace ray
 
-
-
-#include <iostream>
-
 namespace ray {
 
 using namespace ::ray;
@@ -57,7 +53,7 @@ inline void Arguments::unwrap(msgpack::unpacker &unpacker, T &val) {
   msgpack::object_handle oh;
   bool result = unpacker.next(oh);
   if (result == false) {
-      // TODO: throw exception
+      throw "unpack error";
   }
   msgpack::object obj = oh.get();
   obj.convert(val);

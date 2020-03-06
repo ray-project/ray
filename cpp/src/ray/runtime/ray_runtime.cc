@@ -55,11 +55,11 @@ UniqueId RayRuntime::put(std::shared_ptr<msgpack::sbuffer> data) {
 }
 
 std::shared_ptr<msgpack::sbuffer> RayRuntime::get(const UniqueId &objectId) {
-  return _objectStore->get(objectId, 0);
+  return _objectStore->get(objectId, -1);
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> RayRuntime::get(const std::vector<UniqueId> &objects) {
-  return _objectStore->get(objects, 0);
+  return _objectStore->get(objects, -1);
 }
 
 WaitResultInternal RayRuntime::wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) {

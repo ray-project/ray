@@ -1,5 +1,3 @@
-
-
 // TODO: code generation
 
 // 0 args

@@ -44,6 +44,25 @@ TEST(ray_api_test_case, put_test) {
   EXPECT_EQ(1, *i1);
 }
 
+TEST(ray_api_test_case, wait_test) {
+  Ray::init();
+  auto r0 = Ray::call(foo0);
+  auto r1 = Ray::call(foo, 3);
+  auto r2 = Ray::call(bar, 2, 3);
+  std::vector<RayObject<int>> vector;
+  vector.push_back(r0);
+  vector.push_back(r1);
+  vector.push_back(r2);
+  auto result = Ray::wait(vector, 3, 1000);
+  EXPECT_EQ(result.readys.size(), 3);
+  EXPECT_EQ(result.remains.size(), 0);
+  auto getResult = Ray::get(vector);
+  EXPECT_EQ(getResult.size(), 3);
+  EXPECT_EQ(*getResult[0], 1);
+  EXPECT_EQ(*getResult[1], 4);
+  EXPECT_EQ(*getResult[2], 5);
+}
+
 TEST(ray_api_test_case, call_with_value_test) {
   auto r0 = Ray::call(foo0);
   auto r1 = Ray::call(foo, 3);

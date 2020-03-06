@@ -1,7 +1,7 @@
 #pragma once
 #include <ray/api/ray_object.h>
 #include <ray/api/task_type.h>
-#include "impl/arguments.h"
+#include <ray/api/impl/arguments.h>
 
 namespace ray {
 

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <list>
 
 #include "local_mode_object_store.h"
 
@@ -12,11 +13,8 @@ void LocalModeObjectStore::putRaw(const UniqueId &objectId,
                                   std::shared_ptr<msgpack::sbuffer> data) {
   _dataMutex.lock();
   if (_data.find(objectId) != _data.end()) {
-    // TODO: throw an exception
+    throw "object already exist";
   }
-  // ::ray::blob bb = blob_merge(std::forward<std::vector< ::ray::blob> >(data));
-  // std::shared_ptr<msgpack::sbuffer> buf(new msgpack::sbuffer());
-  // buf->write(data.data(), data.size());
   _data.emplace(objectId, data);
   _dataMutex.unlock();
 }
@@ -25,7 +23,8 @@ void LocalModeObjectStore::del(const UniqueId &objectId) {}
 
 std::shared_ptr< msgpack::sbuffer> LocalModeObjectStore::getRaw(const UniqueId &objectId,
                                                           int timeoutMs) {
-  waitInternal(&objectId, 1, 1, -1);
+  const std::vector<UniqueId> objects = {objectId};
+  waitInternal(objects, 1, -1);
 
   std::shared_ptr<msgpack::sbuffer> ret;
   _dataMutex.lock();
@@ -33,7 +32,7 @@ std::shared_ptr< msgpack::sbuffer> LocalModeObjectStore::getRaw(const UniqueId &
   if (_data.find(objectId) != _data.end()) {
     ret = _data.at(objectId);
   } else {
-    std::cout << "Can not find object in local buffer" << std::endl;
+    throw "Can not find object in local buffer";
   }
   _dataMutex.unlock();
 
@@ -42,36 +41,60 @@ std::shared_ptr< msgpack::sbuffer> LocalModeObjectStore::getRaw(const UniqueId &
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::getRaw(const std::vector<UniqueId> &objects,
                                               int timeoutMs) {
-  return std::vector<std::shared_ptr<msgpack::sbuffer>>();
+  WaitResultInternal waitResult = waitInternal(objects, objects.size(), timeoutMs);
+  if (waitResult.remains.size() != 0) {
+    throw "Objects are not all ready";
+  }
+  
+  std::vector<std::shared_ptr<msgpack::sbuffer>> result;
+  _dataMutex.lock();
+
+  for(auto it = waitResult.readys.begin();it!=waitResult.readys.end();it++){
+    if (_data.find(*it) != _data.end()) {
+      result.push_back(_data.at(*it));
+    } else {
+      throw "Can not find object in local buffer";
+    }
+  }
+  _dataMutex.unlock();
+
+  return result;
 }
 
-void LocalModeObjectStore::waitInternal(const UniqueId *ids, int count, int minNumReturns,
-                                        int timeoutMs) {
+WaitResultInternal LocalModeObjectStore::waitInternal(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) {
   static const int GET_CHECK_INTERVAL_MS = 100;
+  std::list<UniqueId> readys;
+  std::list<UniqueId> remains(objects.begin(), objects.end());
   int ready = 0;
-  int remainingTime = timeoutMs;
+  int remainingTime = timeout_ms;
   bool firstCheck = true;
-  while (ready < minNumReturns && (timeoutMs < 0 || remainingTime > 0)) {
+  while (ready < num_objects && (timeout_ms < 0 || remainingTime > 0)) {
     if (!firstCheck) {
-      long sleepTime = timeoutMs < 0 ? GET_CHECK_INTERVAL_MS
+      long sleepTime = timeout_ms < 0 ? GET_CHECK_INTERVAL_MS
                                      : std::min(remainingTime, GET_CHECK_INTERVAL_MS);
       std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
       remainingTime -= sleepTime;
     }
-    ready = 0;
-    for (int i = 0; i < count; i++) {
-      UniqueId uid = ids[i];
+    for(auto it = remains.begin();it!=remains.end();it++){
       _dataMutex.lock();
-      if (_data.find(uid) != _data.end()) {
+      if (_data.find(*it) != _data.end()) {
         ready += 1;
+        readys.push_back(*it);
+        remains.erase(it);
+      } else {
       }
       _dataMutex.unlock();
     }
     firstCheck = false;
   }
+
+  std::vector<UniqueId> readysVector{ std::begin(readys), std::end(readys)};
+  std::vector<UniqueId> readysRemains{ std::begin(remains), std::end(remains)};
+  WaitResultInternal result(std::move(readysVector), std::move(readysVector));
+  return result;
 }
 
 WaitResultInternal LocalModeObjectStore::wait(const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) {
-  return WaitResultInternal();
+  return waitInternal(objects, num_objects, timeout_ms);
 }
 }  // namespace ray

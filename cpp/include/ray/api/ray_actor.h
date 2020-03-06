@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "ray_object.h"
+#include <ray/api/ray_object.h>
 
 namespace ray {
 

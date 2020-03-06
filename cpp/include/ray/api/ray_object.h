@@ -4,7 +4,7 @@
 #include <memory>
 #include <utility>
 
-#include "uniqueId.h"
+#include <ray/api/uniqueId.h>
 #include <msgpack.hpp>
 
 namespace ray {

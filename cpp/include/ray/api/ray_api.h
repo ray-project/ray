@@ -7,8 +7,8 @@
 #include <typeinfo>
 #include <vector>
 
-#include "ray/api/uniqueId.h"
-#include "ray/api/wait_result.h"
+#include <ray/api/uniqueId.h>
+#include <ray/api/wait_result.h>
 
 namespace ray {
 

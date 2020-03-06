@@ -5,8 +5,8 @@
 #include <memory>
 
 #include <msgpack.hpp>
-#include "api/ray_api.h"
-#include "api/task_type.h"
+#include <ray/api/ray_api.h>
+#include <ray/api/task_type.h>
 
 /**
  * ray api definition
@@ -57,15 +57,38 @@ class Ray {
 }  // namespace ray
 
 // --------- inline implementation ------------
-#include "api/execute.h"
-#include "api/impl/arguments.h"
-#include "api/ray_actor.h"
-#include "api/ray_function.h"
-#include "api/ray_object.h"
+#include <ray/api/execute.h>
+#include <ray/api/impl/arguments.h>
+#include <ray/api/ray_actor.h>
+#include <ray/api/ray_function.h>
+#include <ray/api/ray_object.h>
 #include <ray/api/wait_result.h>
 
 namespace ray {
 class Arguments;
+
+template <typename T>
+inline static std::vector<UniqueId> rayObject2UniqueId(const std::vector<RayObject<T>> &rayObjects) {
+  std::vector<UniqueId> unqueIds;
+  for (auto it = rayObjects.begin();it!=rayObjects.end();it++) {
+    unqueIds.push_back(it->id());
+  }
+  return unqueIds;
+}
+
+template <typename T>
+inline static std::vector<RayObject<T>> uniqueId2RayObject(const std::vector<UniqueId> &uniqueIds) {
+  std::vector<RayObject<T>> objects;
+  for (auto it = uniqueIds.begin();it!=uniqueIds.end();it++) {
+    objects.push_back(RayObject<T>(*it));
+  }
+  return objects;
+}
+
+template <typename T>
+static WaitResult<T> waitResultFromInernal(const WaitResultInternal &internal) {
+  return WaitResult<T>(std::move(uniqueId2RayObject<T>(internal.readys)), std::move(uniqueId2RayObject<T>(internal.remains)));
+}
 
 template <typename T>
 inline RayObject<T> Ray::put(const T &obj) {
@@ -90,18 +113,32 @@ inline std::shared_ptr<T> Ray::get(const RayObject<T> &object) {
 
 template <typename T>
 inline std::vector<std::shared_ptr<T>> Ray::get(const std::vector<RayObject<T>> &objects) {
-  return std::vector<std::shared_ptr<T>>();
+  auto uniqueVector = rayObject2UniqueId<T>(objects);
+  auto result = _impl->get(uniqueVector);
+  std::vector<std::shared_ptr<T>> rt;
+  for (auto it = result.begin(); it!=result.end();it++) {
+    msgpack::unpacker unpacker;
+    unpacker.reserve_buffer((*it)->size());
+    memcpy(unpacker.buffer(), (*it)->data(), (*it)->size());
+    unpacker.buffer_consumed((*it)->size());
+    std::shared_ptr<T> obj(new T);
+    Arguments::unwrap(unpacker, *obj);
+    rt.push_back(obj);
+  }
+  return rt;
 }
 
 template <typename T>
 inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num_objects, int64_t timeout_ms) {
-  return WaitResult<T>();
+  auto uniqueVector = rayObject2UniqueId<T>(objects);
+  auto result = _impl->wait(uniqueVector, num_objects, timeout_ms);
+  return waitResultFromInernal<T>(result);
 }
 
-#include "api/impl/call_funcs_impl.generated.h"
+#include <ray/api/impl/call_funcs_impl.generated.h>
 
-#include "api/impl/create_actors_impl.generated.h"
+#include <ray/api/impl/create_actors_impl.generated.h>
 
-#include "api/impl/call_actors_impl.generated.h"
+#include <ray/api/impl/call_actors_impl.generated.h>
 
 }  // namespace ray

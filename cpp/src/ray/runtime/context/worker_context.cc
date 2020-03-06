@@ -6,19 +6,14 @@ namespace ray {
 static TaskSpec dummyTaskSpec;
 
 Worker::Worker(std::shared_ptr<RayConfig> config) {
-  // TODO: workerId =
-  // TODO: actorId =
   _taskCounter = 0;
   _connected = false;
   _currentTaskPutCounter = 0;
   _currentTask = &dummyTaskSpec;
-  // TODO: _currentTask->actorId =
 
   UniqueId uid;
   uid.random();                  // TODO: make it deterministic
   _currentTask->driverId = uid;  // TODO: parse for config
-  //_currentTask->driverId = &UniqueId.from_random(); //???
-  //_currentTask->parentTaskId = nilUniqueId;
   uid.random();  // TODO: make it deterministic
   _currentTask->taskId = uid;
   _config = *config;
