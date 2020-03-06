@@ -15,11 +15,11 @@ def check_support(alg, config, test_trace=True):
     config["log_level"] = "ERROR"
 
     config["eager_tracing"] = False
-    tune.run(a, config=config, stop={"training_iteration": 0})
+    tune.run(a, config=config, stop={"training_iteration": 1})
 
     if test_trace:
         config["eager_tracing"] = True
-        tune.run(a, config=config, stop={"training_iteration": 0})
+        tune.run(a, config=config, stop={"training_iteration": 1})
 
 
 class TestEagerSupport(unittest.TestCase):

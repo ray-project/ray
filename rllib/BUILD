@@ -107,6 +107,14 @@ py_test(
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
 )
 
+# SAC
+py_test(
+    name = "test_sac",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/sac/tests/test_sac.py"]
+)
+
 # TD3Trainer
 py_test(
     name = "test_td3",
