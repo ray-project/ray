@@ -11,6 +11,7 @@ import numpy
 import gc
 import inspect
 import threading
+import traceback
 import time
 import logging
 import os
@@ -567,6 +568,18 @@ cdef void gc_collect() nogil:
                     num_freed, end - start))
 
 
+cdef void get_py_stack(c_string* stack_out) nogil:
+    with gil:
+        frame = inspect.currentframe()
+        msg = "<unknown>"
+        while frame:
+            if not frame.f_code.co_filename.endswith("worker.py"):
+                msg = "{}:{}:{}".format(frame.f_code.co_filename, frame.f_code.co_name, frame.f_lineno)
+                break
+            frame = frame.f_back
+        stack_out[0] = msg.encode("ascii")
+
+
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
     if c_str.size() == 0:
@@ -612,7 +625,8 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, gc_collect, True))
+            task_execution_handler, check_signals, gc_collect,
+            get_py_stack, True))
 
     def run_task_loop(self):
         with nogil:

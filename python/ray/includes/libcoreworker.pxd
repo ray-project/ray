@@ -98,6 +98,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const CWorkerID &worker_id) nogil,
                     CRayStatus() nogil,
                     void() nogil,
+                    void(c_string *stack_out) nogil,
                     c_bool ref_counting_enabled)
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()

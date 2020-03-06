@@ -37,7 +37,7 @@ class ReferenceCounter {
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  void AddLocalReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  void AddLocalReference(const ObjectID &object_id, const std::string& call_site) LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the local reference count for the ObjectID by one.
   ///
@@ -92,7 +92,8 @@ class ReferenceCounter {
   /// \param[in] dependencies The objects that the object depends on.
   void AddOwnedObject(const ObjectID &object_id,
                       const std::vector<ObjectID> &contained_ids, const TaskID &owner_id,
-                      const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+                      const rpc::Address &owner_address,
+                      const std::string &call_site) LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
   ///
@@ -212,13 +213,20 @@ class ReferenceCounter {
   /// \return Whether we have a reference to the object ID.
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
+  void DebugDump() {
+    for (const auto& ref : object_id_refs_) {
+      RAY_LOG(ERROR) << "object at " << ref.second.call_site;
+    }
+  }
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
-    Reference() : owned_by_us(false) {}
+    Reference() : owned_by_us(false), call_site("<unknown (not given)>") {}
+    Reference(std::string call_site) : owned_by_us(false), call_site(call_site) {}
     /// Constructor for a reference that we created.
-    Reference(const TaskID &owner_id, const rpc::Address &owner_address)
-        : owned_by_us(true), owner({owner_id, owner_address}) {}
+    Reference(const TaskID &owner_id, const rpc::Address &owner_address, std::string call_site )
+        : owned_by_us(true), call_site(call_site), owner({owner_id, owner_address}) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -258,6 +266,8 @@ class ReferenceCounter {
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
     absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    /// Description of the call site where the reference was created.
+    std::string call_site = "";
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;
