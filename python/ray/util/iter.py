@@ -421,11 +421,15 @@ class ParallelIterator(Generic[T]):
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, MetricsContext(), name=name)
 
-    def gather_async(self) -> "LocalIterator[T]":
+    def gather_async(self, async_queue_depth=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
+
+        Arguments:
+            async_queue_depth (int): The max number of async requests in flight
+                per actor.
 
         Examples:
             >>> it = from_range(100, 1).gather_async()
@@ -437,6 +441,9 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
+        if async_queue_depth < 1:
+            raise ValueError("queue depth must be positive")
+
         def base_iterator(timeout=None):
             metrics = LocalIterator.get_metrics()
             all_actors = []
@@ -444,8 +451,9 @@ class ParallelIterator(Generic[T]):
                 actor_set.init_actors()
                 all_actors.extend(actor_set.actors)
             futures = {}
-            for a in all_actors:
-                futures[a.par_iter_next.remote()] = a
+            for _ in range(async_queue_depth):
+                for a in all_actors:
+                    futures[a.par_iter_next.remote()] = a
             while futures:
                 pending = list(futures)
                 if timeout is None:

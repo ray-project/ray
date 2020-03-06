@@ -61,8 +61,8 @@ def _get_global_vars():
     return {"timestep": metrics.counters[STEPS_SAMPLED_COUNTER]}
 
 
-def ParallelRollouts(workers: WorkerSet,
-                     mode="bulk_sync") -> LocalIterator[SampleBatch]:
+def ParallelRollouts(workers: WorkerSet, mode="bulk_sync",
+                     async_queue_depth=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
     If there are no remote workers, experiences will be collected serially from
@@ -75,6 +75,8 @@ def ParallelRollouts(workers: WorkerSet,
               computed by rollout workers with no order guarantees.
             - In 'bulk_sync' mode, we collect one batch from each worker
               and concatenate them together into a large batch to return.
+        async_queue_depth (int): In async mode, the max number of async
+            requests in flight per actor.
 
     Returns:
         A local iterator over experiences collected in parallel.
@@ -119,7 +121,8 @@ def ParallelRollouts(workers: WorkerSet,
             .for_each(lambda batches: SampleBatch.concat_samples(batches)) \
             .for_each(report_timesteps)
     elif mode == "async":
-        return rollouts.gather_async().for_each(report_timesteps)
+        return rollouts.gather_async(
+            async_queue_depth=async_queue_depth).for_each(report_timesteps)
     else:
         raise ValueError(
             "mode must be one of 'bulk_sync', 'async', got '{}'".format(mode))
@@ -508,9 +511,16 @@ class StoreToReplayActors:
         return batch
 
 
-def ParallelReplay(replay_actors):
+def ParallelReplay(replay_actors, async_queue_depth=4):
+    """Replay experiences in parallel from the given actors.
+
+    Arguments:
+        async_queue_depth (int): In async mode, the max number of async
+            requests in flight per actor.
+    """
     replay = from_actors(replay_actors)
-    return replay.gather_async().filter(lambda x: x is not None)
+    return replay.gather_async(
+        async_queue_depth=async_queue_depth).filter(lambda x: x is not None)
 
 
 def LocalReplay(replay_buffer, train_batch_size):

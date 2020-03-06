@@ -136,7 +136,7 @@ def training_pipeline(workers, config):
     # We execute the following steps concurrently:
     # (1) Generate rollouts and store them in our replay buffer actors. Update
     # the weights of the worker that generated the batch.
-    rollouts = ParallelRollouts(workers, mode="async")
+    rollouts = ParallelRollouts(workers, mode="async", async_queue_depth=2)
     store_op = rollouts \
         .for_each(StoreToReplayActors(replay_actors)) \
         .zip_with_source_actor() \
@@ -147,7 +147,7 @@ def training_pipeline(workers, config):
 
     # (2) Read experiences from the replay buffer actors and send to the
     # learner thread via its in-queue.
-    replay_op = ParallelReplay(replay_actors) \
+    replay_op = ParallelReplay(replay_actors, async_queue_depth=4) \
         .zip_with_source_actor() \
         .for_each(Enqueue(learner_thread.inqueue))
 
