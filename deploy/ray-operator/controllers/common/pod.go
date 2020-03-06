@@ -70,15 +70,6 @@ func buildContainer(conf *PodConfig) corev1.Container {
 	httpServerPort := defaultHTTPServerPort
 	jobManagerPort := defaultRedisPort
 
-	// get pod file path to check if the pod container ready or not
-	var podReadyFilepath string
-	for _, env := range conf.Extension.ContainerEnv {
-		if strings.EqualFold(env.Name, PodReadyFilepath) {
-			podReadyFilepath = env.Value
-			break
-		}
-	}
-
 	// assign image by typeName
 	image := conf.RayCluster.Spec.Images.DefaultImage
 	if conf.Extension.Image != "" {
@@ -116,13 +107,6 @@ func buildContainer(conf *PodConfig) corev1.Container {
 				ContainerPort: int32(jobManagerPort),
 				Name:          "job-manager",
 			},
-		},
-		ReadinessProbe: &corev1.Probe{
-			Handler: corev1.Handler{
-				Exec: &corev1.ExecAction{Command: []string{"cat", podReadyFilepath}},
-			},
-			InitialDelaySeconds: 15,
-			SuccessThreshold:    2,
 		},
 	}
 	return container

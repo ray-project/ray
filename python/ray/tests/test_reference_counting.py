@@ -14,7 +14,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor
+from ray.test_utils import SignalActor, put_object, wait_for_condition
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
@@ -109,9 +109,12 @@ def test_global_gc(shutdown_only):
 
         # GC should be triggered for all workers, including the local driver.
         global_gc()
-        time.sleep(1)
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
     finally:
         gc.enable()
 
@@ -158,16 +161,24 @@ def test_global_gc_when_full(shutdown_only):
         # object store. This should cause the captured ObjectIDs' numpy arrays
         # to be evicted.
         ray.put(np.zeros(80 * 1024 * 1024, dtype=np.uint8))
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
 
         # Local driver.
         local_ref = weakref.ref(LargeObjectWithCyclicRef())
 
         # Remote workers.
         actors = [GarbageHolder.remote() for _ in range(2)]
-        assert local_ref() is not None
-        assert all(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        wait_for_condition(check_refs_gced, timeout_ms=10000)
 
         # GC should be triggered for all workers, including the local driver,
         # when a remote task tries to put a return value that doesn't fit in
@@ -364,22 +375,17 @@ def test_feature_flag(shutdown_only):
 # Remote function takes serialized reference and doesn't hold onto it after
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
-@pytest.mark.parametrize("failure", [False, True])
-def test_basic_serialized_reference(one_worker_100MiB, failure):
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def pending(ref, dep):
         ray.get(ref[0])
         if failure:
             os._exit(0)
 
-    # TODO(edoakes): currently these tests don't work with ray.put() so we need
-    # to return from a task like this instead. Once that is fixed, should have
-    # tests run with both codepaths.
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
-    array_oid = put.remote()
+    array_oid = put_object(
+        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     signal = SignalActor.remote()
     oid = pending.remote([array_oid], signal.wait.remote())
 
@@ -405,8 +411,10 @@ def test_basic_serialized_reference(one_worker_100MiB, failure):
 # Call a recursive chain of tasks that pass a serialized reference to the end
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
-@pytest.mark.parametrize("failure", [False, True])
-def test_recursive_serialized_reference(one_worker_100MiB, failure):
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
+                                        failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
@@ -418,14 +426,11 @@ def test_recursive_serialized_reference(one_worker_100MiB, failure):
         else:
             return recursive.remote(ref, signal, max_depth, depth + 1)
 
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
     signal = SignalActor.remote()
 
     max_depth = 5
-    array_oid = put.remote()
+    array_oid = put_object(
+        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     head_oid = recursive.remote([array_oid], signal, max_depth)
 
     # Remove the local reference.
@@ -455,8 +460,10 @@ def test_recursive_serialized_reference(one_worker_100MiB, failure):
 # Test that a passed reference held by an actor after the method finishes
 # is kept until the reference is removed from the actor. Also tests giving
 # the actor a duplicate reference to the same object ID.
-@pytest.mark.parametrize("failure", [False, True])
-def test_actor_holding_serialized_reference(one_worker_100MiB, failure):
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
+                                            failure):
     @ray.remote
     class GreedyActor(object):
         def __init__(self):
@@ -474,12 +481,9 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, failure):
         def delete_ref2(self):
             self.ref2 = None
 
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
     # Test that the reference held by the actor isn't evicted.
-    array_oid = put.remote()
+    array_oid = put_object(
+        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     actor = GreedyActor.remote()
     actor.set_ref1.remote([array_oid])
 
@@ -512,8 +516,10 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, failure):
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ID.
-@pytest.mark.parametrize("failure", [False, True])
-def test_worker_holding_serialized_reference(one_worker_100MiB, failure):
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
+                                             failure):
     @ray.remote(max_retries=1)
     def child(dep1, dep2):
         if failure:
@@ -524,14 +530,11 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, failure):
     def launch_pending_task(ref, signal):
         return child.remote(ref[0], signal.wait.remote())
 
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
     signal = SignalActor.remote()
 
     # Test that the reference held by the actor isn't evicted.
-    array_oid = put.remote()
+    array_oid = put_object(
+        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     child_return_id = ray.get(launch_pending_task.remote([array_oid], signal))
 
     # Remove the local reference.
@@ -571,8 +574,9 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
-@pytest.mark.parametrize("failure", [False, True])
-def test_recursively_nest_ids(one_worker_100MiB, failure):
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         unwrapped = ray.get(ref[0])
@@ -584,14 +588,11 @@ def test_recursively_nest_ids(one_worker_100MiB, failure):
         else:
             return recursive.remote(unwrapped, signal, max_depth, depth + 1)
 
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
     signal = SignalActor.remote()
 
     max_depth = 5
-    array_oid = put.remote()
+    array_oid = put_object(
+        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     nested_oid = array_oid
     for _ in range(max_depth):
         nested_oid = ray.put([nested_oid])
@@ -623,15 +624,15 @@ def test_recursively_nest_ids(one_worker_100MiB, failure):
 
 # Test that serialized objectIDs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
-@pytest.mark.parametrize("failure", [False, True])
-def test_return_object_id(one_worker_100MiB, failure):
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_return_object_id(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
-        return [put.remote()]
+        return [
+            put_object(
+                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        ]
 
     @ray.remote(max_retries=1)
     def exit():
@@ -663,15 +664,15 @@ def test_return_object_id(one_worker_100MiB, failure):
 
 # Test that serialized objectIDs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
-@pytest.mark.parametrize("failure", [False, True])
-def test_pass_returned_object_id(one_worker_100MiB, failure):
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
-        return [put.remote()]
+        return [
+            put_object(
+                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        ]
 
     # TODO(edoakes): this fails with an ActorError with max_retries=1.
     @ray.remote(max_retries=0)
@@ -706,15 +707,16 @@ def test_pass_returned_object_id(one_worker_100MiB, failure):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
-@pytest.mark.parametrize("failure", [False, True])
-def test_recursively_pass_returned_object_id(one_worker_100MiB, failure):
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
+                                             failure):
     @ray.remote
     def return_an_id():
-        return [put.remote()]
+        return [
+            put_object(
+                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        ]
 
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
@@ -761,16 +763,16 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, failure):
 # returns the same ObjectID by calling ray.get() on its submitted task and
 # returning the result. The reference should still exist while the driver has a
 # reference to the final task's ObjectID.
-@pytest.mark.parametrize("failure", [False, True])
-def test_recursively_return_borrowed_object_id(one_worker_100MiB, failure):
-    @ray.remote
-    def put():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-
+@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
+                                                 (True, False), (True, True)])
+def test_recursively_return_borrowed_object_id(one_worker_100MiB, use_ray_put,
+                                               failure):
     @ray.remote
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
-            return put.remote(), os.getpid()
+            return put_object(
+                np.zeros(40 * 1024 * 1024, dtype=np.uint8),
+                use_ray_put), os.getpid()
 
         return ray.get(recursive.remote(num_tasks_left - 1))
 
