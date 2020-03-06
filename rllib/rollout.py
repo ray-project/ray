@@ -15,6 +15,7 @@ from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import _flatten_action
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.tune.utils import merge_dicts
@@ -339,7 +340,7 @@ def rollout(agent,
     if saver is None:
         saver = RolloutSaver()
 
-    if hasattr(agent, "workers"):
+    if hasattr(agent, "workers") and isinstance(agent.workers, WorkerSet):
         env = agent.workers.local_worker().env
         multiagent = isinstance(env, MultiAgentEnv)
         if agent.workers.local_worker().multiagent:
@@ -349,14 +350,21 @@ def rollout(agent,
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
-        action_init = {
-            p: _flatten_action(m.action_space.sample())
-            for p, m in policy_map.items()
-        }
     else:
         env = gym.make(env_name)
         multiagent = False
+        try:
+            policy_map = {DEFAULT_POLICY_ID: agent.policy}
+        except AttributeError:
+            raise AttributeError(
+                "Agent ({}) does not have a `policy` property! This is needed "
+                "for performing (trained) agent rollouts.".format(agent))
         use_lstm = {DEFAULT_POLICY_ID: False}
+
+    action_init = {
+        p: _flatten_action(m.action_space.sample())
+        for p, m in policy_map.items()
+    }
 
     # If monitoring has been requested, manually wrap our environment with a
     # gym monitor, which is set to record every episode.
