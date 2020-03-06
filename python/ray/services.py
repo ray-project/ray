@@ -5,7 +5,6 @@ import logging
 import multiprocessing
 import os
 import random
-import shlex
 import socket
 import subprocess
 import sys
