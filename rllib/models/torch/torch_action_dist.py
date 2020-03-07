@@ -10,8 +10,10 @@ torch, nn = try_import_torch()
 class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
 
-    def __init_(self, inputs):
-        super().__init__(inputs)
+    @override(ActionDistribution)
+    def __init__(self, inputs, model):
+        inputs = torch.Tensor(inputs)
+        super().__init__(inputs, model)
         # Store the last sample here.
         self.last_sample = None
 
@@ -42,9 +44,11 @@ class TorchCategorical(TorchDistributionWrapper):
     """Wrapper class for PyTorch Categorical distribution."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs, model):
-        super().__init__(inputs, model)
-        self.dist = torch.distributions.categorical.Categorical(logits=inputs)
+    def __init__(self, inputs, model=None, temperature=1.0):
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+        super().__init__(inputs / temperature, model)
+        self.dist = torch.distributions.categorical.Categorical(
+            logits=self.inputs)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
@@ -54,6 +58,67 @@ class TorchCategorical(TorchDistributionWrapper):
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
         return action_space.n
+
+
+class TorchMultiCategorical(TorchDistributionWrapper):
+    """MultiCategorical distribution for MultiDiscrete action spaces."""
+
+    @override(TorchDistributionWrapper)
+    def __init__(self, inputs, model, input_lens):
+        super().__init__(inputs, model)
+        inputs_split = self.inputs.split(input_lens, dim=1)
+        self.cats = [
+            torch.distributions.categorical.Categorical(logits=input_)
+            for input_ in inputs_split
+        ]
+
+    @override(TorchDistributionWrapper)
+    def sample(self):
+        arr = [cat.sample() for cat in self.cats]
+        ret = torch.stack(arr, dim=1)
+        return ret
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        arr = [torch.argmax(cat.probs, -1) for cat in self.cats]
+        ret = torch.stack(arr, dim=1)
+        return ret
+
+    @override(TorchDistributionWrapper)
+    def logp(self, actions):
+        # # If tensor is provided, unstack it into list.
+        if isinstance(actions, torch.Tensor):
+            actions = torch.unbind(actions, dim=1)
+        logps = torch.stack(
+            [cat.log_prob(act) for cat, act in zip(self.cats, actions)])
+        return torch.sum(logps, dim=0)
+
+    @override(ActionDistribution)
+    def multi_entropy(self):
+        return torch.stack([cat.entropy() for cat in self.cats], dim=1)
+
+    @override(TorchDistributionWrapper)
+    def entropy(self):
+        return torch.sum(self.multi_entropy(), dim=1)
+
+    @override(ActionDistribution)
+    def multi_kl(self, other):
+        return torch.stack(
+            [
+                torch.distributions.kl.kl_divergence(cat, oth_cat)
+                for cat, oth_cat in zip(self.cats, other.cats)
+            ],
+            dim=1,
+        )
+
+    @override(TorchDistributionWrapper)
+    def kl(self, other):
+        return torch.sum(self.multi_kl(other), dim=1)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.sum(action_space.nvec)
 
 
 class TorchDiagGaussian(TorchDistributionWrapper):
@@ -71,7 +136,15 @@ class TorchDiagGaussian(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def logp(self, actions):
-        return TorchDistributionWrapper.logp(self, actions).sum(-1)
+        return super().logp(actions).sum(-1)
+
+    @override(TorchDistributionWrapper)
+    def entropy(self):
+        return super().entropy().sum(-1)
+
+    @override(TorchDistributionWrapper)
+    def kl(self, other):
+        return super().kl(other).sum(-1)
 
     @staticmethod
     @override(ActionDistribution)

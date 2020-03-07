@@ -153,7 +153,15 @@ class SerializationContext:
             return serialized_obj[0](*serialized_obj[1])
 
         def object_id_serializer(obj):
-            self.add_contained_object_id(obj)
+            if self.is_in_band_serialization():
+                self.add_contained_object_id(obj)
+            else:
+                # If this serialization is out-of-band (e.g., from a call to
+                # cloudpickle directly or captured in a remote function/actor),
+                # then pin the object for the lifetime of this worker by adding
+                # a local reference that won't ever be removed.
+                ray.worker.get_global_worker(
+                ).core_worker.add_object_id_reference(obj)
             owner_id = ""
             owner_address = ""
             # TODO(swang): Remove this check. Otherwise, we will not be able to
@@ -184,6 +192,10 @@ class SerializationContext:
                 # UniqueIDs are serialized as
                 # (class name, (unique bytes,)).
                 outer_id = context.get_outer_object_id()
+                # outer_id is None in the case that this ObjectID was closed
+                # over in a function or pickled directly using pickle.dumps().
+                if outer_id is None:
+                    outer_id = ray.ObjectID.nil()
                 worker.core_worker.deserialize_and_register_object_id(
                     obj_id[1][0], outer_id, owner_id[1][0], owner_address)
             return deserialized_object_id
@@ -205,6 +217,15 @@ class SerializationContext:
 
         # construct a reducer
         pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
+
+    def is_in_band_serialization(self):
+        return getattr(self._thread_local, "in_band", False)
+
+    def set_in_band_serialization(self):
+        self._thread_local.in_band = True
+
+    def set_out_of_band_serialization(self):
+        self._thread_local.in_band = False
 
     def set_outer_object_id(self, outer_object_id):
         self._thread_local.outer_object_id = outer_object_id
@@ -349,8 +370,16 @@ class SerializationContext:
             assert ray.cloudpickle.FAST_CLOUDPICKLE_USED
             writer = Pickle5Writer()
             # TODO(swang): Check that contained_object_ids is empty.
-            inband = pickle.dumps(
-                value, protocol=5, buffer_callback=writer.buffer_callback)
+            try:
+                self.set_in_band_serialization()
+                inband = pickle.dumps(
+                    value, protocol=5, buffer_callback=writer.buffer_callback)
+            except Exception as e:
+                self.get_and_clear_contained_object_ids()
+                raise e
+            finally:
+                self.set_out_of_band_serialization()
+
             return Pickle5SerializedObject(
                 metadata, inband, writer,
                 self.get_and_clear_contained_object_ids())

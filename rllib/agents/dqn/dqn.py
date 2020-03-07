@@ -211,7 +211,7 @@ def validate_config_and_setup_param_noise(config):
     if config.get("soft_q", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning(
             "soft_q", "exploration_config={"
-            "type=StochasticSampling, temperature=[float]"
+            "type=SoftQ, temperature=[float]"
             "}")
         config["exploration_config"] = {
             "type": "SoftQ",
@@ -268,7 +268,7 @@ def get_initial_state(config):
     }
 
 
-# TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
+# TODO(sven): Move this to generic Trainer. Every Algo should do this.
 def update_worker_exploration(trainer):
     """Sets epsilon exploration values in all policies to updated values.
 

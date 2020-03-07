@@ -86,9 +86,9 @@ class TorchPolicy(Policy):
             action_dist = None
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    logits, self.dist_class, self.model, explore,
+                    logits, self.dist_class, self.model,
                     timestep if timestep is not None else
-                    self.global_timestep)
+                    self.global_timestep, explore)
             input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,

@@ -8,8 +8,8 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 
 from ray.rllib.models.extra_spaces import Simplex
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
-                                                      TorchDiagGaussian)
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchMultiCategorical, TorchDiagGaussian
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
@@ -183,11 +183,9 @@ class ModelCatalog:
             dist = Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "MultiDiscrete action spaces not supported for Pytorch.")
-            return partial(MultiCategorical, input_lens=action_space.nvec), \
+            dist = MultiCategorical if framework == "tf" else \
+                TorchMultiCategorical
+            return partial(dist, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
         # Dict -> TODO(sven)
         elif isinstance(action_space, gym.spaces.Dict):
