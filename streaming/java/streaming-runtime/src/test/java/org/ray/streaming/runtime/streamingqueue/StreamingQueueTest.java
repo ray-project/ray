@@ -101,11 +101,11 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
         builder.createActorCreationOptions());
 
     LOGGER.info("call getName on writerActor: {}",
-        Ray.call(WriterWorker::getName, writerActor).get());
+        writerActor.call(WriterWorker::getName).get());
     LOGGER.info("call getName on readerActor: {}",
-        Ray.call(ReaderWorker::getName, readerActor).get());
+        readerActor.call(ReaderWorker::getName).get());
 
-    // LOGGER.info(Ray.call(WriterWorker::testCallReader, writerActor, readerActor).get());
+    // LOGGER.info(writerActor.call(WriterWorker::testCallReader, readerActor).get());
     List<String> outputQueueList = new ArrayList<>();
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
@@ -118,17 +118,17 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     }
 
     final int msgCount = 100;
-    Ray.call(ReaderWorker::init, readerActor, inputQueueList, writerActor, msgCount);
+    readerActor.call(ReaderWorker::init, inputQueueList, writerActor, msgCount);
     try {
       Thread.sleep(1000);
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
-    Ray.call(WriterWorker::init, writerActor, outputQueueList, readerActor, msgCount);
+    writerActor.call(WriterWorker::init, outputQueueList, readerActor, msgCount);
 
     long time = 0;
     while (time < 20000 &&
-        Ray.call(ReaderWorker::getTotalMsg, readerActor).get() < msgCount * queueNum) {
+        readerActor.call(ReaderWorker::getTotalMsg).get() < msgCount * queueNum) {
       try {
         Thread.sleep(1000);
         time += 1000;
@@ -138,7 +138,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     }
 
     Assert.assertEquals(
-        Ray.call(ReaderWorker::getTotalMsg, readerActor).get().intValue(),
+        readerActor.call(ReaderWorker::getTotalMsg).get().intValue(),
         msgCount * queueNum);
   }
 
