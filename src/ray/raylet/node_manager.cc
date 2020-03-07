@@ -953,6 +953,11 @@ void NodeManager::ProcessClientMessage(
                  << (registered_worker
                          ? std::to_string(registered_worker->GetProcess().GetId())
                          : "nil");
+  RAY_LOG(WARNING) << "[start] ProcessClientMessage, type = " << (int64_t)message_type_value
+      << ", tasks_to_dispatch = " << tasks_to_dispatch_.size()
+      << ", tasks_to_schedule_ = " << tasks_to_schedule_.size()
+      << ", waiting_tasks_ = " << waiting_tasks_.size();   
+
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the job has died already),
     // all the messages are ignored except DisconnectClient.
@@ -1018,6 +1023,7 @@ void NodeManager::ProcessClientMessage(
     ProcessWaitForDirectActorCallArgsRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::PushErrorRequest: {
+    RAY_LOG(WARNING) << "PushErrorRequest";
     ProcessPushErrorRequestMessage(message_data);
   } break;
   case protocol::MessageType::PushProfileEventsRequest: {
@@ -1028,6 +1034,7 @@ void NodeManager::ProcessClientMessage(
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_table_data, nullptr));
   } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
+    RAY_LOG(WARNING) << "FreeObjectsInObjectStoreRequest";
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
     // Clean up objects from the object store.
@@ -1054,6 +1061,11 @@ void NodeManager::ProcessClientMessage(
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
+
+  RAY_LOG(WARNING) << "[end] ProcessClientMessage, type = " << (int64_t)message_type_value
+      << ", tasks_to_dispatch = " << tasks_to_dispatch_.size()
+      << ", tasks_to_schedule_ = " << tasks_to_schedule_.size()
+      << ", waiting_tasks_ = " << waiting_tasks_.size();   
 
   // Listen for more messages.
   client->ProcessMessages();
@@ -1647,6 +1659,8 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
     int64_t violations = 0;
     std::string node_id_string =
         new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
+    RAY_LOG(WARNING) << "====x NewSchedulerSchedulePendingTasks, node_id_string = " 
+      << node_id_string << ", violations = " << violations; 
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
       break;
@@ -1740,31 +1754,37 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             auto predefined_resources = allocated_resources.predefined_resources;
             for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
               auto resource = reply->add_resource_mapping();
-              RAY_LOG(WARNING) << "HandleRequestWorkerLease Resource name = " 
-                  << new_resource_scheduler_->GetResourceNameFromIndex(res_idx) 
-                  << ", Resource idx = " << res_idx;
-              resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+              bool first = true; // Set resource name only if at least one of its instances has available capacity.
 	            for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size(); inst_idx++) {
-                RAY_LOG(WARNING) << "HandleRequestWorkerLease quantity, inst_idx = " << inst_idx; 
 	              if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
                   auto rid = resource->add_resource_ids();
-                  RAY_LOG(WARNING) << "HandleRequestWorkerLease quantity[" 
-                      << inst_idx << "] = " << predefined_resources[res_idx][inst_idx];
+                  if (first) {
+                    resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+                    RAY_LOG(WARNING) << "-HandleRequestWorkerLease Resource name = " << new_resource_scheduler_->GetResourceNameFromIndex(res_idx);
+                    first = false;
+                  }     
+                  RAY_LOG(WARNING) << "-HandleRequestWorkerLease quantity -- predefined [" << inst_idx << "] = " << predefined_resources[res_idx][inst_idx];
                   rid->set_index(inst_idx);
                   rid->set_quantity(predefined_resources[res_idx][inst_idx]);
-	              }
+                }
               }
             }
             auto custom_resources = allocated_resources.custom_resources;
             for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
               auto resource = reply->add_resource_mapping();
-              resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(it->first));
+              bool first = true; // Set resource name only if at least one of its instances has available capacity.
 	            for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-	              if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
+	              if (std::abs(it->second[inst_idx]) < ZERO_CAPACITY) {
                   auto rid = resource->add_resource_ids();
+                  if (first) {
+                    resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(it->first));
+                    RAY_LOG(WARNING) << "-HandleRequestWorkerLease Resource name = " << new_resource_scheduler_->GetResourceNameFromIndex(it->first);
+                    first = false;
+                  }     
+                  RAY_LOG(WARNING) << "-HandleRequestWorkerLease quantity -- custom [" << inst_idx << "] = " << it->second[inst_idx];
                   rid->set_index(inst_idx);
                   rid->set_quantity(it->second[inst_idx]);
-	              }
+                }
               }
             }
             RAY_LOG(WARNING) << "HandleRequestWorkerLease Resource DONE ";
@@ -1779,7 +1799,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         task);
     RAY_LOG(WARNING) << "HandleRequestWorkerLease, push task id = " << work.second.GetTaskSpecification().TaskId();
     tasks_to_schedule_.push_back(work);
-    RAY_LOG(WARNING) << "====x HandleRequestWorkerLease -> NewSchedulerSchedulePendingTasks ====";
+    RAY_LOG(WARNING) << "====x HandleRequestWorkerLease -> NewSchedulerSchedulePendingTasks, push, tasks_to_schedule_ = " << tasks_to_schedule_.size();
     NewSchedulerSchedulePendingTasks();
     return;
   }
@@ -1799,16 +1819,21 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
         for (const auto &mapping : resource_ids.AvailableResources()) {
           auto resource = reply->add_resource_mapping();
+          RAY_LOG(WARNING) << "-HandleRequestWorkerLease Resource name = " << mapping.first;
           resource->set_name(mapping.first);
           for (const auto &id : mapping.second.WholeIds()) {
             auto rid = resource->add_resource_ids();
             rid->set_index(id);
             rid->set_quantity(1.0);
+            RAY_LOG(WARNING) << "-HandleRequestWorkerLease quantity -- whole [" 
+                << id << "] = 1.0";
           }
           for (const auto &id : mapping.second.FractionalIds()) {
             auto rid = resource->add_resource_ids();
             rid->set_index(id.first);
             rid->set_quantity(id.second.ToDouble());
+            RAY_LOG(WARNING) << "-HandleRequestWorkerLease quantity -- fractional [" 
+                << id.first << "] = " << id.second.ToDouble();
           }
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2555,7 +2580,6 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   Task task;
   if (new_scheduler_enabled_) {
     task = worker.GetAssignedTask();
-    leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ???
     if (worker.GetAllocatedInstances().predefined_resources.size() > 0) {
       new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       new_resource_scheduler_->SubtractCPUResourceInstances(worker.GetBorrowedCPUInstances());
@@ -2918,6 +2942,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
         waiting_tasks_.erase(it);
       }
     }
+    NewSchedulerSchedulePendingTasks();
   } else {  
     if (ready_task_ids.size() > 0) {
       std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),

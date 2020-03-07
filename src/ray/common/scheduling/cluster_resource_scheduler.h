@@ -46,6 +46,7 @@ struct ResourceRequestWithId : ResourceRequest {
   int64_t id;
 };
 
+// Data structure specifying the capacity of each resource requested by a task. 
 class TaskRequest {
  public:
   /// List of predefined resources required by the task.
@@ -58,10 +59,11 @@ class TaskRequest {
   /// nodes in this list can schedule this task.
   absl::flat_hash_set<int64_t> placement_hints;
   /// Returns human-readable string for this task request.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
-// Task request specifying instances for each resource.
+// Data structure specifying the capacity of each instance of each resource 
+// allocated to a task.
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.
@@ -70,19 +72,19 @@ class TaskResourceInstances {
   absl::flat_hash_map<int64_t, std::vector<double>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
   /// For each resource of this request aggregate its instances.
-  TaskRequest ToTaskRequest();
+  TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
-  std::vector<double> GetCPUInstances() {  
-    if (this->predefined_resources.size()) {
+  std::vector<double> GetCPUInstances() const {  
+    if (!this->predefined_resources.empty()) {
       return this->predefined_resources[CPU]; 
     } else {
       return {};
     }
   };
   /// Check whether there are no resource instances.
-  bool IsEmpty();
+  bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -96,7 +98,7 @@ class NodeResources {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -113,7 +115,7 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 /// Class encapsulating the cluster resources and the logic to assign
@@ -144,6 +146,19 @@ class ClusterResourceScheduler {
   void SetCustomResources(
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
+
+  /// Subtract the resources required by a given task request (task_req) from 
+  /// a given node (node_id). 
+  ///
+  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
+  /// \param task_req Task for which we allocate resources.
+  /// \param task_allocation Resources allocated to the task at instance granularity. 
+  /// This is a return parameter.
+  ///
+  /// \return True if the node has enough resources to satisfy the task request. 
+  /// False otherwise. 
+  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req, 
+                            TaskResourceInstances *task_allocation);
 
  public:
   ClusterResourceScheduler(void){};
@@ -263,21 +278,20 @@ class ClusterResourceScheduler {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
-  /// Convert a map of resources to a TaskRequest data structure.
-  TaskRequest ResourceMapToTaskRequest(
-      const std::unordered_map<std::string, double> &resource_map);
-
-  /// Convert a map of resources to a TaskRequest data structure.
-  NodeResources ResourceMapToNodeResources(
-      const std::unordered_map<std::string, double> &resource_map_total,
-      const std::unordered_map<std::string, double> &resource_map_available);
-
-  /// Update total capacity of resource resource_name at node client_id.
-  void UpdateResourceCapacity(const std::string &client_id,
+  /// Update total capacity of a given resource (resource_name) of a give node 
+  /// (node_name).
+  ///
+  /// \param node_name: Node whose resource we want to update.
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource. 
+  void UpdateResourceCapacity(const std::string &node_name,
                               const std::string &resource_name, int64_t resource_total);
 
-  /// Delete resource resource_name from node cleint_id_string.
-  void DeleteResource(const std::string &client_id_string,
+  /// Delete a given resource (resource_name) from a given node c(node_name).
+  ///
+  /// \param node_name: Node whose resource we want to delete.
+  /// \param resource_name: Resource we want to delete
+  void DeleteResource(const std::string &node_name,
                       const std::string &resource_name);
 
   /// Return local resources.
@@ -358,7 +372,8 @@ class ClusterResourceScheduler {
   /// \param resource_instances List of the resource instances being updated.
   ///
   /// \return Overflow capacities of "resource_instances" after adding instance 
-  /// capacities in "available". 
+  /// capacities in "available", i.e., 
+  /// min(available + reasource_instances.available, resource_instances.total) 
   std::vector<double> AddAvailableResourceInstances(std::vector<double> available,
                                                     ResourceInstanceCapacities *resource_instances);
 
@@ -366,9 +381,10 @@ class ClusterResourceScheduler {
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
-  /// \return Under capacities of "resource_instances" after substracting instance 
-  /// capacities in "free". 
-  std::vector<double> SubtractAvailableResourceInstances(std::vector<double> free,
+  /// \return Underflow of "resource_instances" after substracting instance 
+  /// capacities in "available", i.e.,.
+  /// max(available - reasource_instances.available, 0)
+  std::vector<double> SubtractAvailableResourceInstances(std::vector<double> available,
                                                          ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
@@ -387,10 +403,25 @@ class ClusterResourceScheduler {
   /// capacities in cpu_instances. 
   std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
 
-  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req, 
-                            TaskResourceInstances *task_allocation /* return */);
+  
+  /// Subtract the resources required by a given task request (task_req) from the 
+  /// local node. This function also updates the local node resources
+  /// at the instance granularity. 
+  ///
+  /// \param task_req Task for which we allocate resources.
+  /// \param task_allocation Resources allocated to the task at instance granularity. 
+  /// This is a return parameter.
+  ///
+  /// \return True if local node has enough resources to satisfy the task request. 
+  /// False otherwise. 
   bool AllocateLocalTaskResources(const std::unordered_map<std::string, double> &task_resources, 
-                                  TaskResourceInstances *task_allocation /* return */);                              
+                                  TaskResourceInstances *task_allocation);  
+
+  /// Subtract the resources required by a given task request (task_req) from a given
+  /// remote node. 
+  ///
+  /// \param node_id Remote node whose resources we allocate. 
+  /// \param task_req Task for which we allocate resources.
   void AllocateRemoteTaskResources(std::string &node_id,
                                   const std::unordered_map<std::string, double> &task_resources);
 
@@ -398,7 +429,7 @@ class ClusterResourceScheduler {
   void FreeLocalTaskResources(TaskResourceInstances& task_allocation);
 
   /// Return human-readable string for this scheduler state.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H
