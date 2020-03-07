@@ -29,8 +29,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
     """
 
     def __init__(self, metric=None, mode="max", use_early_stopped_trials=True):
-        """Constructs a generator given experiment specifications.
-        """
+        """Constructs a generator given experiment specifications."""
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0

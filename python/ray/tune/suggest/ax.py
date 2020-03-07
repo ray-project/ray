@@ -31,7 +31,7 @@ class AxSearch(SuggestionAlgorithm):
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
+            minimizing or maximizing the metric attribute. Defaults to "max".
         parameter_constraints (list[str]): Parameter constraints, such as
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
