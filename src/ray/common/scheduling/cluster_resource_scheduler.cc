@@ -52,7 +52,6 @@ TaskRequest ResourceMapToTaskRequest(StringIdMap &string_to_int_map,
       task_request.custom_resources[i].id = string_to_int_map.Insert(resource.first);
       task_request.custom_resources[i].demand = resource.second;
       task_request.custom_resources[i].soft = false;
-      RAY_LOG(WARNING) << "ResourceMapToTaskRequest name / id = " << resource.first << string_to_int_map.Get(resource.first);
       i++;
     }
   }
@@ -350,13 +349,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       ResourceMapToNodeResources(string_to_int_map_, 
           local_node_resources, local_node_resources);
 
-  RAY_LOG(WARNING) << "\n>> ClusterResourceScheduler, local_node_id_ = " << local_node_id_ << 
-      ", resources: " << UnorderedMapToString(local_node_resources);
-
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
-
-  RAY_LOG(WARNING) << "\n<< ClusterResourceScheduler: " << DebugString();
 }
 
 void ClusterResourceScheduler::AddOrUpdateNode(
@@ -483,11 +477,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   int64_t best_node = -1;
   *total_violations = 0;
 
-  TaskRequest tq = task_req;
-  RAY_LOG(WARNING) << "GetBestSchedulableNode task_req = " 
-      << tq.DebugString() << " local resources " << DebugString();
-
-  // Check whether local node is schedulable. We return immediately
+ // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
   auto it = nodes_.find(local_node_id_);
   if (it != nodes_.end()) {
@@ -647,11 +637,6 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
     RAY_CHECK(it != nodes_.end());
   }
 
-  RAY_LOG(WARNING) << "\n>> UpdateResourceCapacity" <<
-     ",  client_id: " << client_id <<
-     ",  resource name: " << resource_name <<
-     ",  resource_total: " << resource_total << "\n";                                                                                                      
-
   int idx = -1;
   if (resource_name == ray::kCPU_ResourceLabel) {
     idx = (int)CPU;
@@ -691,7 +676,6 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
       it->second.custom_resources.emplace(resource_id, resource_capacity);
     }
   }
-  RAY_LOG(WARNING) << "\n<< Cluster resources: " << DebugString();
 }
 
 void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
@@ -789,10 +773,6 @@ std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
       resource_instances->available[i] = resource_instances->total[i];
     } 
   }
-
-  RAY_LOG(WARNING) << "\n AddAvailableResourceInstances " << VectorToString(available);                                    
-  RAY_LOG(WARNING) << "\n AddAvailableResourceInstances " << DebugString();                                     
-  RAY_LOG(WARNING) << "\n AddAvailableResourceInstances overflow = " << VectorToString(overflow);                                     
 
   return overflow;
 }
@@ -910,10 +890,6 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   if (it == nodes_.end()) {
     return false;
   }
-
-  RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 0" << DebugString();
-
-  RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 1";
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (task_req.predefined_resources[i].demand > 0) {
@@ -944,23 +920,19 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
           // Allocation failed. Restore node's local resources by freeing the resources
           // of the failed allocation.
           FreeTaskResourceInstances(*task_allocation);
-          RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 3";
           return false;
         }
       }
     } else {
-      RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 4";
       return false;
     }
   }
-  RAY_LOG(WARNING) << "=== AllocateTaskResourceInstances 5" << DebugString();
   return true;
 }
 
 void ClusterResourceScheduler::FreeTaskResourceInstances(
     TaskResourceInstances &task_allocation) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    RAY_LOG(WARNING) << "FreeTaskResourceInstances idx = " << i;
     AddAvailableResourceInstances(task_allocation.predefined_resources[i],
                                   &local_resources_.predefined_resources[i]);
   }
@@ -968,7 +940,6 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
   for (const auto task_allocation_custom_resource : task_allocation.custom_resources) {
     auto it = local_resources_.custom_resources.find(task_allocation_custom_resource.first);
     if (it != local_resources_.custom_resources.end()) {
-      RAY_LOG(WARNING) << "FreeTaskResourceInstances (cust) " << task_allocation_custom_resource.first;
       AddAvailableResourceInstances(task_allocation_custom_resource.second, &it->second);
     }
   }
@@ -1013,29 +984,17 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
 bool ClusterResourceScheduler::AllocateTaskResources(int64_t node_id, 
     const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
 
-  // XXX    
-  RAY_LOG(WARNING) << "\n>> AllocateTaskResources" << DebugString(); 
-  TaskRequest ts = task_req; // XXX
-  RAY_LOG(WARNING) << "\n AllocateTaskResources task req: " << ts.DebugString(); 
-
   if (!SubtractNodeAvailableResources(node_id, task_req)) {
-    RAY_LOG(WARNING) << "\n<< AllocateTaskResources -- FALSE "; 
     return false;
   }
   if (node_id == local_node_id_) {
     if (AllocateTaskResourceInstances(task_req, task_allocation)) {
-
-      RAY_LOG(WARNING) << "\n task_allocation " << task_allocation->DebugString(); 
-      RAY_LOG(WARNING) << "\n<< AllocateTaskResources (Local 1) " << DebugString(); 
-
       return true;
     } else {
       AddNodeAvailableResources(node_id, task_req);
-      RAY_LOG(WARNING) << "\n<< AllocateTaskResources (Local 2) " << DebugString(); 
     }
     return true;
   } else {
-    RAY_LOG(WARNING) << "\n<< AllocateTaskResources (Remote) " << DebugString(); 
     return false;
   }
 }
@@ -1075,11 +1034,8 @@ void ClusterResourceScheduler::AllocateRemoteTaskResources(
 
 
 void ClusterResourceScheduler::FreeLocalTaskResources(TaskResourceInstances &task_allocation) {
-  RAY_LOG(WARNING) << "=== FreeLocalTaskResources 0 " << DebugString() << " - " << task_allocation.DebugString();
-  RAY_LOG(WARNING) << "=== FreeLocalTaskResources IsEmpty() = " << task_allocation.IsEmpty() << task_allocation.DebugString();
   if (!task_allocation.IsEmpty()) {
     AddNodeAvailableResources(local_node_id_, task_allocation.ToTaskRequest());  
     FreeTaskResourceInstances(task_allocation);
   }
-  RAY_LOG(WARNING) << "=== FreeLocalTaskResources 1 " << DebugString();
 }
