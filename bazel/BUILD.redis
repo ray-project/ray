@@ -57,19 +57,20 @@ cc_library(
 
 cc_library(
     name = "_ae",
-    hdrs = select({
-        "@bazel_tools//src/conditions:windows": [
+    hdrs = [
+        "src/ae_select.c",
+    ] + select({
+        "@bazel_tools//src/conditions:windows": glob([
             "src/ae_wsiocp.c",
-        ],
-        "@bazel_tools//src/conditions:darwin": [
+        ]),
+        "@bazel_tools//src/conditions:darwin": glob([
             "src/ae_kqueue.c",
-        ],
-        "@bazel_tools//src/conditions:linux_x86_64": [
+        ]),
+        "@bazel_tools//src/conditions:linux_x86_64": glob([
             "src/ae_epoll.c",
-        ],
-        "//conditions:default": [
-            "src/ae_select.c",
-        ],
+        ]),
+        "//conditions:default": glob([
+        ]),
     }),
     copts = COPTS,
 )
@@ -79,7 +80,6 @@ cc_library(
     srcs = [
         "src/adlist.c",
         "src/ae.c",
-        "src/zmalloc.c",
     ] + glob([
         "src/*.h",
     ]) + select({
@@ -97,6 +97,7 @@ cc_library(
             ],
         ),
         "//conditions:default": [
+            "src/zmalloc.c",
         ],
     }),
     hdrs = select({
@@ -109,6 +110,7 @@ cc_library(
     deps = [
         ":_ae",
         ":liblua",
+        "@//:platform_shims",
     ],
     local_defines = select({
         "@bazel_tools//src/conditions:windows": [
@@ -157,6 +159,7 @@ cc_library(
     deps = [
         ":_hiredis",
         ":libredis",
+        "@//:platform_shims",
     ],
     visibility = ["//visibility:public"],
 )

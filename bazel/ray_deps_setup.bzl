@@ -78,6 +78,14 @@ def ray_deps_setup():
         url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
         patches = [
+            "//thirdparty/patches:hiredis-casts.patch",
+            "//thirdparty/patches:hiredis-connect-rename.patch",
+            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
+            "//thirdparty/patches:hiredis-windows-sockets.patch",
+            "//thirdparty/patches:hiredis-windows-strerror.patch",
+            "//thirdparty/patches:hiredis-windows-poll.patch",
+            "//thirdparty/patches:hiredis-windows-translations.patch",
+            "//thirdparty/patches:redis-windows-poll.patch",
         ],
     )
 
