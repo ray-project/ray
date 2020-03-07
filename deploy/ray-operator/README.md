@@ -1,14 +1,18 @@
-# Ray Kubernetes Operator
+# Ray Kubernetes Operator (experimental)
 
+NOTE: The operator is still under active development and not yet recommended for production deployments. Please see [the documentation](https://ray.readthedocs.io/en/latest/deploy-on-kubernetes.html#deploying-on-kubernetes) for current best practices.
+
+This directory contains the source code for a Ray operator for Kubernetes.
+
+The operator makes deploying and managing Ray clusters on top of Kubernetes painless - clusters are defined as a custom RayCluster resource and managed by a fault-tolerant Ray controller.
 The Ray Operator is a Kubernetes operator to automate provisioning, management, autoscaling and operations of Ray clusters deployed to Kubernetes.
 
 Some of the main features of Ray-Operator are:
-- user management via CRD
-- heterogeneous pods in one Ray cluster with specific affinity, toleration and other pre-defined settings
-- monitoring via Prometheus
-- HA for Ray Kubernetes Operator, there will be a lead election if lead crashes
+- Management of first-class RayClusters via a [custom resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-resources).
+- Support for hetergenous worker types in a single Ray cluster.
+- Built-in monitoring via Prometheus.
 
-## File structure:
+## File structure
 > ```
 > ray/deploy/ray-operator
 > ├── api/v1alpha1  // Package v1alpha1 contains API Schema definitions for the ray v1alpha1 API group
@@ -77,84 +81,112 @@ Some of the main features of Ray-Operator are:
 > └── Makefile
 > ```
 
-## RayCluster sample CR
+## Usage
 
-To introduce the Ray-Operator, give 3 samples of RayCluster CR.  
+This section walks through how to build and deploy the operator in a running Kubernetes cluster.
 
-Sample  | desc
-------------- | -------------
-[RayCluster.mini.yaml](config/samples/ray_v1_raycluster.mini.yaml)   | 2 pods in this sample, 1 for head and 1 for workers.The least information to start ray cluster, run in local test.
-[RayCluster.heterogeneous.yaml](config/samples/ray_v1_raycluster.heterogeneous.yaml)  | 3 pods in this sample, 1 for head and 2 for workers but with different specifications. Different quota(like CPU/MEMORY) compares to mini version, run in local test.
-[RayCluster.complete.yaml](config/samples/ray_v1_raycluster.complete.yaml)  | a complete version CR for customized requirement, show how to set Customized props. More props to set compares to heterogeneous version, run in production. 
-
-## RayCluster CRD
-
-Refers to file [raycluster_types.go](api/v1alpha1/raycluster_types.go) for code details.
-
-If interested in CRD, refer to file [CRD](config/crd/bases/ray.io_rayclusters.yaml) for more details. 
-
-## Software requirement
-Take care some software have dependency.  
-
-software  | version | memo
+### Requirements
+software  | version | link
 :-------------  | :---------------:| -------------:
-kustomize |  v3.1.0+ | [download](https://github.com/kubernetes-sigs/kustomize)
 kubectl |  v1.11.3+    | [download](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
-Kubernetes Cluster | Access to a Kubernetes v1.11.3+ cluster| [Minikube](https://github.com/kubernetes/minikube)  for local test
 go  | v1.13+|[download](https://golang.org/dl/)
 docker   | 17.03+|[download](https://docs.docker.com/install/)
 
-Also you will need kubeconfig in ~/.kube/config, so you can access to Kubernetes Cluster.  
+The instructions assume you have access to a running Kubernetes cluster via ``kubectl``. If you want to test locally, consider using [Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/).
 
-## Get started
-Below gives a guide for user to submit RayCluster step by step:
+### Running the unit tests
 
-### Install CRDs into a cluster
-
-```shell script
-kustomize build config/crd | kubectl apply -f -
+```
+go build
+go test ./...
 ```
 
-### Build manager docker image
-View Makefile for more command and info.
-```shell script
-make docker-build
-```
+You can also build the operator using Bazel:
 
-### Push manager docker image to some docker repo
-View Makefile for more command and info.
-```shell script
-make docker-push
-```
-
-### Deploy the controller in the configured Kubernetes cluster in ~/.kube/config
-* For this version controller will run in ray-operator-system namespace, which maybe can't be tolerated in production.  
-* We will add more detailed RBAC file to control the namespace used in production, and the controller will run in that namespace to control the permission.  
-* Also, we will provide the more detailed guide for user to run in a controlled way.
-```shell script
-kustomize build config/default | kubectl apply -f -
-```
-
-### Submit RayCluster to Kubernetes
-```shell script
-kubectl create -f config/samples/ray_v1_raycluster.mini.yaml -n ray-operator-system
-```
-
-### Apply RayCluster to Kubernetes
-```shell script
-kubectl apply -f config/samples/ray_v1_raycluster.mini.yaml -n ray-operator-system
-```
-
-### Delete RayCluster to Kubernetes
-```shell script
-kubectl delete -f config/samples/ray_v1_raycluster.mini.yaml -n ray-operator-system
-```
-
-### Build with bazel
 ```generate BUILD.bazel 
 bazel run //:gazelle
 ```
 
 ```build script
 bazel build //:ray-operator
+```
+
+### Building the controller
+
+The first step to deploying the Ray operator is building the container image that contains the operator controller and pushing it to Docker Hub so it can be pulled down and run in the Kubernetes cluster.
+
+```shell script
+# From the ray/deploy/ray-operator directory.
+# Replace DOCKER_ACCOUNT with your docker account or push to your preferred Docker image repository.
+docker build -t $DOCKER_ACCOUNT:controller .
+docker push $DOCKER_ACCOUNT:controller
+```
+
+In the future (once the operator is stabilized), an official controller image will be uploaded and available to users on Docker Hub.
+
+### Installing the custom resource definition
+
+The next step is to install the RayCluster custom resource definition into the cluster. Build and apply the CRD:
+
+```shell script
+kubectl kustomize config/crd | kubectl apply -f -
+```
+
+Refer to [raycluster_types.go](api/v1alpha1/raycluster_types.go) and [ray.io_rayclusters.yaml](config/crd/bases/ray.io_rayclusters.yaml) for the details of the CRD.
+
+### Deploying the controller
+
+Build the controller config and apply it to the cluster:
+
+```shell script
+kubectl kustomize config/default | kubectl apply -f -
+```
+
+Currently, the controller runs in the ``ray-operator-system`` namespace. This will be configurable in the future.
+
+```shell script
+# Check that the controller is running.
+$ kubectl get pods -n ray-operator-system
+NAME                                               READY   STATUS    RESTARTS   AGE
+ray-operator-controller-manager-66b9b97bcf-8l6lt   2/2     Running   0          30s
+$ kubectl get deployments -n ray-operator-system
+NAME                              READY   UP-TO-DATE   AVAILABLE   AGE
+ray-operator-controller-manager   1/1     1            1           44m
+
+# Delete the controller if need be.
+$ kubectl delete deployment ray-operator-controller-manager -n ray-operator-system
+```
+
+### Running an example cluster
+
+There are three example config files to deploy RayClusters included here: 
+
+Sample  | Description
+------------- | -------------
+[RayCluster.mini.yaml](config/samples/ray_v1_raycluster.mini.yaml)   | Small example consisting of 1 head pod and 1 worker pod.
+[RayCluster.heterogeneous.yaml](config/samples/ray_v1_raycluster.heterogeneous.yaml)  | Example with heterogenous worker types. 1 head pod and 2 worker pods, each of which has a different resource quota.
+[RayCluster.complete.yaml](config/samples/ray_v1_raycluster.complete.yaml)  | Shows all available custom resouce properties.
+
+```shell script
+# Create a cluster.
+$ kubectl create -f config/samples/ray_v1_raycluster.mini.yaml -n ray-operator-system
+raycluster.ray.io/raycluster-sample created
+
+# List running clusters.
+$ kubectl get rayclusters
+NAME                AGE
+raycluster-sample   2m48s
+
+# The created cluster should include a head pod, worker pod, and a head service.
+$ kubectl get pods
+NAME                                     READY   STATUS             RESTARTS   AGE
+raycluster-sample-head-group-head-0      1/1     Running            0          101s
+raycluster-sample-small-group-worker-0   1/1     Running            0          101s
+$ kubectl get services
+NAME                     TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+kubernetes               ClusterIP   10.100.0.1      <none>        443/TCP    19d
+raycluster-sample-head   ClusterIP   10.100.153.12   <none>        6379/TCP   28h
+
+# Delete the cluster.
+kubectl delete raycluster raycluster-sample
 ```
