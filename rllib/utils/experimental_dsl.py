@@ -4,28 +4,40 @@ TODO(ekl): describe the concepts."""
 
 import logging
 from typing import List, Any, Tuple, Union
+import numpy as np
 import time
 
 import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import MetricsContext
+from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.evaluation.metrics import collect_episodes, \
     summarize_episodes, get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
+    DEFAULT_POLICY_ID
+from ray.rllib.utils.compression import pack_if_needed
 
 logger = logging.getLogger(__name__)
 
-# Metrics context key definitions.
+# Counters for training progress (keys for metrics.counters).
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 STEPS_TRAINED_COUNTER = "num_steps_trained"
+
+# Counters to track target network updates.
+LAST_TARGET_UPDATE_TS = "last_target_update_ts"
+NUM_TARGET_UPDATES = "num_target_updates"
+
+# Performance timers (keys for metrics.timers).
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 WORKER_UPDATE_TIMER = "update"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
+
+# Instant metrics (keys for metrics.info).
 LEARNER_INFO = "learner"
 
 # Type aliases.
@@ -33,10 +45,17 @@ GradientType = dict
 SampleBatchType = Union[SampleBatch, MultiAgentBatch]
 
 
+# Asserts that an object is a type of SampleBatch.
 def _check_sample_batch_type(batch):
     if not isinstance(batch, SampleBatchType.__args__):
         raise ValueError("Expected either SampleBatch or MultiAgentBatch, "
                          "got {}: {}".format(type(batch), batch))
+
+
+# Returns pipeline global vars that should be periodically sent to each worker.
+def _get_global_vars():
+    metrics = LocalIterator.get_metrics()
+    return {"timestep": metrics.counters[STEPS_SAMPLED_COUNTER]}
 
 
 def ParallelRollouts(workers: WorkerSet,
@@ -70,6 +89,9 @@ def ParallelRollouts(workers: WorkerSet,
 
     Updates the STEPS_SAMPLED_COUNTER counter in the local iterator context.
     """
+
+    # Ensure workers are initially in sync.
+    workers.sync_weights()
 
     def report_timesteps(batch):
         metrics = LocalIterator.get_metrics()
@@ -118,6 +140,9 @@ def AsyncGradients(
     Updates the STEPS_SAMPLED_COUNTER counter and LEARNER_INFO field in the
     local iterator context.
     """
+
+    # Ensure workers are initially in sync.
+    workers.sync_weights()
 
     # This function will be applied remotely on the workers.
     def samples_to_grads(samples):
@@ -240,7 +265,9 @@ class TrainOneStep:
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = ray.put(self.workers.local_worker().get_weights())
                 for e in self.workers.remote_workers():
-                    e.set_weights.remote(weights)
+                    e.set_weights.remote(weights, _get_global_vars())
+        # Also update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(_get_global_vars())
         return info
 
 
@@ -266,9 +293,7 @@ class CollectMetrics:
         self.timeout_seconds = timeout_seconds
 
     def __call__(self, _):
-        metrics = LocalIterator.get_metrics()
-        if metrics.parent_metrics:
-            raise ValueError("TODO: support nested metrics")
+        # Collect worker metrics.
         episodes, self.to_be_collected = collect_episodes(
             self.workers.local_worker(),
             self.workers.remote_workers(),
@@ -282,22 +307,31 @@ class CollectMetrics:
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]
         res = summarize_episodes(episodes, orig_episodes)
-        res.update(info=metrics.info)
-        res["info"].update({
-            STEPS_SAMPLED_COUNTER: metrics.counters[STEPS_SAMPLED_COUNTER],
-            STEPS_TRAINED_COUNTER: metrics.counters[STEPS_TRAINED_COUNTER],
-        })
+
+        # Add in iterator metrics.
+        metrics = LocalIterator.get_metrics()
+        if metrics.parent_metrics:
+            print("TODO: support nested metrics better")
+        all_metrics = [metrics] + metrics.parent_metrics
         timers = {}
-        for k, timer in metrics.timers.items():
-            timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
-            if timer.has_units_processed():
-                timers["{}_throughput".format(k)] = round(
-                    timer.mean_throughput, 3)
+        counters = {}
+        info = {}
+        for metrics in all_metrics:
+            info.update(metrics.info)
+            for k, counter in metrics.counters.items():
+                counters[k] = counter
+            for k, timer in metrics.timers.items():
+                timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
+                if timer.has_units_processed():
+                    timers["{}_throughput".format(k)] = round(
+                        timer.mean_throughput, 3)
+            res.update({
+                "num_healthy_workers": len(self.workers.remote_workers()),
+                "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
+            })
         res["timers"] = timers
-        res.update({
-            "num_healthy_workers": len(self.workers.remote_workers()),
-            "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
-        })
+        res["info"] = info
+        res["info"].update(counters)
         return res
 
 
@@ -392,13 +426,16 @@ class ApplyGradients:
             self.workers.local_worker().apply_gradients(gradients)
             apply_timer.push_units_processed(count)
 
+        # Also update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(_get_global_vars())
+
         if self.update_all:
             if self.workers.remote_workers():
                 with metrics.timers[WORKER_UPDATE_TIMER]:
                     weights = ray.put(
                         self.workers.local_worker().get_weights())
                     for e in self.workers.remote_workers():
-                        e.set_weights.remote(weights)
+                        e.set_weights.remote(weights, _get_global_vars())
         else:
             if metrics.cur_actor is None:
                 raise ValueError("Could not find actor to update. When "
@@ -406,7 +443,8 @@ class ApplyGradients:
                                  "in the iterator context.")
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = self.workers.local_worker().get_weights()
-                metrics.cur_actor.set_weights.remote(weights)
+                metrics.cur_actor.set_weights.remote(weights,
+                                                     _get_global_vars())
 
 
 class AverageGradients:
@@ -434,3 +472,125 @@ class AverageGradients:
         logger.info("Computing average of {} microbatch gradients "
                     "({} samples total)".format(len(gradients), sum_count))
         return acc, sum_count
+
+
+class StoreToReplayBuffer:
+    def __init__(self, replay_buffer):
+        self.replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
+
+    def __call__(self, batch: SampleBatchType):
+        # Handle everything as if multiagent
+        if isinstance(batch, SampleBatch):
+            batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
+
+        for policy_id, s in batch.policy_batches.items():
+            for row in s.rows():
+                self.replay_buffers[policy_id].add(
+                    pack_if_needed(row["obs"]),
+                    row["actions"],
+                    row["rewards"],
+                    pack_if_needed(row["new_obs"]),
+                    row["dones"],
+                    weight=None)
+
+
+def LocalReplay(replay_buffer, train_batch_size):
+    replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
+    # TODO(ekl) support more options
+    synchronize_sampling = False
+    prioritized_replay_beta = None
+
+    def gen_replay(timeout):
+        while True:
+            samples = {}
+            idxes = None
+            for policy_id, replay_buffer in replay_buffers.items():
+                if synchronize_sampling:
+                    if idxes is None:
+                        idxes = replay_buffer.sample_idxes(train_batch_size)
+                else:
+                    idxes = replay_buffer.sample_idxes(train_batch_size)
+
+                if isinstance(replay_buffer, PrioritizedReplayBuffer):
+                    metrics = LocalIterator.get_metrics()
+                    num_steps_trained = metrics.counters[STEPS_TRAINED_COUNTER]
+                    (obses_t, actions, rewards, obses_tp1, dones, weights,
+                     batch_indexes) = replay_buffer.sample_with_idxes(
+                         idxes,
+                         beta=prioritized_replay_beta.value(num_steps_trained))
+                else:
+                    (obses_t, actions, rewards, obses_tp1,
+                     dones) = replay_buffer.sample_with_idxes(idxes)
+                    weights = np.ones_like(rewards)
+                    batch_indexes = -np.ones_like(rewards)
+                samples[policy_id] = SampleBatch({
+                    "obs": obses_t,
+                    "actions": actions,
+                    "rewards": rewards,
+                    "new_obs": obses_tp1,
+                    "dones": dones,
+                    "weights": weights,
+                    "batch_indexes": batch_indexes
+                })
+            yield MultiAgentBatch(samples, train_batch_size)
+
+    return LocalIterator(gen_replay, MetricsContext())
+
+
+def Concurrently(ops: List[LocalIterator], mode="round_robin"):
+    """Operator that runs the given parent iterators concurrently.
+
+    Arguments:
+        mode (str): One of {'round_robin', 'async'}.
+            - In 'round_robin' mode, we alternate between pulling items from
+              each parent iterator in order deterministically.
+            - In 'async' mode, we pull from each parent iterator as fast as
+              they are produced. This is non-deterministic.
+
+        >>> sim_op = ParallelRollouts(...).for_each(...)
+        >>> replay_op = LocalReplay(...).for_each(...)
+        >>> combined_op = Concurrently([sim_op, replay_op])
+    """
+
+    if len(ops) < 2:
+        raise ValueError("Should specify at least 2 ops.")
+    if mode == "round_robin":
+        deterministic = True
+    elif mode == "async":
+        deterministic = False
+    else:
+        raise ValueError("Unknown mode {}".format(mode))
+    return ops[0].union(*ops[1:], deterministic=deterministic)
+
+
+class UpdateTargetNetwork:
+    """Periodically call policy.update_target() on all trainable policies.
+
+    This should be used with the .for_each() operator after training step
+    has been taken.
+
+    Examples:
+        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
+        >>> update_op = train_op.for_each(
+        ...     UpdateTargetIfNeeded(workers, target_update_freq=500))
+        >>> print(next(update_op))
+        None
+
+    Updates the LAST_TARGET_UPDATE_TS and NUM_TARGET_UPDATES counters in the
+    local iterator context. The value of the last update counter is used to
+    track when we should update the target next.
+    """
+
+    def __init__(self, workers, target_update_freq):
+        self.workers = workers
+        self.target_update_freq = target_update_freq
+
+    def __call__(self, _):
+        metrics = LocalIterator.get_metrics()
+        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update > self.target_update_freq:
+            self.workers.local_worker().foreach_trainable_policy(
+                lambda p, _: p.update_target())
+            metrics.counters[NUM_TARGET_UPDATES] += 1
+            metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
