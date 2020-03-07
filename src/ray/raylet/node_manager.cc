@@ -70,6 +70,42 @@ namespace ray {
 
 namespace raylet {
 
+// A helper function to print the leased workers.
+std::string LeasedWorkersSring(
+    const std::unordered_map<WorkerID, std::shared_ptr<Worker>> &leased_workers) {
+  std::stringstream buffer;
+  buffer << "  @leased_workers: (";
+  for (const auto &pair : leased_workers) {
+    auto &worker = pair.second;
+    buffer << worker->WorkerId() << ", ";
+  }
+  buffer << ")";
+  return buffer.str();
+} 
+
+// A helper function to print the workers in worker_pool_.
+std::string WorkerPoolString(const std::vector<std::shared_ptr<Worker>> &worker_pool) {
+  std::stringstream buffer;
+  buffer << "   @worker_pool: (";
+  for (const auto &worker : worker_pool) {
+    buffer << worker->WorkerId() << ", ";
+  }
+  buffer << ")";
+  return buffer.str();
+} 
+
+// Helper function to print the worker's owner worker and and node owner.
+std::string WorkerOwnerString(std::shared_ptr<Worker> &worker) {
+  std::stringstream buffer;
+  const auto owner_worker_id = 
+      WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
+  const auto owner_node_id =
+      WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+  buffer << "leased_worker Lease " << worker->WorkerId() << " owned by " 
+      << owner_worker_id << " / " << owner_node_id;
+  return buffer.str();
+}
+
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const ClientID &self_node_id, const NodeManagerConfig &config,
                          ObjectManager &object_manager,
@@ -557,29 +593,6 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   HandleUnexpectedWorkerFailure(address);
 }
 
-// XXX
-std::string NodeManager::PrintLeasedWorkers() {
-  std::stringstream buffer;
-  buffer << "  @leased_workers: (";
-  for (const auto &pair : leased_workers_) {
-    auto &worker = pair.second;
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-} 
-
-// XXX
-std::string NodeManager::PrintWorkerPool() {
-  std::stringstream buffer;
-  std::vector<std::shared_ptr<Worker>> worker_pool_list = worker_pool_.GetAllWorkers();
-  buffer << "   @worker_pool: (";
-  for (const auto &worker : worker_pool_list) {
-    buffer << worker->WorkerId() << ", ";
-  }
-  buffer << ")";
-  return buffer.str();
-} 
 
 void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
   const WorkerID worker_id = WorkerID::FromBinary(address.worker_id());
@@ -592,7 +605,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     failed_nodes_cache_.insert(node_id);
   }
 
-  RAY_LOG(WARNING) << "HandleUnexpectedWorkerFailure" << PrintWorkerPool() << PrintLeasedWorkers();
+  RAY_LOG(WARNING) << "HandleUnexpectedWorkerFailure" 
+      << WorkerPoolString(worker_pool_.GetAllWorkers()) << LeasedWorkersSring(leased_workers_);
 
   // TODO(swang): Also clean up any lease requests owned by the failed worker
   // from the task queues. This is only necessary for lease requests that are
@@ -943,9 +957,11 @@ void NodeManager::DispatchTasks(
 void NodeManager::ProcessClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
     const uint8_t *message_data) {
-  RAY_LOG(WARNING) << "ProcessClientMessage -> GetRegisteredWorker " << PrintWorkerPool() << PrintLeasedWorkers();    
+  RAY_LOG(WARNING) << "ProcessClientMessage -> GetRegisteredWorker " 
+      << WorkerPoolString(worker_pool_.GetAllWorkers()) << LeasedWorkersSring(leased_workers_);    
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
-  if (registered_worker) RAY_LOG(WARNING) << "ProcessClientMessage -> GetRegisteredWorker result = " << registered_worker->WorkerId();    
+  if (registered_worker) RAY_LOG(WARNING) 
+      << "ProcessClientMessage -> GetRegisteredWorker result = " << registered_worker->WorkerId();    
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
   RAY_LOG(DEBUG) << "[Worker] Message "
                  << protocol::EnumNameMessageType(message_type_value) << "("
@@ -1109,10 +1125,12 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
-    RAY_LOG(WARNING) << "1 ProcessRegisterClientRequestMessage -> RegisterWorker " << worker->WorkerId() << PrintWorkerPool();    
+    RAY_LOG(WARNING) << "1 ProcessRegisterClientRequestMessage -> RegisterWorker " 
+        << worker->WorkerId() << WorkerPoolString(worker_pool_.GetAllWorkers());    
     Status status = worker_pool_.RegisterDriver(worker);
     if (status.ok()) {
-      RAY_LOG(WARNING) << "1 ProcessRegisterClientRequestMessage -> RegisterWorker update " << PrintWorkerPool();
+      RAY_LOG(WARNING) << "1 ProcessRegisterClientRequestMessage -> RegisterWorker update " 
+          << WorkerPoolString(worker_pool_.GetAllWorkers());
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =
           gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
@@ -1189,7 +1207,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
   
   RAY_LOG(WARNING) << "yxxx HandleWorkerAvailable " << worker->WorkerId() 
       << ", worker->GetAssignedTaskId().IsNil() = " << worker->GetAssignedTaskId().IsNil() 
-      << worker->WorkerId() << PrintWorkerPool() << PrintLeasedWorkers();    
+      << worker->WorkerId() << WorkerPoolString(worker_pool_.GetAllWorkers()) 
+      << LeasedWorkersSring(leased_workers_);    
 ;
 
   // If the worker was assigned a task, mark it as finished.
@@ -1217,7 +1236,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, bool intentional_disconnect) {
 
   RAY_LOG(WARNING) << ">> ProcessDisconnectClientMessage, intentional = " << intentional_disconnect;    
-  RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> GetRegisteredWorker " << PrintWorkerPool();
+  RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> GetRegisteredWorker " 
+      << WorkerPoolString(worker_pool_.GetAllWorkers());
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   // RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> GetRegisteredWorker result = " << worker->WorkerId();
   bool is_worker = false, is_driver = false;
@@ -1232,7 +1252,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     } else {
       RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
                     << "been disconnected.";  
-      return; // XXX                          
+      return;                          
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
@@ -1259,19 +1279,14 @@ void NodeManager::ProcessDisconnectClientMessage(
     }
 
     // XXX
-    {
-      const auto owner_worker_id =
-        WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-      const auto owner_node_id =
-        WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
-      RAY_LOG(WARNING) << "leased_worker Lease " << worker->WorkerId() << " owned by " << owner_worker_id << " / " << owner_node_id;
-    }
+    RAY_LOG(WARNING) << WorkerOwnerString(worker);
     RAY_LOG(WARNING) << "leased_worker 1.0 erase = " << worker->WorkerId();
     // XXX
     // Erase any lease metadata.
     leased_workers_.erase(worker->WorkerId());
     /// XXX
-    RAY_LOG(WARNING) << "leased_worker 1.0"  << PrintWorkerPool() << PrintLeasedWorkers();
+    RAY_LOG(WARNING) << "leased_worker 1.0"  
+        << WorkerPoolString(worker_pool_.GetAllWorkers()) << LeasedWorkersSring(leased_workers_);
 
     // Publish the worker failure.
     auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
@@ -1330,9 +1345,11 @@ void NodeManager::ProcessDisconnectClientMessage(
     }
 
     // Remove the dead client from the pool and stop listening for messages.
-    RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> DisconnectWorker " << PrintWorkerPool();
+    RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> DisconnectWorker " 
+        << WorkerPoolString(worker_pool_.GetAllWorkers());
     worker_pool_.DisconnectWorker(worker);
-    RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> DisconnectWorker result " << worker->WorkerId() << PrintWorkerPool();
+    RAY_LOG(WARNING) << "ProcessDisconnectClientMessage -> DisconnectWorker result " 
+        << worker->WorkerId() << WorkerPoolString(worker_pool_.GetAllWorkers());
   
     // Return the resources that were being used by this worker. 
     if (new_scheduler_enabled_) {
@@ -1372,7 +1389,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(job_id, nullptr));
     const auto driver_id = ComputeDriverIdFromJob(job_id);
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
-    RAY_LOG(WARNING) << "1 ProcessDisconnectClientMessage -> DisconnectWorker " << PrintWorkerPool();
+    RAY_LOG(WARNING) << "1 ProcessDisconnectClientMessage -> DisconnectWorker " 
+        << WorkerPoolString(worker_pool_.GetAllWorkers());
     worker_pool_.DisconnectDriver(worker);
     RAY_LOG(WARNING) << "1 ProcessDisconnectClientMessage -> DisconnectWorker result " << worker->WorkerId();
 
@@ -1592,16 +1610,19 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 }
 
 void NodeManager::DispatchScheduledTasksToWorkers() {
-  RAY_LOG(WARNING) << "xxxx DispatchScheduledTasksToWorkers start"  << PrintWorkerPool() << PrintLeasedWorkers();
+  RAY_LOG(WARNING) << "xxxx DispatchScheduledTasksToWorkers start"  
+      << WorkerPoolString(worker_pool_.GetAllWorkers()) << LeasedWorkersSring(leased_workers_);
   RAY_CHECK(new_scheduler_enabled_);
   while (!tasks_to_dispatch_.empty()) {
     auto task = tasks_to_dispatch_.front();
     auto reply = task.first;
     auto spec = task.second.GetTaskSpecification();
 
-    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers before Pop" << PrintWorkerPool() << PrintLeasedWorkers();
+    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers before Pop" 
+        << WorkerPoolString(worker_pool_.GetAllWorkers()) << LeasedWorkersSring(leased_workers_);
     std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
-    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers after Pop " << PrintWorkerPool();
+    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers after Pop " 
+        << WorkerPoolString(worker_pool_.GetAllWorkers());
 
     RAY_LOG(WARNING) << "xxxx DispatchScheduledTasksToWorkers actor_creation " << spec.IsActorCreationTask() 
         << ", actor task " << spec.IsActorTask();
@@ -1611,7 +1632,8 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     }
 
     RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers after Pop" << worker->WorkerId();
-    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers after Pop" << PrintWorkerPool() << PrintLeasedWorkers();
+    RAY_LOG(WARNING) << "DispatchScheduledTasksToWorkers after Pop" 
+        << WorkerPoolString(worker_pool_.GetAllWorkers()) << LeasedWorkersSring(leased_workers_);
 
     TaskResourceInstances allocated_instances;
     RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers -> AllocateLocalTaskResources ====";
@@ -1634,7 +1656,7 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     RAY_LOG(WARNING) << "====x DispatchScheduledTasksToWorkers, spec.TaskId() = " 
         << spec.TaskId() << ", spec.JobId() = " << spec.JobId(); 
 
-    worker->AssignTaskId(spec.TaskId()); // XXX
+    worker->AssignTaskId(spec.TaskId());
     worker->AssignJobId(spec.JobId());
     worker->SetAssignedTask(task.second);
 
@@ -1866,7 +1888,8 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   RAY_LOG(WARNING) << "xxxx HandleReturnWorker = " << worker_id 
-      << ", worker->IsBlocked() = " << worker->IsBlocked() << PrintLeasedWorkers();;
+      << ", worker->IsBlocked() = " << worker->IsBlocked() 
+      << LeasedWorkersSring(leased_workers_);
 
   Status status;
   if (worker) {
@@ -2580,6 +2603,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   Task task;
   if (new_scheduler_enabled_) {
     task = worker.GetAssignedTask();
+    // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ???
     if (worker.GetAllocatedInstances().predefined_resources.size() > 0) {
       new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       new_resource_scheduler_->SubtractCPUResourceInstances(worker.GetBorrowedCPUInstances());

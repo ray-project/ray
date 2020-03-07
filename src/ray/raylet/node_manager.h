@@ -742,11 +742,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
   std::vector<ObjectID> objects_to_free_;
-
-  /// XXX
-  std::string PrintLeasedWorkers();
-  /// XXX
-  std::string PrintWorkerPool();
 };
 
 }  // namespace raylet
