@@ -129,8 +129,9 @@ class Repeater(SuggestionAlgorithm):
 
         Stores the metric of a trial as nan if any of the following conditions
         are met:
-            1. ``result`` is empty or not provided.
-            2. ``result`` is provided but no metric was provided.
+
+        1. ``result`` is empty or not provided.
+        2. ``result`` is provided but no metric was provided.
 
         """
         if trial_id not in self._trial_id_to_group:
