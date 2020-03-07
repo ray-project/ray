@@ -10,9 +10,10 @@ import tree
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
+    ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.policy import ACTION_PROB, ACTION_LOGP
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -197,6 +198,8 @@ def build_eager_tf_policy(name,
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
+            #assert isinstance(base, TFPolicy)
+
             self.framework = "tf"
             Policy.__init__(self, observation_space, action_space, config)
             self._is_training = False
@@ -455,17 +458,17 @@ def build_eager_tf_policy(name,
         def loss_initialized(self):
             return self._loss_initialized
 
-        @override(Policy)
-        def export_model(self, export_dir):
-            pass  # TODO(sven): implement
+        #@override(Policy)
+        #def export_model(self, export_dir):
+        #    pass  # TODO(sven): implement
 
-        @override(Policy)
-        def export_checkpoint(self, export_dir):
-            pass  # TODO(sven): implement
+        #@override(Policy)
+        #def export_checkpoint(self, export_dir):
+        #    pass  # TODO(sven): implement
 
-        @override(Policy)
-        def import_model_from_h5(self, export_dir):
-            pass  # TODO(sven): implement
+        #@override(Policy)
+        #def import_model_from_h5(self, import_file):
+        #    pass  # TODO(sven): implement
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)

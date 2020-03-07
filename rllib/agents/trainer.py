@@ -996,8 +996,25 @@ class Trainer(Trainable):
             exported[ExportFormat.MODEL] = path
         return exported
 
-    @override(Trainable)
-    def _import_model(self, import_format, import_file):
+    def import_model(self, import_file):
+        """Imports a model from import_file.
+
+        Note: Currently, only h5 files are supported.
+
+        Args:
+            import_file (str): The file to import the model from.
+
+        Returns:
+            A dict that maps ExportFormats to successfully exported models.
+        """
+        # Check for existence.
+        if not os.path.exists(import_file):
+            raise FileNotFoundError(
+                "`import_file` '{}' does not exist! Can't import Model.".
+                format(import_file))
+        # Get the format of the given file.
+        import_format = "h5"  # TODO(sven): Support checkpoint loading.
+
         ExportFormat.validate([import_format])
         if import_format != ExportFormat.H5:
             raise NotImplementedError

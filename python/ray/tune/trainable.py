@@ -478,28 +478,6 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def import_model(self, import_file):
-        """Imports a model from import_file.
-
-        Subclasses should override _import_model() to actually
-        import model from the given file and format (all of which has already
-        been checked by this parent method).
-
-        Args:
-            import_file (str): The file to import the model from.
-
-        Returns:
-            A dict that maps ExportFormats to successfully exported models.
-        """
-        # Check for existence.
-        if not os.path.exists(import_file):
-            raise FileNotFoundError(
-                "`import_file` '{}' does not exist! Can't import Model.".
-                format(import_file))
-        # Get the format of the given file.
-        import_format = "h5"  # TODO(sven): Support checkpoint loading.
-        return self._import_model(import_format, import_file)
-
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
 
