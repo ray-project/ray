@@ -5,6 +5,8 @@
 
 namespace ray {
 
+#include <ray/api/impl/actor_funcs.generated.h>
+
 template <typename O>
 class RayActor : public RayObject<O> {
  public:

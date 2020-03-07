@@ -2,8 +2,8 @@
 
 // 0 args
 template <typename R, typename O>
-RayObject<R> Ray::call(R (O::*func)(), RayActor<O> &actor) {
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&func);
+RayObject<R> Ray::call(ActorFunc0<O, R> actorFunc, RayActor<O> &actor) {
+  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer);
@@ -16,8 +16,8 @@ RayObject<R> Ray::call(R (O::*func)(), RayActor<O> &actor) {
 
 // 1 args
 template <typename R, typename O, typename T1>
-RayObject<R> Ray::call(R (O::*func)(T1), RayActor<O> &actor, T1 arg1) {
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&func);
+RayObject<R> Ray::call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor, T1 arg1) {
+  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer, false, arg1);
@@ -29,8 +29,8 @@ RayObject<R> Ray::call(R (O::*func)(T1), RayActor<O> &actor, T1 arg1) {
 }
 
 template <typename R, typename O, typename T1>
-RayObject<R> Ray::call(R (O::*func)(T1), RayActor<O> &actor, RayObject<T1> &arg1) {
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&func);
+RayObject<R> Ray::call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor, RayObject<T1> &arg1) {
+  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer, true, arg1);
@@ -43,8 +43,8 @@ RayObject<R> Ray::call(R (O::*func)(T1), RayActor<O> &actor, RayObject<T1> &arg1
 
 // 2 args
 template <typename R, typename O, typename T1, typename T2>
-RayObject<R> Ray::call(R (O::*func)(T1, T2), RayActor<O> &actor, T1 arg1, T2 arg2) {
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&func);
+RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T1 arg1, T2 arg2) {
+  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer, false, arg1, false, arg2);
@@ -56,9 +56,9 @@ RayObject<R> Ray::call(R (O::*func)(T1, T2), RayActor<O> &actor, T1 arg1, T2 arg
 }
 
 template <typename R, typename O, typename T1, typename T2>
-RayObject<R> Ray::call(R (O::*func)(T1, T2), RayActor<O> &actor, RayObject<T1> &arg1,
+RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, RayObject<T1> &arg1,
                        T2 arg2) {
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&func);
+  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer, true, arg1, false, arg2);
@@ -70,9 +70,9 @@ RayObject<R> Ray::call(R (O::*func)(T1, T2), RayActor<O> &actor, RayObject<T1> &
 }
 
 template <typename R, typename O, typename T1, typename T2>
-RayObject<R> Ray::call(R (O::*func)(T1, T2), RayActor<O> &actor, T1 arg1,
+RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T1 arg1,
                        RayObject<T2> &arg2) {
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&func);
+  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer, false, arg1, true, arg2);
@@ -84,9 +84,9 @@ RayObject<R> Ray::call(R (O::*func)(T1, T2), RayActor<O> &actor, T1 arg1,
 }
 
 template <typename R, typename O, typename T1, typename T2>
-RayObject<R> Ray::call(R (O::*func)(T1, T2), RayActor<O> &actor, RayObject<T1> &arg1,
+RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, RayObject<T1> &arg1,
                        RayObject<T2> &arg2) {
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&func);
+  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::wrap(packer, true, arg1, true, arg2);
