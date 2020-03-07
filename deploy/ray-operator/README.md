@@ -7,7 +7,7 @@ This directory contains the source code for a Ray operator for Kubernetes.
 The operator makes deploying and managing Ray clusters on top of Kubernetes painless - clusters are defined as a custom RayCluster resource and managed by a fault-tolerant Ray controller.
 The Ray Operator is a Kubernetes operator to automate provisioning, management, autoscaling and operations of Ray clusters deployed to Kubernetes.
 
-Some of the main features of Ray-Operator are:
+Some of the main features of the operator are:
 - Management of first-class RayClusters via a [custom resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-resources).
 - Support for hetergenous worker types in a single Ray cluster.
 - Built-in monitoring via Prometheus.
@@ -149,6 +149,7 @@ Currently, the controller runs in the ``ray-operator-system`` namespace. This wi
 $ kubectl get pods -n ray-operator-system
 NAME                                               READY   STATUS    RESTARTS   AGE
 ray-operator-controller-manager-66b9b97bcf-8l6lt   2/2     Running   0          30s
+
 $ kubectl get deployments -n ray-operator-system
 NAME                              READY   UP-TO-DATE   AVAILABLE   AGE
 ray-operator-controller-manager   1/1     1            1           44m
@@ -182,6 +183,7 @@ $ kubectl get pods
 NAME                                     READY   STATUS             RESTARTS   AGE
 raycluster-sample-head-group-head-0      1/1     Running            0          101s
 raycluster-sample-small-group-worker-0   1/1     Running            0          101s
+
 $ kubectl get services
 NAME                     TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
 kubernetes               ClusterIP   10.100.0.1      <none>        443/TCP    19d
