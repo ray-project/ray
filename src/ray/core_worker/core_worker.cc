@@ -198,7 +198,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         absl::MutexLock lock(&mutex_);
         to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
       },
-      /*lineage_pinning_enabled=*/true));
+      /*lineage_pinning_enabled=*/RayConfig::instance().lineage_pinning_enabled()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
