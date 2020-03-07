@@ -43,7 +43,6 @@ class Analysis:
             metric (str): Key for trial info to order on.
                 If None, uses last result.
             mode (str): One of [min, max].
-
         """
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
@@ -59,7 +58,6 @@ class Analysis:
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-
         """
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs()
@@ -73,7 +71,6 @@ class Analysis:
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-
         """
         df = self.dataframe(metric=metric, mode=mode)
         if mode == "max":
@@ -98,7 +95,7 @@ class Analysis:
     def get_all_configs(self, prefix=False):
         """Returns a list of all configurations.
 
-        Parameters:
+        Args:
             prefix (bool): If True, flattens the config dict
                 and prepends `config/`.
         """
@@ -120,32 +117,30 @@ class Analysis:
         return self._configs
 
     def get_trial_checkpoints_paths(self, trial, metric=TRAINING_ITERATION):
-        """Returns a list of [path, metric] lists for all disk checkpoints of
-         a trial.
+        """Gets paths and metrics of all persistent checkpoints of a trial.
 
-        Arguments:
-            trial(Trial): The log directory of a trial, or a trial instance.
+        Args:
+            trial (Trial): The log directory of a trial, or a trial instance.
             metric (str): key for trial info to return, e.g. "mean_accuracy".
                 "training_iteration" is used by default.
-        """
 
+        Returns:
+            A list of [path, metric] lists for all persistent checkpoints of
+            the trial.
+        """
         if isinstance(trial, str):
             trial_dir = os.path.expanduser(trial)
-
-            # get checkpoints from logdir
+            # Get checkpoints from logdir.
             chkpt_df = TrainableUtil.get_checkpoints_paths(trial_dir)
 
-            # join with trial dataframe to get metrics
+            # Join with trial dataframe to get metrics.
             trial_df = self.trial_dataframes[trial_dir]
             path_metric_df = chkpt_df.merge(
                 trial_df, on="training_iteration", how="inner")
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
-            # TODO(ujvl): Remove condition once the checkpoint manager is
-            #  modified to only track PERSISTENT checkpoints.
-            return [[c.value, c.result[metric]] for c in checkpoints
-                    if c.storage == Checkpoint.PERSISTENT]
+            return [[c.value, c.result[metric]] for c in checkpoints]
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
@@ -198,7 +193,8 @@ class ExperimentAnalysis(Analysis):
         """Initializer.
 
         Args:
-            experiment_path (str): Path to where experiment is located.
+            experiment_checkpoint_path (str): Path to where experiment is
+                located.
             trials (list|None): List of trials that can be accessed via
                 `analysis.trials`.
         """
