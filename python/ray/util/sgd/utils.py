@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 BATCH_COUNT = "batch_count"
 NUM_SAMPLES = "num_samples"
+BATCH_SIZE = "*batch_size"
 
 
 class TimerStat:
