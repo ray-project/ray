@@ -43,7 +43,8 @@ class _TrialGroup:
 
     def report(self, trial_id, score):
         assert trial_id in self._trials
-        assert score is not None, "Internal Error: Score cannot be None."
+		if score is None:
+           raise ValueError("Internal Error: Score cannot be None.")
         self._trials[trial_id] = score
 
     def finished_reporting(self):
