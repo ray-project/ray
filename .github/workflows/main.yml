@@ -1,7 +1,6 @@
 name: CI
 
 env:
-  LLVM_VERSION_WINDOWS: 9.0.0
   DEBIAN_FRONTEND: noninteractive
 
 on: [push, pull_request]
@@ -22,7 +21,7 @@ jobs:
             compiler: clang
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v1
+      uses: actions/checkout@v2
       with:
         fetch-depth: 1
     - name: Setup Bazel
@@ -47,11 +46,7 @@ jobs:
           --compilation_mode=fastbuild \
           --config=iwyu \
           --keep_going \
-          --show_progress_rate_limit=5 \
-          --show_task_finish \
-          --show_timestamps \
-          --verbose_failures \
-          "//:*"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
+          "//:*"
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -69,9 +64,7 @@ jobs:
             compiler: clang-cl
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v1
-      with:
-        fetch-depth: 1
+      uses: actions/checkout@v2
     - name: Setup Bazel
       shell: bash
       env:
@@ -95,8 +88,4 @@ jobs:
         . ./ci/travis/build-helper.sh prep_build_env
         bazel --batch build \
           --keep_going \
-          --show_progress_rate_limit=5 \
-          --show_task_finish \
-          --show_timestamps \
-          --verbose_failures \
-          "//:ray_pkg"
+          "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so

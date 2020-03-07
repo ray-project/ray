@@ -33,7 +33,7 @@ fi
 pip install --upgrade pip # setuptools cloudpickle urllib3
 
 # If we're in a CI environment, do some configuration
-if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
+if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
   pip config --user set global.disable-pip-version-check True
   pip config --user set global.no-color True
   pip config --user set global.progress_bar off
@@ -91,11 +91,14 @@ else
   exit 1
 fi
 
+# Install modules needed in all jobs.
+pip install dm-tree
+
 # Additional RLlib dependencies.
 if [[ "$RLLIB_TESTING" == "1" ]]; then
   pip install tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    gym[atari] atari_py smart_open lz4
+    atari_py gym[atari] lz4 smart_open
 fi
 
 # Additional streaming dependencies.

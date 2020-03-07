@@ -837,6 +837,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
@@ -1201,6 +1202,16 @@ filegroup(
 
 genrule(
     name = "redis",
+    srcs = [
+    ] + select({
+        # Windows is not supported yet, so make stubs for it
+        "@bazel_tools//src/conditions:windows": [
+            "@win-redis-bin//file",
+        ],
+        "//conditions:default": [
+            "@redis-src//file",
+        ],
+    }),
     outs = [
         "redis-server",
         "redis-cli",
@@ -1208,18 +1219,13 @@ genrule(
     cmd = select({
         # Windows is not supported yet, so make stubs for it
         "@bazel_tools//src/conditions:windows": """
-            set -eu
-            for f in $(OUTS); do
-                {
-                    echo '#!/usr/bin/env bash'
-                    echo 'echo "$${0##*/} is unsupported on this platform" 1>&2 && false'
-                } > "$$f"
-                chmod +x "$$f"
-            done
+            unzip -q -o -- $(location @win-redis-bin//file) redis-server.exe redis-cli.exe &&
+            mv -f -- redis-server.exe $(location redis-server) &&
+            mv -f -- redis-cli.exe    $(location redis-cli)
         """,
         "//conditions:default": """
             set -x &&
-            curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
+            tar -xzf $(location @redis-src//file) --strip-components=1 -C . &&
             make &&
             mv ./src/redis-server $(location redis-server) &&
             chmod +x $(location redis-server) &&
@@ -1304,7 +1310,18 @@ genrule(
     cmd = """
         set -x &&
         WORK_DIR="$$(pwd)" &&
-        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
+        RAYDIR="$$WORK_DIR/python/ray"
+        RAYLET="$(location python/ray/_raylet.so)"
+        RAYLET_TARGET_FILENAME="$${RAYLET##*/}" &&
+        if [ "$${OSTYPE-}" = "msys" ]; then
+            # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}" &&
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd" &&
+            if [ -f "$${RAYLET%.*}.pdb" ]; then
+                cp -f "$${RAYLET%.*}.pdb" "$${RAYDIR}";
+            fi;
+        fi &&
+        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&

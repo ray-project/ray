@@ -7,18 +7,15 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class WaitTest extends BaseTest {
 
-  @RayRemote
   private static String hi() {
     return "hi";
   }
 
-  @RayRemote
   private static String delayedHi() {
     try {
       Thread.sleep(100 * 1000);
@@ -50,7 +47,6 @@ public class WaitTest extends BaseTest {
     testWait();
   }
 
-  @RayRemote
   public static Object waitInWorker() {
     testWait();
     return null;

@@ -1,21 +1,29 @@
 Package Reference
 =================
 
-.. _ref-pytorch-trainer:
+.. _ref-torch-trainer:
 
-PyTorchTrainer
---------------
+TorchTrainer
+------------
 
-.. autoclass:: ray.util.sgd.pytorch.PyTorchTrainer
+.. autoclass:: ray.util.sgd.torch.TorchTrainer
     :members:
 
     .. automethod:: __init__
 
+.. _ref-torch-operator:
 
-PyTorchTrainable
-----------------
+PyTorch TrainingOperator
+------------------------
 
-.. autoclass:: ray.util.sgd.pytorch.PyTorchTrainable
+.. autoclass:: ray.util.sgd.torch.TrainingOperator
+    :members:
+
+
+TorchTrainable
+--------------
+
+.. autoclass:: ray.util.sgd.torch.TorchTrainable
     :members:
 
 TFTrainer
