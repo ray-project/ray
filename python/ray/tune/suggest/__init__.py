@@ -30,11 +30,6 @@ def SkOptSearch(*args, **kwargs):
         `from ray.tune.suggest.skopt import SkOptSearch`""")
 
 
-def DragonflySearch(*args, **kwargs):
-    raise DeprecationWarning("""This class has been moved. Please import via
-        `from ray.tune.suggest.dragonfly import DragonflySearch`""")
-
-
 def SigOptSearch(*args, **kwargs):
     raise DeprecationWarning("""This class has been moved. Please import via
         `from ray.tune.suggest.sigopt import SigOptSearch`""")

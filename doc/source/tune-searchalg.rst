@@ -170,7 +170,10 @@ This algorithm requires using the `Dragonfly ask and tell interface <https://dra
 
 .. code-block:: python
 
-    domain = ...
+    from dragonfly.opt.gp_bandit import EuclideanGPBandit
+    from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
+    from dragonfly import load_config
+    domain_config = load_config({'domain': ...})
     func_caller = EuclideanFunctionCaller(None, domain_config.domain.list_of_domains[0])
     optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
     algo = DragonflySearch(optimizer, ...)
