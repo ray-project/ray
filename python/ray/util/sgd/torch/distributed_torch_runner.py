@@ -7,24 +7,24 @@ import torch.distributed as dist
 import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel
 
-from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.util.sgd.torch.torch_runner import TorchRunner
 
 logger = logging.getLogger(__name__)
 
 
-class DistributedPyTorchRunner(PyTorchRunner):
+class DistributedTorchRunner(TorchRunner):
     """Manages a distributed PyTorch model replica.
 
 
     Args:
-        args: Arguments for PyTorchRunner.
+        args: Arguments for TorchRunner.
         backend (string): backend used by distributed PyTorch.
-        kwargs: Keyword arguments for PyTorchRunner.
+        kwargs: Keyword arguments for TorchRunner.
 
     """
 
     def __init__(self, *args, backend="gloo", **kwargs):
-        super(DistributedPyTorchRunner, self).__init__(*args, **kwargs)
+        super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
@@ -95,15 +95,22 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.validation_loader = torch.utils.data.DataLoader(
                 val_set, batch_size=self.batch_size, **self.dataloader_config)
 
-    def step(self):
+        self.training_operator = self.training_operator_cls(
+            self.config,
+            models=self.models,
+            optimizers=self.optimizers,
+            criterion=self.criterion,
+            schedulers=self.schedulers,
+            use_fp16=self.use_fp16)
+
+    def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        logger.debug("Starting step")
         if hasattr(self.train_loader.sampler, "set_epoch"):
-            self.train_loader.sampler.set_epoch(self.epoch)
-        return super(DistributedPyTorchRunner, self).step()
+            self.train_loader.sampler.set_epoch(self.epochs)
+        return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
     def _get_model_state_dicts(self):
         """Fetch state from ``model.module`` instead of ``model``.
@@ -125,7 +132,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
     # def shutdown(self):
         """Attempts to shut down the worker."""
-        # super(DistributedPyTorchRunner, self).shutdown()
+        # super(DistributedTorchRunner, self).shutdown()
         # TODO: Temporarily removing since it causes hangs on MacOSX.
         # However, it seems to be harmless to remove permanently
         # since the processes are shutdown anyways. This comment can be

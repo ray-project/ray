@@ -1,0 +1,16 @@
+diff --git cpp/src/plasma/dlmalloc.cc cpp/src/plasma/dlmalloc.cc
+--- cpp/src/plasma/dlmalloc.cc
++++ cpp/src/plasma/dlmalloc.cc
+@@ -76,5 +76,8 @@ int create_buffer(int64_t size) {
+-  if (!CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+-                         (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
+-                         (DWORD)(uint64_t)size, NULL)) {
++  HANDLE h = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
++                               (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
++                               (DWORD)(uint64_t)size, NULL);
++  if (h) {
++    fd = reinterpret_cast<int>(h);
++  } else {
+     fd = -1;
+   }
+-- 

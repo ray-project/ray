@@ -329,7 +329,8 @@ def start_ray_process(command,
                       use_tmux=False,
                       stdout_file=None,
                       stderr_file=None,
-                      pipe_stdin=False):
+                      pipe_stdin=False,
+                      fate_share=None):
     """Start one of the Ray processes.
 
     TODO(rkn): We need to figure out how these commands interact. For example,
@@ -358,6 +359,8 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
+        fate_share: If true, the child will be killed if its parent (us) dies.
+            Note that this functionality must be supported, or it is an error.
 
     Returns:
         Information about the process that was started including a handle to
@@ -439,12 +442,18 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
-    # Block sigint for spawned processes so they aren't killed by the SIGINT
-    # propagated from the shell on Ctrl-C so we can handle KeyboardInterrupts
-    # in interactive sessions. This is only supported in Python 3.3 and above.
-    def block_sigint():
+    if fate_share is None:
+        logger.warning("fate_share= should be passed to start_ray_process()")
+    if fate_share:
+        assert ray.utils.detect_fate_sharing_support(), (
+            "kernel-level fate-sharing must only be specified if "
+            "detect_fate_sharing_support() has returned True")
+
+    def preexec_fn():
         import signal
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        if fate_share and sys.platform.startswith("linux"):
+            ray.utils.set_kill_on_parent_death_linux()
 
     process = subprocess.Popen(
         command,
@@ -453,7 +462,10 @@ def start_ray_process(command,
         stdout=stdout_file,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=block_sigint)
+        preexec_fn=preexec_fn if sys.platform != "win32" else None)
+
+    if fate_share and sys.platform == "win32":
+        ray.utils.set_kill_child_on_death_win32(process)
 
     return ProcessInfo(
         process=process,
@@ -569,7 +581,7 @@ def check_version_info(redis_client):
             logger.warning(error_message)
 
 
-def start_reaper():
+def start_reaper(fate_share=None):
     """Start the reaper process.
 
     This is a lightweight process that simply
@@ -585,8 +597,9 @@ def start_reaper():
     # process that started us.
     try:
         os.setpgrp()
-    except OSError as e:
-        if e.errno == errno.EPERM and os.getpgrp() == os.getpid():
+    except (AttributeError, OSError) as e:
+        errcode = e.errno if isinstance(e, OSError) else None
+        if errcode == errno.EPERM and os.getpgrp() == os.getpid():
             # Nothing to do; we're already a session leader.
             pass
         else:
@@ -600,7 +613,10 @@ def start_reaper():
         os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
     process_info = start_ray_process(
-        command, ray_constants.PROCESS_TYPE_REAPER, pipe_stdin=True)
+        command,
+        ray_constants.PROCESS_TYPE_REAPER,
+        pipe_stdin=True,
+        fate_share=fate_share)
     return process_info
 
 
@@ -614,7 +630,8 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 use_credis=None,
-                include_java=False):
+                include_java=False,
+                fate_share=None):
     """Start the Redis global state store.
 
     Args:
@@ -698,7 +715,8 @@ def start_redis(node_ip_address,
         # primary Redis shard.
         redis_max_memory=None,
         stdout_file=redis_stdout_file,
-        stderr_file=redis_stderr_file)
+        stderr_file=redis_stderr_file,
+        fate_share=fate_share)
     processes.append(p)
     redis_address = address(node_ip_address, port)
 
@@ -750,7 +768,8 @@ def start_redis(node_ip_address,
             redis_max_clients=redis_max_clients,
             redis_max_memory=redis_max_memory,
             stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file)
+            stderr_file=redis_stderr_file,
+            fate_share=fate_share)
         processes.append(p)
 
         shard_address = address(node_ip_address, redis_shard_port)
@@ -803,7 +822,8 @@ def _start_redis_instance(executable,
                           stdout_file=None,
                           stderr_file=None,
                           password=None,
-                          redis_max_memory=None):
+                          redis_max_memory=None,
+                          fate_share=None):
     """Start a single Redis server.
 
     Notes:
@@ -869,7 +889,8 @@ def _start_redis_instance(executable,
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
             stdout_file=stdout_file,
-            stderr_file=stderr_file)
+            stderr_file=stderr_file,
+            fate_share=fate_share)
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
         # did not exit within 0.1 seconds).
@@ -942,7 +963,8 @@ def start_log_monitor(redis_address,
                       logs_dir,
                       stdout_file=None,
                       stderr_file=None,
-                      redis_password=None):
+                      redis_password=None,
+                      fate_share=None):
     """Start a log monitor process.
 
     Args:
@@ -970,14 +992,16 @@ def start_log_monitor(redis_address,
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
     return process_info
 
 
 def start_reporter(redis_address,
                    stdout_file=None,
                    stderr_file=None,
-                   redis_password=None):
+                   redis_password=None,
+                   fate_share=None):
     """Start a reporter process.
 
     Args:
@@ -1004,7 +1028,8 @@ def start_reporter(redis_address,
         command,
         ray_constants.PROCESS_TYPE_REPORTER,
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
     return process_info
 
 
@@ -1014,7 +1039,8 @@ def start_dashboard(require_webui,
                     temp_dir,
                     stdout_file=None,
                     stderr_file=None,
-                    redis_password=None):
+                    redis_password=None,
+                    fate_share=None):
     """Start a dashboard process.
 
     Args:
@@ -1077,7 +1103,8 @@ def start_dashboard(require_webui,
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
             stdout_file=stdout_file,
-            stderr_file=stderr_file)
+            stderr_file=stderr_file,
+            fate_share=fate_share)
 
         dashboard_url = "{}:{}".format(
             host if host != "0.0.0.0" else get_node_ip_address(), port)
@@ -1093,7 +1120,8 @@ def start_gcs_server(redis_address,
                      stdout_file=None,
                      stderr_file=None,
                      redis_password=None,
-                     config=None):
+                     config=None,
+                     fate_share=None):
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
@@ -1123,7 +1151,8 @@ def start_gcs_server(redis_address,
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
     return process_info
 
 
@@ -1146,7 +1175,8 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 use_pickle=False):
+                 use_pickle=False,
+                 fate_share=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1275,7 +1305,8 @@ def start_raylet(redis_address,
         use_valgrind_profiler=use_profiler,
         use_perftools_profiler=("RAYLET_PERFTOOLS_PATH" in os.environ),
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
 
     return process_info
 
@@ -1437,7 +1468,8 @@ def _start_plasma_store(plasma_store_memory,
                         stderr_file=None,
                         plasma_directory=None,
                         huge_pages=False,
-                        socket_name=None):
+                        socket_name=None,
+                        fate_share=None):
     """Start a plasma store process.
 
     Args:
@@ -1491,7 +1523,8 @@ def _start_plasma_store(plasma_store_memory,
         use_valgrind=use_valgrind,
         use_valgrind_profiler=use_profiler,
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
     return process_info
 
 
@@ -1500,7 +1533,8 @@ def start_plasma_store(resource_spec,
                        stderr_file=None,
                        plasma_directory=None,
                        huge_pages=False,
-                       plasma_store_socket_name=None):
+                       plasma_store_socket_name=None,
+                       fate_share=None):
     """This method starts an object store process.
 
     Args:
@@ -1541,7 +1575,8 @@ def start_plasma_store(resource_spec,
         stderr_file=stderr_file,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
-        socket_name=plasma_store_socket_name)
+        socket_name=plasma_store_socket_name,
+        fate_share=fate_share)
 
     return process_info
 
@@ -1553,7 +1588,8 @@ def start_worker(node_ip_address,
                  worker_path,
                  temp_dir,
                  stdout_file=None,
-                 stderr_file=None):
+                 stderr_file=None,
+                 fate_share=None):
     """This method starts a worker process.
 
     Args:
@@ -1584,7 +1620,8 @@ def start_worker(node_ip_address,
         command,
         ray_constants.PROCESS_TYPE_WORKER,
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
     return process_info
 
 
@@ -1592,7 +1629,8 @@ def start_monitor(redis_address,
                   stdout_file=None,
                   stderr_file=None,
                   autoscaling_config=None,
-                  redis_password=None):
+                  redis_password=None,
+                  fate_share=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1621,7 +1659,8 @@ def start_monitor(redis_address,
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
     return process_info
 
 
@@ -1629,7 +1668,8 @@ def start_raylet_monitor(redis_address,
                          stdout_file=None,
                          stderr_file=None,
                          redis_password=None,
-                         config=None):
+                         config=None,
+                         fate_share=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1661,5 +1701,6 @@ def start_raylet_monitor(redis_address,
         command,
         ray_constants.PROCESS_TYPE_RAYLET_MONITOR,
         stdout_file=stdout_file,
-        stderr_file=stderr_file)
+        stderr_file=stderr_file,
+        fate_share=fate_share)
     return process_info

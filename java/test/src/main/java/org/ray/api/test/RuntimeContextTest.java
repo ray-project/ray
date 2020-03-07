@@ -4,7 +4,6 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.testng.Assert;
@@ -47,7 +46,6 @@ public class RuntimeContextTest extends BaseTest {
         Ray.getRuntimeContext().getObjectStoreSocketName());
   }
 
-  @RayRemote
   public static class RuntimeContextTester {
 
     public String testRuntimeContext(ActorId actorId) {
@@ -64,7 +62,7 @@ public class RuntimeContextTest extends BaseTest {
   public void testRuntimeContextInActor() {
     RayActor<RuntimeContextTester> actor = Ray.createActor(RuntimeContextTester::new);
     Assert.assertEquals("ok",
-        Ray.call(RuntimeContextTester::testRuntimeContext, actor, actor.getId()).get());
+        actor.call(RuntimeContextTester::testRuntimeContext, actor.getId()).get());
   }
 
 }

@@ -270,8 +270,15 @@ class Worker:
                 "call 'put' on it (or return it).")
 
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id, pin_object=pin_object)
+        # This *must* be the first place that we construct this python
+        # ObjectID because an entry with 0 local references is created when
+        # the object is Put() in the core worker, expecting that this python
+        # reference will be created. If another reference is created and
+        # removed before this one, it will corrupt the state in the
+        # reference counter.
+        return ray.ObjectID(
+            self.core_worker.put_serialized_object(
+                serialized_value, object_id=object_id, pin_object=pin_object))
 
     def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
@@ -1641,6 +1648,29 @@ def wait(object_ids, num_returns=1, timeout=None):
         return ready_ids, remaining_ids
 
 
+def kill(actor):
+    """Kill an actor forcefully.
+
+    This will interrupt any running tasks on the actor, causing them to fail
+    immediately. Any atexit handlers installed in the actor will still be run.
+
+    If you want to kill the actor but let pending tasks finish,
+    you can call ``actor.__ray_terminate__.remote()`` instead to queue a
+    termination task.
+
+    If this actor is reconstructable, it will be attempted to be reconstructed.
+
+    Args:
+        actor (ActorHandle): Handle to the actor to kill.
+    """
+    if not isinstance(actor, ray.actor.ActorHandle):
+        raise ValueError("ray.kill() only supported for actors. "
+                         "Got: {}.".format(type(actor)))
+
+    worker = ray.worker.get_global_worker()
+    worker.core_worker.kill_actor(actor._ray_actor_id)
+
+
 def _mode(worker=global_worker):
     """This is a wrapper around worker.mode.
 
@@ -1775,7 +1805,7 @@ def remote(*args, **kwargs):
     Running remote actors will be terminated when the actor handle to them
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you want to kill them immediately, you can
-    also call ``actor_handle.__ray_kill__()``.
+    also call ``ray.kill(actor)``.
     """
     worker = get_global_worker()
 

@@ -259,6 +259,9 @@ class RayletClient : public WorkerLeaseInterface {
 
   ray::Status GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
+  // Subscribe to receive notification on plasma object
+  ray::Status SubscribeToPlasma(const ObjectID &object_id);
+
   WorkerID GetWorkerID() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
