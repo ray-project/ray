@@ -24,13 +24,11 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
-    ssh_private_key: /Users/rliaw/Research/ec2/clustercfgs/anyscale_cfgs/anyscale.pem
 
 
 head_node:
     InstanceType: p3dn.24xlarge
     ImageId: ami-0698bcaf8bd9ef56d
-    KeyName: anyscale
     InstanceMarketOptions:
         MarketType: spot
     BlockDeviceMappings:
@@ -44,7 +42,6 @@ head_node:
 worker_nodes:
     InstanceType: p3dn.24xlarge
     ImageId: ami-0698bcaf8bd9ef56d
-    KeyName: anyscale
     InstanceMarketOptions:
         MarketType: spot
     BlockDeviceMappings:
