@@ -5,7 +5,6 @@ import logging
 import multiprocessing
 import os
 import random
-import re
 import socket
 import subprocess
 import sys
@@ -61,9 +60,10 @@ RAYLET_EXECUTABLE = os.path.join(
 GCS_SERVER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "core/src/ray/gcs/gcs_server")
 
-DEFAULT_JAVA_WORKER_OPTIONS = "-classpath {}".format(
+DEFAULT_JAVA_WORKER_CLASSPATH = [
     os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"))
+        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
+]
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -102,8 +102,18 @@ def find_redis_address_or_die():
     for pid in pids:
         try:
             proc = psutil.Process(pid)
+            # HACK: Workaround for UNIX idiosyncrasy
+            # Normally, cmdline() is supposed to return the argument list.
+            # But it in some cases (such as when setproctitle is called),
+            # an arbitrary string resembling a command-line is stored in
+            # the first argument.
+            # Explanation: https://unix.stackexchange.com/a/432681
+            # More info: https://github.com/giampaolo/psutil/issues/1179
             for arglist in proc.cmdline():
+                # Given we're merely seeking --redis-address, we just split
+                # every argument on spaces for now.
                 for arg in arglist.split(" "):
+                    # TODO(ekl): Find a robust solution for locating Redis.
                     if arg.startswith("--redis-address="):
                         addr = arg.split("=")[1]
                         redis_addresses.add(addr)
@@ -1206,7 +1216,7 @@ def start_raylet(redis_address,
             override defaults in RayConfig.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
-        java_worker_options (str): The command options for Java worker.
+        java_worker_options (list): The command options for Java worker.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1236,10 +1246,9 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
-        java_worker_options = (java_worker_options
-                               or DEFAULT_JAVA_WORKER_OPTIONS)
+        default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
-            java_worker_options,
+            java_worker_options or ["-classpath", default_cp],
             redis_address,
             node_manager_port,
             plasma_store_name,
@@ -1248,23 +1257,20 @@ def start_raylet(redis_address,
             session_dir,
         )
     else:
-        java_worker_command = ""
+        java_worker_command = []
 
     # Create the command that the Raylet will use to start workers.
-    start_worker_command = ("{} {} "
-                            "--node-ip-address={} "
-                            "--node-manager-port={} "
-                            "--object-store-name={} "
-                            "--raylet-name={} "
-                            "--redis-address={} "
-                            "--config-list={} "
-                            "--temp-dir={}".format(
-                                sys.executable, worker_path, node_ip_address,
-                                node_manager_port, plasma_store_name,
-                                raylet_name, redis_address, config_str,
-                                temp_dir))
+    start_worker_command = [
+        sys.executable, worker_path,
+        "--node-ip-address={}".format(node_ip_address),
+        "--node-manager-port={}".format(node_manager_port),
+        "--object-store-name={}".format(plasma_store_name),
+        "--raylet-name={}".format(raylet_name),
+        "--redis-address={}".format(redis_address),
+        "--config-list={}".format(config_str), "--temp-dir={}".format(temp_dir)
+    ]
     if redis_password:
-        start_worker_command += " --redis-password {}".format(redis_password)
+        start_worker_command += ["--redis-password={}".format(redis_password)]
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1272,7 +1278,7 @@ def start_raylet(redis_address,
         object_manager_port = 0
 
     if load_code_from_local:
-        start_worker_command += " --load-code-from-local "
+        start_worker_command += ["--load-code-from-local"]
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1287,8 +1293,10 @@ def start_raylet(redis_address,
         "--maximum_startup_concurrency={}".format(maximum_startup_concurrency),
         "--static_resource_list={}".format(resource_argument),
         "--config_list={}".format(config_str),
-        "--python_worker_command={}".format(start_worker_command),
-        "--java_worker_command={}".format(java_worker_command),
+        "--python_worker_command={}".format(
+            subprocess.list2cmdline(start_worker_command)),
+        "--java_worker_command={}".format(
+            subprocess.list2cmdline(java_worker_command)),
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
@@ -1331,7 +1339,7 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        java_worker_options (str): The command options for Java worker.
+        java_worker_options (list): The command options for Java worker.
         redis_address (str): Redis address of GCS.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
@@ -1341,37 +1349,35 @@ def build_java_worker_command(
     Returns:
         The command string for starting Java worker.
     """
-    command = "java "
-
+    pairs = []
     if redis_address is not None:
-        command += "-Dray.redis.address={} ".format(redis_address)
-    command += "-Dray.raylet.node-manager-port={} ".format(node_manager_port)
+        pairs.append(("ray.redis.address", redis_address))
+    pairs.append(("ray.raylet.node-manager-port", node_manager_port))
 
     if plasma_store_name is not None:
-        command += (
-            "-Dray.object-store.socket-name={} ".format(plasma_store_name))
+        pairs.append(("ray.object-store.socket-name", plasma_store_name))
 
     if raylet_name is not None:
-        command += "-Dray.raylet.socket-name={} ".format(raylet_name)
+        pairs.append(("ray.raylet.socket-name", raylet_name))
 
     if redis_password is not None:
-        command += "-Dray.redis.password={} ".format(redis_password)
+        pairs.append(("ray.redis.password", redis_password))
 
-    command += "-Dray.home={} ".format(RAY_HOME)
-    command += "-Dray.log-dir={} ".format(os.path.join(session_dir, "logs"))
-    command += "-Dray.session-dir={}".format(session_dir)
-    command += ("-Dray.raylet.config.num_workers_per_process_java=" +
-                "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
+    pairs.append(("ray.home", RAY_HOME))
+    pairs.append(("ray.log-dir", os.path.join(session_dir, "logs")))
+    pairs.append(("ray.session-dir", session_dir))
+    pairs.append(("ray.raylet.config.num_workers_per_process_java",
+                  "RAY_WORKER_NUM_WORKERS_PLACEHOLDER"))
+
+    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    cp_sep = ":"
-    import platform
-    if platform.system() == "Windows":
-        cp_sep = ";"
     if java_worker_options is None:
-        java_worker_options = ""
-    options = re.split("\\s+", java_worker_options)
+        options = []
+    else:
+        assert isinstance(java_worker_options, (tuple, list))
+        options = list(java_worker_options)
     cp_index = -1
     for i in range(len(options)):
         option = options[i]
@@ -1379,16 +1385,15 @@ def build_java_worker_command(
             cp_index = i + 1
             break
     if cp_index != -1:
-        options[cp_index] = options[cp_index] + cp_sep + ray_jars
+        options[cp_index] = options[cp_index] + os.pathsep + ray_jars
     else:
         options = ["-cp", ray_jars] + options
-    java_worker_options = " ".join(options)
     # Put `java_worker_options` in the last, so it can overwrite the
     # above options.
-    command += java_worker_options + " "
+    command += options
 
-    command += "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0 "
-    command += "org.ray.runtime.runner.worker.DefaultWorker"
+    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0"]
+    command += ["org.ray.runtime.runner.worker.DefaultWorker"]
 
     return command
 

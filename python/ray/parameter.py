@@ -79,7 +79,7 @@ class RayParams:
         autoscaling_config: path to autoscaling config file.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
-        java_worker_options (str): The command options for Java worker.
+        java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
