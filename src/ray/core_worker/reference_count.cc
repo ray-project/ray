@@ -306,7 +306,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   if (it->second.CanDelete()) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
-    if (on_lineage_released_) {
+    if (on_lineage_released_ && it->second.owned_by_us) {
       std::vector<ObjectID> ids_to_release;
       on_lineage_released_(id, &ids_to_release);
       ReleaseLineageReferencesInternal(ids_to_release);

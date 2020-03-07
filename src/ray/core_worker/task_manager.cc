@@ -14,8 +14,6 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
                                  const rpc::Address &caller_address,
                                  const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
-  absl::MutexLock lock(&mu_);
-  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries)).second);
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
@@ -50,6 +48,9 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
                                        /*inner_ids=*/{}, caller_id, caller_address);
   }
+
+  absl::MutexLock lock(&mu_);
+  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries)).second);
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -74,7 +75,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
-  size_t num_direct_returns = 0;
+  std::vector<ObjectID> direct_return_ids;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -102,7 +103,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           RayObject(data_buffer, metadata_buffer,
                     IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
           object_id));
-      num_direct_returns++;
+      direct_return_ids.push_back(object_id);
     }
   }
 
@@ -118,18 +119,26 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (it->second.num_executions == 0) {
       // This is the first time that the task has finished. Release the lineage
       // for any non-plasma return IDs.
-      it->second.num_plasma_returns_in_scope -= num_direct_returns;
-      num_returns_to_release += num_direct_returns;
+      for (const auto &direct_return_id : direct_return_ids) {
+        RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
+                       << direct_return_id << ", now has "
+                       << it->second.plasma_returns_in_scope.size()
+                       << " plasma returns in scope";
+        if (it->second.plasma_returns_in_scope.erase(direct_return_id)) {
+          num_returns_to_release++;
+        }
+      }
     }
     it->second.num_executions++;
 
     if (!lineage_pinning_enabled_) {
       pending_tasks_.erase(it);
+      num_returns_to_release = 0;
     } else if (it->second.num_retries_left == 0) {
       // Erase the task.
-      num_returns_to_release += it->second.num_plasma_returns_in_scope;
+      num_returns_to_release += it->second.plasma_returns_in_scope.size();
       pending_tasks_.erase(it);
-    } else if (it->second.num_plasma_returns_in_scope == 0) {
+    } else if (it->second.plasma_returns_in_scope.empty()) {
       // Erase the task.
       pending_tasks_.erase(it);
     }
@@ -159,7 +168,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     if (num_retries_left == 0) {
-      num_plasma_returns_in_scope = it->second.num_plasma_returns_in_scope;
+      num_plasma_returns_in_scope = it->second.plasma_returns_in_scope.size();
       pending_tasks_.erase(it);
     } else {
       RAY_CHECK(it->second.num_retries_left > 0);
@@ -255,27 +264,30 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
   const TaskID &task_id = object_id.TaskId();
   auto it = pending_tasks_.find(task_id);
   if (it == pending_tasks_.end()) {
-    RAY_LOG(WARNING) << "Failed to find lineage for object " << object_id;
+    RAY_LOG(DEBUG) << "No lineage for object " << object_id;
     return;
   }
 
-  RAY_CHECK(it->second.num_plasma_returns_in_scope > 0);
-  it->second.num_plasma_returns_in_scope--;
+  if (it->second.plasma_returns_in_scope.erase(object_id)) {
+    RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope, task " << task_id
+                   << " now has " << it->second.plasma_returns_in_scope.size()
+                   << " plasma returns in scope";
 
-  // Decrement the lineage ref count for each of the task's args once.
-  for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
-    if (it->second.spec.ArgByRef(i)) {
-      for (size_t j = 0; j < it->second.spec.ArgIdCount(i); j++) {
-        released_objects->push_back(it->second.spec.ArgId(i, j));
+    // Decrement the lineage ref count for each of the task's args once.
+    for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
+      if (it->second.spec.ArgByRef(i)) {
+        for (size_t j = 0; j < it->second.spec.ArgIdCount(i); j++) {
+          released_objects->push_back(it->second.spec.ArgId(i, j));
+        }
+      } else {
+        const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
+        released_objects->insert(released_objects->end(), inlined_ids.begin(),
+                                 inlined_ids.end());
       }
-    } else {
-      const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
-      released_objects->insert(released_objects->end(), inlined_ids.begin(),
-                               inlined_ids.end());
     }
   }
 
-  if (it->second.num_plasma_returns_in_scope == 0 && it->second.num_executions > 0) {
+  if (it->second.plasma_returns_in_scope.empty() && it->second.num_executions > 0) {
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
     pending_tasks_.erase(it);

@@ -111,9 +111,13 @@ class TaskManager : public TaskFinisherInterface {
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg)
-        : spec(spec_arg),
-          num_retries_left(num_retries_left_arg),
-          num_plasma_returns_in_scope(spec.NumReturns()) {}
+        : spec(spec_arg), num_retries_left(num_retries_left_arg) {
+      const auto transport_type =
+          spec_arg.IsDirectCall() ? TaskTransportType::DIRECT : TaskTransportType::RAYLET;
+      for (size_t i = 0; i < spec.NumReturns(); i++) {
+        plasma_returns_in_scope.insert(spec.ReturnId(i, transport_type));
+      }
+    }
     // The task spec. This is pinned as long as the following are true:
     // - num_retries_left > 0. If this is not true, then this means that the
     //   task may be retried in the future.
@@ -130,12 +134,16 @@ class TaskManager : public TaskFinisherInterface {
     // to pin the task entry if the task is still pending but all of its return
     // IDs are out of scope.
     int num_executions = 0;
-    // Number of plasma objects returned by this task that are still in scope.
-    // This is set initially to the task's number of return objects. Once the
-    // task finishes its first execution, if the task may be retried in the
-    // future, then this is updated according to the number of values the task
-    // returned in plasma.
-    size_t num_plasma_returns_in_scope;
+    // Plasma objects returned by this task whose value is still needed. This
+    // is set initially to the task's return objects. Once the task finishes
+    // its first execution, then the objects that the task returned by value
+    // are removed from this set. Objects that the task returned through plasma
+    // are removed from this set once:
+    // 1) The language frontend no longer has a reference to the object ID.
+    // 2) There are no tasks that depend on the object. This includes both
+    //    pending tasks and tasks that finished execution but that may be
+    //    retried in the future.
+    absl::flat_hash_set<ObjectID> plasma_returns_in_scope;
   };
 
   void RemoveLineageReference(const ObjectID &object_id,
