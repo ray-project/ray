@@ -9,6 +9,8 @@
 import logging
 logging.getLogger("ray.util.sgd.torch.torch_runner").setLevel(logging.DEBUG)
 
+from ray.util.sgd.torch import TrainingOperator
+
 def model_creator(config):
     from model import Net
     res = Net()
@@ -66,6 +68,15 @@ def loss_creator(config):
     from torch.nn import MSELoss
     return MSELoss()
 
+class NICTrainingOperator(TrainingOperator):
+    def forward(self, features, target):
+        self.output = self.model(features)
+        loss = self.criterion(self.output, target)
+        return loss
+
+    def batch_interval_log(self, interval):
+        # caption="Batch {}".format(batch_idx)
+        self.logger.log_image("Output examples", self.output)
 
 from ray_sgd_additions import System
 
@@ -87,7 +98,8 @@ sys.create_trainer(
     model_creator,
     data_creator,
     optimizer_creator,
-    loss_creator)
+    loss_creator,
+    training_operator_cls=NICTrainingOperator)
 # todo: use torch.utils.data.Subset or equivalent instead of num_steps? that would
 # allow us to use its len() property
-sys.train()
+sys.train(num_steps=20)

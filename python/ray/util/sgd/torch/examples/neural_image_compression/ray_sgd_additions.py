@@ -1,6 +1,7 @@
 import time
 import argparse
 import sys
+import logging
 
 from tqdm import tqdm, trange
 
@@ -10,80 +11,113 @@ import ray
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
 
-class Namespace:
-    pass
+logger = logging.getLogger("rqtorch")
+
+class Namespace(dict):
+    def __init__(self):
+        pass
+
+    def __getattr__(self, attr):
+        if attr not in self:
+            raise AttributeError()
+
+        return self[attr]
+
+    def __setattr__(self, attr, value):
+        self[attr] = value
 
 _default_interval_names = ["log", "checkpoint", "backup"]
-class _TrainingOperator(TrainingOperator):
-    def setup(self, config):
-        sysconfig = config.system_config
-        self.logger = sysconfig.logging_cls(sysconfig)
+def _get_training_operator_cls(super_cls):
+    class _TrainingOperator(super_cls):
+        def setup(self, config):
+            self.myconfig = config.training_op_config
+            self.logger = self.myconfig.logging_cls(config)
 
-        if self.world_rank == 0:
-            self.batch_logs = Namespace()
-            self.batch_logs.packet_type = "batch_logs"
+            if self.world_rank == 0:
+                self.batch_logs = Namespace()
+                self.batch_logs.packet_type = "batch_logs"
 
-    def train_epoch(self, iterator, info):
-        self.sysinfo = info["_system_training_op_info"]
+            super().setup(self.myconfig.user_config)
 
-        if self.world_rank == 0:
-            tqdm_setup = Namespace()
-            tqdm_setup.packet_type = "tqdm_setup"
-            tqdm_setup.loader_len = len(self.train_loader)
+        # todo: this is kind of ugly
+        def batch_interval_log(self, interval):
+            if hasattr(super(), "batch_interval_log"):
+                return super().batch_interval_log(interval)
 
-            self.send_batch_logs(tqdm_setup)
+        # todo: this is kind of ugly
+        def batch_log(self):
+            if hasattr(super(), "batch_log"):
+                return super().batch_log(interval)
 
-        return super().train_epoch(iterator, info)
+            self.logger.log_object("Train loss", self.last_logs["loss"])
 
-    # todo: this is specific to neural compression and needs to be customizable
-    def forward(self, features, target):
-        self.output = self.model(features)
-        loss = self.criterion(self.output, target)
-        return loss
-
-    def train_batch(self, batch, batch_info):
-        # todo: still support user-defined training ops
-        logs = super().train_batch(batch, batch_info)
-
-        # todo: deal with log merging for workers
-        # todo: ideally we want to callback into the System instance somehow?
-        # seems to be impossible
-        # todo: this only supports synchronous training
-        if self.world_rank == 0:
-            batch_idx = batch_info["batch_idx"]
-            # todo: maybe do not recreate this function every time? is this expensive?
-            def run_intervals(intervals_key, f):
-                for (unit, duration) in self.sysinfo.intervals[intervals_key]:
-                    if unit != "b":
-                        continue
-                    if batch_idx - self.sysinfo.last_action_batches[intervals_key] < duration:
-                        continue
-
-                    f()
-                    self.sysinfo.last_action_batches[intervals_key] = batch_idx
-
-            def log_fn():
-                # todo: this is specific to neural compression and needs to be customizable
-                self.logger.log_image("Output examples", self.output) # caption="Batch {}".format(batch_idx)
-
-            run_intervals("log", log_fn)
-            run_intervals("checkpoint", lambda: print("Checkpoint mock executed"))
-            run_intervals("backup", lambda: print("Debug mock executed"))
-
-            # todo: allow custom pbar metrics
-            pbar_logs = {
-                k: logs[k] for k in ["loss"]
+        # todo: this is kind of ugly
+        def make_pbar_metrics(self):
+            res = {
+                k: self.last_logs[k] for k in ["loss"]
             }
+            if hasattr(super(), "make_pbar_metrics"):
+                return super().make_pbar_metrics(res)
+            return res
 
-            self.batch_logs.batch_idx = batch_idx
-            self.batch_logs.pbar_logs = pbar_logs
+        def train_epoch(self, iterator, info):
+            self.sysinfo = info["_system_training_op_info"]
 
-            self.send_batch_logs(self.batch_logs)
+            if self.world_rank == 0:
+                tqdm_setup = Namespace()
+                tqdm_setup.packet_type = "tqdm_setup"
+                tqdm_setup.loader_len = len(self.train_loader)
 
-            self.logger.log_object("Train loss", logs["loss"])
-            self.logger.commit_batch()
+                # todo: we need a proper way to wait here for the pbar to finish initing
+                self.send_batch_logs(tqdm_setup)
+                time.sleep(.4)
 
-        return logs
+            return super().train_epoch(iterator, info)
+
+        def train_batch(self, batch, batch_info):
+            self.last_logs = super().train_batch(batch, batch_info)
+
+            # todo: this only supports synchronous training
+            if self.world_rank == 0:
+                batch_idx = batch_info["batch_idx"]
+                # todo: maybe do not recreate this function every time? is this expensive?
+                def run_intervals(intervals_key, f):
+                    for interval in self.sysinfo.intervals[intervals_key]:
+                        unit, duration = interval
+
+                        if unit != "b":
+                            continue
+                        if batch_idx - self.sysinfo.last_action_batches[intervals_key] < duration:
+                            continue
+
+                        f(interval)
+                        self.sysinfo.last_action_batches[intervals_key] = batch_idx
+
+                run_intervals("log", self.batch_interval_log)
+                run_intervals("checkpoint", lambda interval: print("Checkpoint mock executed"))
+                run_intervals("backup", lambda interval: print("Debug mock executed"))
+
+                pbar_logs = self.make_pbar_metrics()
+
+                self.batch_logs.batch_idx = batch_idx
+                self.batch_logs.pbar_logs = pbar_logs
+
+                self.send_batch_logs(self.batch_logs)
+
+                self.batch_log()
+                self.logger.commit_batch()
+
+            return self.last_logs
+    return _TrainingOperator
+
+    def state_dict(self):
+        super_state = super().state_dict()
+        return {
+            "super_state": super_state
+        }
+
+    def load_state_dict(self, state_dict):
+        super().load_state_dict(state_dict["super_state"])
 
 class System():
     def __init__(self):
@@ -114,13 +148,19 @@ class System():
         last_action_epochs = {}
 
         if not self.args.restart:
-            # todo: load checkpoint + training state + interval states
-            print("Load checkpoint mock executed")
+            try:
+                self.trainer.restore("checkpoint_last.pth")
+            except FileNotFoundError:
+                # todo: check checkpoint_best.pth
+                logger.warning("Last checkpoint not found, restarting training.")
+                pass
+            # todo: load interval states
 
-        # todo: add debug flag for debugging backups too?
+        # todo: add a debug flag for debugging backups too?
         # or debug when debugging checkpoints?
         if self.args.debug_checkpoint:
-            print("Checkpoint mock executed")
+            logger.info("--debug-checkpoint is set, saving a checkpoint then quitting.")
+            self.trainer.save("checkpoint_last.pth")
             return
 
         # todo: is this a large performance impact? if so switch
@@ -129,18 +169,19 @@ class System():
         for k in self.intervals:
             if not k in last_action_times:
                 last_action_times[k] = cur_time
-                # we run actions after epochs, so the last epoch we ran the
+                # we run actions after every epochs, so the last epoch we ran the
                 # action after was -1
                 last_action_epochs[k] = -1
 
-        logged_once = False
         epoch_start = cur_time
-        # todo: show a second progress bar for epochs
         iterator = trange(
             self.args.num_epochs,
-            unit='epoch')
+            unit="epoch")
+
         for epoch_idx in iterator:
             # todo: load checkpoints from mid-epoch properly
+            #       we actually don't checkpoint mid-epoch currently
+            #       but might have to address this later
             training_op_info = Namespace()
             training_op_info.intervals = self.intervals
             training_op_info.args = self.args
@@ -152,6 +193,7 @@ class System():
                     # action after was -1
                     training_op_info.last_action_batches[k] = -1
 
+            # todo: info is not user-space currently, fix this after it is
             info = dict(_system_training_op_info=training_op_info)
             if "info" in kwargs:
                 info.update(kwargs["info"])
@@ -189,19 +231,17 @@ class System():
                                            # is ever removed
                     batch_pbar.set_postfix(packet.pbar_logs)
 
+
             kwargs["batch_logs_handler"] = handle_head_packet
             logs = self.trainer.train(*args, **kwargs)
 
 
-
+            # todo: make this customizable
             pbar_logs = {
                 "loss": logs["mean_train_loss"]
             }
             iterator.set_postfix(pbar_logs)
 
-            # todo: only the first worker's version is returned
-            # myinfo = logs["_system_training_op_info"]
-            # we can retrieve things too
 
             epoch_end = time.monotonic()
             epoch_time = epoch_end - epoch_start
@@ -219,23 +259,21 @@ class System():
                         last_action_epochs[intervals_key] = i
                         continue
 
-            # todo: use better logging?
+            # todo: make this customizable
             def log():
                 print(logs)
-                logged_once = True
             run_intervals("log", lambda: log)
             run_intervals("checkpoint", lambda: print("Checkpoint mock executed"))
             run_intervals("backup", lambda: print("Debug mock executed"))
 
-            if not logged_once:
-                # always log the very first epoch
-                # log()
-                pass
-
             if self.args.debug_epoch:
+                logger.info("--debug-epoch is set, quitting after one epoch.")
                 break
 
-    # todo: warn if initing ray with single worker?
+        # todo: should we always checkpoint after training?
+        self.trainer.save("checkpoint_last.pth")
+
+    # todo: this has to be called
     def init_ray(self, **kwargs):
         params = self._ray_params.copy()
         params.update(kwargs)
@@ -249,25 +287,31 @@ class System():
             optimizer_creator,
             loss_creator,
             **kwargs):
-        system_config = Namespace()
+        training_op_config = Namespace()
 
         from ml_logging import WandbLogger, Logger
-        system_config.logging_cls = Logger
+        training_op_config.user_config = self.config
+        training_op_config.logging_cls = Logger
 
         trainer_config = Namespace()
         trainer_config.user_config = self.config
-        trainer_config.system_config = system_config
-
-        self._trainer_params["config"] = trainer_config
-        self._trainer_params["training_operator_cls"] = _TrainingOperator
+        trainer_config.training_op_config = training_op_config
 
         params = self._trainer_params.copy()
+        params["config"] = trainer_config
         params.update(kwargs)
+        params["training_operator_cls"] = _get_training_operator_cls(kwargs.get("training_operator_cls", TrainingOperator))
+
+        # todo: call this on dataset creation?
+        if self.args.debug_batch:
+            logger.info("--debug-batch is set, will subset the dataset to the first element only.")
 
         # todo: use subset in runner too?
         def possibly_truncated_data_creator(config):
             res = data_creator(config)
-            if self.args.debug_batch: # fixme: some modes might not even have this option
+            # todo: some modes might not even have this option. will they even create a datset then though?
+            #       watch use cases
+            if self.args.debug_batch:
                 res = Subset(res, [0])
             return res
 
@@ -290,7 +334,7 @@ class System():
         if self.args.mode == "train":
             self._trainer_params["num_replicas"] = self.args.number_of_workers
             # todo: we cannot require GPU for now, that would require changing
-            # TorchTrainer
+            # TorchTrainer (there is a todo)
             self._trainer_params["use_gpu"] = not self.args.no_gpu
             # will be divided by num of workers in trainer
             self._trainer_params["batch_size"] = self.args.total_batch_size
@@ -394,7 +438,7 @@ class System():
             default=False,
             help="Quit after a single epoch for debugging purposes.")
 
-        # todo: support batch size per worker?
+        # todo: support batch size per worker? maybe, but as an advanced options
         p.add_argument(
             "-b",
             "--total-batch-size",
@@ -436,14 +480,14 @@ class System():
             action="append",
             help="Time to wait between logging to console. Can be specified multiple times. Format: <number><unit>, where unit is \"h\" for hours, \"m\" for minutes, \"s\" for seconds, \"e\" for epochs, and \"b\" for minibatches.")
         # todo: fix the help message
-        # todo: default too low for real training?
         p.add_argument(
             "--checkpoint-interval",
             metavar='INTERVAL',
             type=str,
-            default=["5m"],
+            default=["5m"], # we only keep latest and best so who cares
             action="append",
             help="Time to wait between saving checkpoints. Can be specified multiple times.")
+        # todo: default too low for real training?
         p.add_argument(
             "--backup-interval",
             metavar='INTERVAL',

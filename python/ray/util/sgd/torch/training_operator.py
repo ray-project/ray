@@ -101,8 +101,11 @@ class TrainingOperator:
         return self._send_batch_logs(data)
 
     def _send_batch_logs(self, data, done=False):
-        if not done and time.monotonic() - _last_batch_logs_send < .2:
+        cur_time = time.monotonic()
+        if not done and cur_time - self._last_batch_logs_send < .2:
             return
+
+        self._last_batch_logs_send = cur_time
         return ray.get(self._batch_logs_reporter._send.remote(data, done))
 
     def setup(self, config):
@@ -135,6 +138,7 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
+        self._last_batch_logs_send = 0
         self._losses = AverageMeter()
 
         self.model.train()

@@ -377,8 +377,7 @@ class TorchTrainer:
                         batch_logs_handler(log_read["data"])
 
                     unfinished_worker_idxs.append(log_read["world_rank"])
-
-            ray.get(unfinished) # and ignore all the dones
+            assert len(unfinished_worker_idxs) == 0
 
             return True, worker_trains
         except RayActorError as exc:
