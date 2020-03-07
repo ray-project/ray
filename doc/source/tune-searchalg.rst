@@ -144,7 +144,7 @@ In order to use this search algorithm, you will need to install Scikit-Optimize 
 
     $ pip install scikit-optimize
 
-This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/notebooks/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows:
+This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/notebooks/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows: 
 
 .. code-block:: python
 
@@ -154,6 +154,30 @@ This algorithm requires using the `Scikit-Optimize ask and tell interface <https
 An example of this can be found in `skopt_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/skopt_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
+    :show-inheritance:
+    :noindex:
+
+Dragonfly Search
+----------------
+
+The ``DragonflySearch`` is a SearchAlgorithm that is backed by `Dragonfly <https://github.com/dragonfly/dragonfly>`__ to perform sequential Bayesian optimization. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using DragonflySearch.
+
+.. code-block:: bash
+
+    $ pip install dragonfly
+
+This algorithm requires using the `Dragonfly ask and tell interface <https://dragonfly-opt.readthedocs.io/en/master/getting_started_ask_tell/>`__. This interface requires using FunctionCallers and optimizers provided by Dragonfly. You can use `DragonflySearch` like follows:
+
+.. code-block:: python
+
+    domain = ...
+    func_caller = EuclideanFunctionCaller(None, domain_config.domain.list_of_domains[0])
+    optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
+    algo = DragonflySearch(optimizer, ...)
+
+An example of this can be found in `dragonfly_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/dragonfly_example.py>`__.
+
+.. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
     :show-inheritance:
     :noindex:
 

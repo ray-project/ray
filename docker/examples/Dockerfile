@@ -14,6 +14,6 @@ RUN pip install -U h5py  # Mutes FutureWarnings
 RUN pip install --upgrade bayesian-optimization
 RUN pip install --upgrade hyperopt==0.1.2
 RUN pip install ConfigSpace==0.4.10
-RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost torch torchvision tensorboardX
+RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost torch torchvision tensorboardX dragonfly
 RUN pip install -U tabulate mlflow
 RUN pip install -U pytest-remotedata>=0.3.1
