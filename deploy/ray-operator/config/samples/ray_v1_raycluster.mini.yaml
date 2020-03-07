@@ -10,7 +10,7 @@ spec:
   clusterName: raycluster-sample
   images:
     defaultImage: rayproject/autoscaler
-    # imagePullPolicy: "Always"
+  imagePullPolicy: "Always"
 
   extensions:
     # the pod replicas in this group typed worker
