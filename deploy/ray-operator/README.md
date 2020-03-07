@@ -136,7 +136,7 @@ Refer to [raycluster_types.go](api/v1alpha1/raycluster_types.go) and [ray.io_ray
 
 ### Deploying the controller
 
-Build the controller config and apply it to the cluster:
+First, modify the controller config to use the image you build. Replace "controller" in config/manager/kustomization.yaml with the name of your image. Then, build the controller config and apply it to the cluster:
 
 ```shell script
 kubectl kustomize config/default | kubectl apply -f -
