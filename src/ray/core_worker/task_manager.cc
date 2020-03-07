@@ -129,6 +129,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         }
       }
     }
+    RAY_LOG(DEBUG) << "Task " << it->first << " now has "
+                   << it->second.plasma_returns_in_scope.size()
+                   << " plasma returns in scope";
     it->second.num_executions++;
 
     if (!lineage_pinning_enabled_) {
@@ -268,9 +271,13 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
     return;
   }
 
+  RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
+  for (const auto &plasma_id : it->second.plasma_returns_in_scope) {
+    RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
+  }
   if (it->second.plasma_returns_in_scope.erase(object_id)) {
-    RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope, task " << task_id
-                   << " now has " << it->second.plasma_returns_in_scope.size()
+    RAY_LOG(DEBUG) << "Task " << task_id << " now has "
+                   << it->second.plasma_returns_in_scope.size()
                    << " plasma returns in scope";
 
     // Decrement the lineage ref count for each of the task's args once.

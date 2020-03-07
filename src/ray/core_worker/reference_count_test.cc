@@ -1675,6 +1675,32 @@ TEST_F(ReferenceCountTest, TestBasicLineage) {
         lineage_deleted.push_back(object_id);
       });
 
+  // We should not keep lineage for borrowed objects.
+  rc->AddLocalReference(id);
+  ASSERT_TRUE(rc->HasReference(id));
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_TRUE(lineage_deleted.empty());
+
+  // We should keep lineage for owned objects.
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address());
+  rc->AddLocalReference(id);
+  ASSERT_TRUE(rc->HasReference(id));
+  rc->RemoveLocalReference(id, nullptr);
+  ASSERT_EQ(lineage_deleted.size(), 1);
+}
+
+TEST_F(ReferenceCountTest, TestPinLineage) {
+  std::vector<ObjectID> out;
+  std::vector<ObjectID> lineage_deleted;
+
+  ObjectID id = ObjectID::FromRandom();
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address());
+
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+      });
+
   // Local references.
   rc->AddLocalReference(id);
   ASSERT_TRUE(rc->HasReference(id));
@@ -1700,43 +1726,56 @@ TEST_F(ReferenceCountTest, TestBasicLineage) {
   ASSERT_EQ(lineage_deleted.size(), 1);
 }
 
-TEST_F(ReferenceCountTest, TestRecursiveLineage) {
+TEST_F(ReferenceCountTest, TestPinLineageRecursive) {
   std::vector<ObjectID> out;
   std::vector<ObjectID> lineage_deleted;
 
-  ObjectID id = ObjectID::FromRandom();
-  ObjectID downstream_id = ObjectID::FromRandom();
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 3; i++) {
+    ObjectID id = ObjectID::FromRandom();
+    ids.push_back(id);
+    rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address());
+  }
 
   rc->SetReleaseLineageCallback(
       [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         // Simulate releasing objects in downstream_id's lineage.
-        if (object_id == downstream_id) {
-          ids_to_release->push_back(id);
+        size_t i = 0;
+        for (; i < ids.size(); i++) {
+          if (ids[i] == object_id) {
+            break;
+          }
+        }
+        RAY_CHECK(i < ids.size());
+        if (i > 0) {
+          ids_to_release->push_back(ids[i - 1]);
         }
       });
 
-  // Submit a dependent task on id.
-  rc->AddLocalReference(id);
-  ASSERT_TRUE(rc->HasReference(id));
-  rc->UpdateSubmittedTaskReferences({id}, 1);
-  rc->AddLocalReference(downstream_id);
-  rc->RemoveLocalReference(id, nullptr);
-  ASSERT_TRUE(rc->HasReference(id));
+  for (size_t i = 0; i < ids.size() - 1; i++) {
+    auto id = ids[i];
+    // Submit a dependent task on id.
+    rc->AddLocalReference(id);
+    ASSERT_TRUE(rc->HasReference(id));
+    rc->UpdateSubmittedTaskReferences({id}, 1);
+    rc->RemoveLocalReference(id, nullptr);
 
-  // The task finishes but is retryable.
-  rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
-  ASSERT_EQ(out.size(), 1);
-  ASSERT_TRUE(rc->HasReference(id));
+    // The task finishes but is retryable.
+    rc->UpdateFinishedTaskReferences({id}, 0, empty_borrower, empty_refs, &out);
+    ASSERT_EQ(out.size(), 1);
+    out.clear();
+    ASSERT_TRUE(lineage_deleted.empty());
+    ASSERT_TRUE(rc->HasReference(id));
+  }
 
   // The task return ID goes out of scope.
-  ASSERT_TRUE(lineage_deleted.empty());
-  rc->RemoveLocalReference(downstream_id, &out);
-  // The removal of the return ID should have recursively deleted id also.
-  ASSERT_EQ(out.size(), 2);
-  ASSERT_EQ(lineage_deleted.size(), 2);
-  ASSERT_FALSE(rc->HasReference(id));
-  ASSERT_FALSE(rc->HasReference(downstream_id));
+  rc->AddLocalReference(ids.back());
+  rc->RemoveLocalReference(ids.back(), nullptr);
+  // The removal of the last return ID should recursively delete all
+  // references.
+  ASSERT_EQ(lineage_deleted.size(), ids.size());
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
 }
 
 }  // namespace ray

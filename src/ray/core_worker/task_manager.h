@@ -112,10 +112,8 @@ class TaskManager : public TaskFinisherInterface {
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
-      const auto transport_type =
-          spec_arg.IsDirectCall() ? TaskTransportType::DIRECT : TaskTransportType::RAYLET;
       for (size_t i = 0; i < spec.NumReturns(); i++) {
-        plasma_returns_in_scope.insert(spec.ReturnId(i, transport_type));
+        plasma_returns_in_scope.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
       }
     }
     // The task spec. This is pinned as long as the following are true:
