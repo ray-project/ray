@@ -120,7 +120,7 @@ class Policy(metaclass=ABCMeta):
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
-            clip_actions (bool): should the action be clipped
+            clip_actions (bool): Should actions be clipped?
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
