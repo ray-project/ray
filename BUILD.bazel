@@ -892,10 +892,7 @@ cc_library(
 
 alias(
     name = "hiredis",
-    actual = select({
-        # "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis//:hiredis",
-        "//conditions:default": "@com_github_antirez_redis//:hiredis",
-    }),
+    actual = "@com_github_antirez_redis//:hiredis",
 )
 
 cc_library(

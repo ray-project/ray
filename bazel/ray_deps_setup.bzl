@@ -89,20 +89,6 @@ def ray_deps_setup():
         ],
     )
 
-    auto_http_archive(
-        name = "com_github_tporadowski_redis",
-        build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/tporadowski/redis/archive/v4.0.14.2.tar.gz",
-        sha256 = "a7630e62c1491d452319e92f6001ace5e4c761c975b2a89298ef7aa8c3de9b09",
-        patches = [
-            "//thirdparty/patches:redis-windows-allocator.patch",
-            "//thirdparty/patches:redis-windows-fdapi.patch",
-            "//thirdparty/patches:redis-windows-for-each.patch",
-            "//thirdparty/patches:redis-windows-time.patch",
-            "//thirdparty/patches:redis-windows-zalloc.patch",
-        ],
-    )
-
     http_file(
         name = "com_github_tporadowski_redis_bin",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",

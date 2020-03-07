@@ -18,32 +18,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name = "liblua",
-    srcs = glob(
-        [
-            "deps/lua/src/*.c",
-            "deps/lua/src/*.h",
-        ],
-        exclude =
-        [
-            "deps/lua/src/luac.c",
-        ],
-    ) + [
-        "src/solarisfixes.h",
-    ],
-    hdrs = glob([
-        "deps/lua/src/*.h",
-    ]),
-    local_defines = [
-        "ENABLE_CJSON_GLOBAL",
-        "LUA_ANSI",
-    ],
-    copts = COPTS,
-    strip_include_prefix = "deps/lua/src",
-    visibility = ["//visibility:public"],
-)
-
 # This library is for internal hiredis use, because hiredis assumes a
 # different include prefix for itself than external libraries do.
 cc_library(
@@ -53,88 +27,6 @@ cc_library(
     ],
     copts = COPTS,
     strip_include_prefix = "deps/hiredis",
-)
-
-cc_library(
-    name = "_ae",
-    hdrs = [
-        "src/ae_select.c",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": glob([
-            "src/ae_wsiocp.c",
-        ]),
-        "@bazel_tools//src/conditions:darwin": glob([
-            "src/ae_kqueue.c",
-        ]),
-        "@bazel_tools//src/conditions:linux_x86_64": glob([
-            "src/ae_epoll.c",
-        ]),
-        "//conditions:default": glob([
-        ]),
-    }),
-    copts = COPTS,
-)
-
-cc_library(
-    name = "libredis",
-    srcs = [
-        "src/adlist.c",
-        "src/ae.c",
-    ] + glob([
-        "src/*.h",
-    ]) + select({
-        "@bazel_tools//src/conditions:windows": glob(
-            [
-                "src/Win32_Interop/*.c",
-                "src/Win32_Interop/*.cpp",
-                "src/Win32_Interop/*.h",
-            ],
-            exclude =
-            [
-                "src/Win32_Interop/Win32_QFork.cpp",
-                "src/Win32_Interop/Win32_QFork_impl.c",
-                "src/Win32_Interop/Win32_StackTrace.cpp",
-            ],
-        ),
-        "//conditions:default": [
-            "src/zmalloc.c",
-        ],
-    }),
-    hdrs = select({
-        "@bazel_tools//src/conditions:windows": glob([
-            "src/Win32_Interop/*.h",
-        ]),
-        "//conditions:default": [
-        ],
-    }),
-    deps = [
-        ":_ae",
-        ":liblua",
-        "@//:platform_shims",
-    ],
-    local_defines = select({
-        "@bazel_tools//src/conditions:windows": [
-            "O_RDONLY=_O_RDONLY",
-            "O_WRONLY=_O_WRONLY",
-            "O_RDWR=_O_RDWR",
-            "O_APPEND=_O_APPEND",
-            "O_CREAT=_O_CREAT",
-            "O_TRUNC=_O_TRUNC",
-            "O_EXCL=_O_EXCL",
-        ],
-        "//conditions:default": [
-        ],
-    }),
-    copts = COPTS,
-    linkopts = select({
-        "@bazel_tools//src/conditions:windows": [
-            "/DefaultLib:user32.lib",
-            "/DefaultLib:shell32.lib",
-        ],
-        "//conditions:default": [
-        ],
-    }),
-    strip_include_prefix = "src",
 )
 
 cc_library(
@@ -158,7 +50,6 @@ cc_library(
     strip_include_prefix = "deps",
     deps = [
         ":_hiredis",
-        ":libredis",
         "@//:platform_shims",
     ],
     visibility = ["//visibility:public"],
