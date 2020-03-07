@@ -14,7 +14,8 @@ from ray.util.sgd.torch import TorchTrainer, TorchTrainable
 from ray.util.sgd.torch.training_operator import (_TestingOperator,
                                                   _TestMetricsOperator)
 from ray.util.sgd.torch.constants import SCHEDULER_STEP
-from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_COUNT
+from ray.util.sgd.utils import (check_for_failure, NUM_SAMPLES, BATCH_COUNT,
+                                BATCH_SIZE)
 
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
@@ -246,6 +247,61 @@ def test_profiling(ray_start_2_cpus):  # noqa: F811
     stats = trainer.validate(profile=True)
     assert "profile" in stats
     trainer.shutdown()
+
+
+def test_split_batch(ray_start_2_cpus):
+    if not dist.is_available():
+        return
+
+    def data_creator(config):
+        """Returns training dataloader, validation dataloader."""
+        train_dataset = LinearDataset(2, 5, size=config["data_size"])
+        return torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=config[BATCH_SIZE],
+        )
+
+    data_size = 600
+    batch_size = 21
+
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=2,
+        config={
+            BATCH_SIZE: batch_size,
+            "data_size": data_size,
+        })
+    stats = trainer.train()
+    assert trainer.config[BATCH_SIZE] == (batch_size - 1)
+    assert stats[NUM_SAMPLES] == 600
+    assert stats[BATCH_COUNT] == (data_size // 20)
+
+
+def test_reduce_result(ray_start_2_cpus):
+    if not dist.is_available():
+        return
+
+    def data_creator(config):
+        """Returns training dataloader, validation dataloader."""
+        train_dataset = LinearDataset(2, 5, size=config["data_size"])
+        return torch.utils.data.DataLoader(train_dataset, batch_size=1)
+
+    data_size = 600
+
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=2,
+        config={"data_size": data_size})
+    list_stats = trainer.train(reduce_results=False, profile=True)
+    assert len(list_stats) == 2
+    assert [stats[NUM_SAMPLES] == data_size for stats in list_stats]
+    assert [stats[BATCH_COUNT] == (data_size // 2) for stats in list_stats]
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])

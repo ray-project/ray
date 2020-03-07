@@ -188,19 +188,20 @@ class TorchTrainer:
         self._start_workers(self.max_replicas)
 
     def _configure_and_split_batch(self, num_workers):
+        """If sgd.utils.BATCH_SIZE is provided, split among workers."""
         if BATCH_SIZE not in self.config:
             return
         # Compute batch size per worker
-        logger.debug("BATCH_SIZE parameter detected - splitting properly.")
+        logger.debug("BATCH_SIZE parameter detected. Splitting among workers.")
         batch_size = self.config[BATCH_SIZE]
         batch_size_per_worker = batch_size // num_workers
-        if self.batch_size % num_workers > 0:
+        if batch_size % num_workers > 0:
             new_batch_size = batch_size_per_worker * num_workers
             logger.warning(
                 ("Changing batch size from {old_batch_size} to "
                  "{new_batch_size} to evenly distribute batches across "
                  "{num_workers} workers.").format(
-                     old_batch_size=self.batch_size,
+                     old_batch_size=batch_size,
                      new_batch_size=new_batch_size,
                      num_workers=num_workers))
             self.config[BATCH_SIZE] = new_batch_size
@@ -208,10 +209,10 @@ class TorchTrainer:
 
     def _start_workers(self, num_workers):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
-        config = self.config.copy()
+        worker_config = self.config.copy()
         batch_size_per_worker = self._configure_and_split_batch(num_workers)
         if batch_size_per_worker:
-            config[BATCH_SIZE] = batch_size_per_worker
+            worker_config[BATCH_SIZE] = batch_size_per_worker
         if num_workers == 1:
             # Generate actor class
             Runner = ray.remote(
@@ -225,7 +226,7 @@ class TorchTrainer:
                     loss_creator=self.loss_creator,
                     scheduler_creator=self.scheduler_creator,
                     training_operator_cls=self.training_operator_cls,
-                    config=config,
+                    config=worker_config,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
                     scheduler_step_freq=self.scheduler_step_freq,
@@ -249,7 +250,7 @@ class TorchTrainer:
                     scheduler_creator=self.scheduler_creator,
                     backend=self.backend,
                     training_operator_cls=self.training_operator_cls,
-                    config=config,
+                    config=worker_config,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
                     scheduler_step_freq=self.scheduler_step_freq)
@@ -304,9 +305,11 @@ class TorchTrainer:
                 operator for ``train_epoch`` and ``train_batch``.
 
         Returns:
-            A dictionary of metrics for training.
+            (dict | list) A dictionary of metrics for training.
                 You can provide custom metrics by passing in a custom
-                ``training_operator_cls``.
+                ``training_operator_cls``. If ``reduce_results=False``,
+                this will return a list of metric dictionaries whose
+                length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
         if max_retries:
