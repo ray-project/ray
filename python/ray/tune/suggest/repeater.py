@@ -68,7 +68,7 @@ class Repeater(SuggestionAlgorithm):
             will only see 1 trial among multiple repeated trials.
             The result/metric passed to the SearchAlgorithm upon
             trial completion will be averaged among all repeats.
-        num_repeat (int): Number of times to generate a trial with a repeated
+        repeat (int): Number of times to generate a trial with a repeated
             configuration. Defaults to 1.
         set_index (bool): Sets a tune.suggest.repeater.TRIAL_INDEX in
             Trainable/Function config which corresponds to the index of the
