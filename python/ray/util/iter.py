@@ -422,7 +422,8 @@ class ParallelIterator(Generic[T]):
 
         Arguments:
             async_queue_depth (int): The max number of async requests in flight
-                per actor.
+                per actor. Increasing this improves the amount of pipeline
+                parallelism in the iterator.
 
         Examples:
             >>> it = from_range(100, 1).gather_async()
