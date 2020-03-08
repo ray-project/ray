@@ -153,7 +153,7 @@ def execution_plan(workers, config):
         .zip_with_source_actor() \
         .for_each(Enqueue(learner_thread.inqueue))
 
-    # (3) Get priorities get back from learner thread and apply them to the
+    # (3) Get priorities back from learner thread and apply them to the
     # replay buffer actors.
     update_op = Dequeue(
             learner_thread.outqueue, check=learner_thread.is_alive) \
