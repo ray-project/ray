@@ -32,8 +32,7 @@ public class RayObjectSerializer extends FSTBasicObjectSerializer {
   }
 
   public static List<ObjectId> getAndClearContainedObjectIds() {
-    List<ObjectId> ids = new ArrayList<>();
-    ids.addAll(innerIds.get());
+    List<ObjectId> ids = new ArrayList<>(innerIds.get());
     innerIds.get().clear();
     return ids;
   }
