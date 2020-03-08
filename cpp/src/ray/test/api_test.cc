@@ -106,13 +106,13 @@ TEST(ray_api_test_case, call_with_object_test) {
 }
 
 TEST(ray_api_test_case, actor) {
-  RayActor<Foo> fobj = Ray::createActor(Foo::create);
-  auto rt1 = fobj.call(&Foo::foo, 3);
-  auto rt2 = fobj.call(&Foo::bar, 3, rt1);
-  auto rt3 = fobj.call(&Foo::add, 1);
-  auto rt4 = fobj.call(&Foo::add, 2);
-  auto rt5 = fobj.call(&Foo::add, 3);
-  auto rt6 = fobj.call(&Foo::add, rt5);
+  RayActor<Foo> actor = Ray::createActor(Foo::create);
+  auto rt1 = actor.call(&Foo::foo, 3);
+  auto rt2 = actor.call(&Foo::bar, 3, rt1);
+  auto rt3 = actor.call(&Foo::add, 1);
+  auto rt4 = actor.call(&Foo::add, 2);
+  auto rt5 = actor.call(&Foo::add, 3);
+  auto rt6 = actor.call(&Foo::add, rt5);
 
   int return1 = *(rt1.get());
   int return2 = *(rt2.get());

@@ -66,13 +66,13 @@ int main() {
   std::cout << "Ray::call with reference results: " << return0 << " " << return1 << " "
             << return2 << " " << return3 << " " << return4 << " " << std::endl;
 
-  RayActor<Foo> fobj = Ray::createActor(Foo::create);
-  auto rt5 = fobj.call(&Foo::foo, 1);
-  auto rt6 = fobj.call(&Foo::bar, 1, rt5);
-  auto rt7 = fobj.call(&Foo::add, 4);
-  auto rt8 = fobj.call(&Foo::add, 1);
-  auto rt9 = fobj.call(&Foo::add, 1);
-  auto rt10 = fobj.call(&Foo::add, rt9);
+  RayActor<Foo> actor = Ray::createActor(Foo::create);
+  auto rt5 = actor.call(&Foo::foo, 1);
+  auto rt6 = actor.call(&Foo::bar, 1, rt5);
+  auto rt7 = actor.call(&Foo::add, 4);
+  auto rt8 = actor.call(&Foo::add, 1);
+  auto rt9 = actor.call(&Foo::add, 1);
+  auto rt10 = actor.call(&Foo::add, rt9);
 
   int return5 = *(rt5.get());
   int return6 = *(rt6.get());
