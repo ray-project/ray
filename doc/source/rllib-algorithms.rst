@@ -1,6 +1,10 @@
 RLlib Algorithms
 ================
 
+.. tip::
+
+    Check out the `environments <rllib-env.html>`__ page to learn more about different environment types.
+
 Feature Compatibility Matrix
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -25,10 +29,6 @@ MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
-
-.. tip::
-
-    Check out the `environments <rllib-env.html>`__ page to learn more about different environment types.
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
