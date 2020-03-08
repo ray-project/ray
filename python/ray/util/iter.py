@@ -854,7 +854,7 @@ class LocalIterator(Generic[T]):
                     # To avoid starvation, we yield at most max_yield items per
                     # iterator before switching.
                     if deterministic:
-                        max_yield = 1
+                        max_yield = 1  # Forces round robin.
                     else:
                         max_yield = 20
                     try:
