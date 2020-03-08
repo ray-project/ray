@@ -633,8 +633,9 @@ The following are example excerpts from different Trainers' configs
     # a) DQN: see rllib/agents/dqn/dqn.py
     "explore": True,
     "exploration_config": {
-       "type": "EpsilonGreedy",  # <- Exploration sub-class by name or full path to module+class
-                                 # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       # Exploration sub-class by name or full path to module+class
+       # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       "type": "EpsilonGreedy",
        # Parameters for the Exploration class' constructor:
        "initial_epsilon": 1.0,
        "final_epsilon": 0.02,
