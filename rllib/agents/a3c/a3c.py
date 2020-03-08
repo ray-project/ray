@@ -4,8 +4,6 @@ from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import AsyncGradientsOptimizer
-from ray.rllib.utils.experimental_dsl import (AsyncGradients, ApplyGradients,
-                                              StandardMetricsReporting)
 
 logger = logging.getLogger(__name__)
 
@@ -65,23 +63,10 @@ def make_async_optimizer(workers, config):
     return AsyncGradientsOptimizer(workers, **config["optimizer"])
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
-    # For A3C, compute policy gradients remotely on the rollout workers.
-    grads = AsyncGradients(workers)
-
-    # Apply the gradients as they arrive. We set update_all to False so that
-    # only the worker sending the gradient is updated with new weights.
-    train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-    return StandardMetricsReporting(train_op, workers, config)
-
-
 A3CTrainer = build_trainer(
     name="A3C",
     default_config=DEFAULT_CONFIG,
     default_policy=A3CTFPolicy,
     get_policy_class=get_policy_class,
     validate_config=validate_config,
-    make_policy_optimizer=make_async_optimizer,
-    training_pipeline=training_pipeline)
+    make_policy_optimizer=make_async_optimizer)

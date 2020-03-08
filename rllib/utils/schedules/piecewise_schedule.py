@@ -47,6 +47,6 @@ class PiecewiseSchedule(Schedule):
                 alpha = float(t - l_t) / (r_t - l_t)
                 return self.interpolation(l, r, alpha)
 
-        # t does not belong to any of the pieces, return `self.outside_value`.
+        # t does not belong to any of the pieces, so doom.
         assert self.outside_value is not None
         return self.outside_value

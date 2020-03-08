@@ -38,22 +38,19 @@ def add_advantages(policy,
                    sample_batch,
                    other_agent_batches=None,
                    episode=None):
-
     completed = sample_batch[SampleBatch.DONES][-1]
     if completed:
         last_r = 0.0
     else:
         last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1])
-
-    return compute_advantages(sample_batch, last_r, policy.config["gamma"],
-                              policy.config["lambda"],
-                              policy.config["use_gae"],
-                              policy.config["use_critic"])
+    return compute_advantages(
+        sample_batch, last_r, policy.config["gamma"], policy.config["lambda"],
+        policy.config["use_gae"], policy.config["use_critic"])
 
 
 def model_value_predictions(policy, input_dict, state_batches, model,
                             action_dist):
-    return {SampleBatch.VF_PREDS: model.value_function()}
+    return {SampleBatch.VF_PREDS: model.value_function().cpu().numpy()}
 
 
 def apply_grad_clipping(policy):
@@ -71,8 +68,9 @@ def torch_optimizer(policy, config):
 
 class ValueNetworkMixin:
     def _value(self, obs):
-        _ = self.model({"obs": torch.Tensor([obs]).to(self.device)}, [], [1])
-        return self.model.value_function()[0]
+        obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
+        _ = self.model({"obs": obs}, [], [1])
+        return self.model.value_function().detach().cpu().numpy().squeeze()
 
 
 A3CTorchPolicy = build_torch_policy(

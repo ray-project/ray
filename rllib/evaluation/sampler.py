@@ -5,7 +5,6 @@ import six.moves.queue as queue
 import threading
 import time
 
-from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
@@ -16,7 +15,7 @@ from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 
@@ -266,7 +265,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         if not horizon:
             horizon = (base_env.get_unwrapped()[0].spec.max_episode_steps)
     except Exception:
-        logger.debug("No episode horizon specified, assuming inf.")
+        logger.debug("no episode horizon specified, assuming inf")
     if not horizon:
         horizon = float("inf")
 
@@ -354,8 +353,6 @@ def _process_observations(base_env, policies, batch_builder_pool,
     active_envs = set()
     to_eval = defaultdict(list)
     outputs = []
-    large_batch_threshold = max(1000, unroll_length * 10) if \
-        unroll_length != float("inf") else 5000
 
     # For each environment
     for env_id, agent_obs in unfiltered_obs.items():
@@ -366,21 +363,18 @@ def _process_observations(base_env, policies, batch_builder_pool,
             episode.batch_builder.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
-        if (episode.batch_builder.total() > large_batch_threshold
+        if (episode.batch_builder.total() > max(1000, unroll_length * 10)
                 and log_once("large_batch_warning")):
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     episode.batch_builder.total(),
                     episode.batch_builder.count) + "are buffered in "
                 "the sampler. If this is more than you expected, check that "
-                "that you set a horizon on your environment correctly and that"
-                " it terminates at some point. "
-                "Note: In multi-agent environments, `sample_batch_size` sets "
+                "that you set a horizon on your environment correctly. Note "
+                "that in multi-agent environments, `sample_batch_size` sets "
                 "the batch size based on environment steps, not the steps of "
                 "individual agents, which can result in unexpectedly large "
-                "batches. Also, you may be in evaluation waiting for your Env "
-                "to terminate (batch_mode=`complete_episodes`). Make sure it "
-                "does at some point.")
+                "batches.")
 
         # Check episode termination conditions
         if dones[env_id]["__all__"] or episode.length >= horizon:
@@ -403,7 +397,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
             all_done = False
             active_envs.add(env_id)
 
-        # For each agent in the environment.
+        # For each agent in the environment
         for agent_id, raw_obs in agent_obs.items():
             policy_id = episode.policy_for(agent_id)
             prep_obs = _get_or_raise(preprocessors,
@@ -456,7 +450,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
 
         # Cut the batch if we're not packing multiple episodes into one,
         # or if we've exceeded the requested batch size.
-        if episode.batch_builder.has_pending_agent_data():
+        if episode.batch_builder.has_pending_data():
             if dones[env_id]["__all__"] and not no_done_at_end:
                 episode.batch_builder.check_missing_dones()
             if (all_done and not pack) or \

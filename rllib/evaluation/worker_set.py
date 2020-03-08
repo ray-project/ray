@@ -1,7 +1,6 @@
 import logging
 from types import FunctionType
 
-import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
@@ -71,12 +70,6 @@ class WorkerSet:
     def remote_workers(self):
         """Return a list of remote rollout workers."""
         return self._remote_workers
-
-    def sync_weights(self):
-        """Syncs weights of remote workers with the local worker."""
-        weights = ray.put(self.local_worker().get_weights())
-        for e in self.remote_workers():
-            e.set_weights.remote(weights)
 
     def add_workers(self, num_workers):
         """Creates and add a number of remote workers to this worker set.

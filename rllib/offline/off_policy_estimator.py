@@ -1,7 +1,7 @@
 from collections import namedtuple
 import logging
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -57,13 +57,24 @@ class OffPolicyEstimator:
             if k.startswith("state_in_"):
                 num_state_inputs += 1
         state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
-        log_likelihoods = self.policy.compute_log_likelihoods(
-            actions=batch[SampleBatch.ACTIONS],
-            obs_batch=batch[SampleBatch.CUR_OBS],
+
+        # TODO(sven): This is wrong. The info["action_prob"] needs to refer
+        #  to the old action (from the batch). It might be the action-prob of
+        #  a different action (as the policy has changed).
+        #  https://github.com/ray-project/ray/issues/7107
+        _, _, info = self.policy.compute_actions(
+            obs_batch=batch["obs"],
             state_batches=[batch[k] for k in state_keys],
-            prev_action_batch=batch.data.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=batch.data.get(SampleBatch.PREV_REWARDS))
-        return log_likelihoods
+            prev_action_batch=batch.data.get("prev_action"),
+            prev_reward_batch=batch.data.get("prev_reward"),
+            info_batch=batch.data.get("info"))
+        if "action_prob" not in info:
+            raise ValueError(
+                "Off-policy estimation is not possible unless the policy "
+                "returns action probabilities when computing actions (i.e., "
+                "the 'action_prob' key is output by the policy). You "
+                "can set `input_evaluation: []` to resolve this.")
+        return info["action_prob"]
 
     @DeveloperAPI
     def process(self, batch):
@@ -83,8 +94,8 @@ class OffPolicyEstimator:
                 "Off-policy estimation is not possible unless the inputs "
                 "include action probabilities (i.e., the policy is stochastic "
                 "and emits the 'action_prob' key). For DQN this means using "
-                "`exploration_config: {type: 'SoftQ'}`. You can also set "
-                "`input_evaluation: []` to disable estimation.")
+                "`soft_q: True`. You can also set `input_evaluation: []` to "
+                "disable estimation.")
 
     @DeveloperAPI
     def get_metrics(self):

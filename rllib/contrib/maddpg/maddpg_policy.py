@@ -245,7 +245,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             config=config,
             sess=self.sess,
             obs_input=obs_ph_n[agent_id],
-            sampled_action=act_sampler,
+            action_sampler=act_sampler,
             loss=actor_loss + critic_loss,
             loss_inputs=loss_inputs)
 
@@ -339,7 +339,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = tf.concat(obs_n + act_n, axis=1)
 
             for hidden in hiddens:
-                out = tf.layers.dense(out, units=hidden, activation=activation)
+                out = tf.layers.dense(
+                    out, units=hidden, activation=activation
+                )
             feature = out
             out = tf.layers.dense(feature, units=1, activation=None)
 
@@ -365,7 +367,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = obs
 
             for hidden in hiddens:
-                out = tf.layers.dense(out, units=hidden, activation=activation)
+                out = tf.layers.dense(
+                    out, units=hidden, activation=activation
+                )
             feature = tf.layers.dense(
                 out, units=act_space.shape[0], activation=None)
             sampler = tfp.distributions.RelaxedOneHotCategorical(

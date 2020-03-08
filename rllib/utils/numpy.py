@@ -1,8 +1,5 @@
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch
-
-torch, _ = try_import_torch()
 
 SMALL_NUMBER = 1e-6
 # Some large int number. May be increased here, if needed.
@@ -92,7 +89,7 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     shape = x.shape
 
     # Python 2.7 compatibility, (*shape, depth) is not allowed.
-    shape_list = list(shape[:])
+    shape_list = shape[:]
     shape_list.append(depth)
     out = np.ones(shape_list) * off_value
     indices = []
@@ -123,18 +120,11 @@ def fc(x, weights, biases=None):
     Returns:
         The dense layer's output.
     """
-    # Torch stores matrices in transpose (faster for backprop).
-    if torch and isinstance(weights, torch.Tensor):
-        weights = np.transpose(weights.numpy())
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 
-def lstm(x,
-         weights,
-         biases=None,
-         initial_internal_states=None,
-         time_major=False,
-         forget_bias=1.0):
+def lstm(x, weights, biases=None, initial_internal_states=None,
+         time_major=False, forget_bias=1.0):
     """
     Calculates the outputs of an LSTM layer given weights/biases,
     internal_states, and input.

@@ -15,14 +15,14 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # tf.
-        config["eager"] = False
+        config["eager"] = True
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
 
-        config["eager"] = True
+        config["eager"] = False
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):
@@ -37,11 +37,9 @@ class TestDQN(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["eager", "tf", "torch"]:
+        for fw in ["tf", "eager", "torch"]:
             if fw == "torch":
                 continue
-
-            print("framework={}".format(fw))
 
             config["eager"] = True if fw == "eager" else False
             config["use_pytorch"] = True if fw == "torch" else False
@@ -63,7 +61,7 @@ class TestDQN(unittest.TestCase):
             # (but no epsilon exploration).
             config["exploration_config"] = {
                 "type": "SoftQ",
-                "temperature": 0.001
+                "temperature": 0.0
             }
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Due to the low temp, always expect the same action.

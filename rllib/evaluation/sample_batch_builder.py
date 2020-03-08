@@ -2,10 +2,9 @@ import collections
 import logging
 import numpy as np
 
-from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
-from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.debug import log_once, summarize
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +94,9 @@ class MultiAgentSampleBatchBuilder:
     def total(self):
         """Returns summed number of steps across all agent buffers."""
 
-        return sum(a.count for a in self.agent_builders.values())
+        return sum(p.count for p in self.policy_builders.values())
 
-    def has_pending_agent_data(self):
+    def has_pending_data(self):
         """Returns whether there is pending unprocessed data."""
 
         return len(self.agent_builders) > 0

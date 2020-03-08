@@ -3,7 +3,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.pg as pg
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.agents.pg import PGPipeline
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -19,12 +19,7 @@ class TestPG(unittest.TestCase):
         ray.shutdown()
 
     def test_pg_pipeline(ray_start_regular):
-        trainer = PGTrainer(
-            env="CartPole-v0",
-            config={
-                "min_iter_time_s": 0,
-                "use_pipeline_impl": True
-            })
+        trainer = PGPipeline(env="CartPole-v0", config={"min_iter_time_s": 0})
         assert isinstance(trainer.train(), dict)
 
     def test_pg_compilation(self):

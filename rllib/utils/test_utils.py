@@ -100,7 +100,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 else:
                     with tf.Session() as sess:
                         x = sess.run(x)
-                        return check(
+                        check(
                             x,
                             y,
                             decimals=decimals,
