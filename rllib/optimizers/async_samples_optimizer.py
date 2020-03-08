@@ -22,6 +22,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
     This class coordinates the data transfers between the learner thread
     and remote workers (IMPALA actors).
     """
+
     def __init__(self,
                  workers,
                  train_batch_size=500,

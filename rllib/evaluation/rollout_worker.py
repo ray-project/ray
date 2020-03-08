@@ -495,8 +495,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         else:
             max_batches = float("inf")
 
-        while steps_so_far < self.rollout_length and len(
-                batches) < max_batches:
+        while (steps_so_far < self.rollout_length
+               and len(batches) < max_batches):
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)

@@ -889,7 +889,8 @@ class Trainer(Trainable):
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:
-            deprecation_warning("sample_batch_size", new="rollout_length", error=True)
+            deprecation_warning(
+                "sample_batch_size", new="rollout_length", error=True)
         # Warning if user override config has deprecated value.
         if "sample_batch_size" in config2:
             deprecation_warning("sample_batch_size", new="rollout_length")

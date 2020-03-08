@@ -78,8 +78,7 @@ class AggregationWorkerBase:
                 raise ValueError(
                     "Replay buffer size is too small to produce train, "
                     "please increase replay_buffer_num_slots.",
-                    replay_buffer_num_slots, rollout_length,
-                    train_batch_size)
+                    replay_buffer_num_slots, rollout_length, train_batch_size)
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
