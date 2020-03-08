@@ -15,11 +15,11 @@ def check_support(alg, config, test_trace=True):
     config["log_level"] = "ERROR"
 
     config["eager_tracing"] = False
-    tune.run(a, config=config, stop={"training_iteration": 0})
+    tune.run(a, config=config, stop={"training_iteration": 1})
 
     if test_trace:
         config["eager_tracing"] = True
-        tune.run(a, config=config, stop={"training_iteration": 0})
+        tune.run(a, config=config, stop={"training_iteration": 1})
 
 
 class TestEagerSupport(unittest.TestCase):
@@ -60,8 +60,14 @@ class TestEagerSupport(unittest.TestCase):
                 "learning_starts": 0,
                 "num_gpus": 0,
                 "min_iter_time_s": 1,
-                "timesteps_per_iteration": 100
+                "timesteps_per_iteration": 100,
+                "optimizer": {
+                    "num_replay_buffer_shards": 1,
+                },
             })
+
+    def testSAC(self):
+        check_support("SAC", {"num_workers": 0})
 
 
 if __name__ == "__main__":
