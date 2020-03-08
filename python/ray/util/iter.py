@@ -776,6 +776,46 @@ class LocalIterator(Generic[T]):
             if i >= n:
                 break
 
+    def duplicate(self, n) -> List["LocalIterator[T]"]:
+        """Copy this iterator `n` times, duplicating the data.
+
+        Returns:
+            List[LocalIterator[T]]: multiple iterators that each have a copy
+                of the data of this iterator.
+        """
+
+        if n < 2:
+            raise ValueError("Number of copies must be >= 2")
+
+        queues = []
+        for _ in range(n):
+            queues.append(collections.deque())
+
+        def fill_next(timeout):
+            self.timeout = timeout
+            item = next(self)
+            for q in queues:
+                q.append(item)
+
+        def make_next(i):
+            def gen(timeout):
+                while True:
+                    if len(queues[i]) == 0:
+                        fill_next(timeout)
+                    yield queues[i].popleft()
+
+            return gen
+
+        iterators = []
+        for i in range(n):
+            iterators.append(
+                LocalIterator(
+                    make_next(i),
+                    self.metrics, [],
+                    name=self.name + ".duplicate[{}]".format(i)))
+
+        return iterators
+
     def union(self, *others: "LocalIterator[T]",
               deterministic: bool = False) -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the others.
