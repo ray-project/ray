@@ -97,7 +97,6 @@ def build_torch_policy(name,
                                    episode=None):
             if not postprocess_fn:
                 return sample_batch
-            print("sample_batch={}".format(sample_batch))
             return postprocess_fn(self, sample_batch, other_agent_batches,
                                   episode)
 
