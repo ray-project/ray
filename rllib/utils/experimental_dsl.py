@@ -539,22 +539,47 @@ class StoreToReplayActors:
         return batch
 
 
-def ParallelReplay(replay_actors, async_queue_depth=4):
+def ParallelReplay(replay_actors: List["ActorHandle"], async_queue_depth=4):
     """Replay experiences in parallel from the given actors.
 
+    This should be combined with the StoreToReplayActors operation using the
+    Concurrently() operator.
+
     Arguments:
+        replay_actors (list): List of replay actors.
         async_queue_depth (int): In async mode, the max number of async
             requests in flight per actor.
+
+    Examples:
+        >>> actors = [ReplayActor.remote() for _ in range(4)]
+        >>> replay_op = ParallelReplay(actors)
+        >>> next(replay_op)
+        SampleBatch(...)
     """
     replay = from_actors(replay_actors)
     return replay.gather_async(
         async_queue_depth=async_queue_depth).filter(lambda x: x is not None)
 
 
-def LocalReplay(replay_buffer: ReplayBuffer, train_batch_size):
+def LocalReplay(replay_buffer: ReplayBuffer, train_batch_size: int):
+    """Replay experiences from a local buffer instance.
+
+    This should be combined with the StoreToReplayBuffer operation using the
+    Concurrently() operator.
+
+    Arguments:
+        replay_buffer (ReplayBuffer): Buffer to replay experiences from.
+        train_batch_size (int): Batch size of fetches from the buffer.
+
+    Examples:
+        >>> actors = [ReplayActor.remote() for _ in range(4)]
+        >>> replay_op = ParallelReplay(actors)
+        >>> next(replay_op)
+        SampleBatch(...)
+    """
     assert isinstance(replay_buffer, ReplayBuffer)
     replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
-    # TODO(ekl) support more options
+    # TODO(ekl) support more options, or combine with ParallelReplay (?)
     synchronize_sampling = False
     prioritized_replay_beta = None
 
@@ -659,7 +684,20 @@ class UpdateTargetNetwork:
 
 
 class Enqueue:
-    def __init__(self, output_queue):
+    """Enqueue data items into a queue.Queue instance.
+
+    The enqueue is non-blocking, so Enqueue operations can executed with
+    Dequeue via the Concurrently() operator.
+
+    Examples:
+        >>> queue = queue.Queue(100)
+        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
+        >>> read_op = Dequeue(queue)
+        >>> combined_op = Concurrently([write_op, read_op], mode="async")
+        >>> next(combined_op)
+        SampleBatch(...)
+    """
+    def __init__(self, output_queue: queue.Queue):
         if not isinstance(output_queue, queue.Queue):
             raise ValueError("Expected queue.Queue, got {}".format(
                 type(output_queue)))
@@ -672,7 +710,20 @@ class Enqueue:
             return _NextValueNotReady()
 
 
-def Dequeue(input_queue, check=lambda: True):
+def Dequeue(input_queue: queue.Queue, check=lambda: True):
+    """Dequeue data items from a queue.Queue instance.
+
+    The dequeue is non-blocking, so Dequeue operations can executed with
+    Enqueue via the Concurrently() operator.
+
+    Examples:
+        >>> queue = queue.Queue(100)
+        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
+        >>> read_op = Dequeue(queue)
+        >>> combined_op = Concurrently([write_op, read_op], mode="async")
+        >>> next(combined_op)
+        SampleBatch(...)
+    """
     if not isinstance(input_queue, queue.Queue):
         raise ValueError("Expected queue.Queue, got {}".format(
             type(input_queue)))
