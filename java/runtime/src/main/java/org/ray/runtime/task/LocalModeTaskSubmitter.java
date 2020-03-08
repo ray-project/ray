@@ -279,7 +279,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             } else {
               putObject = returnObjects.get(i);
             }
-            objectStore.putRaw(putObject, returnIds.get(i), new ArrayList<>());
+            objectStore.putRaw(putObject, returnIds.get(i), Collections.emptyList());
           }
         } finally {
           returnTaskExecutor(taskExecutor, taskSpec);
