@@ -1,6 +1,5 @@
 from gym.spaces import Space
-from ray.rllib.utils.framework import check_framework, try_import_tf, \
-    TensorType
+from ray.rllib.utils.framework import check_framework, try_import_tf
 from ray.rllib.models.modelv2 import ModelV2
 from typing import Union
 
@@ -33,11 +32,11 @@ class Exploration:
         self.framework = check_framework(framework)
 
     def get_exploration_action(self,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
+                               distribution_inputs,
+                               action_dist_class,
                                model: ModelV2,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+                               timestep,
+                               explore=True):
         """Returns a (possibly) exploratory action and its log-likelihood.
 
         Given the Model's logits outputs and action distribution, returns an
@@ -65,10 +64,10 @@ class Exploration:
         pass
 
     def get_loss_exploration_term(self,
-                                  model_output: TensorType,
+                                  model_output,
                                   model: ModelV2,
-                                  action_dist: type,
-                                  action_sample: TensorType = None):
+                                  action_dist,
+                                  action_sample=None):
         """Returns an extra loss term to be added to a loss.
 
         Args:
