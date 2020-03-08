@@ -1,5 +1,5 @@
 #pragma once
-#include <ray/api/impl/arguments.h>
+#include <ray/api/arguments.h>
 #include <ray/api/ray_object.h>
 #include <ray/api/task_type.h>
 

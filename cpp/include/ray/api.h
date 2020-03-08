@@ -6,9 +6,9 @@
 
 #include <ray/api/ray_runtime.h>
 #include <ray/api/task_type.h>
-#include <ray/api/impl/funcs.generated.h>
-#include <ray/api/impl/create_funcs.generated.h>
-#include <ray/api/impl/actor_funcs.generated.h>
+#include <ray/api/generated/funcs.generated.h>
+#include <ray/api/generated/create_funcs.generated.h>
+#include <ray/api/generated/actor_funcs.generated.h>
 #include <msgpack.hpp>
 
 /**
@@ -51,18 +51,18 @@ class Ray {
   static WaitResult<T> wait(const std::vector<RayObject<T>> &objects, int num_objects,
                             int64_t timeout_ms);
 
-#include "api/impl/call_funcs.generated.h"
+#include "api/generated/call_funcs.generated.h"
 
-#include "api/impl/create_actors.generated.h"
+#include "api/generated/create_actors.generated.h"
 
-#include "api/impl/call_actors.generated.h"
+#include "api/generated/call_actors.generated.h"
 };
 
 }  // namespace ray
 
 // --------- inline implementation ------------
 #include <ray/api/execute.h>
-#include <ray/api/impl/arguments.h>
+#include <ray/api/arguments.h>
 #include <ray/api/ray_actor.h>
 #include <ray/api/ray_function.h>
 #include <ray/api/ray_object.h>
@@ -144,10 +144,10 @@ inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num
   return waitResultFromInernal<T>(result);
 }
 
-#include <ray/api/impl/call_funcs_impl.generated.h>
+#include <ray/api/generated/call_funcs_impl.generated.h>
 
-#include <ray/api/impl/create_actors_impl.generated.h>
+#include <ray/api/generated/create_actors_impl.generated.h>
 
-#include <ray/api/impl/call_actors_impl.generated.h>
+#include <ray/api/generated/call_actors_impl.generated.h>
 
 }  // namespace ray

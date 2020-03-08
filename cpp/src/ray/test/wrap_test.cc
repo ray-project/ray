@@ -1,7 +1,7 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
-#include <ray/api/impl/arguments.h>
+#include <ray/api/arguments.h>
 #include <iostream>
 
 using namespace ray;
