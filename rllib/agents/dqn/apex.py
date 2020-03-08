@@ -84,6 +84,7 @@ def update_target_based_on_num_steps_trained(trainer, fetches):
 # Experimental distributed execution impl; enable with "use_exec_api": True.
 def execution_plan(workers, config):
     # Create a number of replay buffer actors.
+    # TODO(ekl) support batch replay options
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [
         num_replay_buffer_shards,
@@ -95,8 +96,8 @@ def execution_plan(workers, config):
         config["prioritized_replay_eps"],
     ], num_replay_buffer_shards)
 
+    # Update experience priorities post learning.
     def update_prio_and_stats(item):
-        # TODO(ekl) update the source actor weights
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
         metrics = LocalIterator.get_metrics()
@@ -105,6 +106,7 @@ def execution_plan(workers, config):
         metrics.timers["learner_grad"] = learner_thread.grad_timer
         metrics.timers["learner_overall"] = learner_thread.overall_timer
 
+    # Update worker weights as they finish generating experiences.
     class UpdateWorkerWeights:
         def __init__(self, learner_thread, workers, max_weight_sync_delay):
             self.learner_thread = learner_thread
