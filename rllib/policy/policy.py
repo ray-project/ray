@@ -382,12 +382,13 @@ class Policy(metaclass=ABCMeta):
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTfPolicy.
         TODO(sven): unify these cases."""
+        print("CREATE", config)
         exploration = from_config(
             Exploration,
             config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=action_space,
-            num_workers=config.get("num_workers"),
-            worker_index=config.get("worker_index"),
+            num_workers=config["num_workers"],
+            worker_index=config["worker_index"],
             framework=getattr(self, "framework", "tf"))
         # If config is further passed around, it'll contain an already
         # instantiated object.

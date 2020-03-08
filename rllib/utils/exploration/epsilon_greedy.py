@@ -94,7 +94,7 @@ class EpsilonGreedy(Exploration):
 
         chose_random = tf.random_uniform(
             tf.stack([batch_size]),
-            minval=0, maxval=1, dtype=epsilon.dtype) \
+            minval=0, maxval=1, dtype=tf.float32) \
             < epsilon
 
         action = tf.cond(
@@ -149,4 +149,5 @@ class EpsilonGreedy(Exploration):
     @override(Exploration)
     def get_info(self):
         eps = self.epsilon_schedule(self.last_timestep)
+        print("EPS", eps)
         return {"cur_epsilon": eps}
