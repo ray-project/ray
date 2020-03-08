@@ -1,7 +1,7 @@
 from typing import Union
 
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.exploration.exploration import Exploration, TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
@@ -55,10 +55,10 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
+                               distribution_inputs: TensorType,
                                action_dist_class: type,
                                model: ModelV2,
-                               timestep,
+                               timestep: Union[int, TensorType],
                                explore: bool = True):
 
         if self.framework == "tf":

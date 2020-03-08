@@ -4,7 +4,7 @@ from typing import Union
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    tf_function
+    tf_function, TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.models.modelv2 import ModelV2
 
@@ -40,10 +40,10 @@ class Random(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
+                               distribution_inputs: TensorType,
                                action_dist_class: type,
                                model: ModelV2,
-                               timestep,
+                               timestep: Union[int, TensorType],
                                explore: bool = True):
         # Instantiate the distribution object.
         action_dist = action_dist_class(distribution_inputs, model)
