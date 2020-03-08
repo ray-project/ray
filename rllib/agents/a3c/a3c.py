@@ -19,7 +19,7 @@ DEFAULT_CONFIG = with_common_config({
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
     # Size of rollout batch
-    "sample_batch_size": 10,
+    "rollout_length": 10,
     # GAE(gamma) parameter
     "lambda": 1.0,
     # Max global norm for each gradient calculated by worker
@@ -35,7 +35,7 @@ DEFAULT_CONFIG = with_common_config({
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
-    # sample_batch_size by up to 5x due to async buffering of batches.
+    # rollout_length by up to 5x due to async buffering of batches.
     "sample_async": True,
 })
 # __sphinx_doc_end__

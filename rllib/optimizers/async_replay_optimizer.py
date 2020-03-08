@@ -55,7 +55,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                  prioritized_replay_beta=0.4,
                  prioritized_replay_eps=1e-6,
                  train_batch_size=512,
-                 sample_batch_size=50,
+                 rollout_length=50,
                  num_replay_buffer_shards=1,
                  max_weight_sync_delay=400,
                  debug=False,
@@ -72,7 +72,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
             prioritized_replay_beta (float): replay beta hyperparameter
             prioritized_replay_eps (float): replay eps hyperparameter
             train_batch_size (int): size of batches to learn on
-            sample_batch_size (int): size of batches to sample from workers
+            rollout_length (int): size of batches to sample from workers
             num_replay_buffer_shards (int): number of actors to use to store
                 replay samples
             max_weight_sync_delay (int): update the weights of a rollout worker

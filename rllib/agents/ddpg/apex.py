@@ -19,7 +19,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "buffer_size": 2000000,
         "learning_starts": 50000,
         "train_batch_size": 512,
-        "sample_batch_size": 50,
+        "rollout_length": 50,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "worker_side_prioritization": True,

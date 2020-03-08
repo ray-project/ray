@@ -136,7 +136,7 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     else:
         # Important: chop the tensor into batches at known episode cut
         # boundaries. TODO(ekl) this is kind of a hack
-        T = policy.config["sample_batch_size"]
+        T = policy.config["rollout_length"]
         B = tf.shape(tensor)[0] // T
     rs = tf.reshape(tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
 
@@ -299,4 +299,4 @@ VTraceTFPolicy = build_tf_policy(
     before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
-    get_batch_divisibility_req=lambda p: p.config["sample_batch_size"])
+    get_batch_divisibility_req=lambda p: p.config["rollout_length"])

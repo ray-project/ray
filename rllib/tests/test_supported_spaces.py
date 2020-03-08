@@ -215,7 +215,7 @@ class ModelSupportedSpaces(unittest.TestCase):
             "num_workers": 1,
             "num_sgd_iter": 1,
             "train_batch_size": 10,
-            "sample_batch_size": 10,
+            "rollout_length": 10,
             "sgd_minibatch_size": 1,
         }
         check_support("PPO", config, self.stats, check_bounds=True)
@@ -283,7 +283,7 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "num_workers": 1,
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
-                "sample_batch_size": 10,
+                "rollout_length": 10,
                 "sgd_minibatch_size": 1,
             })
 

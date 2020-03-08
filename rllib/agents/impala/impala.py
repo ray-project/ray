@@ -19,15 +19,15 @@ DEFAULT_CONFIG = with_common_config({
     #
     # == Overview of data flow in IMPALA ==
     # 1. Policy evaluation in parallel across `num_workers` actors produces
-    #    batches of size `sample_batch_size * num_envs_per_worker`.
+    #    batches of size `rollout_length * num_envs_per_worker`.
     # 2. If enabled, the replay buffer stores and produces batches of size
-    #    `sample_batch_size * num_envs_per_worker`.
+    #    `rollout_length * num_envs_per_worker`.
     # 3. If enabled, the minibatch ring buffer stores and replays batches of
     #    size `train_batch_size` up to `num_sgd_iter` times per batch.
     # 4. The learner thread executes data parallel SGD across `num_gpus` GPUs
     #    on batches of size `train_batch_size`.
     #
-    "sample_batch_size": 50,
+    "rollout_length": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
@@ -45,7 +45,7 @@ DEFAULT_CONFIG = with_common_config({
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
     # number of sample batches to store for replay. The number of transitions
-    # saved total will be (replay_buffer_num_slots * sample_batch_size).
+    # saved total will be (replay_buffer_num_slots * rollout_length).
     "replay_buffer_num_slots": 0,
     # max queue size for train batches feeding into the learner
     "learner_queue_size": 16,
@@ -117,7 +117,7 @@ def make_aggregators_and_optimizer(workers, config):
         workers,
         lr=config["lr"],
         num_gpus=config["num_gpus"],
-        sample_batch_size=config["sample_batch_size"],
+        rollout_length=config["rollout_length"],
         train_batch_size=config["train_batch_size"],
         replay_buffer_num_slots=config["replay_buffer_num_slots"],
         replay_proportion=config["replay_proportion"],

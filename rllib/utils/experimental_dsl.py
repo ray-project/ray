@@ -80,12 +80,12 @@ def ParallelRollouts(workers: WorkerSet,
         >>> rollouts = ParallelRollouts(workers, mode="async")
         >>> batch = next(rollouts)
         >>> print(batch.count)
-        50  # config.sample_batch_size
+        50  # config.rollout_length
 
         >>> rollouts = ParallelRollouts(workers, mode="bulk_sync")
         >>> batch = next(rollouts)
         >>> print(batch.count)
-        200  # config.sample_batch_size * config.num_workers
+        200  # config.rollout_length * config.num_workers
 
     Updates the STEPS_SAMPLED_COUNTER counter in the local iterator context.
     """

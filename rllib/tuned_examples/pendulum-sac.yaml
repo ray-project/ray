@@ -18,7 +18,7 @@ pendulum_sac:
         target_entropy: auto
         no_done_at_end: True
         n_step: 1
-        sample_batch_size: 1
+        rollout_length: 1
         prioritized_replay: False
         train_batch_size: 256
         target_network_update_freq: 1

@@ -46,11 +46,12 @@ COMMON_CONFIG = {
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
-    # Default sample batch size (unroll length). Batches of this size are
-    # collected from rollout workers until train_batch_size is met. When using
-    # multiple envs per worker, this is multiplied by num_envs_per_worker.
+    # Default rollout length (formerly `sample_batch_size`). Sample batches of
+    # this size are collected from rollout workers until train_batch_size is
+    # met. When using multiple envs per worker, this is multiplied by
+    # `num_envs_per_worker`.
     #
-    # For example, given sample_batch_size=100 and train_batch_size=1000:
+    # For example, given rollout_length=100 and train_batch_size=1000:
     #   1. RLlib will collect 10 batches of size 100 from the rollout workers.
     #   2. These batches are concatenated and we perform an epoch of SGD.
     #
@@ -59,9 +60,9 @@ COMMON_CONFIG = {
     #
     # The exact workflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
-    "sample_batch_size": 200,
+    "rollout_length": 200,
     # Whether to rollout "complete_episodes" or "truncate_episodes" to
-    # `sample_batch_size` length unrolls. Episode truncation guarantees more
+    # `rollout_length` length unrolls. Episode truncation guarantees more
     # evenly sized batches, but increases variance as the reward-to-go will
     # need to be estimated at truncation boundaries.
     "batch_mode": "truncate_episodes",
@@ -71,7 +72,7 @@ COMMON_CONFIG = {
     # algorithms can take advantage of trainer GPUs. This can be fractional
     # (e.g., 0.3 GPUs).
     "num_gpus": 0,
-    # Training batch size, if applicable. Should be >= sample_batch_size.
+    # Training batch size, if applicable. Should be >= rollout_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
     "train_batch_size": 200,

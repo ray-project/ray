@@ -191,7 +191,7 @@ class TestRolloutWorker(unittest.TestCase):
         pg = PGTrainer(
             env="CartPole-v0", config={
                 "num_workers": 0,
-                "sample_batch_size": 50,
+                "rollout_length": 50,
                 "train_batch_size": 50,
                 "callbacks": {
                     "on_episode_start": lambda x: counts.update({"start": 1}),
@@ -218,12 +218,12 @@ class TestRolloutWorker(unittest.TestCase):
             env="test",
             config={
                 "num_workers": 2,
-                "sample_batch_size": 5,
+                "rollout_length": 5,
                 "num_envs_per_worker": 2,
             })
-        results = pg.workers.foreach_worker(lambda ev: ev.sample_batch_size)
+        results = pg.workers.foreach_worker(lambda ev: ev.rollout_length)
         results2 = pg.workers.foreach_worker_with_index(
-            lambda ev, i: (i, ev.sample_batch_size))
+            lambda ev, i: (i, ev.rollout_length))
         results3 = pg.workers.foreach_worker(
             lambda ev: ev.foreach_env(lambda env: 1))
         self.assertEqual(results, [10, 10, 10])

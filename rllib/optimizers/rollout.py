@@ -7,7 +7,7 @@ from ray.rllib.utils.memory import ray_get_and_free
 logger = logging.getLogger(__name__)
 
 
-def collect_samples(agents, sample_batch_size, num_envs_per_worker,
+def collect_samples(agents, rollout_length, num_envs_per_worker,
                     train_batch_size):
     """Collects at least train_batch_size samples, never discarding any."""
 
@@ -27,7 +27,7 @@ def collect_samples(agents, sample_batch_size, num_envs_per_worker,
         trajectories.append(next_sample)
 
         # Only launch more tasks if we don't already have enough pending
-        pending = len(agent_dict) * sample_batch_size * num_envs_per_worker
+        pending = len(agent_dict) * rollout_length * num_envs_per_worker
         if num_timesteps_so_far + pending < train_batch_size:
             fut_sample2 = agent.sample.remote()
             agent_dict[fut_sample2] = agent

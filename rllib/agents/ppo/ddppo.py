@@ -21,8 +21,8 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_base_config(ppo.DEFAULT_CONFIG, {
     # During the sampling phase, each rollout worker will collect a batch
-    # `sample_batch_size * num_envs_per_worker` steps in size.
-    "sample_batch_size": 100,
+    # `rollout_length * num_envs_per_worker` steps in size.
+    "rollout_length": 100,
     # Vectorize the env (should enable by default since each worker has a GPU).
     "num_envs_per_worker": 5,
     # During the SGD phase, workers iterate over minibatches of this size.
@@ -49,10 +49,10 @@ def validate_config(config):
     if config["train_batch_size"] == -1:
         # Auto set.
         config["train_batch_size"] = (
-            config["sample_batch_size"] * config["num_envs_per_worker"])
+            config["rollout_length"] * config["num_envs_per_worker"])
     else:
         raise ValueError(
-            "Set sample_batch_size instead of train_batch_size for DDPPO.")
+            "Set rollout_length instead of train_batch_size for DDPPO.")
     ppo.validate_config(config)
 
 
@@ -73,7 +73,7 @@ def make_distributed_allreduce_optimizer(workers, config):
 
     return TorchDistributedDataParallelOptimizer(
         workers,
-        expected_batch_size=config["sample_batch_size"] *
+        expected_batch_size=config["rollout_length"] *
         config["num_envs_per_worker"],
         num_sgd_iter=config["num_sgd_iter"],
         sgd_minibatch_size=config["sgd_minibatch_size"],

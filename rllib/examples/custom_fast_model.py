@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 "num_data_loader_buffers": 1,
                 "num_aggregation_workers": 1,
                 "broadcast_interval": 50,
-                "sample_batch_size": 100,
+                "rollout_length": 100,
                 "train_batch_size": sample_from(
                     lambda spec: 1000 * max(1, spec.config.num_gpus)),
                 "_fake_sampler": True,
