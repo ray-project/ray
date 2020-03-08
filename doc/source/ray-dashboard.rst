@@ -67,80 +67,24 @@ This cluster has 2 GPUs. Actor1 requires 1 GPU to be created. Actor2 creates 4 A
 
 You can also see it is infeasible to create Actor3 because it requires 4 GPUs which is bigger than the total gpus available in this cluster (2 GPUs). 
 
-Inspect Local Memory Usage
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-The dashboard displays the following information about local memory usage:
+Inspect Memory Usage
+~~~~~~~~~~~~~~~~~~~~
+The logical view displays the following information about memory usage
 
-- Number of object IDs in scope
-- Number of local objects
-- Used Object Memory
+- **Number of object IDs in scope**: number of local and remote objectIDs which actors can access.
+- **Number of local objects**: Ray objects in a worker memory where actor resides in.
+- **Used Local Object Memory**: Memory used by local objects in bytes.
 
-In the example below, all objects (strings) are stored in local object memory. Used local object memory increases as the remote function ``g`` is repeatedly called.
+Let's see how to use this information.
 
-.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-inspect-local-memory-usage.png
-    :align: center
-
-.. code-block:: python
-
-  @ray.remote
-  def g():
-      return "hello world!"
-  
-  @ray.remote
-  class A:
-      def f(self):
-          self.object_ids = []
-          for idx in range(50):
-              ray.show_in_webui("Loop index = {}...".format(idx))
-              self.object_ids.append(g.remote())
-              time.sleep(0.5)
-  
-  a = A.remote()
-  a.f.remote()
+**Number of object IDs in scope keeps increasing.**
+Number of object IDs in scope indicates the total number of object IDs this actor can access to. Object IDs that have reference to big objects are in plasma store, and others are staying in local memory. "In scope" means that object IDs are accessible by this actor. That typically means objectID is referred by some varaibles in actor code. 
+If this number keeps increasing as you run your Ray cluster, that could mean that your objectIDs are not properly garbage collected. This can lead to OOM errors or eviction of objectIDs that your program still wants to use. 
 
 
-Inspect Node Memory Usage
-~~~~~~~~~~~~~~~~~~~~~~~~~
-In this example, you can see local object memory is not used because objects are stored on the node (Plasma Storage) through `ray.put`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-inspect-node-memory-usage.png
-    :align: center
-
-.. code-block:: python
-
-  @ray.remote
-  class C(object):
-      def __init__(self):
-          self.object_ids = []
-      
-      def push(self):
-          object_id = ray.put("test")
-          self.object_ids.append(object_id)
-          time.sleep(1)
-          return object_id
-      
-      def clean_memory(self):
-          del self.object_ids
-          
-  @ray.remote
-  class D(object):
-      def __init__(self):
-          self.object_ids = []
-  
-      def fetch(self):
-          c = C.remote()
-          
-          for idx in range(20):
-              ray.show_in_webui("Loop index = {}...".format(idx))
-              time.sleep(0.5)
-              object_id = ray.get(c.push.remote())
-              self.object_ids.append(object_id)  
-  
-      def clean_memory(self):
-          del self.object_ids
-  
-  d = D.remote()
-  _ = d.fetch.remote()
+**Number of local objects are way less than number of object IDs in scope**
+This means many of objectIDs are referring to objects residing in plasma stores. It can happen either when objects are big or when you use ``ray.put``. 
+If you have too many big objects and if your program uses plasma store heaviily, the program could be slower becasue using plasma stores is slower than local memory.
 
 Profiling (Experimental)
 ~~~~~~~~~~~~~~~~~~~~~~~~
