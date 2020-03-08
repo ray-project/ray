@@ -851,15 +851,19 @@ class LocalIterator(Generic[T]):
                 for it in list(active):
                     # Yield items from the iterator until _NextValueNotReady is
                     # found, then switch to the next iterator.
+                    # To avoid starvation, we yield at most max_yield items per
+                    # iterator before switching.
+                    if deterministic:
+                        max_yield = 1
+                    else:
+                        max_yield = 20
                     try:
-                        while True:
+                        for _ in range(max_yield):
                             item = next(it)
                             if isinstance(item, _NextValueNotReady):
                                 break
                             else:
                                 yield item
-                            if deterministic:
-                                break
                     except StopIteration:
                         active.remove(it)
                 if not active:
