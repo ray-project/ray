@@ -2,6 +2,7 @@
 
 import h5py
 import numpy as np
+from pathlib import Path
 from tensorflow.python.eager.context import eager_mode
 import unittest
 
@@ -123,9 +124,12 @@ class MyTorchModel(TorchModelV2, nn.Module):
         })
 
 
-def test_model_import(run, config, env):
-    import_file = "data/model_weights/weights.h5"
-    agent_cls = get_agent_class(run)
+def model_import_test(algo, config, env):
+    # Get the abs-path to use (bazel-friendly).
+    rllib_dir = Path(__file__).parent.parent
+    import_file = str(rllib_dir) + "/tests/data/model_weights/weights.h5"
+
+    agent_cls = get_agent_class(algo)
 
     for fw in ["torch", "eager", "tf"]:
         print("framework={}".format(fw))
@@ -190,7 +194,7 @@ class TestModelImport(unittest.TestCase):
         ray.shutdown()
 
     def test_ppo(self):
-        test_model_import(
+        model_import_test(
             "PPO",
             config={
                 "num_workers": 0,

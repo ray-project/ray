@@ -1009,8 +1009,9 @@ py_test(
 
 py_test(
     name = "tests/test_model_imports",
-    tags = ["tests_dir", "tests_dir_M"],
+    tags = ["tests_dir", "tests_dir_M", "model_imports"],
     size = "small",
+    data = glob(["tests/data/model_weights/**"]),
     srcs = ["tests/test_model_imports.py"]
 )
 
