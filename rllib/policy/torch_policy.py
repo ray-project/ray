@@ -94,8 +94,9 @@ class TorchPolicy(Policy):
             extra_action_out = self.extra_action_out(input_dict, state_batches,
                                                      self.model, action_dist)
             if logp is not None:
+                logp = logp.cpu().numpy()
                 extra_action_out.update({
-                    ACTION_PROB: torch.exp(logp),
+                    ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
