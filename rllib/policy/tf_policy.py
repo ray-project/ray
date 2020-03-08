@@ -703,7 +703,8 @@ class EntropyCoeffSchedule:
                 # Implements previous version but enforces outside_value
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0, framework=None)
+                    outside_value=0.0,
+                    framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
