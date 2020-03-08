@@ -7,6 +7,7 @@
 #include <ray/api/ray_runtime.h>
 #include <ray/api/task_type.h>
 #include <ray/api/impl/funcs.generated.h>
+#include <ray/api/impl/create_funcs.generated.h>
 #include <ray/api/impl/actor_funcs.generated.h>
 #include <msgpack.hpp>
 
