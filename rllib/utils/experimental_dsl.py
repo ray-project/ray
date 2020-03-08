@@ -697,6 +697,7 @@ class Enqueue:
         >>> next(combined_op)
         SampleBatch(...)
     """
+
     def __init__(self, output_queue: queue.Queue):
         if not isinstance(output_queue, queue.Queue):
             raise ValueError("Expected queue.Queue, got {}".format(
@@ -715,6 +716,11 @@ def Dequeue(input_queue: queue.Queue, check=lambda: True):
 
     The dequeue is non-blocking, so Dequeue operations can executed with
     Enqueue via the Concurrently() operator.
+
+    Arguments:
+        input_queue (Queue): queue to pull items from.
+        check (fn): liveness check. When this function returns false,
+            Dequeue() will raise an error to halt execution.
 
     Examples:
         >>> queue = queue.Queue(100)
