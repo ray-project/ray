@@ -26,6 +26,7 @@ from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 
 tf = try_import_tf()
 
@@ -61,6 +62,8 @@ COMMON_CONFIG = {
     # The exact workflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
     "rollout_length": 200,
+    # Deprecated; renamed to `rollout_length` in 0.8.4.
+    "sample_batch_size": DEPRECATED_VALUE,
     # Whether to rollout "complete_episodes" or "truncate_episodes" to
     # `rollout_length` length unrolls. Episode truncation guarantees more
     # evenly sized batches, but increases variance as the reward-to-go will
@@ -600,7 +603,7 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "batch_steps": 1,
+                    "rollout_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
@@ -884,6 +887,14 @@ class Trainer(Trainable):
     @classmethod
     def merge_trainer_configs(cls, config1, config2):
         config1 = copy.deepcopy(config1)
+        # Error if trainer default has deprecated value.
+        if config1["sample_batch_size"] != DEPRECATED_VALUE:
+            deprecation_warning("sample_batch_size", new="rollout_length", error=True)
+        # Warning if user override config has deprecated value.
+        if "sample_batch_size" in config2:
+            deprecation_warning("sample_batch_size", new="rollout_length")
+            config2["rollout_length"] = config2["sample_batch_size"]
+            del config2["sample_batch_size"]
         return deep_update(config1, config2, cls._allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
