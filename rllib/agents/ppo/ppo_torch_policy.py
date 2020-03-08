@@ -146,7 +146,7 @@ def kl_and_loss_stats(policy, train_batch):
         "cur_lr": policy.cur_lr,
         "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
         "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
+        "vf_loss": policy.loss_obj.mean_vf_loss.item(),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
