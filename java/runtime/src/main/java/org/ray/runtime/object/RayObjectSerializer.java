@@ -14,14 +14,14 @@ import java.util.Set;
 
 public class RayObjectSerializer extends FSTBasicObjectSerializer {
 
-  static ThreadLocal<Set<ObjectId>> innerIds = ThreadLocal.withInitial(HashSet::new);
+  static ThreadLocal<Set<ObjectId>> containedObjectIds = ThreadLocal.withInitial(HashSet::new);
 
   @Override
   public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
                           FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
     RayObjectImpl object = (RayObjectImpl) toWrite;
     out.writeObject(object.getId());
-    innerIds.get().add(object.getId());
+    containedObjectIds.get().add(object.getId());
   }
 
   @Override
@@ -32,8 +32,8 @@ public class RayObjectSerializer extends FSTBasicObjectSerializer {
   }
 
   public static List<ObjectId> getAndClearContainedObjectIds() {
-    List<ObjectId> ids = new ArrayList<>(innerIds.get());
-    innerIds.get().clear();
+    List<ObjectId> ids = new ArrayList<>(containedObjectIds.get());
+    containedObjectIds.get().clear();
     return ids;
   }
 }
