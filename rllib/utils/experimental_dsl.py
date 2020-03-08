@@ -1,4 +1,4 @@
-"""Experimental operators for defining distributed training pipelines.
+"""Experimental distributed execution API.
 
 TODO(ekl): describe the concepts."""
 

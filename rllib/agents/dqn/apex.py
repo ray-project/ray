@@ -81,8 +81,8 @@ def update_target_based_on_num_steps_trained(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [
@@ -175,5 +175,5 @@ APEX_TRAINER_PROPERTIES = {
 ApexTrainer = DQNTrainer.with_updates(
     name="APEX",
     default_config=APEX_DEFAULT_CONFIG,
-    training_pipeline=training_pipeline,
+    execution_plan=execution_plan,
     **APEX_TRAINER_PROPERTIES)

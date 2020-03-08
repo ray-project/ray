@@ -4,8 +4,8 @@ import ray
 from ray.rllib.agents.a3c import A2CTrainer
 
 
-class TestPipeline(unittest.TestCase):
-    """General tests for the pipeline API."""
+class TestDistributedExecution(unittest.TestCase):
+    """General tests for the distributed execution API."""
 
     def setUp(self):
         ray.init()
@@ -13,12 +13,12 @@ class TestPipeline(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_pipeline_stats(ray_start_regular):
+    def test_exec_plan_stats(ray_start_regular):
         trainer = A2CTrainer(
             env="CartPole-v0",
             config={
                 "min_iter_time_s": 0,
-                "use_pipeline_impl": True
+                "use_exec_api": True
             })
         result = trainer.train()
         assert isinstance(result, dict)
@@ -33,12 +33,12 @@ class TestPipeline(unittest.TestCase):
         assert "sample_throughput" in result["timers"]
         assert "update_time_ms" in result["timers"]
 
-    def test_pipeline_save_restore(ray_start_regular):
+    def test_exec_plan_save_restore(ray_start_regular):
         trainer = A2CTrainer(
             env="CartPole-v0",
             config={
                 "min_iter_time_s": 0,
-                "use_pipeline_impl": True
+                "use_exec_api": True
             })
         res1 = trainer.train()
         checkpoint = trainer.save()
