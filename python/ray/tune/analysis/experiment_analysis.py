@@ -7,7 +7,6 @@ try:
 except ImportError:
     pd = None
 
-from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
     CONFIG_PREFIX, TRAINING_ITERATION
