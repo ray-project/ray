@@ -279,8 +279,7 @@ class LearningRateSchedule:
             self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:
             self.lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1],
-                framework=None)
+                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
@@ -303,7 +302,8 @@ class EntropyCoeffSchedule:
         self.entropy_coeff = entropy_coeff
 
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff, framework=None)
+            self.entropy_coeff_schedule = ConstantSchedule(
+                entropy_coeff, framework=None)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
@@ -315,7 +315,8 @@ class EntropyCoeffSchedule:
                 # Implements previous version but enforces outside_value
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0, framework=None)
+                    outside_value=0.0,
+                    framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
