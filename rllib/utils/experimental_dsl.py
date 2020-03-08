@@ -482,7 +482,21 @@ class AverageGradients:
 
 
 class StoreToReplayBuffer:
-    def __init__(self, replay_buffer):
+    """Callable that stores data into a local replay buffer.
+
+    This should be used with the .for_each() operator on a rollouts iterator.
+    The batch that was stored is returned.
+
+    Examples:
+        >>> buf = ReplayBuffer(1000)
+        >>> rollouts = ParallelRollouts(...)
+        >>> store_op = rollouts.for_each(StoreToReplayBuffer(buf))
+        >>> next(store_op)
+        SampleBatch(...)
+    """
+
+    def __init__(self, replay_buffer: ReplayBuffer):
+        assert isinstance(replay_buffer, ReplayBuffer)
         self.replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
 
     def __call__(self, batch: SampleBatchType):
@@ -499,10 +513,24 @@ class StoreToReplayBuffer:
                     pack_if_needed(row["new_obs"]),
                     row["dones"],
                     weight=None)
+        return batch
 
 
 class StoreToReplayActors:
-    def __init__(self, replay_actors):
+    """Callable that stores data into a replay buffer actors.
+
+    This should be used with the .for_each() operator on a rollouts iterator.
+    The batch that was stored is returned.
+
+    Examples:
+        >>> actors = [ReplayActor.remote() for _ in range(4)]
+        >>> rollouts = ParallelRollouts(...)
+        >>> store_op = rollouts.for_each(StoreToReplayActors(actors))
+        >>> next(store_op)
+        SampleBatch(...)
+    """
+
+    def __init__(self, replay_actors: List["ActorHandle"]):
         self.replay_actors = replay_actors
 
     def __call__(self, batch: SampleBatchType):
@@ -523,7 +551,7 @@ def ParallelReplay(replay_actors, async_queue_depth=4):
         async_queue_depth=async_queue_depth).filter(lambda x: x is not None)
 
 
-def LocalReplay(replay_buffer, train_batch_size):
+def LocalReplay(replay_buffer: ReplayBuffer, train_batch_size):
     assert isinstance(replay_buffer, ReplayBuffer)
     replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
     # TODO(ekl) support more options
