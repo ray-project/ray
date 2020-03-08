@@ -1662,16 +1662,17 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
               allocated_resources = worker->GetAllocatedInstances();                                                   
             }
             auto predefined_resources = allocated_resources.predefined_resources;
+            ::ray::rpc::ResourceMapEntry *resource;
             for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
-              auto resource = reply->add_resource_mapping();
               bool first = true; // Set resource name only if at least one of its instances has available capacity.
 	            for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size(); inst_idx++) {
 	              if (std::abs(predefined_resources[res_idx][inst_idx]) > ZERO_CAPACITY) {
-                  auto rid = resource->add_resource_ids();
                   if (first) {
+                    resource = reply->add_resource_mapping();
                     resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(res_idx));
                     first = false;
                   }     
+                  auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
                   rid->set_quantity(predefined_resources[res_idx][inst_idx]);
                 }
@@ -1679,15 +1680,15 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             }
             auto custom_resources = allocated_resources.custom_resources;
             for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
-              auto resource = reply->add_resource_mapping();
               bool first = true; // Set resource name only if at least one of its instances has available capacity.
 	            for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
 	              if (std::abs(it->second[inst_idx]) < ZERO_CAPACITY) {
-                  auto rid = resource->add_resource_ids();
                   if (first) {
+                    resource = reply->add_resource_mapping();
                     resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(it->first));
                     first = false;
                   }     
+                  auto rid = resource->add_resource_ids();
                   rid->set_index(inst_idx);
                   rid->set_quantity(it->second[inst_idx]);
                 }
