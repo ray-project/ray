@@ -2,6 +2,7 @@ package org.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
 import java.io.IOException;
+import java.io.ObjectInput;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -56,9 +57,9 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
     }
   }
 
-  private void readObject(java.io.ObjectInputStream in)
-      throws IOException, ClassNotFoundException {
-    in.defaultReadObject();
+  void readObject(FSTObjectInput in) throws Exception {
+    ObjectId id = (ObjectId) in.readObject(ObjectId.class);
+    this.id = id;
     addLocalReference();
   }
 
@@ -79,32 +80,6 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
     runtime = null;
   }
 
-  public static class Serializer extends FSTBasicObjectSerializer {
 
-    static ThreadLocal<Set<ObjectId>> innerIds = ThreadLocal.withInitial(HashSet::new);
 
-    @Override
-    public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
-                            FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
-      RayObjectImpl object = (RayObjectImpl) toWrite;
-      out.writeObject(object.getId());
-      innerIds.get().add(object.getId());
-    }
-
-    @Override
-    public void readObject(FSTObjectInput in, Object toRead, FSTClazzInfo clzInfo,
-                           FSTClazzInfo.FSTFieldInfo referencedBy) throws Exception {
-      super.readObject(in, toRead, clzInfo, referencedBy);
-      ObjectId id = (ObjectId) in.readObject(ObjectId.class);
-      RayObjectImpl object = (RayObjectImpl) toRead;
-      object.id = id;
-    }
-
-    public static List<ObjectId> getInnerObjectIds() {
-      List<ObjectId> ids = new ArrayList<>();
-      ids.addAll(innerIds.get());
-      innerIds.get().clear();
-      return ids;
-    }
-  }
 }
