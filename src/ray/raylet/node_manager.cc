@@ -1682,7 +1682,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
               bool first = true; // Set resource name only if at least one of its instances has available capacity.
 	            for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-	              if (std::abs(it->second[inst_idx]) < ZERO_CAPACITY) {
+	              if (std::abs(it->second[inst_idx]) > ZERO_CAPACITY) {
                   if (first) {
                     resource = reply->add_resource_mapping();
                     resource->set_name(new_resource_scheduler_->GetResourceNameFromIndex(it->first));

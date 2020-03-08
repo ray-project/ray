@@ -953,7 +953,7 @@ std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
   auto it = nodes_.find(local_node_id_);
   RAY_CHECK(it != nodes_.end());
   double cpus = 0;
-  for(int v : cpu_instances) {
+  for (double v : cpu_instances) {
     cpus += v;
   } 
   it->second.predefined_resources[CPU].available = 
@@ -971,7 +971,7 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
   auto it = nodes_.find(local_node_id_);
   RAY_CHECK(it != nodes_.end());
   double cpus = 0;
-  for(int v : cpu_instances) {
+  for (double v : cpu_instances) {
     cpus += v;
   } 
   it->second.predefined_resources[CPU].available = 
