@@ -1008,6 +1008,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_model_imports",
+    tags = ["tests_dir", "tests_dir_M"],
+    size = "small",
+    srcs = ["tests/test_model_imports.py"]
+)
+
+py_test(
     name = "tests/test_multi_agent_env",
     tags = ["tests_dir", "tests_dir_M"],
     size = "large",

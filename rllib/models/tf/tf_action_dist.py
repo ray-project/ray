@@ -81,7 +81,9 @@ class Categorical(TFActionDistribution):
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
-        return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
+        sample = tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
+        # Stability in case self.inputs have very extreme values.
+        return tf.minimum(tf.cast(self.n, dtype=sample.dtype), sample)
 
     @staticmethod
     @override(ActionDistribution)

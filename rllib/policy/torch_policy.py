@@ -268,10 +268,9 @@ class TorchPolicy(Policy):
         raise NotImplementedError
 
     @override(Policy)
-    def import_model_from_h5(self, export_dir):
-        """TODO(sven): implement for torch.
-        """
-        raise NotImplementedError
+    def import_model_from_h5(self, import_file):
+        """Imports weights into torch model."""
+        return self.model.import_from_h5(import_file)
 
 
 @DeveloperAPI
