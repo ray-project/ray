@@ -12,7 +12,7 @@ class TorchDistributionWrapper(ActionDistribution):
 
     @override(ActionDistribution)
     def __init__(self, inputs, model):
-        inputs = torch.Tensor(inputs)
+        #inputs = torch.Tensor(inputs)
         super().__init__(inputs, model)
         # Store the last sample here.
         self.last_sample = None
