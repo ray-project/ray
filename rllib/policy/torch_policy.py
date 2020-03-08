@@ -303,7 +303,7 @@ class EntropyCoeffSchedule:
         self.entropy_coeff = entropy_coeff
 
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff, framework="torch")
+            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff, framework=None)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):

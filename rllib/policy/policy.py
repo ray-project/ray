@@ -382,7 +382,6 @@ class Policy(metaclass=ABCMeta):
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTfPolicy.
         TODO(sven): unify these cases."""
-        print("CREATE", config)
         exploration = from_config(
             Exploration,
             config.get("exploration_config", {"type": "StochasticSampling"}),

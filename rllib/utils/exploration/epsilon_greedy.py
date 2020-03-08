@@ -149,5 +149,4 @@ class EpsilonGreedy(Exploration):
     @override(Exploration)
     def get_info(self):
         eps = self.epsilon_schedule(self.last_timestep)
-        print("EPS", eps)
         return {"cur_epsilon": eps}
