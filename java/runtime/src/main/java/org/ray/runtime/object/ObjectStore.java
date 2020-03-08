@@ -51,7 +51,7 @@ public abstract class ObjectStore {
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     NativeRayObject serialized = ObjectSerializer.serialize(object);
-    List<ObjectId> innerObjectIds = RayObjectSerializer.getInnerObjectIds();
+    List<ObjectId> innerObjectIds = RayObjectSerializer.getAndClearContainedObjectIds();
     return putRaw(serialized, innerObjectIds);
   }
 
@@ -69,7 +69,7 @@ public abstract class ObjectStore {
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     NativeRayObject serialized = ObjectSerializer.serialize(object);
-    List<ObjectId> innerObjectIds = RayObjectSerializer.getInnerObjectIds();
+    List<ObjectId> innerObjectIds = RayObjectSerializer.getAndClearContainedObjectIds();
     putRaw(serialized, objectId, innerObjectIds);
   }
 
