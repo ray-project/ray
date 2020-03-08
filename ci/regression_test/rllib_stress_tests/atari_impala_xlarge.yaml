@@ -13,7 +13,7 @@ atari-impala:
     stop:
         timesteps_total: 30000000
     config:
-        sample_batch_size: 50
+        rollout_length: 50
         train_batch_size: 500
         num_workers: 128
         num_envs_per_worker: 5

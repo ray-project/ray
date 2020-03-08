@@ -233,7 +233,7 @@ The ``choose_policy_optimizer`` function chooses which `Policy Optimizer <#polic
             sgd_batch_size=config["sgd_minibatch_size"],
             num_sgd_iter=config["num_sgd_iter"],
             num_gpus=config["num_gpus"],
-            sample_batch_size=config["rollout_length"],
+            rollout_length=config["rollout_length"],
             num_envs_per_worker=config["num_envs_per_worker"],
             train_batch_size=config["train_batch_size"],
             standardize_fields=["advantages"],
