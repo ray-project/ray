@@ -106,8 +106,7 @@ class MultiCategorical(TFActionDistribution):
     @override(ActionDistribution)
     def deterministic_sample(self):
         return tf.stack(
-            [cat.deterministic_sample() for cat in self.cats],
-            axis=1)
+            [cat.deterministic_sample() for cat in self.cats], axis=1)
 
     @override(ActionDistribution)
     def logp(self, actions):
