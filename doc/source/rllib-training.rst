@@ -145,8 +145,9 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     # model (tf or torch) by doing:
     trainer.import_model("my_weights.h5")
     # NOTE: In order for this to work, your (custom) model needs to implement
-    # the `import_from_h5` method. See rllib/tests/test_model_imports.py
-    # for detailed examples for tf AND torch trainers/models.
+    # the `import_from_h5` method.
+    # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
+    # for detailed examples for tf- and torch trainers/models.
 
 .. note::
 
