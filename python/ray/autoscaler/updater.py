@@ -10,6 +10,8 @@ import subprocess
 import sys
 import time
 
+import ray.utils
+
 from threading import Thread
 from getpass import getuser
 
@@ -152,9 +154,10 @@ class SSHCommandRunner:
 
         ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
         ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
-        ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
-            ssh_user_hash[:HASH_MAX_LENGTH],
-            ssh_control_hash[:HASH_MAX_LENGTH])
+        ssh_control_path = os.path.join(
+            ray.utils.get_user_temp_dir(), "ray_ssh_{}/{}".format(
+                ssh_user_hash[:HASH_MAX_LENGTH],
+                ssh_control_hash[:HASH_MAX_LENGTH]))
 
         self.log_prefix = log_prefix
         self.process_runner = process_runner

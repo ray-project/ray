@@ -1,3 +1,5 @@
+#include "ray/util/filesystem.h"
+
 namespace ray {
 namespace streaming {
 
@@ -70,7 +72,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + RandomObjectID().Hex();
+    std::string store_socket_name = ray::join_paths(
+        ray::get_user_temp_dir(),
+        "store" + RandomObjectID().Hex());
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable_ + " -m 10000000 -s " +
                                  store_socket_name +
@@ -91,7 +95,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   std::string StartGcsServer(std::string redis_address) {
-    std::string gcs_server_socket_name = "/tmp/gcs_server" + ObjectID::FromRandom().Hex();
+    std::string gcs_server_socket_name = ray::join_paths(
+        ray::get_user_temp_dir(),
+        "gcs_server" + ObjectID::FromRandom().Hex());
     std::string ray_start_cmd = gcs_server_executable_;
     ray_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -116,7 +122,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           int port, std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().Hex();
+    std::string raylet_socket_name = ray::join_paths(
+        ray::get_user_temp_dir(),
+        "raylet" + RandomObjectID().Hex());
     std::string ray_start_cmd = raylet_executable_;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)

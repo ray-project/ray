@@ -164,6 +164,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     """Kills a random Raylet worker."""
+    # TODO(mehrdadn): Port to Windows
     cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
     exec_cluster(cluster_config_file, cmd, False, False, False, False, False,
                  override_cluster_name, None)
@@ -288,6 +289,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             "get_or_create_head_node: "
             "Head node up-to-date, IP address is: {}".format(head_node_ip))
 
+        # TODO(mehrdadn): Port to Windows
         monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
         use_docker = "docker" in config and bool(
             config["docker"]["container_name"])

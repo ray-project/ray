@@ -5,6 +5,8 @@ import os
 import socket
 import logging
 
+import ray.utils
+
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, NODE_TYPE_WORKER, \
     NODE_TYPE_HEAD
@@ -90,9 +92,12 @@ class LocalNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.state = ClusterState("/tmp/cluster-{}.lock".format(cluster_name),
-                                  "/tmp/cluster-{}.state".format(cluster_name),
-                                  provider_config)
+        self.state = ClusterState(
+            os.path.join(ray.utils.get_user_temp_dir(),
+                         "cluster-{}.lock".format(cluster_name)),
+            os.path.join(ray.utils.get_user_temp_dir(),
+                         "cluster-{}.state".format(cluster_name)),
+            provider_config)
 
     def non_terminated_nodes(self, tag_filters):
         workers = self.state.get()

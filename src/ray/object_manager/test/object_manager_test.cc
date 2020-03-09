@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/object_manager/object_manager.h"
+
 #include <unistd.h>
 
 #include <iostream>
 #include <thread>
 
 #include "gtest/gtest.h"
-
 #include "ray/common/status.h"
-
-#include "ray/object_manager/object_manager.h"
+#include "ray/util/filesystem.h"
 
 namespace {
 std::string store_executable;
@@ -83,7 +83,7 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   std::string StartStore(const std::string &id) {
-    std::string store_id = "/tmp/store";
+    std::string store_id = ray::join_paths(ray::get_user_temp_dir(), "store");
     store_id = store_id + id;
     std::string store_pid = store_id + ".pid";
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +

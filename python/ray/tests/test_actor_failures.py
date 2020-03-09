@@ -22,7 +22,8 @@ from ray.test_utils import (relevant_errors, wait_for_condition,
 
 @pytest.fixture
 def ray_checkpointable_actor_cls(request):
-    checkpoint_dir = "/tmp/ray_temp_checkpoint_dir/"
+    checkpoint_dir = os.path.join(ray.utils.get_user_temp_dir(),
+                                  "ray_temp_checkpoint_dir") + os.sep
     if not os.path.isdir(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 

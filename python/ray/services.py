@@ -423,8 +423,9 @@ def start_ray_process(command,
                 "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
 
         # TODO(suquark): Any better temp file creation here?
-        gdb_init_path = "/tmp/ray/gdb_init_{}_{}".format(
-            process_type, time.time())
+        gdb_init_path = os.path.join(
+            ray.utils.get_ray_temp_dir(), "gdb_init_{}_{}".format(
+                process_type, time.time()))
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
@@ -1431,18 +1432,18 @@ def determine_plasma_store_config(object_store_memory,
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
             else:
-                plasma_directory = "/tmp"
+                plasma_directory = ray.utils.get_user_temp_dir()
                 logger.warning(
-                    "WARNING: The object store is using /tmp instead of "
+                    "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
                     "This may slow down performance! You may be able to free "
                     "up space by deleting files in /dev/shm or terminating "
                     "any running plasma_store_server processes. If you are "
                     "inside a Docker container, you may need to pass an "
                     "argument with the flag '--shm-size' to 'docker run'.".
-                    format(shm_avail))
+                    format(ray.utils.get_user_temp_dir(), shm_avail))
         else:
-            plasma_directory = "/tmp"
+            plasma_directory = ray.utils.get_user_temp_dir()
 
         # Do some sanity checks.
         if object_store_memory > system_memory:

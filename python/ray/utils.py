@@ -8,6 +8,7 @@ import os
 import six
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -27,6 +28,20 @@ linux_prctl = None
 # We keep a global job object to tie its lifetime to that of our own process.
 win32_job = None
 win32_AssignProcessToJobObject = None
+
+
+def get_user_temp_dir():
+    if sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+        # Ideally we wouldn't need this fallback, but keep it for now for
+        # for compatibility
+        tempdir = os.path.join(os.sep, "tmp")
+    else:
+        tempdir = tempfile.gettempdir()
+    return tempdir
+
+
+def get_ray_temp_dir():
+    return os.path.join(get_user_temp_dir(), "ray")
 
 
 def _random_string():
