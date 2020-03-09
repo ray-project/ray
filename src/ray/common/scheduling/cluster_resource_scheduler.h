@@ -372,7 +372,7 @@ class ClusterResourceScheduler {
   ///
   /// \return Overflow capacities of "resource_instances" after adding instance 
   /// capacities in "available", i.e., 
-  /// min(available + reasource_instances.available, resource_instances.total) 
+  /// min(available + resource_instances.available, resource_instances.total) 
   std::vector<double> AddAvailableResourceInstances(std::vector<double> available,
                                                     ResourceInstanceCapacities *resource_instances);
 
