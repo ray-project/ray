@@ -252,10 +252,6 @@ class Node:
         return self._ray_params.load_code_from_local
 
     @property
-    def use_pickle(self):
-        return self._ray_params.use_pickle
-
-    @property
     def object_id_seed(self):
         """Get the seed for deterministic generation of object IDs"""
         return self._ray_params.object_id_seed
@@ -569,7 +565,6 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            use_pickle=self._ray_params.use_pickle,
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
