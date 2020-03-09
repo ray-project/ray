@@ -3206,6 +3206,11 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     plasma_ids.push_back(plasma::ObjectID::from_binary(object_id_binary));
   }
   std::vector<plasma::ObjectBuffer> plasma_results;
+  // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
+  // block when serving the request. However, if the plasma store is under
+  // heavy load, then this request can still block the NodeManager event loop
+  // since we must wait for the plasma store's reply. We should consider using
+  // an `AsyncGet` instead.
   if (!store_client_.Get(plasma_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
     RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
     send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
