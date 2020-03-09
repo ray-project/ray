@@ -841,10 +841,15 @@ def test_raylet_crash_when_get(ray_start_regular):
         time.sleep(2)
         ray.worker._global_node.kill_raylet()
 
+    object_id = ray.put(None)
+    ray.internal.free(object_id)
+    while ray.worker.global_worker.core_worker.object_exists(object_id):
+        time.sleep(1)
+
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(ray.ObjectID.from_random())
+        ray.get(object_id)
     thread.join()
 
 

@@ -122,8 +122,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                policy_out, Deterministic, self.policy_model, explore,
-                timestep)
+                policy_out, Deterministic, self.policy_model, timestep,
+                explore)
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -295,7 +295,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Note that this encompasses both the policy and Q-value networks and
         # their corresponding target networks
         self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-            tf.group(q_t_det_policy, q_tp1), self.sess)
+            tf.group(q_t_det_policy, q_tp1, self._actor_optimizer.variables(),
+                     self._critic_optimizer.variables()), self.sess)
 
         # Hard initial update
         self.update_target(tau=1.0)

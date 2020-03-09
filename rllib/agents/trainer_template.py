@@ -1,9 +1,13 @@
+import logging
+import os
 import time
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -34,40 +38,43 @@ def build_trainer(name,
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
         default_policy (cls): the default Policy class to use
-        default_config (dict): The default config dict of the algorithm,
-            otherwise uses the Trainer default config.
-        validate_config (func): optional callback that checks a given config
-            for correctness. It may mutate the config as needed.
-        get_initial_state (func): optional function that returns the initial
-            state dict given the trainer instance as an argument. The state
-            dict must be serializable so that it can be checkpointed, and will
-            be available as the `trainer.state` variable.
-        get_policy_class (func): optional callback that takes a config and
-            returns the policy class to override the default with
-        before_init (func): optional function to run at the start of trainer
-            init that takes the trainer instance as argument
-        make_workers (func): override the method that creates rollout workers.
-            This takes in (trainer, env_creator, policy, config) as args.
-        make_policy_optimizer (func): optional function that returns a
-            PolicyOptimizer instance given (WorkerSet, config)
-        after_init (func): optional function to run at the end of trainer init
-            that takes the trainer instance as argument
-        before_train_step (func): optional callback to run before each train()
-            call. It takes the trainer instance as an argument.
-        after_optimizer_step (func): optional callback to run after each
-            step() call to the policy optimizer. It takes the trainer instance
-            and the policy gradient fetches as arguments.
-        after_train_result (func): optional callback to run at the end of each
-            train() call. It takes the trainer instance and result dict as
-            arguments, and may mutate the result dict as needed.
-        collect_metrics_fn (func): override the method used to collect metrics.
-            It takes the trainer instance as argumnt.
-        before_evaluate_fn (func): callback to run before evaluation. This
-            takes the trainer instance as argument.
-        mixins (list): list of any class mixins for the returned trainer class.
-            These mixins will be applied in order and will have higher
-            precedence than the Trainer class
-        training_pipeline (func): Experimental support for custom
+        default_config (Optional[dict]): The default config dict of the
+            algorithm. If None, uses the Trainer default config.
+        validate_config (Optional[callable]): Optional callback that checks a
+            given config for correctness. It may mutate the config as needed.
+        get_initial_state (Optional[callable]): Optional callable that returns
+            the initial state dict given the trainer instance as an argument.
+            The state dict must be serializable so that it can be checkpointed,
+            and will be available as the `trainer.state` variable.
+        get_policy_class (Optional[callable]): Optional callable that takes a
+            Trainer config and returns the policy class to override the default
+            with.
+        before_init (Optional[callable]): Optional callable to run at the start
+            of trainer init that takes the trainer instance as argument.
+        make_workers (Optional[callable]): Override the default method that
+            creates rollout workers. This takes in (trainer, env_creator,
+            policy, config) as args.
+        make_policy_optimizer (Optional[callable]): Optional callable that
+            returns a PolicyOptimizer instance given (WorkerSet, config).
+        after_init (Optional[callable]): Optional callable to run at the end of
+            trainer init that takes the trainer instance as argument.
+        before_train_step (Optional[callable]): Optional callable to run before
+            each train() call. It takes the trainer instance as an argument.
+        after_optimizer_step (Optional[callable]): Optional callable to run
+            after each step() call to the policy optimizer. It takes the
+            trainer instance and the policy gradient fetches as arguments.
+        after_train_result (Optional[callable]): Optional callable to run at
+            the end of each train() call. It takes the trainer instance and
+            result dict as arguments, and may mutate the result dict as needed.
+        collect_metrics_fn (Optional[callable]): Optional callable to override
+            the default method used to collect metrics. Takes the trainer
+            instance as argumnt.
+        before_evaluate_fn (Optional[callable]): Optional callable to run
+            before evaluation. Takes the trainer instance as argument.
+        mixins (Optional[List[class]]): Optional list of mixin class(es) for
+            the returned trainer class. These mixins will be applied in order
+            and will have higher precedence than the Trainer class.
+        training_pipeline (Optional[callable]): Experimental support for custom
             training pipelines. This overrides `make_policy_optimizer`.
 
     Returns:
@@ -88,25 +95,33 @@ def build_trainer(name,
         def _init(self, config, env_creator):
             if validate_config:
                 validate_config(config)
+
             if get_initial_state:
                 self.state = get_initial_state(self)
             else:
                 self.state = {}
-            if get_policy_class is None:
-                policy = default_policy
-            else:
-                policy = get_policy_class(config)
+
+            # Override default policy if `get_policy_class` is provided.
+            if get_policy_class is not None:
+                self._policy = get_policy_class(config)
+
             if before_init:
                 before_init(self)
+
+            # Creating all workers (excluding evaluation workers).
             if make_workers:
-                self.workers = make_workers(self, env_creator, policy, config)
+                self.workers = make_workers(self, env_creator, self._policy,
+                                            config)
             else:
-                self.workers = self._make_workers(env_creator, policy, config,
+                self.workers = self._make_workers(env_creator, self._policy,
+                                                  config,
                                                   self.config["num_workers"])
             self.train_pipeline = None
             self.optimizer = None
 
-            if training_pipeline:
+            if training_pipeline and (self.config["use_pipeline_impl"] or
+                                      "RLLIB_USE_PIPELINE_IMPL" in os.environ):
+                logger.warning("Using experimental pipeline based impl.")
                 self.train_pipeline = training_pipeline(self.workers, config)
             elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
@@ -153,10 +168,10 @@ def build_trainer(name,
 
         def _train_pipeline(self):
             if before_train_step:
-                before_train_step(self)
+                logger.warning("Ignoring before_train_step callback")
             res = next(self.train_pipeline)
             if after_train_result:
-                after_train_result(self, res)
+                logger.warning("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)

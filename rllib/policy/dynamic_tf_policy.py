@@ -184,8 +184,8 @@ class DynamicTFPolicy(TFPolicy):
                     model_out,
                     self.dist_class,
                     self.model,
-                    explore=explore,
-                    timestep=timestep)
+                    timestep,
+                    explore=explore)
 
         # Phase 1 init.
         sess = tf.get_default_session() or tf.Session()

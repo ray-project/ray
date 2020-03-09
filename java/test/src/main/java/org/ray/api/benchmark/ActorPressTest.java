@@ -3,7 +3,6 @@ package org.ray.api.benchmark;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.testng.annotations.Test;
 
 public class ActorPressTest extends RayBenchmarkTest {
@@ -45,7 +44,7 @@ public class ActorPressTest extends RayBenchmarkTest {
 
   @Override
   public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
-    return Ray.call(Adder::add, (RayActor<Adder>) rayActor, 10);
+    return ((RayActor<Adder>) rayActor).call(Adder::add, 10);
   }
 
   @Override
@@ -53,7 +52,6 @@ public class ActorPressTest extends RayBenchmarkTest {
     return true;
   }
 
-  @RayRemote
   public static class Adder {
 
     private Integer sum = 0;
