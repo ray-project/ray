@@ -375,3 +375,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_numba",
+    size = "small",
+    srcs = ["test_numba.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)

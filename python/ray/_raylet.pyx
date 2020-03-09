@@ -90,7 +90,6 @@ from ray.exceptions import (
     ObjectStoreFullError,
     RayTimeoutError,
 )
-from ray.experimental.no_return import NoReturn
 from ray.utils import decode
 
 cimport cpython
@@ -986,7 +985,6 @@ cdef class CoreWorker:
                 c_owner_id,
                 c_owner_address)
 
-    # TODO: handle noreturn better
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns):
@@ -1004,10 +1002,6 @@ cdef class CoreWorker:
             if isinstance(output, ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-            elif output is NoReturn:
-                serialized_objects.append(output)
-                data_sizes.push_back(0)
-                metadatas.push_back(string_to_buffer(b''))
             else:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
@@ -1024,11 +1018,7 @@ cdef class CoreWorker:
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
-            if returns[0][i].get() == NULL:
-                continue
-            if serialized_object is NoReturn:
-                returns[0][i].reset()
-            else:
+            if returns[0][i].get() != NULL:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
 
