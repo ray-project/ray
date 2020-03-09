@@ -5,7 +5,6 @@
 #include <boost/asio.hpp>
 #include "absl/synchronization/mutex.h"
 
-#include "grpc_client.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 
@@ -122,17 +121,8 @@ class ClientCallTag {
   /// Get the wrapped `ClientCall`.
   const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
 
-  void SetOperation(const std::function<void(ClientCallTag *tag)> &operation) {
-    operation_ = operation;
-  }
-
-  const std::function<void(ClientCallTag *tag)> &GetOperation() const {
-    return operation_;
-  }
-
  private:
   std::shared_ptr<ClientCall> call_;
-  std::function<void(ClientCallTag *tag)> operation_;
 };
 
 /// Represents the generic signature of a `FooService::Stub::PrepareAsyncBar`
@@ -159,12 +149,8 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1,
-                             bool auto_reconnect_enabled = false)
-      : main_service_(main_service),
-        num_threads_(num_threads),
-        shutdown_(false),
-        auto_reconnect_enabled_(auto_reconnect_enabled) {
+  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
+      : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -198,15 +184,15 @@ class ClientCallManager {
   /// \param[in] callback The callback function that handles reply.
   ///
   /// \return A `ClientCall` representing the request that was just sent.
-  template <class GrpcClient, class GrpcService, class Request, class Reply>
+  template <class GrpcService, class Request, class Reply>
   std::shared_ptr<ClientCall> CreateCall(
-      GrpcClient *grpc_client,
+      typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
     // Send request.
     // Find the next completion queue to wait for response.
-    call->response_reader_ = (grpc_client->GetStub().get()->*prepare_async_function)(
+    call->response_reader_ = (stub.*prepare_async_function)(
         &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
     call->response_reader_->StartCall();
 
@@ -218,21 +204,6 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    if (auto_reconnect_enabled_) {
-      auto operation = [this, grpc_client, prepare_async_function, request,
-                        callback](ClientCallTag *tag) {
-        auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
-        call->response_reader_ =
-            (grpc_client->Reconnect().get()->*prepare_async_function)(
-                &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
-        call->response_reader_->StartCall();
-        auto new_tag = new ClientCallTag(call);
-        new_tag->SetOperation(tag->GetOperation());
-        call->response_reader_->Finish(&call->reply_, &call->status_, (void *)new_tag);
-      };
-      tag->SetOperation(operation);
-    }
-
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
@@ -262,11 +233,7 @@ class ClientCallManager {
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
         tag->GetCall()->SetReturnStatus();
-        if (tag->GetCall()->GetStatus().IsIOError() && tag->GetOperation()) {
-          // Reconnect gcs server and retry operation.
-          tag->GetOperation()(tag);
-          delete tag;
-        } else if (ok && !main_service_.stopped() && !shutdown_) {
+        if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post([tag]() {
             tag->GetCall()->OnReplyReceived();
@@ -297,9 +264,6 @@ class ClientCallManager {
 
   /// Polling threads to check the completion queue.
   std::vector<std::thread> polling_threads_;
-
-  /// Whether to enable auto reconnect rpc service.
-  bool auto_reconnect_enabled_;
 };
 
 }  // namespace rpc
