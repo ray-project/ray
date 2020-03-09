@@ -77,7 +77,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
-             std::function<void(std::string *)> get_py_stack = nullptr,
+             std::function<void(std::string *)> get_lang_stack = nullptr,
              bool ref_counting_enabled = false);
 
   virtual ~CoreWorker();
@@ -109,14 +109,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
-    reference_counter_->AddLocalReference(object_id, call_site);
+  void AddLocalReference(const ObjectID &object_id, std::string call_site,
+                         const int64_t object_size) {
+    reference_counter_->AddLocalReference(object_id, call_site, object_size);
   }
 
-  void AddLocalReference(const ObjectID &object_id) {
-    std::string stack;
-    get_py_stack_(&stack);
-    reference_counter_->AddLocalReference(object_id, stack);
+  void AddLocalReference(const ObjectID &object_id, const int64_t object_size) {
+    reference_counter_->AddLocalReference(object_id, CurrentCallSite(), object_size);
   }
 
   /// Decrease the reference count for this object ID. Should be called
@@ -659,8 +658,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// be held up in garbage objects.
   std::function<void()> gc_collect_;
 
-  /// Callback to get the current Python stack.
-  std::function<void(std::string *)> get_py_stack_;
+  /// Callback to get the current language (e.g., Python) call site.
+  std::function<void(std::string *)> get_call_site_;
+
+  // Convenience method to get the current language call site.
+  std::string CurrentCallSite() {
+    std::string call_site;
+    if (get_call_site_ != nullptr) {
+      get_call_site_(&call_site);
+    }
+    return call_site;
+  }
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make

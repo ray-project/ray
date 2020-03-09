@@ -71,7 +71,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const TaskExecutionCallback &task_execution_callback,
                        std::function<Status()> check_signals,
                        std::function<void()> gc_collect,
-                       std::function<void(std::string *)> get_py_stack,
+                       std::function<void(std::string *)> get_lang_stack,
                        bool ref_counting_enabled)
     : worker_type_(worker_type),
       language_(language),
@@ -79,7 +79,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled_(ref_counting_enabled),
       check_signals_(check_signals),
       gc_collect_(gc_collect),
-      get_py_stack_(get_py_stack),
+      get_call_site_(get_lang_stack),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
@@ -394,10 +394,8 @@ Status CoreWorker::Put(const RayObject &object,
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::DIRECT));
-  std::string stack;
-  get_py_stack_(&stack);
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                     rpc_address_, stack);
+                                     rpc_address_, CurrentCallSite(), object.GetSize());
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
@@ -439,12 +437,11 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
     reference_counter_->DebugDump();
   }
   RAY_RETURN_NOT_OK(status);
-  std::string stack;
-  get_py_stack_(&stack);
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                       rpc_address_, stack);
+                                       rpc_address_, CurrentCallSite(),
+                                       data_size + metadata->Size());
   }
   return Status::OK();
 }
@@ -753,10 +750,8 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
-    std::string stack;
-    get_py_stack_(&stack);
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, stack,
-                                  max_retries);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  CurrentCallSite(), max_retries);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
@@ -799,10 +794,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    std::string stack;
-    get_py_stack_(&stack);
     task_manager_->AddPendingTask(
-        GetCallerId(), rpc_address_, task_spec, stack,
+        GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
         std::max(RayConfig::instance().actor_creation_min_retries(),
                  actor_creation_options.max_reconstructions));
     return direct_task_submitter_->SubmitTask(task_spec);
@@ -846,9 +839,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
-    std::string stack;
-    get_py_stack_(&stack);
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, stack);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  CurrentCallSite());
     if (actor_handle->IsDead()) {
       auto status = Status::IOError("sent task to dead actor");
       task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
@@ -1261,7 +1253,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // Acquire a reference and retry. This prevents the object from being
     // evicted out from under us before we can start the get.
-    AddLocalReference(object_id, "<temporary (get object status)>");
+    AddLocalReference(object_id, "<temporary (get object status)>", -1);
     if (task_manager_->IsTaskPending(object_id.TaskId())) {
       // The task is pending. Send the reply once the task finishes.
       memory_store_->GetAsync(object_id,
