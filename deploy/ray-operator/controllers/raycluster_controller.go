@@ -69,7 +69,7 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		log.Error(err, "Read request instance error!")
 		// Error reading the object - requeue the request.
 		if !apierrs.IsNotFound(err) {
-			return nil, err
+			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, nil
 	}
