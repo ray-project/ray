@@ -3,7 +3,7 @@ package org.ray.streaming.operator.impl;
 import java.util.List;
 import org.ray.streaming.api.collector.CollectionCollector;
 import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.message.Record;
 import org.ray.streaming.operator.OneInputOperator;
@@ -19,8 +19,8 @@ public class FlatMapOperator<T, R> extends StreamOperator<FlatMapFunction<T, R>>
   }
 
   @Override
-  public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
-    super.open(collectorList, runtimeContext);
+  public void open(List<Collector> collectorList, StreamRuntimeContext streamRuntimeContext) {
+    super.open(collectorList, streamRuntimeContext);
     this.collectionCollector = new CollectionCollector(collectorList);
   }
 

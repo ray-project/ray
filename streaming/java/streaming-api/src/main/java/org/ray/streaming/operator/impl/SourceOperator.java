@@ -2,7 +2,7 @@ package org.ray.streaming.operator.impl;
 
 import java.util.List;
 import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.api.function.impl.SourceFunction;
 import org.ray.streaming.api.function.impl.SourceFunction.SourceContext;
 import org.ray.streaming.message.Record;
@@ -18,10 +18,10 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
   }
 
   @Override
-  public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
-    super.open(collectorList, runtimeContext);
+  public void open(List<Collector> collectorList, StreamRuntimeContext streamRuntimeContext) {
+    super.open(collectorList, streamRuntimeContext);
     this.sourceContext = new SourceContextImpl(collectorList);
-    this.function.init(runtimeContext.getParallelism(), runtimeContext.getTaskIndex());
+    this.function.init(streamRuntimeContext.getParallelism(), streamRuntimeContext.getTaskIndex());
   }
 
   public void run() {

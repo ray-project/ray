@@ -3,7 +3,7 @@ package org.ray.streaming.operator;
 import java.util.List;
 import org.ray.streaming.api.Language;
 import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.api.function.Function;
 import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
@@ -12,7 +12,7 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   protected String name;
   protected F function;
   protected List<Collector> collectorList;
-  protected RuntimeContext runtimeContext;
+  protected StreamRuntimeContext streamRuntimeContext;
 
   public StreamOperator(F function) {
     this.name = getClass().getSimpleName();
@@ -20,9 +20,9 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   }
 
   @Override
-  public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
+  public void open(List<Collector> collectorList, StreamRuntimeContext streamRuntimeContext) {
     this.collectorList = collectorList;
-    this.runtimeContext = runtimeContext;
+    this.streamRuntimeContext = streamRuntimeContext;
   }
 
   @Override

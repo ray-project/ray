@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
@@ -21,8 +21,8 @@ public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>> impl
   }
 
   @Override
-  public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
-    super.open(collectorList, runtimeContext);
+  public void open(List<Collector> collectorList, StreamRuntimeContext streamRuntimeContext) {
+    super.open(collectorList, streamRuntimeContext);
     this.reduceState = new HashMap<>();
   }
 

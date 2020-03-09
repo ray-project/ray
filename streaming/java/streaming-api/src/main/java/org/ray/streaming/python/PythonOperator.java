@@ -2,7 +2,7 @@ package org.ray.streaming.python;
 
 import java.util.List;
 import org.ray.streaming.api.Language;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.operator.OperatorType;
 import org.ray.streaming.operator.StreamOperator;
 
@@ -17,7 +17,7 @@ public class PythonOperator extends StreamOperator {
   }
 
   @Override
-  public void open(List list, RuntimeContext runtimeContext) {
+  public void open(List list, StreamRuntimeContext streamRuntimeContext) {
     String msg = String.format("Methods of %s shouldn't be called.", getClass().getSimpleName());
     throw new UnsupportedOperationException(msg);
   }

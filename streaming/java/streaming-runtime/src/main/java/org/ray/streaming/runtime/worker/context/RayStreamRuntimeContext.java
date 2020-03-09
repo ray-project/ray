@@ -3,13 +3,13 @@ package org.ray.streaming.runtime.worker.context;
 import static org.ray.streaming.util.Config.STREAMING_BATCH_MAX_COUNT;
 
 import java.util.Map;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
 
 /**
- * Use Ray to implement RuntimeContext.
+ * Use Ray to implement StreamRuntimeContext.
  */
-public class RayRuntimeContext implements RuntimeContext {
+public class RayStreamRuntimeContext implements StreamRuntimeContext {
   private int taskId;
   private int taskIndex;
   private int parallelism;
@@ -17,8 +17,8 @@ public class RayRuntimeContext implements RuntimeContext {
   private final Long maxBatch;
   private Map<String, String> config;
 
-  public RayRuntimeContext(ExecutionTask executionTask, Map<String, String> config,
-      int parallelism) {
+  public RayStreamRuntimeContext(ExecutionTask executionTask, Map<String, String> config,
+                                 int parallelism) {
     this.taskId = executionTask.getTaskId();
     this.config = config;
     this.taskIndex = executionTask.getTaskIndex();

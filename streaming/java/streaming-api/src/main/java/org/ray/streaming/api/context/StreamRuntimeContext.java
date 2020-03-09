@@ -3,7 +3,7 @@ package org.ray.streaming.api.context;
 /**
  * Encapsulate the runtime information of a streaming task.
  */
-public interface RuntimeContext {
+public interface StreamRuntimeContext {
 
   int getTaskId();
 

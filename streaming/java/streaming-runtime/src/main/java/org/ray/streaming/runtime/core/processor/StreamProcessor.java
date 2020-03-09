@@ -2,7 +2,7 @@ package org.ray.streaming.runtime.core.processor;
 
 import java.util.List;
 import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.operator.Operator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +17,7 @@ public abstract class StreamProcessor<T, P extends Operator> implements Processo
   private static final Logger LOGGER = LoggerFactory.getLogger(StreamProcessor.class);
 
   protected List<Collector> collectors;
-  protected RuntimeContext runtimeContext;
+  protected StreamRuntimeContext streamRuntimeContext;
   protected P operator;
 
   public StreamProcessor(P operator) {
@@ -25,11 +25,11 @@ public abstract class StreamProcessor<T, P extends Operator> implements Processo
   }
 
   @Override
-  public void open(List<Collector> collectors, RuntimeContext runtimeContext) {
+  public void open(List<Collector> collectors, StreamRuntimeContext streamRuntimeContext) {
     this.collectors = collectors;
-    this.runtimeContext = runtimeContext;
+    this.streamRuntimeContext = streamRuntimeContext;
     if (operator != null) {
-      this.operator.open(collectors, runtimeContext);
+      this.operator.open(collectors, streamRuntimeContext);
     }
     LOGGER.info("opened {}", this);
   }

@@ -4,12 +4,12 @@ import java.io.Serializable;
 import java.util.List;
 import org.ray.streaming.api.Language;
 import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.api.function.Function;
 
 public interface Operator extends Serializable {
 
-  void open(List<Collector> collectors, RuntimeContext runtimeContext);
+  void open(List<Collector> collectors, StreamRuntimeContext streamRuntimeContext);
 
   void finish();
 

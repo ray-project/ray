@@ -8,7 +8,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.api.collector.Collector;
-import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.context.StreamRuntimeContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.runtime.core.collector.OutputCollector;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
@@ -19,7 +19,7 @@ import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.DataReader;
 import org.ray.streaming.runtime.transfer.DataWriter;
 import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.runtime.worker.context.RayRuntimeContext;
+import org.ray.streaming.runtime.worker.context.RayStreamRuntimeContext;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,10 +109,10 @@ public abstract class StreamTask implements Runnable {
       reader = new DataReader(channelIDs, fromActorIds, queueConf);
     }
 
-    RuntimeContext runtimeContext = new RayRuntimeContext(
+    StreamRuntimeContext streamRuntimeContext = new RayStreamRuntimeContext(
         worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
 
-    processor.open(collectors, runtimeContext);
+    processor.open(collectors, streamRuntimeContext);
 
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
       try {
