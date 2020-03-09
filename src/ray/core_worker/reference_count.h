@@ -37,7 +37,8 @@ class ReferenceCounter {
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  void AddLocalReference(const ObjectID &object_id, const std::string& call_site) LOCKS_EXCLUDED(mutex_);
+  void AddLocalReference(const ObjectID &object_id, const std::string &call_site)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the local reference count for the ObjectID by one.
   ///
@@ -92,8 +93,8 @@ class ReferenceCounter {
   /// \param[in] dependencies The objects that the object depends on.
   void AddOwnedObject(const ObjectID &object_id,
                       const std::vector<ObjectID> &contained_ids, const TaskID &owner_id,
-                      const rpc::Address &owner_address,
-                      const std::string &call_site) LOCKS_EXCLUDED(mutex_);
+                      const rpc::Address &owner_address, const std::string &call_site)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
   ///
@@ -214,7 +215,7 @@ class ReferenceCounter {
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
   void DebugDump() {
-    for (const auto& ref : object_id_refs_) {
+    for (const auto &ref : object_id_refs_) {
       RAY_LOG(ERROR) << "object at " << ref.second.call_site;
     }
   }
@@ -225,7 +226,8 @@ class ReferenceCounter {
     Reference() : owned_by_us(false), call_site("<unknown (not given)>") {}
     Reference(std::string call_site) : owned_by_us(false), call_site(call_site) {}
     /// Constructor for a reference that we created.
-    Reference(const TaskID &owner_id, const rpc::Address &owner_address, std::string call_site )
+    Reference(const TaskID &owner_id, const rpc::Address &owner_address,
+              std::string call_site)
         : owned_by_us(true), call_site(call_site), owner({owner_id, owner_address}) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from

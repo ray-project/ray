@@ -77,7 +77,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
-             std::function<void(std::string*)> get_py_stack = nullptr,
+             std::function<void(std::string *)> get_py_stack = nullptr,
              bool ref_counting_enabled = false);
 
   virtual ~CoreWorker();
@@ -660,7 +660,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::function<void()> gc_collect_;
 
   /// Callback to get the current Python stack.
-  std::function<void(std::string*)> get_py_stack_;
+  std::function<void(std::string *)> get_py_stack_;
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make

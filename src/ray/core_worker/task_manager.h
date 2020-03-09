@@ -50,7 +50,8 @@ class TaskManager : public TaskFinisherInterface {
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      const TaskSpecification &spec, const std::string &call_site, int max_retries = 0);
+                      const TaskSpecification &spec, const std::string &call_site,
+                      int max_retries = 0);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///

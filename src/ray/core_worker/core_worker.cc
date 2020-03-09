@@ -71,7 +71,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const TaskExecutionCallback &task_execution_callback,
                        std::function<Status()> check_signals,
                        std::function<void()> gc_collect,
-                       std::function<void(std::string*)> get_py_stack,
+                       std::function<void(std::string *)> get_py_stack,
                        bool ref_counting_enabled)
     : worker_type_(worker_type),
       language_(language),
@@ -755,7 +755,8 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   if (task_options.is_direct_call) {
     std::string stack;
     get_py_stack_(&stack);
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, stack, max_retries);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, stack,
+                                  max_retries);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
@@ -1030,7 +1031,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // Pin the borrowed IDs for the duration of the task.
   for (const auto &borrowed_id : borrowed_ids) {
     RAY_LOG(DEBUG) << "Incrementing ref for borrowed ID " << borrowed_id;
-    reference_counter_->AddLocalReference(borrowed_id, "ExecuteTask::" + task_spec.DebugString());
+    reference_counter_->AddLocalReference(borrowed_id,
+                                          "ExecuteTask::" + task_spec.DebugString());
   }
 
   const auto transport_type = worker_context_.CurrentTaskIsDirectCall()

@@ -92,7 +92,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::AddLocalReference(const ObjectID &object_id, const std::string &call_site) {
+void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
+                                         const std::string &call_site) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {

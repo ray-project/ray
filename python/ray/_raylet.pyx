@@ -561,7 +561,9 @@ cdef void get_py_stack(c_string* stack_out) nogil:
         msg = "<unknown>"
         while frame:
             if not frame.f_code.co_filename.endswith("worker.py"):
-                msg = "{}:{}:{}".format(frame.f_code.co_filename, frame.f_code.co_name, frame.f_lineno)
+                msg = "{}:{}:{}".format(
+                    frame.f_code.co_filename, frame.f_code.co_name,
+                    frame.f_lineno)
                 break
             frame = frame.f_back
         stack_out[0] = msg.encode("ascii")
