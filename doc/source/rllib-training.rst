@@ -140,6 +140,13 @@ Here is an example of the basic usage (for a more complete example, see `custom_
            checkpoint = trainer.save()
            print("checkpoint saved at", checkpoint)
 
+    # Also, in case you have trained a model outside of ray/RLlib and have created
+    # a h5-file with weight values in it, you can load it into your Trainer's
+    # model (tf or torch) by doing:
+    trainer.import_model("my_weights.h5")
+    # NOTE: In order for this to work, your (custom) model needs to implement
+    # the `import_from_h5` method. See rllib/tests/test_model_imports.py
+    # for detailed examples for tf AND torch trainers/models.
 
 .. note::
 
