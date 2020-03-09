@@ -165,8 +165,7 @@ class ARSTrainer(Trainer):
         # PyTorch check.
         if config["use_pytorch"]:
             raise ValueError(
-                "ARS does not support PyTorch yet! Use tf instead."
-            )
+                "ARS does not support PyTorch yet! Use tf instead.")
 
         env = env_creator(config["env_config"])
         from ray.rllib import models
@@ -301,7 +300,7 @@ class ARSTrainer(Trainer):
             w.__ray_terminate__.remote()
 
     @override(Trainer)
-    def compute_action(self, observation):
+    def compute_action(self, observation, *args, **kwargs):
         return self.policy.compute(observation, update=True)[0]
 
     def _collect_results(self, theta_id, min_episodes):

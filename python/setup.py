@@ -79,10 +79,12 @@ extras = {
 }
 
 extras["rllib"] = extras["tune"] + [
-    "pyyaml",
+    "atari_py",
+    "dm_tree",
     "gym[atari]",
-    "opencv-python-headless",
     "lz4",
+    "opencv-python-headless",
+    "pyyaml",
     "scipy",
 ]
 
