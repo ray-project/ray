@@ -1,20 +1,21 @@
 from __future__ import print_function
 
 import argparse
+import timeit
 import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
 from torch.nn import DataParallel
 from torchvision import models
-import timeit
 import numpy as np
+import os
 # Apex
 from apex import amp
 
 # Benchmark settings
 parser = argparse.ArgumentParser(
-    description="PyTorch Synthetic Benchmark",
+    description="PyTorch DP Synthetic Benchmark",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     "--fp16-allreduce",
@@ -40,12 +41,6 @@ parser.add_argument(
     help="number of batches per benchmark iteration")
 parser.add_argument(
     "--num-iters", type=int, default=10, help="number of benchmark iterations")
-
-parser.add_argument(
-    "--no-cuda",
-    action="store_true",
-    default=False,
-    help="disables CUDA training")
 parser.add_argument(
     "--amp-fp16",
     action="store_true",
@@ -53,6 +48,8 @@ parser.add_argument(
     help="Enables FP16 training with Apex.")
 
 args = parser.parse_args()
+os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+    str(i) for i in range(args.num_gpus))
 
 cudnn.benchmark = True
 
@@ -102,6 +99,8 @@ for x in range(args.num_iters):
 img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)
 print("Img/sec per %s: %.1f +-%.1f" % (device, img_sec_mean, img_sec_conf))
-print("Total img/sec on %d %s(s): %.1f +-%.1f" %
-      (args.num_gpus, device, args.num_gpus * img_sec_mean,
-       args.num_gpus * img_sec_conf))
+print("Total img/sec on %d %s(s): %.1f +-%.1f" % (
+    args.num_gpus,
+    device,
+    img_sec_mean,  # we do NOT scale this by number workers
+    args.num_gpus * img_sec_conf))
