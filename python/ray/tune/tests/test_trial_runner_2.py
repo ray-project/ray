@@ -239,7 +239,6 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        # checkpoint = runner.trial_executor.save(trials[0])
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save
         runner.trial_executor.stop_trial(trials[0])
