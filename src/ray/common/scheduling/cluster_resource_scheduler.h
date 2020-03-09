@@ -286,7 +286,7 @@ class ClusterResourceScheduler {
   void UpdateResourceCapacity(const std::string &node_name,
                               const std::string &resource_name, int64_t resource_total);
 
-  /// Delete a given resource (resource_name) from a given node c(node_name).
+  /// Delete a given resource from a given node.
   ///
   /// \param node_name: Node whose resource we want to delete.
   /// \param resource_name: Resource we want to delete
