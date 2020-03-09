@@ -68,7 +68,7 @@ class GcsRpcClient {
                std::function<std::pair<std::string, int>()> get_server_address = nullptr)
       : client_call_manager_(client_call_manager),
         get_server_address_(std::move(get_server_address)) {
-    init(address, port, client_call_manager);
+    Init(address, port, client_call_manager);
   };
 
   /// Add job info to gcs server.
@@ -168,7 +168,7 @@ class GcsRpcClient {
                              worker_info_grpc_client_, )
 
  private:
-  void init(const std::string &address, const int port,
+  void Init(const std::string &address, const int port,
             ClientCallManager &client_call_manager) {
     job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
         new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
@@ -191,7 +191,7 @@ class GcsRpcClient {
   void Reconnect() {
     if (get_server_address_) {
       auto address = get_server_address_();
-      init(address.first, address.second, client_call_manager_);
+      Init(address.first, address.second, client_call_manager_);
     }
   }
 
