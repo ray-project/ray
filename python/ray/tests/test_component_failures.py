@@ -1,5 +1,5 @@
 import os
-import signal
+from signal import SIGKILL
 import sys
 import time
 
@@ -44,7 +44,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert len(ready_ids) == 0
 
     # Kill the worker.
-    os.kill(worker_pid, signal.SIGKILL)
+    os.kill(worker_pid, SIGKILL)
     time.sleep(0.1)
 
     # Make sure the sleep task hasn't finished.
@@ -131,7 +131,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Kill the worker.
-    os.kill(worker_pid, signal.SIGKILL)
+    os.kill(worker_pid, SIGKILL)
     time.sleep(0.1)
 
     # Create the object.
