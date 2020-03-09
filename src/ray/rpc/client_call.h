@@ -195,7 +195,6 @@ class ClientCallManager {
     call->response_reader_ = (stub.*prepare_async_function)(
         &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
     call->response_reader_->StartCall();
-
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
     //
