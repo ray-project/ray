@@ -218,12 +218,14 @@ class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
 
-    def send(self):
+    async def send(self):
         self.ready_event.set()
 
-    async def wait(self, should_wait=True):
+    async def wait(self, should_wait=True, clear=True):
         if should_wait:
             await self.ready_event.wait()
+            if clear:
+                self.ready_event.clear()
 
 
 class RemoteSignal:
