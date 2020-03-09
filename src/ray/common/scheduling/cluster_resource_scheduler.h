@@ -380,7 +380,7 @@ class ClusterResourceScheduler {
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
-  /// \return Underflow of "resource_instances" after substracting instance 
+  /// \return Underflow of "resource_instances" after subtracting instance 
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<double> SubtractAvailableResourceInstances(std::vector<double> available,
