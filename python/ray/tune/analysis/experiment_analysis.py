@@ -125,7 +125,7 @@ class Analysis:
 
         Returns:
             A list of [path, metric] lists for all persistent checkpoints of
-            the trial.
+                the trial.
         """
         if isinstance(trial, str):
             trial_dir = os.path.expanduser(trial)
