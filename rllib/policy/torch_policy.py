@@ -7,6 +7,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
@@ -94,12 +95,13 @@ class TorchPolicy(Policy):
             extra_action_out = self.extra_action_out(input_dict, state_batches,
                                                      self.model, action_dist)
             if logp is not None:
+                logp = convert_to_non_torch_type(logp)
                 extra_action_out.update({
-                    ACTION_PROB: torch.exp(logp),
+                    ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
-            return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
-                    extra_action_out)
+            return convert_to_non_torch_type(
+                (actions, state, extra_action_out))
 
     @override(Policy)
     def compute_log_likelihoods(self,
