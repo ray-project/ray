@@ -99,6 +99,37 @@ class TestDQN(unittest.TestCase):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
 
+    def test_dqn_parameter_noise_exploration(self):
+        """Tests, whether a DQN Agent works with ParameterNoise."""
+        config = dqn.DEFAULT_CONFIG.copy()
+        config["num_workers"] = 0  # Run locally.
+        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        config["exploration_config"] = {"type": "ParameterNoise"}
+        obs = np.array(0)
+
+        # Test against all frameworks.
+        for fw in ["eager", "tf", "torch"]:
+            if fw == "torch":
+                continue
+
+            print("framework={}".format(fw))
+
+            config["eager"] = True if fw == "eager" else False
+            config["use_pytorch"] = True if fw == "torch" else False
+
+            # DQN with ParameterNoise exploration.
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            # Setting explore=False should always return the same action.
+            a_ = trainer.compute_action(obs, explore=False)
+            for _ in range(50):
+                a = trainer.compute_action(obs, explore=False)
+                check(a, a_)
+            # explore=None (default: explore) should return different actions.
+            actions = []
+            for _ in range(50):
+                actions.append(trainer.compute_action(obs))
+            check(np.std(actions), 0.0, false=True)
+
 
 if __name__ == "__main__":
     import unittest
