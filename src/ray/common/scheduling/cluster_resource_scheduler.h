@@ -278,8 +278,7 @@ class ClusterResourceScheduler {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
-  /// Update total capacity of a given resource (resource_name) of a give node 
-  /// (node_name).
+  /// Update total capacity of a given resource of a given node.
   ///
   /// \param node_name: Node whose resource we want to update.
   /// \param resource_name: Resource which we want to update.
