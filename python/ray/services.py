@@ -1108,16 +1108,8 @@ def start_dashboard(require_webui,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
-        dashboard_url = ""
-
-        if not hosted_dashboard_addr:
-            dashboard_url = "http://{}:{}".format(
-                host if host != "0.0.0.0" else get_node_ip_address(), port)
-        else:
-            # TODO(sang): Find a way to read hosted dashboard url
-            dashboard_url = "http://localhost:8266"
-            logger.info(
-                "Dashboard is running in a host {}".format(dashboard_url))
+        dashboard_url = "http://{}:{}".format(
+            host if host != "0.0.0.0" else get_node_ip_address(), port)
 
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
@@ -1125,6 +1117,7 @@ def start_dashboard(require_webui,
 
         if not hosted_dashboard_addr:
             # TODO(simon): Implement frontend UI for this.
+            # TODO(sang): Change the url name?
             enable_hosted_dashboard_url = "{}/to_hosted".format(dashboard_url)
             logger.info("To host your dashboard, go to {}{}{}{}{}".format(
                 colorama.Style.BRIGHT, colorama.Fore.GREEN,

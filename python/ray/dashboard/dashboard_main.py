@@ -5,7 +5,7 @@ import traceback
 import ray
 
 import ray.ray_constants as ray_constants
-from ray.dashboard.dashboard import Dashboard
+from ray.dashboard.dashboard import Dashboard, DashboardController
 
 if __name__ == "__main__":
     # TODO(sang): Use Click instead of argparser
@@ -63,11 +63,14 @@ if __name__ == "__main__":
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     try:
+        dashboard_controller = DashboardController(
+            args.redis_address, args.redis_password)
         dashboard = Dashboard(
             args.host,
             args.port,
             args.redis_address,
             args.temp_dir,
+            dashboard_controller,
             hosted_dashboard_addr=args.hosted_dashboard_addr,
             redis_password=args.redis_password)
         dashboard.run()

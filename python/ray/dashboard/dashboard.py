@@ -228,18 +228,19 @@ class Dashboard(object):
                  port,
                  redis_address,
                  temp_dir,
+                 dashboard_controller,
                  redis_password=None,
-                 hosted_dashboard_addr=None,
-                 update_frequency=1.0,
-                 DashboardController=DashboardController):
+                 hosted_dashboard_addr=None):
         self.host = host
         self.port = port
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
         self.temp_dir = temp_dir
 
-        self.dashboard_controller = DashboardController(
-            redis_address, redis_password, update_frequency)
+        self.dashboard_controller = dashboard_controller
+        # SANG-TODO remove this.
+        # self.dashboard_controller = DashboardController(
+        #     redis_address, redis_password, update_frequency)
         if Analysis is not None:
             self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
 
@@ -429,6 +430,8 @@ class Dashboard(object):
 
         async def to_hosted_redirect(req) -> aiohttp.web.Response:
             dashboard_url = self.start_exporter()
+            if 'http://' not in dashboard_url:
+                dashboard_url = 'http://' + dashboard_url
             raise aiohttp.web.HTTPFound(dashboard_url)
 
         async def grafana_iframe(req) -> aiohttp.web.Response:
@@ -440,7 +443,6 @@ class Dashboard(object):
                 "metric": req.query.get("metric")
             })
             return await json_response({"frame_html": iframe_div})
-
 
         self.app.router.add_get("/", get_index)
         self.app.router.add_get("/favicon.ico", get_favicon)
