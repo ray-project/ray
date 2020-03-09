@@ -44,19 +44,20 @@ Azure Portal
 ~~~~~~~~~~~~
 
 Alternatively, you can deploy a cluster using Azure portal directly. Please note that auto scaling is done using Azure VM Scale Sets and not through
-Ray's auto-scaler. This will deploy `Azure Data Science VMs (DSVM) <https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/>`_
+Ray's autoscaler. This will deploy `Azure Data Science VMs (DSVM) <https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/>`_
 for both the head node and an auto-scale cluster managed by `Azure Virtual Machine Scale Sets <https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/>`_.
-The head node conviently exposes both SSH as well as JupyterLab. 
+The head node conviently exposes both SSH as well as JupyterLab.
 
 .. image:: https://aka.ms/deploytoazurebutton
    :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
    :alt: Deploy to Azure
 
-Once the template is successfully deploy the deployment output page provides the ssh command to connect and the link to the JupyterHub on the head node ( 
-username/password as specified on the template input). 
+Once the template is successfully deploy the deployment output page provides the ssh command to connect and the link to the JupyterHub on the head node (
+username/password as specified on the template input).
 Use the following code connect to the Ray cluster.
 
 .. code-block:: python
+
     import ray
     ray.init(address='auto')
 
