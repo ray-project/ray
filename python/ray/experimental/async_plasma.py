@@ -37,15 +37,6 @@ class PlasmaEventHandler:
                 logger.debug("Failed to set result for future {}."
                              "Most likely already set.".format(fut))
 
-    def process_notifications(self, messages):
-        """Process notifications."""
-        for object_id, object_size, metadata_size in messages:
-            if object_size > 0 and object_id:
-                # This must be asynchronous to allow objects to be locally
-                # received
-                self._loop.call_soon_threadsafe(self._complete_future,
-                                                object_id)
-
     def close(self):
         """Clean up this handler."""
         for futures in self._waiting_dict.values():
