@@ -799,6 +799,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Plasma notification manager
   std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
 
+  // Plasma Callback
+  PlasmaSubscriptionCallback plasma_done_callback_;
+
   friend class CoreWorkerTest;
 };
 
