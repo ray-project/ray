@@ -862,7 +862,8 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
   RAY_CHECK(actor_handle->IsDirectCallActor());
-  return direct_actor_submitter_->KillActor(actor_id, force_kill);
+  direct_actor_submitter_->KillActor(actor_id, force_kill);
+  return Status::OK();
 }
 
 void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
