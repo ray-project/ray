@@ -157,7 +157,7 @@ class Worker {
   /// 2) Other workers are scheduled and are allocated some of the CPUs donated by A.
   /// 3) Task A is unblocked, but it cannot get all CPUs back. At this point,
   /// the node is oversubscribed. borrowed_cpu_instances_ represents the number
-  /// of CPUs this node is iversubscribed by.
+  /// of CPUs this node is oversubscribed by.
   /// TODO (Ion): Investigate a more intuitive alternative to track these Cpus.
   std::vector<double> borrowed_cpu_instances_;
   /// Task being assigned to this worker.
