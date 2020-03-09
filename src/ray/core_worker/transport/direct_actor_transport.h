@@ -56,8 +56,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] actor_id The actor_id of the actor to kill.
   /// \param[in] force_kill Whether to force kill the actor, or let the actor
   /// try a clean exit.
-  /// \return Status::Invalid if the actor could not be killed.
-  Status KillActor(const ActorID &actor_id, bool force_kill);
+  void KillActor(const ActorID &actor_id, bool force_kill);
 
   /// Create connection to actor and send all pending tasks.
   ///

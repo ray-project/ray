@@ -877,8 +877,8 @@ cdef class CoreWorker:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
-            check_status(self.core_worker.get().KillActor(
-                  c_actor_id, True))
+            self.core_worker.get().KillActor(
+                  c_actor_id, True)
 
     def resource_ids(self):
         cdef:

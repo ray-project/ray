@@ -8,8 +8,8 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                                     bool force_kill) {
+void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
+                                                   bool force_kill) {
   absl::MutexLock lock(&mu_);
   auto inserted = pending_force_kills_.emplace(actor_id, force_kill);
   if (!inserted.second && force_kill) {
@@ -29,7 +29,6 @@ Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
   } else {
     SendPendingTasks(actor_id);
   }
-  return Status::OK();
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
