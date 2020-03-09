@@ -29,7 +29,6 @@ class DistributedTorchRunner(TorchRunner):
             raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
         self.backend = backend
 
-
     def setup(self, url, world_rank, world_size):
         """Connects to the distributed PyTorch backend and initializes the model.
 

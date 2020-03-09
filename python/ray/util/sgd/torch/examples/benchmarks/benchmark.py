@@ -52,22 +52,27 @@ args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = "GPU" if args.cuda else "CPU"
 
+
 def init_hook():
     import torch.backends.cudnn as cudnn
     cudnn.benchmark = True
 
 
 class Training(TrainingOperator):
-    def train_epoch(self, *pargs, **kwargs):
+    def setup(self, config):
         data = torch.randn(args.batch_size, 3, 224, 224)
         target = torch.LongTensor(args.batch_size).random_() % 1000
         if args.cuda:
             data, target = data.cuda(), target.cuda()
+
+        self.data, self.target = data, target
+
+    def train_epoch(self, *pargs, **kwargs):
         # print(self.model)
         def benchmark():
             self.optimizer.zero_grad()
-            output = self.model(data)
-            loss = F.cross_entropy(output, target)
+            output = self.model(self.data)
+            loss = F.cross_entropy(output, self.target)
             loss.backward()
             self.optimizer.step()
 
