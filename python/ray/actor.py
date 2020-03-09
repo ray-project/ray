@@ -95,7 +95,7 @@ class ActorMethod:
             self._actor_hard_ref = None
 
     def __call__(self, *args, **kwargs):
-        raise Exception("Actor methods cannot be called directly. Instead "
+        raise TypeError("Actor methods cannot be called directly. Instead "
                         "of running 'object.{}()', try "
                         "'object.{}.remote()'.".format(self._method_name,
                                                        self._method_name))
@@ -158,7 +158,7 @@ class ActorClassMethodMetadata(object):
 
     def __init__(self):
         class_name = type(self).__name__
-        raise Exception("{} can not be constructed directly, "
+        raise TypeError("{} can not be constructed directly, "
                         "instead of running '{}()', try '{}.create()'".format(
                             class_name, class_name, class_name))
 
@@ -310,7 +310,7 @@ class ActorClass:
         Raises:
             Exception: Always.
         """
-        raise Exception("Actors cannot be instantiated directly. "
+        raise TypeError("Actors cannot be instantiated directly. "
                         "Instead of '{}()', use '{}.remote()'.".format(
                             self.__ray_metadata__.class_name,
                             self.__ray_metadata__.class_name))
@@ -465,13 +465,13 @@ class ActorClass:
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
-            raise Exception("Actors cannot be created before ray.init() "
-                            "has been called.")
+            raise RuntimeError("Actors cannot be created before ray.init() "
+                               "has been called.")
 
         if detached and name is None:
-            raise Exception("Detached actors must be named. "
-                            "Please use Actor._remote(name='some_name') "
-                            "to associate the name.")
+            raise ValueError("Detached actors must be named. "
+                             "Please use Actor._remote(name='some_name') "
+                             "to associate the name.")
 
         # Check whether the name is already taken.
         if name is not None:
@@ -722,7 +722,7 @@ class ActorHandle:
 
             class FakeActorMethod(object):
                 def __call__(self, *args, **kwargs):
-                    raise Exception(
+                    raise TypeError(
                         "Actor methods cannot be called directly. Instead "
                         "of running 'object.{}()', try 'object.{}.remote()'.".
                         format(item, item))
@@ -895,7 +895,7 @@ def modify_class(cls):
             """
             worker = ray.worker.global_worker
             if not isinstance(self, ray.actor.Checkpointable):
-                raise Exception(
+                raise TypeError(
                     "__ray_checkpoint__.remote() may only be called on actors "
                     "that implement ray.actor.Checkpointable")
             return worker._save_actor_checkpoint()
@@ -925,9 +925,9 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
 
     if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
             ray_constants.INFINITE_RECONSTRUCTION):
-        raise Exception("max_reconstructions must be in range [%d, %d]." %
-                        (ray_constants.NO_RECONSTRUCTION,
-                         ray_constants.INFINITE_RECONSTRUCTION))
+        raise ValueError("max_reconstructions must be in range [%d, %d]." %
+                         (ray_constants.NO_RECONSTRUCTION,
+                          ray_constants.INFINITE_RECONSTRUCTION))
 
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
@@ -957,7 +957,7 @@ def exit_actor():
         raise exit
         assert False, "This process should have terminated."
     else:
-        raise Exception("exit_actor called on a non-actor worker.")
+        raise TypeError("exit_actor called on a non-actor worker.")
 
 
 ray.worker.global_worker.make_actor = make_actor

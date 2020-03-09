@@ -401,7 +401,8 @@ class Node:
         """
         if socket_path is not None:
             if os.path.exists(socket_path):
-                raise Exception("Socket file {} exists!".format(socket_path))
+                raise RuntimeError(
+                    "Socket file {} exists!".format(socket_path))
             socket_dir = os.path.dirname(socket_path)
             try_to_create_directory(socket_dir)
             return socket_path
@@ -682,9 +683,10 @@ class Node:
             # Handle the case where the process has already exited.
             if process.poll() is not None:
                 if check_alive:
-                    raise Exception("Attempting to kill a process of type "
-                                    "'{}', but this process is already dead."
-                                    .format(process_type))
+                    raise RuntimeError(
+                        "Attempting to kill a process of type "
+                        "'{}', but this process is already dead."
+                        .format(process_type))
                 else:
                     continue
 
@@ -701,7 +703,7 @@ class Node:
                     if process_info.stderr_file is not None:
                         with open(process_info.stderr_file, "r") as f:
                             message += "\nPROCESS STDERR:\n" + f.read()
-                    raise Exception(message)
+                    raise RuntimeError(message)
                 continue
 
             if process_info.use_valgrind_profiler:
