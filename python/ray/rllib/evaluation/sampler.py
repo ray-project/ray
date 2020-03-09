@@ -34,6 +34,11 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
     "prev_reward"
 ])
 
+# Bonsai Constants
+ACTION_TAG = 'act_tag'
+TEST_PROCESSED_ACTIONS = "test_processed_actions"
+IS_TEST = 'is_test'
+
 
 class PerfStats(object):
     """Sampler perf stats that will be included in rollout metrics."""
@@ -592,7 +597,13 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
                     action, policy.action_space)
             else:
                 actions_to_send[env_id][agent_id] = action
+
             episode = active_episodes[env_id]
+
+            # Bonsai modification so envs know if they are testing or training.
+            is_test: bool = True if episode.user_data.get(ACTION_TAG) == TEST_PROCESSED_ACTIONS else False
+            actions_to_send[env_id][IS_TEST] = is_test
+
             episode._set_rnn_state(agent_id, [c[i] for c in rnn_out_cols])
             episode._set_last_pi_info(
                 agent_id, {k: v[i]
