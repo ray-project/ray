@@ -68,7 +68,10 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		}
 		log.Error(err, "Read request instance error!")
 		// Error reading the object - requeue the request.
-		return reconcile.Result{}, ignoreNotFound(err)
+		if !apierrs.IsNotFound(err) {
+			return nil, err
+		}
+		return reconcile.Result{}, nil
 	}
 
 	log.Info("Print instance - ", "Instance.ToString", instance)
@@ -103,7 +106,7 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 
 	log.Info("Runtime Pods", "size", len(runtimePods.Items), "runtime pods namelist", runtimePodNameList)
 
-	// record pod need to be deleted
+	// Record that the pod needs to be deleted.
 	difference := runtimePodNameList.Difference(expectedPodNameList)
 
 	// fill replicas with runtime if exists or expectedPod if not exists
@@ -116,7 +119,7 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-	// create service for head
+	// Create the head node service.
 	if needServicePodMap.Cardinality() > 0 {
 		for elem := range needServicePodMap.Iterator().C {
 			podName := elem.(string)
@@ -135,20 +138,17 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-	// check pod and create one by one if not exist
+	// Check if each pod exists and if not, create it.
 	for i, replica := range replicas {
-		// create pod if not exist
 		if !utils.IsCreated(&replica) {
 			log.Info("Creating pod", "index", i, "create pod", replica.Name)
 			if err := r.Create(context.TODO(), &replica); err != nil {
 				return reconcile.Result{}, err
 			}
-			// pod created, no more work possible for this round
-			continue
 		}
 	}
 
-	// delete pods to desired state
+	// Delete pods if needed.
 	if difference.Cardinality() > 0 {
 		log.Info("difference", "pods", difference)
 		for _, runtimePod := range runtimePods.Items {
@@ -207,11 +207,4 @@ func (r *RayClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			OwnerType:    &rayiov1alpha1.RayCluster{},
 		}).
 		Complete(r)
-}
-
-func ignoreNotFound(err error) error {
-	if apierrs.IsNotFound(err) {
-		return nil
-	}
-	return err
 }
