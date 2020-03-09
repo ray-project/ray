@@ -130,4 +130,4 @@ def get_shape(x, unknown_value=-1):
     shape = x.shape
     if isinstance(x, tf.Tensor):
         shape = shape.as_list()
-    return tuple([s if s not in [None, -1] else unknown_value for s in shape])
+    return tuple(s if s not in [None, -1] else unknown_value for s in shape)
