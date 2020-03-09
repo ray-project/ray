@@ -11,7 +11,7 @@ import org.ray.streaming.python.PythonPartition;
  * Represents a python DataStream returned by a key-by operation.
  */
 @SuppressWarnings("unchecked")
-public class PythonKeyDataStream extends PythonDataStream implements PythonStream  {
+public class PythonKeyDataStream extends PythonDataStream implements PythonStream {
 
   public PythonKeyDataStream(PythonDataStream input, PythonOperator pythonOperator) {
     super(input, pythonOperator);

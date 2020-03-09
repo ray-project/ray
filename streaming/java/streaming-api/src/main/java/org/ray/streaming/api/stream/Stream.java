@@ -12,10 +12,10 @@ import org.ray.streaming.python.PythonPartition;
 /**
  * Abstract base class of all stream types.
  *
- * @param <STREAM_TYPE> Type of subclass of Stream
+ * @param <S> Type of stream class
  * @param <T> Type of the data in the stream.
  */
-public abstract class Stream<STREAM_TYPE extends Stream<STREAM_TYPE, T>, T>
+public abstract class Stream<S extends Stream<S, T>, T>
     implements Serializable {
   private int id;
   private int parallelism = 1;
@@ -80,11 +80,11 @@ public abstract class Stream<STREAM_TYPE extends Stream<STREAM_TYPE, T>, T>
   }
 
   @SuppressWarnings("unchecked")
-  private STREAM_TYPE self() {
-    return (STREAM_TYPE) this;
+  private S self() {
+    return (S) this;
   }
 
-  public STREAM_TYPE setParallelism(int parallelism) {
+  public S setParallelism(int parallelism) {
     if (referencedStream != null) {
       referencedStream.setParallelism(parallelism);
     } else {
