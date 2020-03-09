@@ -284,6 +284,10 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
                                     get_batch_builder, extra_batch_callback)
+        # Call each policy's Exploration.on_episode_start method.
+        for p in policies:
+            p.exploration.on_episode_start(base_env, episode, p.model)
+        # Call custom on_episode_start callback.
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
                 "env": base_env,
@@ -469,6 +473,10 @@ def _process_observations(base_env, policies, batch_builder_pool,
         if all_done:
             # Handle episode termination
             batch_builder_pool.append(episode.batch_builder)
+            # Call each policy's Exploration.on_episode_end method.
+            for p in policies:
+                p.exploration.on_episode_end(base_env, episode, p.model)
+            # Call custom on_episode_end callback.
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
                     "env": base_env,

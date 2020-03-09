@@ -1,11 +1,12 @@
 from typing import Union
 
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration, TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
-from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -43,11 +44,13 @@ class EpsilonGreedy(Exploration):
         super().__init__(
             action_space=action_space, framework=framework, **kwargs)
 
-        self.epsilon_schedule = epsilon_schedule or PiecewiseSchedule(
-            endpoints=[(0, initial_epsilon),
-                       (epsilon_timesteps, final_epsilon)],
-            outside_value=final_epsilon,
-            framework=self.framework)
+        self.epsilon_schedule = \
+            from_config(Schedule, epsilon_schedule, framework=framework) or \
+            PiecewiseSchedule(
+                endpoints=[
+                    (0, initial_epsilon), (epsilon_timesteps, final_epsilon)],
+                outside_value=final_epsilon,
+                framework=self.framework)
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(

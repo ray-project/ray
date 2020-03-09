@@ -31,8 +31,8 @@ class DistributionalQModel(TFModelV2):
                  use_noisy=False,
                  v_min=-10.0,
                  v_max=10.0,
-                 sigma0=0.5,
-                 parameter_noise=False):
+                 sigma0=0.5):
+                 #parameter_noise=False):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -45,7 +45,7 @@ class DistributionalQModel(TFModelV2):
             v_min (float): min value support for distributional DQN
             v_max (float): max value support for distributional DQN
             sigma0 (float): initial value of noisy nets
-            parameter_noise (bool): enable layer norm for param noise
+            #parameter_noise (bool): enable layer norm for param noise
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the Q head. Those layers for forward()
@@ -66,12 +66,12 @@ class DistributionalQModel(TFModelV2):
                     if use_noisy:
                         action_out = self._noisy_layer(
                             "hidden_%d" % i, action_out, q_hiddens[i], sigma0)
-                    elif parameter_noise:
-                        action_out = tf.keras.layers.Dense(
-                            units=q_hiddens[i],
-                            activation_fn=tf.nn.relu,
-                            normalizer_fn=tf.keras.layers.LayerNormalization
-                        )(action_out)
+                    #elif parameter_noise:
+                    #    action_out = tf.keras.layers.Dense(
+                    #        units=q_hiddens[i],
+                    #        activation_fn=tf.nn.relu,
+                    #        normalizer_fn=tf.keras.layers.LayerNormalization
+                    #    )(action_out)
                     else:
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
@@ -125,12 +125,12 @@ class DistributionalQModel(TFModelV2):
                     state_out = self._noisy_layer("dueling_hidden_%d" % i,
                                                   state_out, q_hiddens[i],
                                                   sigma0)
-                elif parameter_noise:
-                    state_out = tf.keras.layers.Dense(
-                        units=q_hiddens[i],
-                        activation_fn=tf.nn.relu,
-                        normalizer_fn=tf.contrib.layers.layer_norm
-                    )(state_out)
+                #elif parameter_noise:
+                #    state_out = tf.keras.layers.Dense(
+                #        units=q_hiddens[i],
+                #        activation_fn=tf.nn.relu,
+                #        normalizer_fn=tf.contrib.layers.layer_norm
+                #    )(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
                         units=q_hiddens[i], activation=tf.nn.relu

@@ -1,8 +1,10 @@
 from gym.spaces import Space
+from typing import Union
+
+from ray.rllib.env import BaseEnv
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
-from ray.rllib.models.modelv2 import ModelV2
-from typing import Union
 
 tf = try_import_tf()
 
@@ -31,6 +33,27 @@ class Exploration:
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = check_framework(framework)
+
+    def forward(self,
+                model: ModelV2,
+                input_dict: dict,
+                states,
+                seq_lens):
+        """Performs a forward pass through the given model.
+
+        Should be overridden to implement custom forward pass exploration
+        behavior.
+
+        Args:
+            model (ModelV2): The model object to use for the forward pass.
+            input_dict (dict): The input dict.
+            states (List): The list of internal states to pass through the
+                model.
+            seq_lens (List): The list of sequence-lengths to pass through the
+                model.
+        """
+        # Default behavior: Call the model with the given params.
+        return model(input_dict, states, seq_lens)
 
     def get_exploration_action(self,
                                distribution_inputs: TensorType,
@@ -63,6 +86,43 @@ class Exploration:
             - The log-likelihood of the exploration action.
         """
         pass
+
+    def on_episode_start(self,
+                         environment: BaseEnv,
+                         episode: int,
+                         model: ModelV2):
+        """Handles necessary exploration logic at the beginning of an episode.
+
+        Args:
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            model (ModelV2): The Model object.
+        """
+        pass
+
+    def on_episode_end(self,
+                       environment: BaseEnv,
+                       episode: int,
+                       model: ModelV2):
+        """Handles necessary exploration logic at the end of an episode.
+
+        Args:
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            model (ModelV2): The Model object.
+        """
+        pass
+
+    def postprocess_trajectory(self, policy, sample_batch):
+        """Handles post-processing of done episode trajectories.
+
+        Changes the given batch in place.
+        
+        Args:
+            policy (Policy): The owning policy object.
+            sample_batch (SampleBatch): The SampleBatch object to post-process.
+        """
+        return sample_batch
 
     def get_loss_exploration_term(self,
                                   model_output: TensorType,

@@ -101,31 +101,44 @@ def get_dist_class(config, action_space):
     return action_dist_class
 
 
-def get_log_likelihood(policy, model, actions, input_dict, obs_space,
-                       action_space, config):
-    model_out, _ = model({
+#def get_log_likelihood(policy, model, actions, input_dict, obs_space,
+#                       action_space, config):
+#    model_out, _ = model({
+#        "obs": input_dict[SampleBatch.CUR_OBS],
+#        "is_training": policy._get_is_training_placeholder(),
+#    }, [], None)
+#    distribution_inputs = model.action_model(model_out)
+#    action_dist_class = get_dist_class(policy.config, action_space)
+#    return action_dist_class(distribution_inputs, model).logp(actions)
+
+
+#def build_action_output(policy, model, input_dict, obs_space, action_space,
+#                        explore, config, timestep):
+#    model_out, _ = model({
+#        "obs": input_dict[SampleBatch.CUR_OBS],
+#        "is_training": policy._get_is_training_placeholder(),
+#    }, [], None)
+#    distribution_inputs = model.action_model(model_out)
+#    action_dist_class = get_dist_class(policy.config, action_space)
+
+#    policy.output_actions, policy.sampled_action_logp = \
+#        policy.exploration.get_exploration_action(
+#            distribution_inputs, action_dist_class, model, timestep, explore)
+
+#    return policy.output_actions, policy.sampled_action_logp
+
+def get_distribution_inputs_and_class(
+        policy, q_model, input_dict, states, seq_lens,
+        obs_space, action_space, explore):
+    # Get base-model output.
+    model_out, state_out = model({
         "obs": input_dict[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
+    # Get action model output from base-model output.
     distribution_inputs = model.action_model(model_out)
     action_dist_class = get_dist_class(policy.config, action_space)
-    return action_dist_class(distribution_inputs, model).logp(actions)
-
-
-def build_action_output(policy, model, input_dict, obs_space, action_space,
-                        explore, config, timestep):
-    model_out, _ = model({
-        "obs": input_dict[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
-    distribution_inputs = model.action_model(model_out)
-    action_dist_class = get_dist_class(policy.config, action_space)
-
-    policy.output_actions, policy.sampled_action_logp = \
-        policy.exploration.get_exploration_action(
-            distribution_inputs, action_dist_class, model, timestep, explore)
-
-    return policy.output_actions, policy.sampled_action_logp
+    return distribution_inputs, action_dist_class, state_out
 
 
 def actor_critic_loss(policy, model, _, train_batch):
@@ -477,8 +490,9 @@ SACTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
-    action_sampler_fn=build_action_output,
-    log_likelihood_fn=get_log_likelihood,
+    forward_fn=get_distribution_inputs_and_class,
+    #action_sampler_fn=build_action_output,
+    #log_likelihood_fn=get_log_likelihood,
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     gradients_fn=gradients,

@@ -81,13 +81,16 @@ class TorchPolicy(Policy):
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
-            model_out = self.model(input_dict, state_batches,
-                                   self._convert_to_tensor([1]))
-            logits, state = model_out
+
+            # Forward pass through our exploration object.
+            model_out, state_out = self.exploration.forward(
+                self.model, input_dict, state_batches,
+                self._convert_to_tensor([1]), explore=explore)
+
             action_dist = None
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    logits, self.dist_class, self.model,
+                    model_out, self.dist_class, self.model,
                     timestep if timestep is not None else
                     self.global_timestep, explore)
             input_dict[SampleBatch.ACTIONS] = actions
@@ -101,7 +104,7 @@ class TorchPolicy(Policy):
                     ACTION_LOGP: logp
                 })
             return convert_to_non_torch_type(
-                (actions, state, extra_action_out))
+                (actions, state_out, extra_action_out))
 
     @override(Policy)
     def compute_log_likelihoods(self,
