@@ -41,5 +41,7 @@ class PerWorkerOrnsteinUhlenbeckNoise(OrnsteinUhlenbeckNoise):
         super().__init__(
             action_space,
             scale_schedule=scale_schedule,
+            num_workers=num_workers,
+            worker_index=worker_index,
             framework=framework,
             **kwargs)
