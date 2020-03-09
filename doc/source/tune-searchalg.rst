@@ -33,6 +33,34 @@ By default, Tune uses the `default search space and variant generation process <
 
 Note that other search algorithms will not necessarily extend this class and may require a different search space declaration than the default Tune format.
 
+
+Repeated Evaluations
+--------------------
+
+Use ``ray.tune.suggest.Repeater`` to average over multiple evaluations of the same
+hyperparameter configurations. This is useful in cases where the evaluated
+training procedure has high variance (i.e., in reinforcement learning).
+
+By default, ``Repeater`` will take in a ``repeat`` parameter and a ``search_alg``.
+The ``search_alg`` will suggest new configurations to try, and the ``Repeater``
+will run ``repeat`` trials of the configuration. It will then average the
+``search_alg.metric`` from the final results of each repeated trial.
+
+See `Repeater <tune-package-ref.html#ray.tune.suggest.Repeater>`_ docstring for more details.
+
+.. code-block:: python
+
+    from ray.tune.suggest import Repeater
+
+    search_alg = BayesOpt(...)
+    re_search_alg = Repeater(search_alg, repeat=10)
+    tune.run(trainable, search_alg=re_search_alg)
+
+.. note:: This does not apply for grid search and random search.
+.. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
+    Early termination can negatively affect the average reported metric.
+
+
 BayesOpt Search
 ---------------
 
@@ -268,11 +296,11 @@ If you are interested in implementing or contributing a new Search Algorithm, th
 Model-Based Suggestion Algorithms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_result``, ``on_trial_complete``, and ``_suggest``. The abstract class will take care of Tune-specific boilerplate such as creating Trials and queuing trials:
+Often times, hyperparameter search algorithms are model-based and may be quite simple to implement. For this, one can extend the following abstract class and implement ``on_trial_result``, ``on_trial_complete``, and ``suggest``. The abstract class will take care of Tune-specific boilerplate such as creating Trials and queuing trials:
 
 .. autoclass:: ray.tune.suggest.SuggestionAlgorithm
     :show-inheritance:
     :noindex:
 
-    .. automethod:: ray.tune.suggest.SuggestionAlgorithm._suggest
+    .. automethod:: ray.tune.suggest.SuggestionAlgorithm.suggest
         :noindex:
