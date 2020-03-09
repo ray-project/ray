@@ -546,9 +546,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         }
 
     @override(EvaluatorInterface)
-    def set_weights(self, weights):
+    def set_weights(self, weights, global_vars=None):
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
+        if global_vars:
+            self.set_global_vars(global_vars)
 
     @override(EvaluatorInterface)
     def compute_gradients(self, samples):

@@ -168,10 +168,10 @@ def build_trainer(name,
 
         def _train_pipeline(self):
             if before_train_step:
-                before_train_step(self)
+                logger.warning("Ignoring before_train_step callback")
             res = next(self.train_pipeline)
             if after_train_result:
-                after_train_result(self, res)
+                logger.warning("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)
