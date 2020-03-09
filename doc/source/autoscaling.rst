@@ -52,8 +52,7 @@ The head node conviently exposes both SSH as well as JupyterLab.
    :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
    :alt: Deploy to Azure
 
-Once the template is successfully deploy the deployment output page provides the ssh command to connect and the link to the JupyterHub on the head node (
-username/password as specified on the template input).
+Once the template is successfully deploy the deployment output page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
 Use the following code connect to the Ray cluster.
 
 .. code-block:: python
