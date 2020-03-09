@@ -226,17 +226,6 @@ class SignalActor:
             await self.ready_event.wait()
 
 
-class RemoteSignal:
-    def __init__(self):
-        self.signal_actor = SignalActor.remote()
-
-    def send(self):
-        ray.get(self.signal_actor.send.remote())
-
-    def wait(self):
-        ray.get(self.signal_actor.wait.remote())
-
-
 @ray.remote
 def _put(obj):
     return obj
