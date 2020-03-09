@@ -25,13 +25,13 @@ import org.ray.streaming.python.stream.PythonDataStream;
  *
  * @param <T> Type of data in the stream.
  */
-public class DataStream<T> extends Stream<T> {
+public class DataStream<T> extends Stream<DataStream<T>, T> {
 
   public DataStream(StreamingContext streamingContext, StreamOperator streamOperator) {
     super(streamingContext, streamOperator);
   }
 
-  public DataStream(DataStream input, StreamOperator streamOperator) {
+  public <R> DataStream(DataStream<R> input, StreamOperator streamOperator) {
     super(input, streamOperator);
   }
 
@@ -51,7 +51,7 @@ public class DataStream<T> extends Stream<T> {
    * @return A new DataStream.
    */
   public <R> DataStream<R> map(MapFunction<T, R> mapFunction) {
-    return new DataStream<>(this, new MapOperator(mapFunction));
+    return new DataStream<>(this, new MapOperator<>(mapFunction));
   }
 
   /**
@@ -62,11 +62,11 @@ public class DataStream<T> extends Stream<T> {
    * @return A new DataStream
    */
   public <R> DataStream<R> flatMap(FlatMapFunction<T, R> flatMapFunction) {
-    return new DataStream(this, new FlatMapOperator(flatMapFunction));
+    return new DataStream<>(this, new FlatMapOperator<>(flatMapFunction));
   }
 
   public DataStream<T> filter(FilterFunction<T> filterFunction) {
-    return new DataStream<T>(this, new FilterOperator(filterFunction));
+    return new DataStream<>(this, new FilterOperator<>(filterFunction));
   }
 
   /**
@@ -76,7 +76,7 @@ public class DataStream<T> extends Stream<T> {
    * @return A new UnionStream.
    */
   public UnionStream<T> union(DataStream<T> other) {
-    return new UnionStream(this, null, other);
+    return new UnionStream<>(this, null, other);
   }
 
   /**
@@ -103,7 +103,7 @@ public class DataStream<T> extends Stream<T> {
    * @return A new StreamSink.
    */
   public DataStreamSink<T> sink(SinkFunction<T> sinkFunction) {
-    return new DataStreamSink<>(this, new SinkOperator(sinkFunction));
+    return new DataStreamSink<>(this, new SinkOperator<>(sinkFunction));
   }
 
   /**
@@ -115,7 +115,7 @@ public class DataStream<T> extends Stream<T> {
    */
   public <K> KeyDataStream<K, T> keyBy(KeyFunction<T, K> keyFunction) {
     checkPartitionCall();
-    return new KeyDataStream<>(this, new KeyByOperator(keyFunction));
+    return new KeyDataStream<>(this, new KeyByOperator<>(keyFunction));
   }
 
   /**
@@ -137,7 +137,7 @@ public class DataStream<T> extends Stream<T> {
    */
   public DataStream<T> partitionBy(Partition<T> partition) {
     checkPartitionCall();
-    super.setPartition(partition);
+    setPartition(partition);
     return this;
   }
 
@@ -159,17 +159,6 @@ public class DataStream<T> extends Stream<T> {
    */
   public PythonDataStream asPython() {
     return new PythonDataStream(this);
-  }
-
-  /**
-   * Set parallelism to current transformation.
-   *
-   * @param parallelism The parallelism to set.
-   * @return This stream.
-   */
-  public DataStream<T> setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
   }
 
   @Override

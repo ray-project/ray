@@ -50,10 +50,4 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
     return new KeyDataStream(this);
   }
 
-
-  public PythonKeyDataStream setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
-  }
-
 }

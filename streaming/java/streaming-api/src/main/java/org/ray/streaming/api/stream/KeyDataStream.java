@@ -61,8 +61,4 @@ public class KeyDataStream<K, T> extends DataStream<T> {
     return new PythonKeyDataStream(this);
   }
 
-  public KeyDataStream<K, T> setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
-  }
 }

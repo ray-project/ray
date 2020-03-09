@@ -13,11 +13,6 @@ public class PythonStreamSink extends StreamSink implements PythonStream {
     getStreamingContext().addSink(this);
   }
 
-  public PythonStreamSink setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
-  }
-
   @Override
   public Language getLanguage() {
     return Language.PYTHON;

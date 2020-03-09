@@ -12,7 +12,7 @@ import org.ray.streaming.python.PythonPartition;
 /**
  * Represents a stream of data whose transformations will be executed in python.
  */
-public class PythonDataStream extends Stream implements PythonStream {
+public class PythonDataStream extends Stream<PythonDataStream, Object> implements PythonStream {
 
   protected PythonDataStream(StreamingContext streamingContext,
                              PythonOperator pythonOperator) {
@@ -148,18 +148,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * Changes in converted stream will be reflected in this stream and vice versa.
    */
   public DataStream<Object> asJava() {
-    return new DataStream(this);
-  }
-
-  /**
-   * Set parallelism to current transformation.
-   *
-   * @param parallelism The parallelism to set.
-   * @return This stream.
-   */
-  public PythonDataStream setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
+    return new DataStream<>(this);
   }
 
   @Override

@@ -37,9 +37,4 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
     return new DataStreamSource(context, new CollectionSourceFunction(values));
   }
 
-  @Override
-  public DataStreamSource<T> setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
-  }
 }

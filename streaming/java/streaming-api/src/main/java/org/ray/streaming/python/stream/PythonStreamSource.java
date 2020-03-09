@@ -17,11 +17,6 @@ public class PythonStreamSource extends PythonDataStream implements StreamSource
     super.setPartition(PythonPartition.RoundRobinPartition);
   }
 
-  public PythonStreamSource setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
-  }
-
   public static PythonStreamSource from(StreamingContext streamingContext,
                                    PythonFunction sourceFunction) {
     sourceFunction.setFunctionInterface(FunctionInterface.SOURCE_FUNCTION);

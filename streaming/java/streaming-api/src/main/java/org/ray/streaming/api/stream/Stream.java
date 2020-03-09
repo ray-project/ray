@@ -12,19 +12,20 @@ import org.ray.streaming.python.PythonPartition;
 /**
  * Abstract base class of all stream types.
  *
+ * @param <STREAM_TYPE> Type of subclass of Stream
  * @param <T> Type of the data in the stream.
  */
-public abstract class Stream<T> implements Serializable {
+public abstract class Stream<STREAM_TYPE extends Stream<STREAM_TYPE, T>, T>
+    implements Serializable {
   private int id;
   private int parallelism = 1;
   private StreamOperator operator;
-  private Stream<T> inputStream;
+  private Stream inputStream;
   private StreamingContext streamingContext;
   private Partition<T> partition;
 
-  private Stream<T> referencedStream;
+  private Stream referencedStream;
 
-  @SuppressWarnings("unchecked")
   public Stream(StreamingContext streamingContext, StreamOperator streamOperator) {
     this.streamingContext = streamingContext;
     this.operator = streamOperator;
@@ -32,7 +33,7 @@ public abstract class Stream<T> implements Serializable {
     this.partition = selectPartition();
   }
 
-  public Stream(Stream<T> inputStream, StreamOperator streamOperator) {
+  public Stream(Stream inputStream, StreamOperator streamOperator) {
     this.inputStream = inputStream;
     this.parallelism = inputStream.getParallelism();
     this.streamingContext = this.inputStream.getStreamingContext();
@@ -45,7 +46,7 @@ public abstract class Stream<T> implements Serializable {
    * Create a reference of referenced stream.
    * Changes in new stream will be reflected in referenced stream and vice versa
    */
-  protected Stream(Stream<T> referencedStream) {
+  protected Stream(Stream referencedStream) {
     this.referencedStream = referencedStream;
   }
 
@@ -62,7 +63,7 @@ public abstract class Stream<T> implements Serializable {
     }
   }
 
-  public Stream<T> getInputStream() {
+  public Stream getInputStream() {
     return referencedStream != null ? referencedStream.getInputStream() : inputStream;
   }
 
@@ -78,13 +79,18 @@ public abstract class Stream<T> implements Serializable {
     return referencedStream != null ? referencedStream.getParallelism() : parallelism;
   }
 
-  public Stream<T> setParallelism(int parallelism) {
+  @SuppressWarnings("unchecked")
+  private STREAM_TYPE self() {
+    return (STREAM_TYPE) this;
+  }
+
+  public STREAM_TYPE setParallelism(int parallelism) {
     if (referencedStream != null) {
       referencedStream.setParallelism(parallelism);
     } else {
       this.parallelism = parallelism;
     }
-    return this;
+    return self();
   }
 
   public int getId() {

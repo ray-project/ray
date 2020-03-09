@@ -11,15 +11,15 @@ import org.ray.streaming.operator.StreamOperator;
  */
 public class UnionStream<T> extends DataStream<T> {
 
-  private List<DataStream> unionStreams;
+  private List<DataStream<T>> unionStreams;
 
-  public UnionStream(DataStream input, StreamOperator streamOperator, DataStream<T> other) {
+  public UnionStream(DataStream<T> input, StreamOperator streamOperator, DataStream<T> other) {
     super(input, streamOperator);
     this.unionStreams = new ArrayList<>();
     this.unionStreams.add(other);
   }
 
-  public List<DataStream> getUnionStreams() {
+  public List<DataStream<T>> getUnionStreams() {
     return unionStreams;
   }
 }

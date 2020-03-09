@@ -10,14 +10,9 @@ import org.ray.streaming.operator.impl.SinkOperator;
  */
 public class DataStreamSink<T> extends StreamSink<T> {
 
-  public DataStreamSink(DataStream<T> input, SinkOperator sinkOperator) {
+  public DataStreamSink(DataStream input, SinkOperator sinkOperator) {
     super(input, sinkOperator);
     getStreamingContext().addSink(this);
-  }
-
-  public DataStreamSink<T> setParallelism(int parallelism) {
-    super.setParallelism(parallelism);
-    return this;
   }
 
   @Override
