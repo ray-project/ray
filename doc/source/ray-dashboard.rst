@@ -1,43 +1,36 @@
 Ray Dashboard
-==============
-Welcome to the Ray dashboard page! 
-
+=============
 Ray's built-in dashboard provides metrics, charts, and other features that help Ray users to understand Ray clusters and libraries.
-This includes cluster node level metrics, actor level metrics, configurations, profiling & killing actor buttons, and Ray library metrics such as Tune metrics. 
-Check out the documentation to understand a rich set of features we offer.
+This includes node level metrics, actor level metrics, cluster configuration information, tools for profiling and killing actors, and metrics for Ray libraries such as Tune.
 
 Getting Started
 ---------------
-  
-Access Dashboard
-~~~~~~~~~~~~~~~~
-If you start Ray on your laptop, dashboard is running by default, and you can access it through its URL. 
-By default the URL is `localhost:8265`. Note that the port will be changed if the default port is not available.
+If you start Ray on your laptop, the dashboard runs by default, and you can access it through its URL. 
+By default the URL is **localhost:8265**. Note that the port will be changed if the default port is not available.
 
 The URL is printed when Ray starts up.
 
 .. code-block:: text
 
-  INFO resource_spec.py:212 -- Starting Ray with 4.2 GiB memory available for workers and up to 2.12 GiB for objects. You can adjust these settings with ray.init(memory=<bytes>, object_store_memory=<bytes>).
   INFO services.py:1093 -- View the Ray dashboard at localhost:8265
 
-Dashboard is also available when using autoscaler. Check out `Monitoring Autoscaler Status <autoscaling.html#monitoring-cluster-status>`_ for more details.
+The dashboard is also available when using the autoscaler. Read about how to `use the dashboard with the autoscaler <autoscaling.html#monitoring-cluster-status>`_.
 
 Example Usage
 -------------
-
-To understand each components, look at `Dashboard Components <ray-dashboard.html#components>`_
 
 Debugging a Blocked Actor
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 If creating an actor requires resources (e.g., CPUs, GPUs, or other custom resources) that are not currently available, the actor cannot be created until those resources are added to the cluster or become available.
 This can cause an application to hang. To alert you to this issue, infeasible tasks are shown in red in the dashboard, and pending tasks are shown in yellow.
-You can find this information from the `Logical View` tab. 
+You can find this information from the *Logical View* tab in the dashboard.
 
 - **Infeasible Actor Creation** happens when an actor requires more resources than a Ray cluster can provide.
 - **Pending Actor Creation** happens when there is no available resource for this actor because it is already taken by other tasks / actors.
 
 .. code-block:: python
+
+  import ray
   
   ray.init(num_gpus=2)
 
@@ -45,27 +38,22 @@ You can find this information from the `Logical View` tab.
   class Actor1:
       def __init__(self):
           pass
-  
-  @ray.remote
-  class Actor2:
-      def __init__(self):
-          self.actor1_list = [Actor1.remote() for _ in range(4)]
 
   @ray.remote(num_gpus=4)
-  class Actor3:
+  class Actor2:
       def __init__(self):
           pass
 
+  actor1_list = [Actor1.remote() for _ in range(4)]
   actor2 = Actor2.remote()
-  actor3 = Actor3.remote()
 
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-pending-infeasible-actors.png
     :align: center
 
-This cluster has 2 GPUs. Actor1 requires 1 GPU to be created. Actor2 creates 4 Actor1. As a result of calling `Actor2.remote()`, 2 Actor1 creation tasks became pending. 
+This cluster has two GPUs, and so it only has room to create two copies of Actor1. As a result, the rest of Actor1 will be pending.
 
-You can also see it is infeasible to create Actor3 because it requires 4 GPUs which is bigger than the total gpus available in this cluster (2 GPUs). 
+You can also see it is infeasible to create Actor2 because it requires 4 GPUs which is bigger than the total gpus available in this cluster (2 GPUs). 
 
 Inspect Memory Usage
 ~~~~~~~~~~~~~~~~~~~~
@@ -74,6 +62,9 @@ The logical view displays the following information about memory usage
 - **Number of object IDs in scope**: number of local and remote objectIDs which actors can access.
 - **Number of local objects**: Ray objects in a worker memory where actor resides in.
 - **Used Local Object Memory**: Memory used by local objects in bytes.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-inspect-local-memory-usage
+    :align: center
 
 Let's see how to use this information.
 
@@ -106,16 +97,19 @@ More information on how to interpret the flamegraph is available at https://gith
     :align: center
 
 Components
------------
+----------
+
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-basic.png
+    :align: center
 
 Machine View
 ~~~~~~~~~~~~
 The machine view provides node and process level information. You can see resource usage statistics for each node and each worker process.
 
 Logical View (Experimental)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The logical view renders actor information in a tree format. To illustrate this, in the code block below, the ``Parent`` actor creates two ``Child`` actors and each ``Child`` actor creates one ``GrandChild`` actor.
-This relationship will be visible at a dashboard logical view page.
+This relationship is visible in the dashboard *Logical View* tab.
 
 .. code-block:: python
 
@@ -143,9 +137,6 @@ You can see that the dashboard shows the parent/child relationship as expected.
 
 .. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-tree-actors.png
     :align: center
-
-For more information about what logical view provides, checkout `Dashboard Usage <ray-dashboard.html#example-usage>`_
-
 
 Ray Config
 ~~~~~~~~~~~~
