@@ -63,7 +63,7 @@ The logical view displays the following information about memory usage
 - **Number of local objects**: Ray objects in a worker memory where actor resides in.
 - **Used Local Object Memory**: Memory used by local objects in bytes.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/dashboard-inspect-local-memory-usage
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/dashboard-inspect-local-memory-usage.png
     :align: center
 
 Let's see how to use this information.
