@@ -2929,6 +2929,7 @@ void NodeManager::ForwardTask(
         << "Spilling back to a node manager, but no GCS info found for node " << node_id;
     task.OnSpillback()(node_id, node_info->node_manager_address(),
                        node_info->node_manager_port());
+    on_error(ray::Status::IOError("Node not found when spilling back"), task);,
     return;
   }
 
@@ -2948,6 +2949,7 @@ void NodeManager::ForwardTask(
   if (worker_pool_.HasPendingWorkerForTask(spec.GetLanguage(), task_id)) {
     // There is a worker being starting for this task,
     // so we shouldn't forward this task to another node.
+    on_error(ray::Status::Invalid("Already has pending worker for this task"), task);
     return;
   }
 
