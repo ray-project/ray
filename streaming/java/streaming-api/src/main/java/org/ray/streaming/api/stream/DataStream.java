@@ -125,8 +125,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    */
   public DataStream<T> broadcast() {
     checkPartitionCall();
-    super.setPartition(new BroadcastPartition<>());
-    return this;
+    return setPartition(new BroadcastPartition<>());
   }
 
   /**
@@ -137,8 +136,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    */
   public DataStream<T> partitionBy(Partition<T> partition) {
     checkPartitionCall();
-    setPartition(partition);
-    return this;
+    return setPartition(partition);
   }
 
   /**

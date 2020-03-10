@@ -14,7 +14,7 @@ public class PythonStreamSource extends PythonDataStream implements StreamSource
 
   private PythonStreamSource(StreamingContext streamingContext, PythonFunction sourceFunction) {
     super(streamingContext, new PythonOperator(sourceFunction));
-    super.setPartition(PythonPartition.RoundRobinPartition);
+    setPartition(PythonPartition.RoundRobinPartition);
   }
 
   public static PythonStreamSource from(StreamingContext streamingContext,

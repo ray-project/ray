@@ -19,7 +19,7 @@ public class KeyDataStream<K, T> extends DataStream<T> {
 
   public KeyDataStream(DataStream<T> input, StreamOperator streamOperator) {
     super(input, streamOperator);
-    super.setPartition(new KeyPartition());
+    setPartition(new KeyPartition());
   }
 
   /**

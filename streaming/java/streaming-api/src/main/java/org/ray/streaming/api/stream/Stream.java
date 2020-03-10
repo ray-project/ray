@@ -54,7 +54,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
   private Partition<T> selectPartition() {
     switch (operator.getLanguage()) {
       case PYTHON:
-        return PythonPartition.RoundRobinPartition;
+        return (Partition<T>) PythonPartition.RoundRobinPartition;
       case JAVA:
         return new RoundRobinPartition<>();
       default:
@@ -101,12 +101,13 @@ public abstract class Stream<S extends Stream<S, T>, T>
     return referencedStream != null ? referencedStream.getPartition() : partition;
   }
 
-  protected void setPartition(Partition<T> partition) {
+  protected S setPartition(Partition<T> partition) {
     if (referencedStream != null) {
       referencedStream.setPartition(partition);
     } else {
       this.partition = partition;
     }
+    return self();
   }
 
   public boolean isReferenceStream() {

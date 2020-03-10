@@ -16,7 +16,7 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
 
   private DataStreamSource(StreamingContext streamingContext, SourceFunction<T> sourceFunction) {
     super(streamingContext, new SourceOperator<>(sourceFunction));
-    super.setPartition(new RoundRobinPartition<>());
+    setPartition(new RoundRobinPartition<>());
   }
 
   public static <T> DataStreamSource<T> fromSource(

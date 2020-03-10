@@ -115,8 +115,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    */
   public PythonDataStream broadcast() {
     checkPartitionCall();
-    super.setPartition(PythonPartition.BroadcastPartition);
-    return this;
+    return setPartition(PythonPartition.BroadcastPartition);
   }
 
   /**
@@ -127,8 +126,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    */
   public PythonDataStream partitionBy(PythonPartition partition) {
     checkPartitionCall();
-    super.setPartition(partition);
-    return this;
+    return setPartition(partition);
   }
 
   /**

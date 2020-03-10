@@ -15,7 +15,7 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
 
   public PythonKeyDataStream(PythonDataStream input, PythonOperator pythonOperator) {
     super(input, pythonOperator);
-    super.setPartition(PythonPartition.KeyPartition);
+    setPartition(PythonPartition.KeyPartition);
   }
 
   /**

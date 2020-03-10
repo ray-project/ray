@@ -14,7 +14,7 @@ import org.ray.streaming.api.partition.Partition;
  * python worker will use `importlib` to load python partition function.
  * <p>
  */
-public class PythonPartition implements Partition {
+public class PythonPartition implements Partition<Object> {
   public static final PythonPartition BroadcastPartition = new PythonPartition(
       "ray.streaming.partition", "BroadcastPartition");
   public static final PythonPartition KeyPartition = new PythonPartition(
