@@ -1,5 +1,4 @@
 import os
-from parameterized import parameterized
 import unittest
 import yaml
 
