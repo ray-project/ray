@@ -853,7 +853,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_optimizers",
+    name = "test_segment_tree",
     tags = ["optimizers"],
     size = "small",
     srcs = ["optimizers/tests/test_segment_tree.py"]

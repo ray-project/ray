@@ -217,10 +217,12 @@ class TupleSpyModel(Model):
 
 
 class NestedSpacesTest(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=5)
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_invalid_model(self):
@@ -302,7 +304,7 @@ class NestedSpacesTest(unittest.TestCase):
     def test_nested_dict_gym(self):
         self.do_test_nested_dict(lambda _: NestedDictEnv())
 
-    def test_nested_dict_gym_l_s_t_m(self):
+    def test_nested_dict_gym_lstm(self):
         self.do_test_nested_dict(lambda _: NestedDictEnv(), test_lstm=True)
 
     def test_nested_dict_vector(self):
