@@ -102,6 +102,7 @@ class TrialRunner:
                  stopper=None,
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
+                 fail_fast=False,
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
@@ -122,6 +123,7 @@ class TrialRunner:
             resume (str|False): see `tune.py:run`.
             sync_to_cloud (func|str): See `tune.py:run`.
             server_port (int): Port number for launching TuneServer.
+            fail_fast (bool): Finishes as soon as a trial fails if True.
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
             checkpoint_period (int): Trial runner checkpoint periodicity in
@@ -138,6 +140,8 @@ class TrialRunner:
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
         self._total_time = 0
         self._iteration = 0
+        self._has_errored = False
+        self._fail_fast = fail_fast
         self._verbose = verbose
 
         self._server = None
@@ -314,6 +318,9 @@ class TrialRunner:
                 self._total_time, self._global_time_limit))
             return True
 
+        if self._fail_fast and self._has_errored:
+            return True
+
         trials_done = all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
@@ -336,7 +343,9 @@ class TrialRunner:
         else:
             self.trial_executor.on_no_available_trials(self)
 
-        self._stop_experiment_if_needed()
+        if self._stopper.stop_all():
+            self.stop_experiment()
+            logger.info("All trials stopped due to ``stopper.stop_all``.")
 
         try:
             with warn_if_slow("experiment_checkpoint"):
@@ -391,12 +400,9 @@ class TrialRunner:
         """Returns whether this runner has at least the specified resources."""
         return self.trial_executor.has_resources(resources)
 
-    def _stop_experiment_if_needed(self):
+    def stop_experiment(self):
         """Stops all trials if the user condition is satisfied."""
-
-        if self._stopper.stop_all():
-            [self.trial_executor.stop_trial(t) for t in self._trials]
-            logger.info("All trials stopped due to ``stopper.stop_all``.")
+        [self.trial_executor.stop_trial(t) for t in self._trials]
 
     def _get_next_trial(self):
         """Replenishes queue.
@@ -570,6 +576,7 @@ class TrialRunner:
             trial (Trial): Failed trial.
             error_msg (str): Error message prior to invoking this method.
         """
+        self._has_errored = True
         if trial.status == Trial.RUNNING:
             if trial.should_recover():
                 self._try_recover(trial, error_msg)

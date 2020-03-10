@@ -10,6 +10,7 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
+from ray.tune.result import TRAINING_ITERATION
 from ray.cluster_utils import Cluster
 
 
@@ -104,6 +105,24 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(Trial.PAUSED, trial.status)
         self.trial_executor.start_trial(trial, checkpoint)
         self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testPauseUnpause(self):
+        """Tests that unpausing works for trials being processed."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        result = self.trial_executor.fetch_result(trial)
+        assert result[TRAINING_ITERATION] == 1
+        self.trial_executor.pause_trial(trial)
+        self.assertEqual(Trial.PAUSED, trial.status)
+        self.trial_executor.unpause_trial(trial)
+        self.assertEqual(Trial.PENDING, trial.status)
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        result = self.trial_executor.fetch_result(trial)
+        assert result[TRAINING_ITERATION] == 2
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
