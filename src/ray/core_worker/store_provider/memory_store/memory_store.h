@@ -112,7 +112,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object_id The object to check.
   /// \param[out] in_plasma Set to true if the object was spilled to plasma.
-  /// If this is set to true, Contains() will return false.
+  /// Will only be true if the store contains the object.
   /// \return Whether the store has the object.
   bool Contains(const ObjectID &object_id, bool *in_plasma);
 

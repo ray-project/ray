@@ -171,8 +171,7 @@ class ESTrainer(Trainer):
         # PyTorch check.
         if config["use_pytorch"]:
             raise ValueError(
-                "ES does not support PyTorch yet! Use tf instead."
-            )
+                "ES does not support PyTorch yet! Use tf instead.")
 
         policy_params = {"action_noise_std": 0.01}
 
@@ -292,7 +291,7 @@ class ESTrainer(Trainer):
         return result
 
     @override(Trainer)
-    def compute_action(self, observation):
+    def compute_action(self, observation, *args, **kwargs):
         return self.policy.compute(observation, update=False)[0]
 
     @override(Trainer)

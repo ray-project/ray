@@ -1,8 +1,8 @@
 import asyncio
 import time
-import os
-
 import pytest
+
+import numpy as np
 
 import ray
 from ray.experimental import async_api
@@ -10,7 +10,6 @@ from ray.experimental import async_api
 
 @pytest.fixture
 def init():
-    os.environ["RAY_FORCE_DIRECT"] = "0"
     ray.init(num_cpus=4)
     async_api.init()
     asyncio.get_event_loop().set_debug(False)
@@ -23,21 +22,20 @@ def gen_tasks(time_scale=0.1):
     @ray.remote
     def f(n):
         time.sleep(n * time_scale)
-        return n
+        return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
-    tasks = [f.remote(i) for i in range(5)]
-    return tasks
+    return [f.remote(i) for i in range(5)]
 
 
 def test_simple(init):
     @ray.remote
     def f():
         time.sleep(1)
-        return {"key1": ["value"]}
+        return np.zeros(1024 * 1024, dtype=np.uint8)
 
     future = async_api.as_future(f.remote())
     result = asyncio.get_event_loop().run_until_complete(future)
-    assert result["key1"] == ["value"]
+    assert isinstance(result, np.ndarray)
 
 
 def test_gather(init):
@@ -45,7 +43,7 @@ def test_gather(init):
     tasks = gen_tasks()
     futures = [async_api.as_future(obj_id) for obj_id in tasks]
     results = loop.run_until_complete(asyncio.gather(*futures))
-    assert all(a == b for a, b in zip(results, ray.get(tasks)))
+    assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks)))
 
 
 def test_wait(init):
@@ -71,11 +69,11 @@ def test_gather_mixup(init):
     @ray.remote
     def f(n):
         time.sleep(n * 0.1)
-        return n
+        return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
     async def g(n):
         await asyncio.sleep(n * 0.1)
-        return n
+        return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
     tasks = [
         async_api.as_future(f.remote(1)),
@@ -84,7 +82,7 @@ def test_gather_mixup(init):
         g(4)
     ]
     results = loop.run_until_complete(asyncio.gather(*tasks))
-    assert results == [1, 2, 3, 4]
+    assert [result[0] for result in results] == [1, 2, 3, 4]
 
 
 def test_wait_mixup(init):
@@ -93,7 +91,7 @@ def test_wait_mixup(init):
     @ray.remote
     def f(n):
         time.sleep(n)
-        return n
+        return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
     def g(n):
         async def _g(_n):

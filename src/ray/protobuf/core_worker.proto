@@ -218,6 +218,21 @@ message WaitForRefRemovedReply {
   repeated ObjectReferenceCount borrowed_refs = 1;
 }
 
+message LocalGCRequest {
+}
+
+message LocalGCReply {
+}
+
+message PlasmaObjectReadyRequest {
+  bytes object_id = 1;
+  int64 data_size = 2;
+  int64 metadata_size = 3;
+}
+
+message PlasmaObjectReadyReply {
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -238,4 +253,8 @@ service CoreWorkerService {
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
   // Wait for a borrower to finish using an object. Sent by the object's owner.
   rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
+  // Trigger local GC on the worker.
+  rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Notification from raylet that an object ID is available in local plasma.
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }

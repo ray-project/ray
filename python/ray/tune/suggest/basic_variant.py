@@ -43,7 +43,9 @@ class BasicVariantGenerator(SearchAlgorithm):
         for experiment in experiment_list:
             self._trial_generator = itertools.chain(
                 self._trial_generator,
-                self._generate_trials(experiment.spec, experiment.name))
+                self._generate_trials(
+                    experiment.spec.get("num_samples", 1), experiment.spec,
+                    experiment.name))
 
     def next_trials(self):
         """Provides Trial objects to be queued into the TrialRunner.
@@ -57,7 +59,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         self._finished = True
         return trials
 
-    def _generate_trials(self, unresolved_spec, output_path=""):
+    def _generate_trials(self, num_samples, unresolved_spec, output_path=""):
         """Generates Trial objects with the variant generation process.
 
         Uses a fixed point iteration to resolve variants. All trials
@@ -71,8 +73,9 @@ class BasicVariantGenerator(SearchAlgorithm):
 
         if "run" not in unresolved_spec:
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
-        for _ in range(unresolved_spec.get("num_samples", 1)):
+        for _ in range(num_samples):
             for resolved_vars, spec in generate_variants(unresolved_spec):
+                trial_id = "%05d" % self._counter
                 experiment_tag = str(self._counter)
                 if resolved_vars:
                     experiment_tag += "_{}".format(format_vars(resolved_vars))
@@ -82,6 +85,7 @@ class BasicVariantGenerator(SearchAlgorithm):
                     output_path,
                     self._parser,
                     evaluated_params=flatten_resolved_vars(resolved_vars),
+                    trial_id=trial_id,
                     experiment_tag=experiment_tag)
 
     def is_finished(self):

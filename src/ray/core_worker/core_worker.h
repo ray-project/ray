@@ -76,6 +76,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
+             std::function<void()> gc_collect = nullptr,
              bool ref_counting_enabled = false);
 
   virtual ~CoreWorker();
@@ -168,14 +169,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                              const ObjectID &outer_object_id,
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
-
-  /// Add metadata about the object IDs contained within another object ID.
-  /// This should be called during deserialization of the outer object ID.
-  ///
-  /// \param[in] object_id The object containing IDs.
-  /// \param[in] contained_object_ids The IDs contained in the object.
-  void AddContainedObjectIDs(const ObjectID &object_id,
-                             const std::vector<ObjectID> &contained_object_ids);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -287,6 +280,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
+
+  /// Trigger garbage collection on each worker in the cluster.
+  void TriggerGlobalGC();
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -485,10 +481,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Implements gRPC server handler.
+  void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+                               rpc::PlasmaObjectReadyReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                 rpc::GetCoreWorkerStatsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Trigger local GC on this worker.
+  void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
+                     rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when
@@ -515,11 +520,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Connect to plasma store for async futures
   using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
 
-  /// Subscribe to plasma store
+  /// Set callback when an item is added to the plasma store.
   ///
   /// \param[in] subscribe_callback The callback when an item is added to plasma.
   /// \return void
-  void SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback);
+  void SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback);
+
+  /// Subscribe to receive notification of an object entering the plasma store.
+  ///
+  /// \param[in] object_id The object to wait for.
+  /// \return void
+  void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -635,6 +646,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
   std::function<Status()> check_signals_;
+
+  /// Application-language callback to trigger garbage collection in the language
+  /// runtime. This is required to free distributed references that may otherwise
+  /// be held up in garbage objects.
+  std::function<void()> gc_collect_;
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -780,8 +796,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // Plasma notification manager
-  std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
+  // Plasma Callback
+  PlasmaSubscriptionCallback plasma_done_callback_;
 
   friend class CoreWorkerTest;
 };

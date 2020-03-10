@@ -95,9 +95,9 @@ class SigOptSearch(SuggestionAlgorithm):
             parallel_bandwidth=self._max_concurrent,
         )
 
-        super(SigOptSearch, self).__init__(**kwargs)
+        super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import fnmatch
 import os
@@ -210,3 +211,28 @@ def generate_internal_config_map(**kwargs):
         "_internal_config": internal_config,
     }
     return ray_kwargs
+
+
+@ray.remote(num_cpus=0)
+class SignalActor:
+    def __init__(self):
+        self.ready_event = asyncio.Event()
+
+    def send(self):
+        self.ready_event.set()
+
+    async def wait(self, should_wait=True):
+        if should_wait:
+            await self.ready_event.wait()
+
+
+@ray.remote
+def _put(obj):
+    return obj
+
+
+def put_object(obj, use_ray_put):
+    if use_ray_put:
+        return ray.put(obj)
+    else:
+        return _put.remote(obj)

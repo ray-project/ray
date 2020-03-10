@@ -185,7 +185,7 @@ cdef class ObjectID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(CObjectID.FromRandom().Binary())
+        return cls(CObjectID.FromRandom().WithDirectTransportType().Binary())
 
     def __await__(self):
         # Delayed import because this can only be imported in py3.

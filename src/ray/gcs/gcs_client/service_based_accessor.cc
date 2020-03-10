@@ -94,15 +94,22 @@ Status ServiceBasedActorInfoAccessor::AsyncRegister(
   RAY_LOG(DEBUG) << "Registering actor info, actor id = " << actor_id;
   rpc::RegisterActorInfoRequest request;
   request.mutable_actor_table_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().RegisterActorInfo(
-      request, [actor_id, callback](const Status &status,
-                                    const rpc::RegisterActorInfoReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished registering actor info, status = " << status
-                       << ", actor id = " << actor_id;
-      });
+
+  auto operation = [this, request, actor_id,
+                    callback](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().RegisterActorInfo(
+        request, [actor_id, callback, done_callback](
+                     const Status &status, const rpc::RegisterActorInfoReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished registering actor info, status = " << status
+                         << ", actor id = " << actor_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(actor_id, operation);
   return Status::OK();
 }
 
@@ -113,15 +120,22 @@ Status ServiceBasedActorInfoAccessor::AsyncUpdate(
   rpc::UpdateActorInfoRequest request;
   request.set_actor_id(actor_id.Binary());
   request.mutable_actor_table_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().UpdateActorInfo(
-      request,
-      [actor_id, callback](const Status &status, const rpc::UpdateActorInfoReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished updating actor info, status = " << status
-                       << ", actor id = " << actor_id;
-      });
+
+  auto operation = [this, request, actor_id,
+                    callback](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().UpdateActorInfo(
+        request, [actor_id, callback, done_callback](
+                     const Status &status, const rpc::UpdateActorInfoReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished updating actor info, status = " << status
+                         << ", actor id = " << actor_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(actor_id, operation);
   return Status::OK();
 }
 
@@ -167,16 +181,23 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
                  << ", checkpoint id = " << checkpoint_id;
   rpc::AddActorCheckpointRequest request;
   request.mutable_checkpoint_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().AddActorCheckpoint(
-      request, [actor_id, checkpoint_id, callback](
-                   const Status &status, const rpc::AddActorCheckpointReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished adding actor checkpoint, status = " << status
-                       << ", actor id = " << actor_id
-                       << ", checkpoint id = " << checkpoint_id;
-      });
+
+  auto operation = [this, request, actor_id, checkpoint_id,
+                    callback](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().AddActorCheckpoint(
+        request, [actor_id, checkpoint_id, callback, done_callback](
+                     const Status &status, const rpc::AddActorCheckpointReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished adding actor checkpoint, status = " << status
+                         << ", actor id = " << actor_id
+                         << ", checkpoint id = " << checkpoint_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(actor_id, operation);
   return Status::OK();
 }
 
@@ -392,15 +413,22 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
   for (auto &resource : resources) {
     (*request.mutable_resources())[resource.first] = *resource.second;
   }
-  client_impl_->GetGcsRpcClient().UpdateResources(
-      request,
-      [node_id, callback](const Status &status, const rpc::UpdateResourcesReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished updating node resources, status = " << status
-                       << ", node id = " << node_id;
-      });
+
+  auto operation = [this, request, node_id,
+                    callback](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().UpdateResources(
+        request, [node_id, callback, done_callback](
+                     const Status &status, const rpc::UpdateResourcesReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished updating node resources, status = " << status
+                         << ", node id = " << node_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 
@@ -413,15 +441,22 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
   for (auto &resource_name : resource_names) {
     request.add_resource_name_list(resource_name);
   }
-  client_impl_->GetGcsRpcClient().DeleteResources(
-      request,
-      [node_id, callback](const Status &status, const rpc::DeleteResourcesReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished deleting node resources, status = " << status
-                       << ", node id = " << node_id;
-      });
+
+  auto operation = [this, request, node_id,
+                    callback](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().DeleteResources(
+        request, [node_id, callback, done_callback](
+                     const Status &status, const rpc::DeleteResourcesReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished deleting node resources, status = " << status
+                         << ", node id = " << node_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 
@@ -679,15 +714,23 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   rpc::AddObjectLocationRequest request;
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().AddObjectLocation(
-      request, [object_id, node_id, callback](const Status &status,
-                                              const rpc::AddObjectLocationReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished adding object location, status = " << status
-                       << ", object id = " << object_id << ", node id = " << node_id;
-      });
+
+  auto operation = [this, request, object_id, node_id,
+                    callback](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().AddObjectLocation(
+        request, [object_id, node_id, callback, done_callback](
+                     const Status &status, const rpc::AddObjectLocationReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+
+          RAY_LOG(DEBUG) << "Finished adding object location, status = " << status
+                         << ", object id = " << object_id << ", node id = " << node_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(object_id, operation);
   return Status::OK();
 }
 
@@ -698,15 +741,22 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
   rpc::RemoveObjectLocationRequest request;
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().RemoveObjectLocation(
-      request, [object_id, node_id, callback](
-                   const Status &status, const rpc::RemoveObjectLocationReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished removing object location, status = " << status
-                       << ", object id = " << object_id << ", node id = " << node_id;
-      });
+
+  auto operation = [this, request, object_id, node_id,
+                    callback](SequencerDoneCallback done_callback) {
+    client_impl_->GetGcsRpcClient().RemoveObjectLocation(
+        request, [object_id, node_id, callback, done_callback](
+                     const Status &status, const rpc::RemoveObjectLocationReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+          RAY_LOG(DEBUG) << "Finished removing object location, status = " << status
+                         << ", object id = " << object_id << ", node id = " << node_id;
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(object_id, operation);
   return Status::OK();
 }
 
@@ -776,7 +826,6 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
         }
         RAY_LOG(DEBUG) << "Finished reporting job error, status = " << status
                        << ", job id = " << job_id << ", type = " << type;
-        ;
       });
   return Status::OK();
 }

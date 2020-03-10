@@ -14,7 +14,6 @@ static std::string libray_redis_module_path;
 class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
  public:
   void SetUp() override {
-    gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
@@ -32,7 +31,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
 
     // Wait until server starts listening.
-    while (gcs_server_->GetPort() == 0) {
+    while (!gcs_server_->IsStarted()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -272,6 +271,13 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return status == std::future_status::ready;
   }
 
+  void WaitPendingDone(int &current_count, int expected_count) {
+    auto condition = [&current_count, expected_count]() {
+      return current_count == expected_count;
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
   std::shared_ptr<rpc::JobTableData> GenJobTableData(JobID job_id) {
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
@@ -322,6 +328,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   }
 
   // Gcs server
+  gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<std::thread> thread_gcs_server_;
@@ -482,6 +489,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
   ClientID node2_id = ClientID::FromRandom();
   auto gcs_node2_info = GenGcsNodeInfo(node2_id.Binary());
   ASSERT_TRUE(RegisterNode(gcs_node2_info));
+  WaitPendingDone(register_count, 2);
 
   // Get node list
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
@@ -495,6 +503,8 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
 
   // Unregister node
   ASSERT_TRUE(UnregisterNode(node2_id));
+  WaitPendingDone(unregister_count, 2);
+
   node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
   EXPECT_EQ(node_list[0].state(),
@@ -527,15 +537,15 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
   resource->set_resource_capacity(1.0);
   resource_map[key] = resource;
   ASSERT_TRUE(UpdateResources(node_id, resource_map));
+  WaitPendingDone(add_count, 1);
   auto get_resources_result = GetResources(node_id);
   ASSERT_TRUE(get_resources_result.count(key));
 
   // Delete resources
   ASSERT_TRUE(DeleteResources(node_id, {key}));
+  WaitPendingDone(remove_count, 1);
   get_resources_result = GetResources(node_id);
   ASSERT_TRUE(get_resources_result.empty());
-  EXPECT_EQ(add_count, 1);
-  EXPECT_EQ(remove_count, 1);
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
@@ -560,14 +570,13 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
+  WaitPendingDone(heartbeat_count, 1);
 
   // Report batch heartbeat
   auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
   batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
-
-  EXPECT_EQ(heartbeat_count, 1);
-  EXPECT_EQ(heartbeat_batch_count, 1);
+  WaitPendingDone(heartbeat_batch_count, 1);
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
@@ -606,7 +615,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
-  EXPECT_EQ(task_lease_count, 2);
+  WaitPendingDone(task_lease_count, 2);
 
   RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id, nullptr));
   ASSERT_TRUE(AddTaskLease(task_lease));
@@ -617,6 +626,30 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_num_reconstructions(0);
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
+  // Create job_table_data
+  JobID add_job_id = JobID::FromInt(1);
+  auto job_table_data = GenJobTableData(add_job_id);
+
+  RAY_LOG(INFO) << "Gcs service init port = " << gcs_server_->GetPort();
+  gcs_server_->Stop();
+  thread_gcs_server_->join();
+
+  gcs_server_.reset(new gcs::GcsServer(config));
+  thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
+
+  // Wait until server starts listening.
+  while (gcs_server_->GetPort() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  RAY_LOG(INFO) << "Gcs service restart success, port = " << gcs_server_->GetPort();
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+      job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  promise.get_future().get();
 }
 
 }  // namespace ray

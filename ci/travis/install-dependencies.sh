@@ -32,30 +32,39 @@ fi
 # Upgrade pip and other packages to avoid incompatibility ERRORS.
 pip install --upgrade pip # setuptools cloudpickle urllib3
 
+# If we're in a CI environment, do some configuration
+if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_WORKFLOW-}" ]; then
+  pip config --user set global.disable-pip-version-check True
+  pip config --user set global.no-color True
+  pip config --user set global.progress_bar off
+  pip config --user set global.quiet True
+fi
+
 if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
-  sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
+  sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb libunwind-dev
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q scipy tensorflow==$tf_version \
+  "${ROOT_DIR}/install-strace.sh" || true
+  pip install scipy tensorflow==$tf_version \
     cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist scikit-learn
+    blist scikit-learn numba
 elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q scipy tensorflow==$tf_version \
+  pip install scipy tensorflow==$tf_version \
     cython==0.29.0 gym \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist scikit-learn
+    blist scikit-learn numba
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
@@ -64,7 +73,7 @@ elif [[ "$LINT" == "1" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   # Install Python linting tools.
-  pip install -q flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
+  pip install flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
   # Install TypeScript and HTML linting tools.
   pushd "$ROOT_DIR/../../python/ray/dashboard/client"
     source "$HOME/.nvm/nvm.sh"
@@ -82,11 +91,14 @@ else
   exit 1
 fi
 
+# Install modules needed in all jobs.
+pip install dm-tree
+
 # Additional RLlib dependencies.
 if [[ "$RLLIB_TESTING" == "1" ]]; then
-  pip install -q tensorflow-probability==$tfp_version gast==0.2.2 \
+  pip install tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    gym[atari] atari_py smart_open lz4
+    atari_py gym[atari] lz4 smart_open
 fi
 
 # Additional streaming dependencies.
@@ -100,5 +112,5 @@ if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
   nvm install node
 fi
 
-pip install -q psutil setproctitle \
+pip install psutil setproctitle \
         --target="$ROOT_DIR/../../python/ray/thirdparty_files"
