@@ -1,5 +1,6 @@
 package org.ray.streaming.jobgraph;
 
+import com.google.common.base.Preconditions;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,12 +49,12 @@ public class JobGraphBuilder {
       LOG.info("Skip reference stream {} of id {}", stream, stream.getId());
       stream = stream.getReferencedStream();
     }
+    StreamOperator streamOperator = stream.getOperator();
+    Preconditions.checkArgument(stream.getLanguage() == streamOperator.getLanguage(),
+        "Reference stream should be skipped.");
     int vertexId = stream.getId();
     int parallelism = stream.getParallelism();
-
-    StreamOperator streamOperator = stream.getOperator();
     JobVertex jobVertex;
-
     if (stream instanceof StreamSink) {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.SINK, streamOperator);
       Stream parentStream = stream.getInputStream();

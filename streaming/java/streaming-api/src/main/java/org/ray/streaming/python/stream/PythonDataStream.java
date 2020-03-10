@@ -2,6 +2,7 @@ package org.ray.streaming.python.stream;
 
 import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.python.PythonFunction;
@@ -19,8 +20,20 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
     super(streamingContext, pythonOperator);
   }
 
+  protected PythonDataStream(StreamingContext streamingContext,
+                             PythonOperator pythonOperator,
+                             Partition<Object> partition) {
+    super(streamingContext, pythonOperator, partition);
+  }
+
   public PythonDataStream(PythonDataStream input, PythonOperator pythonOperator) {
     super(input, pythonOperator);
+  }
+
+  public PythonDataStream(PythonDataStream input,
+                          PythonOperator pythonOperator,
+                          Partition<Object> partition) {
+    super(input, pythonOperator, partition);
   }
 
   /**

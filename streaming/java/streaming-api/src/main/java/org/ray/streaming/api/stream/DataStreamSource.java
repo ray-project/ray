@@ -15,13 +15,12 @@ import org.ray.streaming.operator.impl.SourceOperator;
 public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T> {
 
   private DataStreamSource(StreamingContext streamingContext, SourceFunction<T> sourceFunction) {
-    super(streamingContext, new SourceOperator<>(sourceFunction));
-    setPartition(new RoundRobinPartition<>());
+    super(streamingContext, new SourceOperator<>(sourceFunction), new RoundRobinPartition<>());
   }
 
   public static <T> DataStreamSource<T> fromSource(
       StreamingContext context, SourceFunction<T> sourceFunction) {
-    return new DataStreamSource(context, sourceFunction);
+    return new DataStreamSource<>(context, sourceFunction);
   }
 
   /**
@@ -34,7 +33,7 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
    */
   public static <T> DataStreamSource<T> fromCollection(
       StreamingContext context, Collection<T> values) {
-    return new DataStreamSource(context, new CollectionSourceFunction(values));
+    return new DataStreamSource<>(context, new CollectionSourceFunction<>(values));
   }
 
 }

@@ -6,6 +6,7 @@ import org.ray.streaming.api.Language;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
+import org.ray.streaming.operator.Operator;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.python.PythonPartition;
 
@@ -17,29 +18,46 @@ import org.ray.streaming.python.PythonPartition;
  */
 public abstract class Stream<S extends Stream<S, T>, T>
     implements Serializable {
-  private int id;
+  private final int id;
+  private final StreamingContext streamingContext;
+  private final Stream inputStream;
+  private final StreamOperator operator;
   private int parallelism = 1;
-  private StreamOperator operator;
-  private Stream inputStream;
-  private StreamingContext streamingContext;
   private Partition<T> partition;
-
   private Stream referencedStream;
 
   public Stream(StreamingContext streamingContext, StreamOperator streamOperator) {
-    this.streamingContext = streamingContext;
-    this.operator = streamOperator;
-    this.id = streamingContext.generateId();
-    this.partition = selectPartition();
+    this(streamingContext, null, streamOperator,
+         selectPartition(streamOperator));
+  }
+
+  public Stream(StreamingContext streamingContext,
+                StreamOperator streamOperator,
+                Partition<T> partition) {
+    this(streamingContext, null, streamOperator, partition);
   }
 
   public Stream(Stream inputStream, StreamOperator streamOperator) {
+    this(inputStream.getStreamingContext(), inputStream, streamOperator,
+         selectPartition(streamOperator));
+  }
+
+  public Stream(Stream inputStream, StreamOperator streamOperator, Partition<T> partition) {
+    this(inputStream.getStreamingContext(), inputStream, streamOperator, partition);
+  }
+
+  protected Stream(StreamingContext streamingContext,
+                Stream inputStream,
+                StreamOperator streamOperator,
+                Partition<T> partition) {
+    this.streamingContext = streamingContext;
     this.inputStream = inputStream;
-    this.parallelism = inputStream.getParallelism();
-    this.streamingContext = this.inputStream.getStreamingContext();
     this.operator = streamOperator;
+    this.partition = partition;
     this.id = streamingContext.generateId();
-    this.partition = selectPartition();
+    if (inputStream != null) {
+      this.parallelism = inputStream.getParallelism();
+    }
   }
 
   /**
@@ -48,10 +66,14 @@ public abstract class Stream<S extends Stream<S, T>, T>
    */
   protected Stream(Stream referencedStream) {
     this.referencedStream = referencedStream;
+    this.id = referencedStream.getId();
+    this.streamingContext = referencedStream.getStreamingContext();
+    this.inputStream = referencedStream.getInputStream();
+    this.operator = referencedStream.getOperator();
   }
 
   @SuppressWarnings("unchecked")
-  private Partition<T> selectPartition() {
+  private static <T> Partition<T> selectPartition(Operator operator) {
     switch (operator.getLanguage()) {
       case PYTHON:
         return (Partition<T>) PythonPartition.RoundRobinPartition;
@@ -63,25 +85,29 @@ public abstract class Stream<S extends Stream<S, T>, T>
     }
   }
 
-  public Stream getInputStream() {
-    return referencedStream != null ? referencedStream.getInputStream() : inputStream;
-  }
-
-  public StreamOperator getOperator() {
-    return referencedStream != null ? referencedStream.getOperator() : operator;
+  public int getId() {
+    return id;
   }
 
   public StreamingContext getStreamingContext() {
-    return referencedStream != null ? referencedStream.getStreamingContext() : streamingContext;
+    return streamingContext;
   }
 
-  public int getParallelism() {
-    return referencedStream != null ? referencedStream.getParallelism() : parallelism;
+  public Stream getInputStream() {
+    return inputStream;
+  }
+
+  public StreamOperator getOperator() {
+    return operator;
   }
 
   @SuppressWarnings("unchecked")
   private S self() {
     return (S) this;
+  }
+
+  public int getParallelism() {
+    return referencedStream != null ? referencedStream.getParallelism() : parallelism;
   }
 
   public S setParallelism(int parallelism) {
@@ -93,14 +119,12 @@ public abstract class Stream<S extends Stream<S, T>, T>
     return self();
   }
 
-  public int getId() {
-    return referencedStream != null ? referencedStream.getId() : id;
-  }
-
+  @SuppressWarnings("unchecked")
   public Partition<T> getPartition() {
     return referencedStream != null ? referencedStream.getPartition() : partition;
   }
 
+  @SuppressWarnings("unchecked")
   protected S setPartition(Partition<T> partition) {
     if (referencedStream != null) {
       referencedStream.setPartition(partition);

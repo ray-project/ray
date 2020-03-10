@@ -2,6 +2,7 @@ package org.ray.streaming.api.stream;
 
 import org.ray.streaming.api.function.impl.AggregateFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
+import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.KeyPartition;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.operator.impl.ReduceOperator;
@@ -18,8 +19,7 @@ import org.ray.streaming.python.stream.PythonKeyDataStream;
 public class KeyDataStream<K, T> extends DataStream<T> {
 
   public KeyDataStream(DataStream<T> input, StreamOperator streamOperator) {
-    super(input, streamOperator);
-    setPartition(new KeyPartition());
+    super(input, streamOperator, (Partition<T>) new KeyPartition<K, T>());
   }
 
   /**

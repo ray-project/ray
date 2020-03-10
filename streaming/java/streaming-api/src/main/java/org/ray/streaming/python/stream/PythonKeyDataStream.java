@@ -14,8 +14,7 @@ import org.ray.streaming.python.PythonPartition;
 public class PythonKeyDataStream extends PythonDataStream implements PythonStream {
 
   public PythonKeyDataStream(PythonDataStream input, PythonOperator pythonOperator) {
-    super(input, pythonOperator);
-    setPartition(PythonPartition.KeyPartition);
+    super(input, pythonOperator, PythonPartition.KeyPartition);
   }
 
   /**

@@ -13,8 +13,8 @@ import org.ray.streaming.python.PythonPartition;
 public class PythonStreamSource extends PythonDataStream implements StreamSource {
 
   private PythonStreamSource(StreamingContext streamingContext, PythonFunction sourceFunction) {
-    super(streamingContext, new PythonOperator(sourceFunction));
-    setPartition(PythonPartition.RoundRobinPartition);
+    super(streamingContext, new PythonOperator(sourceFunction),
+          PythonPartition.RoundRobinPartition);
   }
 
   public static PythonStreamSource from(StreamingContext streamingContext,
