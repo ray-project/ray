@@ -11,7 +11,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
-import org.ray.api.TestUtils;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.actor.NativeRayPyActor;
 import org.slf4j.Logger;
