@@ -104,7 +104,7 @@ def tune_example(num_workers=1, use_gpu=False, test_mode=False):
         "use_gpu": use_gpu,
         "config": {
             "lr": tune.choice([1e-4, 1e-3]),
-            "batch_size": (16 if test_mode else 512) // num_workers,
+            BATCH_SIZE: 128,
             "test_mode": test_mode
         },
         "backend": "nccl" if use_gpu else "gloo"
