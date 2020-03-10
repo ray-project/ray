@@ -124,10 +124,12 @@ class MockVectorEnv(VectorEnv):
 
 
 class TestRolloutWorker(unittest.TestCase):
-    def setUpClass(cls) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=5)
 
-    def tearDownClass(cls) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_basic(self):

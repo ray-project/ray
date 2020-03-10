@@ -18,10 +18,12 @@ tf = try_import_tf()
 
 
 class LRScheduleTest(unittest.TestCase):
-    def setUpClass(cls) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=2)
 
-    def tearDownClass(cls) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_basic(self):
@@ -34,10 +36,12 @@ class LRScheduleTest(unittest.TestCase):
 
 
 class AsyncOptimizerTest(unittest.TestCase):
-    def setUpClass(cls) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=4, object_store_memory=1000 * 1024 * 1024)
 
-    def tearDownClass(cls) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_basic(self):
@@ -51,10 +55,12 @@ class AsyncOptimizerTest(unittest.TestCase):
 
 
 class PPOCollectTest(unittest.TestCase):
-    def setUpClass(self) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=4, object_store_memory=1000 * 1024 * 1024)
 
-    def tearDownClass(cls) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_ppo_sample_waste(self):
@@ -110,9 +116,11 @@ class SampleBatchTest(unittest.TestCase):
 
 
 class AsyncSamplesOptimizerTest(unittest.TestCase):
+    @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=8, object_store_memory=1000 * 1024 * 1024)
 
+    @classmethod
     def tearDownClass(cls):
         ray.shutdown()
 

@@ -8,10 +8,12 @@ from ray.rllib.tests.test_rollout_worker import MockPolicy
 
 
 class TestPerf(unittest.TestCase):
-    def setUpClass(cls) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=5)
 
-    def tearDownClass(cls) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     # Tested on Intel(R) Core(TM) i7-4600U CPU @ 2.10GHz
