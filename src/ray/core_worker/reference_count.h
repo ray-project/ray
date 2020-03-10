@@ -220,6 +220,11 @@ class ReferenceCounter {
   /// \return Whether we have a reference to the object ID.
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
+  void MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_returns_in_scope,
+                                 const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
+
+  std::vector<ObjectID> HandleNodeRemoved(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -271,6 +276,10 @@ class ReferenceCounter {
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
     absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    // If this object is stored in plasma and the language frontend still has
+    // references to the ObjectID, then some raylet must be pinning the object
+    // value. This is the address of that raylet.
+    absl::optional<ClientID> pinned_at_raylet;
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;

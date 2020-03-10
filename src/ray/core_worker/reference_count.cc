@@ -167,6 +167,30 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   RemoveSubmittedTaskReferences(argument_ids, num_plasma_returns, deleted);
 }
 
+void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_ids,
+                                                 const ClientID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &plasma_id : plasma_ids) {
+    auto it = object_id_refs_.find(plasma_id);
+    RAY_CHECK(it != object_id_refs_.end()) << plasma_id;
+    RAY_CHECK(!it->second.pinned_at_raylet.has_value());
+    it->second.pinned_at_raylet = node_id;
+  }
+}
+
+std::vector<ObjectID> ReferenceCounter::HandleNodeRemoved(const ClientID &node_id) {
+  // TODO(swang): Clear the pinned locations, delete callbacks in the
+  // ReferenceCounter.
+  absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> lost_objects;
+  for (const auto &ref : object_id_refs_) {
+    if (ref.second.pinned_at_raylet.value_or(ClientID::Nil()) == node_id) {
+      lost_objects.push_back(ref.first);
+    }
+  }
+  return lost_objects;
+}
+
 void ReferenceCounter::ReleaseLineageReferences(
     const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);

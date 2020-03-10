@@ -107,6 +107,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
+  // Register a callback to monitor removed nodes.
+  auto on_node_change = [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {
+    if (data.state() == rpc::GcsNodeInfo::DEAD) {
+      OnNodeRemoved(data);
+    }
+  };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
+
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
   // Initialize profiler.
@@ -294,6 +302,10 @@ void CoreWorker::RunIOService() {
 #endif
 
   io_service_.run();
+}
+
+void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
+  // TODO(swang): Handler for dead raylets.
 }
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
@@ -1262,6 +1274,8 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
 void CoreWorker::HandleWaitForObjectEviction(
     const rpc::WaitForObjectEvictionRequest &request,
     rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(swang): Drop requests from raylets that executed an older version of
+  // the task.
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;

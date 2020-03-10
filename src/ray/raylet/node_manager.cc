@@ -3232,10 +3232,13 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     }
 
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
-    pinned_objects_.emplace(
-        object_id, std::unique_ptr<RayObject>(new RayObject(
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
+    RAY_CHECK(
+        pinned_objects_
+            .emplace(object_id,
+                     std::unique_ptr<RayObject>(new RayObject(
+                         std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+                         std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})))
+            .second);
     i++;
 
     // Send a long-running RPC request to the owner for each object. When we get a

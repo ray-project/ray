@@ -111,6 +111,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   TaskSpecification spec;
   size_t num_returns_to_release = 0;
+  std::vector<ObjectID> plasma_returns_in_scope;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_tasks_.find(task_id);
@@ -132,6 +133,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << it->second.plasma_returns_in_scope.size()
                    << " plasma returns in scope";
     it->second.pending = false;
+    plasma_returns_in_scope.insert(plasma_returns_in_scope.end(),
+                                   it->second.plasma_returns_in_scope.begin(),
+                                   it->second.plasma_returns_in_scope.end());
 
     if (!lineage_pinning_enabled_) {
       pending_tasks_.erase(it);
@@ -149,6 +153,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // TODO: Move this inside the lock? I don't think this is correct otherwise.
   RemoveFinishedTaskReferences(spec, num_returns_to_release, worker_addr,
                                reply.borrowed_refs());
+  reference_counter_->MarkPlasmaObjectsPinnedAt(
+      plasma_returns_in_scope, ClientID::FromBinary(worker_addr.raylet_id()));
 
   ShutdownIfNeeded();
 }
