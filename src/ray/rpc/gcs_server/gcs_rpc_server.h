@@ -23,31 +23,28 @@
 namespace ray {
 namespace rpc {
 
-#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER, CONCURRENCY)
+#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER)
 
-#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, CONCURRENCY)
+#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER)
 
-#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER, CONCURRENCY)
+#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER)
 
-#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER, CONCURRENCY)
+#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER)
 
-#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER, CONCURRENCY)
+#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER)
 
-#define STATS_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(StatsGcsService, HANDLER, CONCURRENCY)
+#define STATS_SERVICE_RPC_HANDLER(HANDLER) RPC_SERVICE_HANDLER(StatsGcsService, HANDLER)
 
-#define ERROR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(ErrorInfoGcsService, HANDLER, CONCURRENCY)
+#define ERROR_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(ErrorInfoGcsService, HANDLER)
 
-#define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER, CONCURRENCY)
-
-#define SERVER_CALL_CONCURRENCY 9999
+#define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER)
 
 class JobInfoGcsServiceHandler {
  public:
@@ -76,10 +73,9 @@ class JobInfoGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    JOB_INFO_SERVICE_RPC_HANDLER(AddJob, SERVER_CALL_CONCURRENCY);
-    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
+    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
   }
 
  private:
@@ -133,14 +129,13 @@ class ActorInfoGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo, SERVER_CALL_CONCURRENCY);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo, SERVER_CALL_CONCURRENCY);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo, SERVER_CALL_CONCURRENCY);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint, SERVER_CALL_CONCURRENCY);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpoint, SERVER_CALL_CONCURRENCY);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpointID, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpoint);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpointID);
   }
 
  private:
@@ -202,16 +197,15 @@ class NodeInfoGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode, SERVER_CALL_CONCURRENCY);
-    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode, SERVER_CALL_CONCURRENCY);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo, SERVER_CALL_CONCURRENCY);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat, SERVER_CALL_CONCURRENCY);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportBatchHeartbeat, SERVER_CALL_CONCURRENCY);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetResources, SERVER_CALL_CONCURRENCY);
-    NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources, SERVER_CALL_CONCURRENCY);
-    NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
+    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportBatchHeartbeat);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
+    NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
+    NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
   }
 
  private:
@@ -253,11 +247,10 @@ class ObjectInfoGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations, SERVER_CALL_CONCURRENCY);
-    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation, SERVER_CALL_CONCURRENCY);
-    OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation);
   }
 
  private:
@@ -305,13 +298,12 @@ class TaskInfoGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    TASK_INFO_SERVICE_RPC_HANDLER(AddTask, SERVER_CALL_CONCURRENCY);
-    TASK_INFO_SERVICE_RPC_HANDLER(GetTask, SERVER_CALL_CONCURRENCY);
-    TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks, SERVER_CALL_CONCURRENCY);
-    TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease, SERVER_CALL_CONCURRENCY);
-    TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    TASK_INFO_SERVICE_RPC_HANDLER(AddTask);
+    TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
+    TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks);
+    TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease);
+    TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction);
   }
 
  private:
@@ -345,9 +337,8 @@ class StatsGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    STATS_SERVICE_RPC_HANDLER(AddProfileData, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    STATS_SERVICE_RPC_HANDLER(AddProfileData);
   }
 
  private:
@@ -381,9 +372,8 @@ class ErrorInfoGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    ERROR_INFO_SERVICE_RPC_HANDLER(ReportJobError, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    ERROR_INFO_SERVICE_RPC_HANDLER(ReportJobError);
   }
 
  private:
@@ -417,9 +407,8 @@ class WorkerInfoGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
-    WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure, SERVER_CALL_CONCURRENCY);
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure);
   }
 
  private:

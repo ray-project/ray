@@ -92,8 +92,6 @@ class ServerCallFactory {
  public:
   /// Create a new `ServerCall` and request gRPC runtime to start accepting the
   /// corresponding type of requests.
-  ///
-  /// \return Pointer to the `ServerCall` object.
   virtual void CreateCall() const = 0;
 
   virtual ~ServerCallFactory() = default;
@@ -155,6 +153,10 @@ class ServerCallImpl : public ServerCall {
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
+    // Create a new `ServerCall` to accept the next incoming request.
+    // We create this before handling the request so that the it can be populated by
+    // the completion queue in the background if a new request comes in.
+    factory.CreateCall();
     (service_handler_.*handle_request_function_)(
         request_, &reply_,
         [this](Status status, std::function<void()> success,
@@ -169,9 +171,6 @@ class ServerCallImpl : public ServerCall {
           // this server call might be deleted
           SendReply(status);
         });
-    // We've finished handling this request,
-    // create a new `ServerCall` to accept the next incoming request.
-    factory.CreateCall();
   }
 
   void OnReplySent() override {
