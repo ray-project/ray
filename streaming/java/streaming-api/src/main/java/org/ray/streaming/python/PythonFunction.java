@@ -1,5 +1,6 @@
 package org.ray.streaming.python;
 
+import javax.annotation.Nullable;
 import org.ray.streaming.api.function.Function;
 
 /**
@@ -46,9 +47,19 @@ public class PythonFunction implements Function {
    */
   private String functionInterface;
 
-  private PythonFunction(byte[] function,
-                         String moduleName,
-                         String functionName) {
+  /**
+   * Create a python function.
+   *
+   * @param function serialized streaming python function from python driver. If it's null,
+   *     then function is constructed from moduleName and functionName.
+   * @param moduleName streaming python function module name. <code>moduleName<code/> will be null
+   *     if this function is constructed from serialized python function.
+   * @param functionName streaming python function function name. <code>functionName<code/> will
+   *     be null if this function is constructed from serialized python function.
+   */
+  private PythonFunction(@Nullable byte[] function,
+                         @Nullable String moduleName,
+                         @Nullable String functionName) {
     this.function = function;
     this.moduleName = moduleName;
     this.functionName = functionName;
@@ -87,7 +98,7 @@ public class PythonFunction implements Function {
    * Create a {@link PythonFunction} using <code>moduleName</code> and
    * <code>functionName</code>.
    *
-   * @param moduleName   user function module name
+   * @param moduleName user function module name
    * @param functionName function/class name of the user function.
    */
   public static PythonFunction fromFunctionName(String moduleName, String functionName) {
