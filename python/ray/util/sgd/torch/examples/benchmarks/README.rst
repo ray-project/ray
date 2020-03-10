@@ -10,20 +10,22 @@ DISCLAIMER: RaySGD does not provide any custom communication primitives. If you 
 Single Node Results
 -------------------
 
-Here are benchmarking results on synthetic ImageNet data (via ``benchmark.py`` and ``dp_benchmark.py``) as of 03/04/2020:
-
-* PyTorch Version: torch-1.4.0-cp36-cp36m
-* Torchvision Version: torchvision-0.5.0-cp36-cp36m
-* Apex Version: commit hash 5633f6d
-
-This compares the following:
+Here are benchmarking results comparing the following:
 
 * torch.nn.DataParallel
 * torch.nn.Parallel with ``apex.amp`` enabled (``O1``)
 * Ray (wrapping Pytorch DistributedDataParallel)
 * Ray (wrapping Pytorch DistributedDataParallel) with ``apex.amp`` enabled (``O1``)
 
-.. code-block:: bash
+on synthetic ImageNet data (via ``benchmark.py`` and ``dp_benchmark.py``) as of 03/04/2020.
+
+Framework versions used:
+
+* PyTorch Version: torch-1.4.0-cp36-cp36m
+* Torchvision Version: torchvision-0.5.0-cp36-cp36m
+* Apex Version: commit hash 5633f6d
+
+.. code-block::
 
     # Images per second for ResNet50
     # Batch size per worker = 128
@@ -48,19 +50,22 @@ This compares the following:
 Multi Node Results
 ------------------
 
-Here are benchmarking results on synthetic ImageNet data (via ``benchmark.py`` and ``horovod_benchmark_apex.py``) as of 03/04/2020:
-
-* PyTorch Version: torch-1.4.0-cp36-cp36m
-* Torchvision Version: torchvision-0.5.0-cp36-cp36m
-* Apex Version: commit hash 5633f6d
-* Horovod Version: horovod-0.19.0
-
-This compares the following:
+Here are benchmarking results comparing the following:
 
 * Horovod
 * Horovod with ``apex.amp`` enabled  (``O1``)
 * Pytorch DistributedDataParallel
 * Pytorch DistributedDataParallel with ``apex.amp`` enabled (``O1``)
+
+on synthetic ImageNet data (via ``benchmark.py`` and ``horovod_benchmark_apex.py``) as of 03/04/2020.
+
+
+Framework versions used:
+
+* PyTorch Version: torch-1.4.0-cp36-cp36m
+* Torchvision Version: torchvision-0.5.0-cp36-cp36m
+* Apex Version: commit hash 5633f6d
+* Horovod Version: horovod-0.19.0
 
 .. code-block:: bash
 
@@ -86,7 +91,7 @@ This compares the following:
 Simple Instructions
 -------------------
 
-.. note:: These instructions are not maintained and may require a bit of wrangling to get working.
+Note that these instructions are not maintained and may require a bit of wrangling to get working.
 
 First, ``git clone https://github.com/ray-project/ray && cd ray/python/ray/util/sgd/torch/examples/``.
 
