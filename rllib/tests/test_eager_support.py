@@ -21,7 +21,7 @@ def check_support(alg, config, test_trace=True):
             config["env"] = "Pendulum-v0"
         else:
             config["env"] = "CartPole-v0"
-    
+
         a = get_agent_class(alg)
         config["log_level"] = "ERROR"
 

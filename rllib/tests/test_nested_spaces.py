@@ -24,7 +24,6 @@ from ray.rllib.utils import try_import_tf, try_import_torch
 tf = try_import_tf()
 _, nn = try_import_torch()
 
-
 DICT_SPACE = spaces.Dict({
     "sensors": spaces.Dict({
         "position": spaces.Box(low=-100, high=100, shape=(3, )),
@@ -314,7 +313,8 @@ class NestedSpacesTest(unittest.TestCase):
         self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
 
     def test_nested_dict_async(self):
-        self.do_test_nested_dict(lambda _: BaseEnv.to_base_env(NestedDictEnv()))
+        self.do_test_nested_dict(
+            lambda _: BaseEnv.to_base_env(NestedDictEnv()))
 
     def test_nested_tuple_gym(self):
         self.do_test_nested_tuple(lambda _: NestedTupleEnv())
@@ -327,7 +327,8 @@ class NestedSpacesTest(unittest.TestCase):
         self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
 
     def test_nested_tuple_async(self):
-        self.do_test_nested_tuple(lambda _: BaseEnv.to_base_env(NestedTupleEnv()))
+        self.do_test_nested_tuple(
+            lambda _: BaseEnv.to_base_env(NestedTupleEnv()))
 
     def test_multi_agent_complex_spaces(self):
         ModelCatalog.register_custom_model("dict_spy", DictSpyModel)

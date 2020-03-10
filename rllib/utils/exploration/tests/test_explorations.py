@@ -94,6 +94,7 @@ class TestExplorations(unittest.TestCase):
     Tests all Exploration components and the deterministic flag for
     compute_action calls.
     """
+
     def setUpClass(cls) -> None:
         ray.init(ignore_reinit_error=True)
 

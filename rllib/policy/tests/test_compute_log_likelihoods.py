@@ -119,8 +119,12 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
-        test_log_likelihood(pg.PGTrainer, config, prev_a, continuous=True,
-                            layer_key=("fc", (0, 2)))
+        test_log_likelihood(
+            pg.PGTrainer,
+            config,
+            prev_a,
+            continuous=True,
+            layer_key=("fc", (0, 2)))
 
     def test_pg_discr(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""

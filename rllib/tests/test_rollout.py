@@ -17,12 +17,11 @@ class TestRollout(unittest.TestCase):
         rllib_dir = str(Path(__file__).parent.parent.absolute())
         print("RLlib dir = {}\nexists={}".format(rllib_dir,
                                                  os.path.exists(rllib_dir)))
-        os.system(
-            "python {}/train.py --local-dir={} --run=IMPALA "
-            "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir) +
-            "--config='{\"num_workers\": 1, \"num_gpus\": 0}' "
-            "--env=Pong-ram-v4 --stop='{\"training_iteration\": 1}'")
-    
+        os.system("python {}/train.py --local-dir={} --run=IMPALA "
+                  "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir) +
+                  "--config='{\"num_workers\": 1, \"num_gpus\": 0}' "
+                  "--env=Pong-ram-v4 --stop='{\"training_iteration\": 1}'")
+
         checkpoint_path = os.popen(
             "ls {}/default/*/checkpoint_1/checkpoint-1".format(
                 tmp_dir)).read()[:-1]
@@ -32,13 +31,13 @@ class TestRollout(unittest.TestCase):
 
         os.popen("python {}/rollout.py --run=IMPALA \"{}\" --steps=100 "
                  "--out=\"{}/rollouts_100steps.pkl\" --no-render".format(
-            rllib_dir, checkpoint_path, tmp_dir)).read()
+                     rllib_dir, checkpoint_path, tmp_dir)).read()
         if not os.path.exists(tmp_dir + "/rollouts_100steps.pkl"):
             sys.exit(1)
 
         os.popen("python {}/rollout.py --run=IMPALA \"{}\" --episodes=1 "
                  "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
-            rllib_dir, checkpoint_path, tmp_dir)).read()
+                     rllib_dir, checkpoint_path, tmp_dir)).read()
         if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
             sys.exit(1)
 
