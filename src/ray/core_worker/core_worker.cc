@@ -967,10 +967,8 @@ Status CoreWorker::AllocateReturnObjects(
         object_already_exists = !data_buffer;
       }
     }
-    // Leave the return object as a nullptr if there is no data or metadata.
-    // This allows the caller to prevent the core worker from storing an output
-    // (e.g., to support ray.experimental.no_return.NoReturn).
-    if (!object_already_exists && (data_buffer || metadatas[i])) {
+    // Leave the return object as a nullptr if the object already exists.
+    if (!object_already_exists) {
       return_objects->at(i) =
           std::make_shared<RayObject>(data_buffer, metadatas[i], contained_object_ids[i]);
     }

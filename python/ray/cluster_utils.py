@@ -82,7 +82,6 @@ class Cluster:
             node_args["_internal_config"] = json.loads(
                 node_args["_internal_config"])
         ray_params = ray.parameter.RayParams(**node_args)
-        ray_params.use_pickle = ray.cloudpickle.FAST_CLOUDPICKLE_USED
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
             node = ray.node.Node(
