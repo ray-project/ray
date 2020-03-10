@@ -714,12 +714,8 @@ def init(address=None,
             raise Exception(
                 "Object pinning cannot be enabled if using LRU eviction.")
         _internal_config["object_pinning_enabled"] = False
-        # Make sure that if the object store is full, we will retry the attempt
-        # to store an object at least once, since the first attempt will not
-        # evict any objects.
-        if _internal_config.get("object_store_full_max_retries", 1) == 0:
-            raise Exception(
-                "Must allow retry for storing objects if using LRU eviction.")
+        _internal_config["object_store_full_max_retries"] = -1
+        _internal_config["free_objects_period_milliseconds"] = 1000
 
     global _global_node
     if driver_mode == LOCAL_MODE:
