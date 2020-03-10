@@ -95,13 +95,12 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
 }
 
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
-                                         const std::string &call_site,
-                                         const int64_t object_size) {
+                                         const std::string &call_site) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
-    it = object_id_refs_.emplace(object_id, Reference(call_site, object_size)).first;
+    it = object_id_refs_.emplace(object_id, Reference(call_site, -1)).first;
   }
   it->second.local_ref_count++;
   RAY_LOG(DEBUG) << "Add local reference " << object_id;

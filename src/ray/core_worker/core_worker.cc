@@ -1253,7 +1253,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // Acquire a reference and retry. This prevents the object from being
     // evicted out from under us before we can start the get.
-    AddLocalReference(object_id, "<temporary (get object status)>", -1);
+    AddLocalReference(object_id, "<temporary (get object status)>");
     if (task_manager_->IsTaskPending(object_id.TaskId())) {
       // The task is pending. Send the reply once the task finishes.
       memory_store_->GetAsync(object_id,
@@ -1366,6 +1366,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
+
+  reference_counter_->AddObjectRefStats(stats);
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

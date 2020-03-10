@@ -109,13 +109,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddLocalReference(const ObjectID &object_id, std::string call_site,
-                         const int64_t object_size) {
-    reference_counter_->AddLocalReference(object_id, call_site, object_size);
+  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
+    reference_counter_->AddLocalReference(object_id, call_site);
   }
 
-  void AddLocalReference(const ObjectID &object_id, const int64_t object_size) {
-    reference_counter_->AddLocalReference(object_id, CurrentCallSite(), object_size);
+  void AddLocalReference(const ObjectID &object_id) {
+    reference_counter_->AddLocalReference(object_id, CurrentCallSite());
   }
 
   /// Decrease the reference count for this object ID. Should be called

@@ -37,8 +37,8 @@ class ReferenceCounter {
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  void AddLocalReference(const ObjectID &object_id, const std::string &call_site,
-                         const int64_t object_size) LOCKS_EXCLUDED(mutex_);
+  void AddLocalReference(const ObjectID &object_id, const std::string &call_site)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the local reference count for the ObjectID by one.
   ///
@@ -216,7 +216,16 @@ class ReferenceCounter {
 
   void DebugDump() {
     for (const auto &ref : object_id_refs_) {
-      RAY_LOG(ERROR) << "object at " << ref.second.call_site;
+      RAY_LOG(ERROR) << ref.second.object_size << " byte object at " << ref.second.call_site;
+    }
+  }
+
+  void AddObjectRefStats(rpc::CoreWorkerStats *stats) {
+    for (const auto &ref : object_id_refs_) {
+      auto ref_proto = stats->add_object_refs();
+      ref_proto->set_object_id(ref.first.Binary());
+      ref_proto->set_call_site(ref.second.call_site);
+      ref_proto->set_object_size(ref.second.object_size);
     }
   }
 

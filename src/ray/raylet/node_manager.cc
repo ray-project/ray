@@ -3287,11 +3287,6 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &driver : worker_pool_.GetAllDrivers()) {
-    auto worker_stats = reply->add_workers_stats();
-    worker_stats->set_pid(driver->GetProcess().GetId());
-    worker_stats->set_is_driver(true);
-  }
   // NOTE(sang): Currently reporting only infeasible/ready ActorCreationTask
   // because Ray dashboard only renders actorCreationTask as of Feb 3 2020.
   // TODO(sang): Support dashboard for non-ActorCreationTask.
@@ -3356,11 +3351,16 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
   auto all_workers = worker_pool_.GetAllWorkers();
+  absl::flat_hash_set<WorkerID> driver_ids;
+  for (auto driver : worker_pool_.GetAllDrivers()) {
+    all_workers.push_back(driver);
+    driver_ids.insert(driver->WorkerId());
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     auto status = worker->rpc_client()->GetCoreWorkerStats(
-        request, [reply, worker, all_workers, send_reply_callback](
+        request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           if (!status.ok()) {
             RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
@@ -3368,7 +3368,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
           } else {
             auto worker_stats = reply->add_workers_stats();
             worker_stats->set_pid(worker->GetProcess().GetId());
-            worker_stats->set_is_driver(false);
+            worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
             reply->set_num_workers(reply->num_workers() + 1);
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
             if (reply->num_workers() == all_workers.size()) {
