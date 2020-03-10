@@ -347,7 +347,7 @@ class AutoscalingTest(unittest.TestCase):
         config = fillout_defaults(config)
         try:
             validate_config(config)
-        except Exception:
+        except ValidationError:
             self.fail("Default config did not pass validation test!")
 
     def testScaleUp(self):
