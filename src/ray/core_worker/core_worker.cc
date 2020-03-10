@@ -963,7 +963,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
-            KillActor(actor_id, /*intentional=*/true);
+            RAY_CHECK_OK(KillActor(actor_id, /*intentional=*/true));
           }
         }));
   }
