@@ -77,8 +77,7 @@ public abstract class BaseMultiLanguageTest {
     String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
         .filter(s -> !s.contains(" ") && s.contains("test"))
         .collect(Collectors.joining(":"));
-    String workerOptions =
-        " -classpath " + classpath;
+    String workerOptions = "[\"-classpath\",\"" + classpath + "\"]";
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
