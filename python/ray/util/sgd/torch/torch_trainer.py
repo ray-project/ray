@@ -38,6 +38,8 @@ class TorchTrainer:
 
     .. code-block:: python
 
+        ray.init()
+
         def model_creator(config):
             return nn.Linear(1, 1)
 
