@@ -655,7 +655,10 @@ def validate_config(config):
 
     with open(RAY_SCHEMA_PATH) as f:
         schema = json.load(f)
-    jsonschema.validate(config, schema)
+    try:
+        jsonschema.validate(config, schema)
+    except jsonschema.ValidationError as e:
+        raise jsonschema.ValidationError(message=e.message) from None
 
 
 def fillout_defaults(config):

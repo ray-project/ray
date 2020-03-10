@@ -1,10 +1,8 @@
-import json
 import jsonschema
 import os
 import unittest
 import yaml
 
-import ray.autoscaler
 from ray.autoscaler.autoscaler import fillout_defaults, validate_config
 from ray.test_utils import recursive_fnmatch
 
@@ -33,12 +31,12 @@ class AutoscalingConfigTest(unittest.TestCase):
         try:
             validate_config(config)
             self.fail("Expected validation to fail for {}".format(config_path))
-        except jsonschema.ValidationError as e:
+        except jsonschema.ValidationError:
             pass
 
     def testInvalidConfig(self):
-        self._test_invalid_config(
-            "tests/additional_property.yaml")
+        self._test_invalid_config("tests/additional_property.yaml")
+
 
 if __name__ == "__main__":
     import pytest
