@@ -47,6 +47,9 @@ static const std::string kStatusCodeRedisError = "RedisError";
 static const std::string kStatusCodeTimedOut = "TimedOut";
 static const std::string kStatusCodeInterrupted = "Interrupted";
 static const std::string kStatusCodeUnknown = "Unknown";
+static const std::string kStatusCodeIntentionalSystemExit = "IntentionalSystemExit";
+static const std::string kStatusCodeUnexpectedSystemExit = "UnexpectedSystemExit";
+static const std::string kStatusSeparator = ": ";
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -96,6 +99,10 @@ std::string Status::CodeAsString() const {
     return kStatusCodeTimedOut;
   case StatusCode::Interrupted:
     return kStatusCodeInterrupted;
+  case StatusCode::IntentionalSystemExit:
+    return kStatusCodeIntentionalSystemExit;
+  case StatusCode::UnexpectedSystemExit:
+    return kStatusCodeUnexpectedSystemExit;
   default:
     return kStatusCodeUnknown;
   }
@@ -106,7 +113,7 @@ std::string Status::ToString() const {
   if (state_ == NULL) {
     return result;
   }
-  result += ": ";
+  result += kStatusSeparator;
   result += state_->msg;
   return result;
 }
@@ -126,22 +133,19 @@ Status Status::FromString(const std::string &value) {
       {kStatusCodeRedisError, StatusCode::RedisError},
       {kStatusCodeTimedOut, StatusCode::TimedOut},
       {kStatusCodeInterrupted, StatusCode::Interrupted},
-      {kStatusCodeUnknown, StatusCode::IntentionalSystemExit}};
+      {kStatusCodeIntentionalSystemExit, StatusCode::IntentionalSystemExit},
+      {kStatusCodeUnexpectedSystemExit, StatusCode::UnexpectedSystemExit}};
 
-  size_t pos = value.find(": ");
-  std::string code_str;
-  std::string msg;
+  size_t pos = value.find(kStatusSeparator);
   if (pos != std::string::npos) {
-    code_str = value.substr(0, pos);
-    msg = value.substr(pos + 1);
+    std::string code_str = value.substr(0, pos);
+    RAY_CHECK(str_to_code.count(code_str));
+    StatusCode code = str_to_code[code_str];
+    return Status(code, value.substr(pos + kStatusSeparator.size()));
   } else {
-    code_str = value;
-  }
-  StatusCode code = str_to_code[code_str];
-  if (code == StatusCode::OK) {
+    // Status ok does not include ":".
     return Status();
   }
-  return Status(code, msg);
 }
 
 }  // namespace ray
