@@ -134,9 +134,9 @@ class TorchTrainer:
     def __init__(
             self,
             *,
-            model_creator=None,
-            data_creator=None,
-            optimizer_creator=None,
+            model_creator,
+            data_creator,
+            optimizer_creator,
             loss_creator=None,
             scheduler_creator=None,
             training_operator_cls=None,
@@ -158,8 +158,10 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not (model_creator and optimizer_creator and data_creator):
-            raise ValueError("Must provide a Model, Optimizer, Data creator.")
+        if not (callable(model_creator) and callable(optimizer_creator)
+                and callable(data_creator)):
+            raise ValueError(
+                "Must provide a callable Model, Optimizer, Data creator.")
 
         if batch_size is not None:
             raise DeprecationWarning(
