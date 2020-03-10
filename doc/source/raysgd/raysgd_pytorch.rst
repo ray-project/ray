@@ -530,14 +530,22 @@ Benchmarks
 
 RaySGD TorchTrainer provides comparable or better performance than other existing solutions for parallel or distributed training.
 
+.. code-block:: bash
 
-.. image:: raysgd_multigpu_benchmark.png
-    :scale: 30%
-    :align: center
+    # Images per second for ResNet50
+    # Batch size per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3dn.24xlarge instance.
 
-.. image:: raysgd_multinode_benchmark.png
-    :scale: 30%
-    :align: center
+
+    Number   DataParallel  Ray (PyTorch)  DataParallel  Ray (PyTorch)
+    of GPUs                               + Apex        + Apex
+    =======  ============  =============  ============  ==============
+    1        2769.7        5143           2962.7        6172
+    2        5492.2        9463           5886.1        10052.8
+    4        10733.4       18807          11705.9       20319.5
+    8        21872.5       36911.8        23317.9       38642
+
 
 You can see more details in the `benchmarking README <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/benchmarks/README.rst>`_.
 
