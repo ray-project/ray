@@ -166,7 +166,7 @@ class TorchTrainer:
         if batch_size is not None:
             raise DeprecationWarning(
                 "batch_size is deprecated. Use config={'batch_size': N} "
-                "specify a batch size for each worker, or "
+                "specify a batch size for each worker or "
                 "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
                 "batch size to be used across all workers.")
 
