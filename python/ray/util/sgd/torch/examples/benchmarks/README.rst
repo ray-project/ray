@@ -1,9 +1,11 @@
 Running benchmarks
 ==================
 
+RaySGD provides comparable or better performance than other existing solutions for parallel or distributed training.
+
 You can run ``ray/python/ray/util/sgd/torch/examples/benchmarks/benchmark.py`` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://ray.readthedocs.io/en/latest/autoscaling.html#aws>`_.
 
-DISCLAIMER: RaySGD does not provide any custom communication or optimization primitives.
+DISCLAIMER: RaySGD does not provide any custom communication primitives. If you see any performance issues, you may need to file them on the PyTorch github repository.
 
 Single Node Results
 -------------------
@@ -36,6 +38,11 @@ This compares the following:
     2        5492.2        9463           5886.1        10052.8
     4        10733.4       18807          11705.9       20319.5
     8        21872.5       36911.8        23317.9       38642
+
+
+.. image:: raysgd_multigpu_benchmark.png
+    :scale: 30%
+    :align: center
 
 
 Multi Node Results

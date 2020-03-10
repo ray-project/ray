@@ -525,6 +525,24 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
 
     stats = trainer.train()
 
+Benchmarks
+----------
+
+RaySGD TorchTrainer provides comparable or better performance than other existing solutions for parallel or distributed training.
+
+
+.. image:: raysgd_multigpu_benchmark.png
+    :scale: 30%
+    :align: center
+
+.. image:: raysgd_multinode_benchmark.png
+    :scale: 30%
+    :align: center
+
+You can see more details in the `benchmarking README <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/benchmarks/README.rst>`_.
+
+DISCLAIMER: RaySGD does not provide any custom communication primitives. If you see any performance issues, you may need to file them on the PyTorch github repository.
+
 
 Feature Requests
 ----------------
