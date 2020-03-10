@@ -48,13 +48,19 @@ class TorchTrainer:
 
 
         def data_creator(config):
-            return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+            batch_size = config["batch_size"]
+            train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
+            train_loader = DataLoader(train_data, batch_size=batch_size)
+            val_loader = DataLoader(val_data, batch_size=batch_size)
+            return train_loader, val_loader
+
 
         trainer = TorchTrainer(
-            model_creator,
-            data_creator,
-            optimizer_creator,
+            model_creator=model_creator,
+            data_creator=data_creator,
+            optimizer_creator=optimizer_creator,
             loss_creator=nn.MSELoss,
+            config={"batch_size": 32},
             use_gpu=True
         )
         for i in range(4):
