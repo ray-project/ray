@@ -50,7 +50,7 @@ using ItemCallback = std::function<void(const Data &result)>;
 /// \param result The item returned by Storage.
 template <typename Data>
 using ScanCallback = std::function <
-                     void(Status status, bool has_more, const std::vector<Data> &result);
+                     void(Status status, bool has_more, const std::vector<Data> &result)>;
 
 }  // namespace gcs
 

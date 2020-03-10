@@ -10,26 +10,23 @@ namespace gcs {
 class RedisStoreClientOptions {
  public:
   RedisStoreClientOptions(const std::string &ip, int port, const std::string &password)
-      : server_ip_(ip),
-        server_port_(port),
-        password_(password) {
-  }
+      : server_ip_(ip), server_port_(port), password_(password) {}
 
- // Redis server ip.
- std::string server_ip_;
- // Redis server port.
- int server_port_;
- // Redis server password.
- std::string password_;
+  // Redis server ip.
+  std::string server_ip_;
+  // Redis server port.
+  int server_port_;
+  // Redis server password.
+  std::string password_;
 };
 
 class RedisStoreClient : public StoreClient {
  public:
-  RedisStoreClient();
+  RedisStoreClient(const RedisStoreClientOptions &options);
 
   virtual ~RedisStoreClient();
 
-  Status Connect(boost::asio::io_service &io_service) override;
+  Status Connect(std::shared_ptr<IOServicePool> io_service_pool) override;
 
   void Disconnect() override;
 

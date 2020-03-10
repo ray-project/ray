@@ -5,17 +5,13 @@ namespace ray {
 
 namespace gcs {
 
-RedisStoreClient::RedisStoreClient();
+RedisStoreClient::RedisStoreClient(const RedisStoreClientOptions &options) {}
 
-RedisStoreClient::~RedisStoreClient();
+RedisStoreClient::~RedisStoreClient() {}
 
-Status RedisStoreClient::Connect(boost::asio::io_service &io_service) {
+Status RedisStoreClient::Connect(std::shared_ptr<IOServicePool> io_service_pool) {}
 
-}
-
-void RedisStoreClient::Disconnect() {
-
-}
+void RedisStoreClient::Disconnect() {}
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
                                   const std::string &value,
