@@ -29,8 +29,9 @@ Status RedisStoreClient::AsyncGetByIndex(const std::string &table_name,
                                          const MultiItemCallback<std::string> &callback) {
 }
 
-Status RedisStoreClient::AsyncGetAll(const std::string &table_name,
-                                     const ScanCallback<std::string> &callback) {}
+Status RedisStoreClient::AsyncGetAll(
+    const std::string &table_name,
+    const ScanCallback<std::string, std::string> &callback) {}
 
 Status RedisStoreClient::AsyncDelete(const std::string &table_name,
                                      const std::string &key,

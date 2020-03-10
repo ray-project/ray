@@ -44,7 +44,7 @@ class RedisStoreClient : public StoreClient {
                          const MultiItemCallback<std::string> &callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const ScanCallback<std::string> &callback) override;
+                     const ScanCallback<std::string, std::string> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
