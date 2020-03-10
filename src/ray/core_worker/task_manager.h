@@ -128,10 +128,10 @@ class TaskManager : public TaskFinisherInterface {
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
     int num_retries_left;
-    // Number of times this task has completed execution so far. This is used
-    // to pin the task entry if the task is still pending but all of its return
-    // IDs are out of scope.
-    int num_executions = 0;
+    // Whether this task is currently pending execution. This is used to pin
+    // the task entry if the task is still pending but all of its return IDs
+    // are out of scope.
+    bool pending = true;
     // Plasma objects returned by this task whose value is still needed. This
     // is set initially to the task's return objects. Once the task finishes
     // its first execution, then the objects that the task returned by value
