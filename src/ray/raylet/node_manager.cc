@@ -2929,7 +2929,7 @@ void NodeManager::ForwardTask(
         << "Spilling back to a node manager, but no GCS info found for node " << node_id;
     task.OnSpillback()(node_id, node_info->node_manager_address(),
                        node_info->node_manager_port());
-    on_error(ray::Status::IOError("Node not found when spilling back"), task);,
+    on_error(ray::Status::IOError("Node not found when spilling back"), task);
     return;
   }
 
