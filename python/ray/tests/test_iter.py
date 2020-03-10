@@ -60,8 +60,7 @@ def test_metrics_union(ray_start_regular_shared):
     def verify_metrics(x):
         metrics = LocalIterator.get_metrics()
         metrics.counters["n"] += 1
-        # Check the metrics context is shared.
-        if metrics.counters["n"] >= 2:
+        if metrics.counters["n"] > 2:
             assert "foo" in metrics.counters
             assert "bar" in metrics.counters
         return x
@@ -122,6 +121,17 @@ def test_combine(ray_start_regular_shared):
     it = from_range(4, 1).combine(lambda x: [x, x])
     assert repr(it) == "ParallelIterator[from_range[4, shards=1].combine()]"
     assert list(it.gather_sync()) == [0, 0, 1, 1, 2, 2, 3, 3]
+
+
+def test_duplicate(ray_start_regular_shared):
+    it = from_range(5, num_shards=1)
+
+    it1, it2 = it.gather_sync().duplicate(2)
+    it1 = it1.batch(2)
+
+    it3 = it1.union(it2, deterministic=False)
+    results = it3.take(20)
+    assert results == [0, [0, 1], 1, 2, [2, 3], 3, 4, [4]]
 
 
 def test_chain(ray_start_regular_shared):

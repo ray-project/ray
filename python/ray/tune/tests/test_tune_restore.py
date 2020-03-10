@@ -58,6 +58,22 @@ class TuneRestoreTest(unittest.TestCase):
             },
         )
 
+    def testPostRestoreCheckpointExistence(self):
+        """Tests that checkpoint restored from is not deleted post-restore."""
+        self.assertTrue(os.path.isfile(self.checkpoint_path))
+        tune.run(
+            "PG",
+            name="TuneRestoreTest",
+            stop={"training_iteration": 2},
+            checkpoint_freq=1,
+            keep_checkpoints_num=1,
+            restore=self.checkpoint_path,
+            config={
+                "env": "CartPole-v0",
+            },
+        )
+        self.assertTrue(os.path.isfile(self.checkpoint_path))
+
 
 class TuneExampleTest(unittest.TestCase):
     def setUp(self):

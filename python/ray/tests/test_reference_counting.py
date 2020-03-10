@@ -665,24 +665,26 @@ def test_pass_returned_object_id(one_worker_100MiB, use_ray_put):
         ]
 
     @ray.remote
-    def pending(ref, signal):
-        ray.get(signal.wait.remote())
+    def pending(ref):
         ray.get(ref[0])
+        return ref[0]
 
     signal = SignalActor.remote()
     outer_oid = return_an_id.remote()
-    inner_oid_binary = ray.get(outer_oid)[0].binary()
-    pending_oid = pending.remote([outer_oid], signal)
+    pending_oid = pending.remote([outer_oid])
 
     # Remove the local reference to the returned ID.
     del outer_oid
 
     # Check that the inner ID is pinned by the remote task ID.
+    _fill_object_store_and_get(pending_oid, succeed=False)
+    ray.get(signal.send.remote())
+    inner_oid = ray.get(pending_oid)
+    inner_oid_binary = inner_oid.binary()
     _fill_object_store_and_get(inner_oid_binary)
 
-    # Check that the task finishing unpins the object.
-    ray.get(signal.send.remote())
-    ray.get(pending_oid)
+    del pending_oid
+    del inner_oid
     _fill_object_store_and_get(inner_oid_binary, succeed=False)
 
 
