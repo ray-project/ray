@@ -4,6 +4,7 @@ import logging
 import inspect
 import itertools
 import os
+import tempfile
 import torch
 
 import ray
@@ -83,7 +84,7 @@ class TorchRunner:
                 return loaders
             else:
                 raise ValueError(
-                    "loaders must be <= 2. Got {}".format(loaders))
+                    "Number of loaders must be <= 2. Got {}".format(loaders))
         # No great way of checking type otherwise
         return loaders, None
 
@@ -91,7 +92,7 @@ class TorchRunner:
         logger.debug("Instantiating dataloaders.")
         # When creating loaders, a filelock will be used to ensure no
         # race conditions in data downloading among different workers.
-        with FileLock(os.path.expanduser("~/.ray_data.lock")):
+        with FileLock(os.path.join(tempfile.gettempdir(), ".ray_data.lock")):
             loaders = self.data_creator(self.config)
             train_loader, val_loader = self._validate_loaders(loaders)
 

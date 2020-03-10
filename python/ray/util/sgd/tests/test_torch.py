@@ -537,7 +537,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
             model_creator=model_creator,
             data_creator=single_loader,
             optimizer_creator=optimizer_creator,
-            config=dict(batch_size=100000),
+            config={"batch_size": 100000},
             loss_creator=lambda config: nn.MSELoss(),
             num_workers=2)
 
@@ -575,7 +575,7 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
             model_creator=model_creator,
             data_creator=single_loader,
             optimizer_creator=optimizer_creator,
-            config=dict(batch_size=100000),
+            config={"batch_size": 100000},
             loss_creator=lambda config: nn.MSELoss(),
             num_workers=2)
 
