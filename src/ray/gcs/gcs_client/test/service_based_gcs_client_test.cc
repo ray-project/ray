@@ -14,7 +14,6 @@ static std::string libray_redis_module_path;
 class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
  public:
   void SetUp() override {
-    gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
@@ -329,6 +328,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   }
 
   // Gcs server
+  gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<std::thread> thread_gcs_server_;
@@ -626,6 +626,30 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_num_reconstructions(0);
   ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
+  // Create job_table_data
+  JobID add_job_id = JobID::FromInt(1);
+  auto job_table_data = GenJobTableData(add_job_id);
+
+  RAY_LOG(INFO) << "Gcs service init port = " << gcs_server_->GetPort();
+  gcs_server_->Stop();
+  thread_gcs_server_->join();
+
+  gcs_server_.reset(new gcs::GcsServer(config));
+  thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
+
+  // Wait until server starts listening.
+  while (gcs_server_->GetPort() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  RAY_LOG(INFO) << "Gcs service restart success, port = " << gcs_server_->GetPort();
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+      job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  promise.get_future().get();
 }
 
 }  // namespace ray

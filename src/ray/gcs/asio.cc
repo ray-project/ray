@@ -2,6 +2,10 @@
 
 #include "ray/util/logging.h"
 
+#ifdef _WIN32
+#include <io.h>
+#endif
+
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
     : redis_async_context_(redis_async_context),
@@ -16,9 +20,21 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
   // gives access to c->fd
   redisContext *c = &(async_context->c);
 
+#ifdef _WIN32
+  SOCKET sock = SOCKET_ERROR;
+  WSAPROTOCOL_INFO pi;
+  if (WSADuplicateSocket(_get_osfhandle(c->fd), GetCurrentProcessId(), &pi) == 0) {
+    DWORD flag = WSA_FLAG_OVERLAPPED;
+    sock = WSASocket(pi.iAddressFamily, pi.iSocketType, pi.iProtocol, &pi, 0, flag);
+  }
+  boost::asio::ip::tcp::socket::native_handle_type handle(sock);
+#else
+  boost::asio::ip::tcp::socket::native_handle_type handle(dup(c->fd));
+#endif
+
   // hiredis is already connected
   // use the existing native socket
-  socket_.assign(boost::asio::ip::tcp::v4(), c->fd);
+  socket_.assign(boost::asio::ip::tcp::v4(), handle);
 
   // register hooks with the hiredis async context
   async_context->ev.addRead = call_C_addRead;
