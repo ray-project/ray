@@ -4,7 +4,7 @@ import sys
 import unittest
 
 
-def test_rollout(algo, env="CartPole-v0"):
+def rollout_test(algo, env="CartPole-v0"):
     tmp_dir = os.popen("mktemp -d").read()[:-1]
     if not os.path.exists(tmp_dir):
         sys.exit(1)
@@ -48,46 +48,46 @@ def test_rollout(algo, env="CartPole-v0"):
 
 class TestRollout(unittest.TestCase):
     def test_a2c(self):
-        test_rollout("A2C")
+        rollout_test("A2C")
 
     def test_a3c(self):
-        test_rollout("A3C")
+        rollout_test("A3C")
 
     def test_ars(self):
-        test_rollout("ARS")
+        rollout_test("ARS")
 
     def test_ddpg(self):
-        test_rollout("DDPG", env="Pendulum-v0")
+        rollout_test("DDPG", env="Pendulum-v0")
 
     def test_dqn(self):
-        test_rollout("DQN")
+        rollout_test("DQN")
 
     def test_es(self):
-        test_rollout("ES")
+        rollout_test("ES")
 
     def test_impala(self):
-        test_rollout("IMPALA", env="Pong-ram-v4")
+        rollout_test("IMPALA", env="Pong-ram-v4")
 
     def test_pg_discr(self):
-        test_rollout("PG")
+        rollout_test("PG")
 
     def test_pg_cont(self):
-        test_rollout("PG", env="Pendulum-v0")
+        rollout_test("PG", env="Pendulum-v0")
 
     def test_ppo_discr(self):
-        test_rollout("PPO")
+        rollout_test("PPO")
 
     def test_ppo_cont(self):
-        test_rollout("PPO", env="Pendulum-v0")
+        rollout_test("PPO", env="Pendulum-v0")
 
     def test_sac_discr(self):
-        test_rollout("SAC")
+        rollout_test("SAC")
 
     def test_sac_cont(self):
-        test_rollout("SAC", env="Pendulum-v0")
+        rollout_test("SAC", env="Pendulum-v0")
 
     def test_td3(self):
-        test_rollout("TD3", env="Pendulum-v0")
+        rollout_test("TD3", env="Pendulum-v0")
 
 
 if __name__ == "__main__":
