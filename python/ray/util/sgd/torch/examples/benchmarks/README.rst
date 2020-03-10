@@ -1,17 +1,52 @@
 Running benchmarks
 ==================
 
-You can run ``benchmark.py`` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://ray.readthedocs.io/en/latest/autoscaling.html#aws>`_.
+You can run ``ray/python/ray/util/sgd/torch/examples/benchmarks/benchmark.py`` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://ray.readthedocs.io/en/latest/autoscaling.html#aws>`_.
 
-Results
--------
+DISCLAIMER: RaySGD does not provide any custom communication or optimization primitives.
 
-Here are benchmarking results on synthetic data (via ``benchmark.py`` and ``horovod_benchmark_apex.py``) as of 03/04/2020:
+Single Node Results
+-------------------
+
+Here are benchmarking results on synthetic ImageNet data (via ``benchmark.py`` and ``dp_benchmark.py``) as of 03/04/2020:
 
  - PyTorch Version: torch-1.4.0-cp36-cp36m
  - Torchvision Version: torchvision-0.5.0-cp36-cp36m
  - Apex Version: commit hash 5633f6d
- - Horovod Version: horovod-0.19.0
+
+This compares the following:
+
+ - torch.nn.DataParallel
+ - torch.nn.Parallel with ``apex.amp`` enabled (``O1``)
+ - Ray (wrapping Pytorch DistributedDataParallel)
+ - Ray (wrapping Pytorch DistributedDataParallel) with ``apex.amp`` enabled (``O1``)
+
+.. code-block:: bash
+
+    # Images per second for ResNet50
+    # Batch size per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3dn.24xlarge instance.
+
+
+    Number   DataParallel  Ray (PyTorch)  DataParallel  Ray (PyTorch)
+    of GPUs                               + Apex        + Apex
+    =======  ============  =============  ============  ==============
+    1        2769.7        5143           2962.7        6172
+    2        5492.2        9463           5886.1        10052.8
+    4        10733.4       18807          11705.9       20319.5
+    8        21872.5       36911.8        23317.9       38642
+
+
+Multi Node Results
+------------------
+
+Here are benchmarking results on synthetic ImageNet data (via ``benchmark.py`` and ``horovod_benchmark_apex.py``) as of 03/04/2020:
+
+* PyTorch Version: torch-1.4.0-cp36-cp36m
+* Torchvision Version: torchvision-0.5.0-cp36-cp36m
+* Apex Version: commit hash 5633f6d
+* Horovod Version: horovod-0.19.0
 
 This compares the following:
 
@@ -23,7 +58,7 @@ This compares the following:
 .. code-block:: bash
 
     # Images per second for ResNet50
-    # Batches per worker = 128
+    # Batch size per worker = 128
     # GPU Type = V100
     # Run on AWS us-east-1c, p3dn.24xlarge instances.
 
@@ -41,40 +76,26 @@ This compares the following:
     :align: center
 
 
-Here are benchmarking results on synthetic data (via ``benchmark.py`` and ``dp_benchmark.py``) as of 03/04/2020:
-
- - PyTorch Version: torch-1.4.0-cp36-cp36m
- - Torchvision Version: torchvision-0.5.0-cp36-cp36m
- - Apex Version: commit hash 5633f6d
-
-This compares the following:
-
- - Horovod
- - Horovod with fp16-allreduce enabled
- - Pytorch DistributedDataParallel
- - Pytorch DistributedDataParallel with ``APEX amp`` enabled (``O1``)
-
-.. code-block:: bash
-
-    # Images per second for ResNet50
-    # Batches per worker = 128
-    # GPU Type = V100
-    # Run on AWS us-east-1c, p3.16xlarge instances.
-
-    Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Amp
-    ==============  =======   ==============  =======    =============
-    1 * 8 GPU(s)    2273.4    2552.3          2863.6     6171.5
-    2 * 8 GPU(s)    4210.5    4974.2          5640.2     8414.1
-    4 * 8 GPU(s)    6633.3    9544.4          11014.8    16346.8
-    8 * 8 GPU(s)    12414.6   18479.8         22273.6    33148.2
-
-
 Simple Instructions
 -------------------
 
+.. note:: These instructions are not maintained and may require a bit of wrangling to get working.
+
 First, ``git clone https://github.com/ray-project/ray && cd ray/python/ray/util/sgd/torch/examples/``.
 
-Then, run ``ray up sgd-development.yaml``. You may want to install FP16 support for PyTorch with the following configuration in the YAML file:
+You can use ``sgd-development.yaml`` to setup your cluster configuration and ``ray up sgd-development.yaml`` to launch the cluster.
+
+You can specify the number of nodes you want to use with the following configuration:
+
+.. code-block::
+
+    # The maximum number of workers nodes to launch in addition to the head
+    # node. This takes precedence over min_workers. min_workers default to 0.
+    min_workers: <NUMBER_OF_NODES>  # Change this to a custom quantity
+    initial_workers:  <NUMBER_OF_NODES>  # same as above
+    max_workers:  <NUMBER_OF_NODES>  # same as above
+
+You may want to install FP16 support for PyTorch with the following configuration in the YAML file:
 
 .. code-block:: yaml
 
@@ -125,5 +146,5 @@ You should see something like:
     Total img/sec on 16 GPU(s): 5640.2 +-47.2
 
 
-You can also run ``benchmarks/horovod-benchmark.yaml`` to launch an AWS cluster that sets up Horovod on each machine.
+You can run ``ray up benchmarks/horovod-benchmark.yaml`` to launch an AWS cluster that sets up Horovod on each machine.
 See ``https://github.com/horovod/horovod`` for launching Horovod training. ``horovod_benchmark_apex.py`` can be used with ``horovodrun`` to obtain benchmarking results.
