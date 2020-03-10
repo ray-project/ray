@@ -266,12 +266,13 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         # If Trainer's horizon is provided, force-set the env's
         # `max_episode_steps` spec to that value (otherwise, Trainer's horizon
         # setting will be violated).
+        print("base_env={}".format(base_env))
         if horizon:
             base_env.get_unwrapped()[0].spec.max_episode_steps = horizon
         # Otherwise, limit Trainer's horizon to env's max-steps.
         else:
             horizon = (base_env.get_unwrapped()[0].spec.max_episode_steps)
-    except AttributeError:
+    except Exception:
         pass
 
     if not horizon:

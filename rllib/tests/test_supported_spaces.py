@@ -17,7 +17,9 @@ from ray.rllib.tests.test_multi_agent_env import MultiCartpole, \
     MultiMountainCar
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
+
 tf = try_import_tf()
+
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
