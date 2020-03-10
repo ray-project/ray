@@ -24,13 +24,13 @@ namespace ray {
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                              \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100) \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask, 100)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs, 100)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC, 1)
+#define RAY_NODE_MANAGER_RPC_HANDLERS                         \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease) \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)       \
+  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)       \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)       \
+  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -86,8 +86,7 @@ class NodeManagerGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 

@@ -28,17 +28,17 @@ class CoreWorker;
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_CORE_WORKER_RPC_HANDLERS                                          \
-  RPC_SERVICE_HANDLER(CoreWorkerService, AssignTask, 5)                       \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, 9999)                      \
-  RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, 100) \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, 9999)               \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction, 9999)         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved, 9999)             \
-  RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 9999)                     \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)             \
-  RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC, 100)                        \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady, 9999)
+#define RAY_CORE_WORKER_RPC_HANDLERS                                     \
+  RPC_SERVICE_HANDLER(CoreWorkerService, AssignTask)                     \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PushTask)                       \
+  RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete) \
+  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus)                \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction)          \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, KillActor)                      \
+  RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats)             \
+  RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC)                        \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignTask)                     \
@@ -84,8 +84,7 @@ class CoreWorkerGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     RAY_CORE_WORKER_RPC_HANDLERS
   }
 
