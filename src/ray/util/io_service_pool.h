@@ -1,8 +1,8 @@
 #ifndef RAY_UTIL_IO_SERVICE_POOL_H
 #define RAY_UTIL_IO_SERVICE_POOL_H
 
-#include <thread>
 #include <boost/asio.hpp>
+#include <thread>
 
 namespace ray {
 

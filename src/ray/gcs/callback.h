@@ -49,8 +49,8 @@ using ItemCallback = std::function<void(const Data &result)>;
 /// \param has_more Whether there is more data not received yet.
 /// \param result The item returned by Storage.
 template <typename Data>
-using ScanCallback = std::function <
-                     void(Status status, bool has_more, const std::vector<Data> &result)>;
+using ScanCallback =
+    std::function<void(Status status, bool has_more, const std::vector<Data> &result)>;
 
 }  // namespace gcs
 

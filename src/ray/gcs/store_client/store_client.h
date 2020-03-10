@@ -65,7 +65,7 @@ class StoreClient {
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
   virtual Status AsyncGetByIndex(const std::string &table_name, const std::string &index,
-                                 const MultiItemCallback &callback) = 0;
+                                 const MultiItemCallback<std::string> &callback) = 0;
 
   /// Get all data from table asynchronously.
   ///
