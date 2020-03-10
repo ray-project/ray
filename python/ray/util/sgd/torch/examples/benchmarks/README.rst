@@ -15,10 +15,10 @@ Here are benchmarking results on synthetic data (via ``benchmark.py`` and ``horo
 
 This compares the following:
 
- - Horovod
- - Horovod with fp16-allreduce enabled
- - Pytorch DistributedDataParallel
- - Pytorch DistributedDataParallel with ``APEX amp`` enabled (``O1``)
+  * Horovod
+  * Horovod with ``apex.amp`` enabled  (``O1``)
+  * Pytorch DistributedDataParallel
+  * Pytorch DistributedDataParallel with ``apex.amp`` enabled (``O1``)
 
 .. code-block:: bash
 
