@@ -128,9 +128,7 @@ class FunctionActorManager:
         Args:
             remote_function: the RemoteFunction object.
         """
-        if self._worker.mode == ray.worker.LOCAL_MODE:
-            return
-        if self._worker.load_code_from_local:
+        if self._worker.load_code_from_local or self._worker.mode == ray.worker.LOCAL_MODE:
             return
 
         function = remote_function._function

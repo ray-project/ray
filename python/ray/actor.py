@@ -511,67 +511,57 @@ class ActorClass:
                            if meta.num_cpus is None else meta.num_cpus)
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
-        # Do not export the actor class or the actor if run in LOCAL_MODE
-        # Instead, instantiate the actor locally and add it to the worker's
-        # dictionary
+        # LOCAL_MODE cannot handle cross_language
         if worker.mode == ray.LOCAL_MODE:
             assert not meta.is_cross_language, \
                 "Cross language ActorClass cannot be executed locally."
-            actor_id = ActorID.from_random()
-            worker.actors[actor_id] = meta.modified_class(
-                *copy.deepcopy(args), **copy.deepcopy(kwargs))
-        else:
             # Export the actor.
-            if not meta.is_cross_language and (meta.last_export_session_and_job
-                                               !=
-                                               worker.current_session_and_job):
-                # If this actor class was not exported in this session and job,
-                # we need to export this function again, because current GCS
-                # doesn't have it.
-                meta.last_export_session_and_job = (
-                    worker.current_session_and_job)
-                # After serialize / deserialize modified class, the __module__
-                # of modified class will be ray.cloudpickle.cloudpickle.
-                # So, here pass actor_creation_function_descriptor to make
-                # sure export actor class correct.
-                worker.function_actor_manager.export_actor_class(
-                    meta.modified_class,
-                    meta.actor_creation_function_descriptor,
-                    meta.method_meta.methods.keys())
+        if not meta.is_cross_language and (meta.last_export_session_and_job !=
+                                           worker.current_session_and_job):
+            # If this actor class was not exported in this session and job,
+            # we need to export this function again, because current GCS
+            # doesn't have it.
+            meta.last_export_session_and_job = (worker.current_session_and_job)
+            # After serialize / deserialize modified class, the __module__
+            # of modified class will be ray.cloudpickle.cloudpickle.
+            # So, here pass actor_creation_function_descriptor to make
+            # sure export actor class correct.
+            worker.function_actor_manager.export_actor_class(
+                meta.modified_class, meta.actor_creation_function_descriptor,
+                meta.method_meta.methods.keys())
 
-            resources = ray.utils.resources_from_resource_arguments(
-                cpus_to_use, meta.num_gpus, meta.memory,
-                meta.object_store_memory, meta.resources, num_cpus, num_gpus,
-                memory, object_store_memory, resources)
+        resources = ray.utils.resources_from_resource_arguments(
+            cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
+            meta.resources, num_cpus, num_gpus, memory, object_store_memory,
+            resources)
 
-            # If the actor methods require CPU resources, then set the required
-            # placement resources. If actor_placement_resources is empty, then
-            # the required placement resources will be the same as resources.
-            actor_placement_resources = {}
-            assert actor_method_cpu in [0, 1]
-            if actor_method_cpu == 1:
-                actor_placement_resources = resources.copy()
-                actor_placement_resources["CPU"] += 1
-            if meta.is_cross_language:
-                creation_args = cross_language.format_args(
-                    worker, args, kwargs)
-            else:
-                function_signature = meta.method_meta.signatures["__init__"]
-                creation_args = signature.flatten_args(function_signature,
-                                                       args, kwargs)
-            actor_id = worker.core_worker.create_actor(
-                meta.language,
-                meta.actor_creation_function_descriptor,
-                creation_args,
-                meta.max_reconstructions,
-                resources,
-                actor_placement_resources,
-                is_direct_call,
-                max_concurrency,
-                detached,
-                is_asyncio,
-                # Store actor_method_cpu in actor handle's extension data.
-                extension_data=str(actor_method_cpu))
+        # If the actor methods require CPU resources, then set the required
+        # placement resources. If actor_placement_resources is empty, then
+        # the required placement resources will be the same as resources.
+        actor_placement_resources = {}
+        assert actor_method_cpu in [0, 1]
+        if actor_method_cpu == 1:
+            actor_placement_resources = resources.copy()
+            actor_placement_resources["CPU"] += 1
+        if meta.is_cross_language:
+            creation_args = cross_language.format_args(worker, args, kwargs)
+        else:
+            function_signature = meta.method_meta.signatures["__init__"]
+            creation_args = signature.flatten_args(function_signature, args,
+                                                   kwargs)
+        actor_id = worker.core_worker.create_actor(
+            meta.language,
+            meta.actor_creation_function_descriptor,
+            creation_args,
+            meta.max_reconstructions,
+            resources,
+            actor_placement_resources,
+            is_direct_call,
+            max_concurrency,
+            detached,
+            is_asyncio,
+            # Store actor_method_cpu in actor handle's extension data.
+            extension_data=str(actor_method_cpu))
 
         actor_handle = ActorHandle(
             meta.language,
@@ -707,14 +697,9 @@ class ActorHandle:
             assert not self._ray_is_cross_language,\
                 "Cross language remote actor method " \
                 "cannot be executed locally."
-            function = getattr(worker.actors[self._actor_id], method_name)
-            object_ids = worker.local_mode_manager.execute(
-                function, method_name, args, kwargs, num_return_vals)
-        else:
-            object_ids = worker.core_worker.submit_actor_task(
-                self._ray_actor_language, self._ray_actor_id,
-                function_descriptor, list_args, num_return_vals,
-                self._ray_actor_method_cpus)
+        object_ids = worker.core_worker.submit_actor_task(
+            self._ray_actor_language, self._ray_actor_id, function_descriptor,
+            list_args, num_return_vals, self._ray_actor_method_cpus)
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -900,8 +885,7 @@ def modify_class(cls):
 
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
-            if worker.mode != ray.LOCAL_MODE:
-                ray.actor.exit_actor()
+            ray.actor.exit_actor()
 
         def __ray_checkpoint__(self):
             """Save a checkpoint.
