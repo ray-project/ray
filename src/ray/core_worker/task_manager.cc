@@ -82,7 +82,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.
-      RAY_UNUSED(
+      RAY_CHECK(
           in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
     } else {
       std::shared_ptr<LocalMemoryBuffer> data_buffer;

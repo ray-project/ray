@@ -420,7 +420,8 @@ Status CoreWorker::Put(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  return Status::OK();
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -463,7 +464,8 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
-  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
