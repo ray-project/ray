@@ -12,16 +12,16 @@ Single Node Results
 
 Here are benchmarking results on synthetic ImageNet data (via ``benchmark.py`` and ``dp_benchmark.py``) as of 03/04/2020:
 
- - PyTorch Version: torch-1.4.0-cp36-cp36m
- - Torchvision Version: torchvision-0.5.0-cp36-cp36m
- - Apex Version: commit hash 5633f6d
+* PyTorch Version: torch-1.4.0-cp36-cp36m
+* Torchvision Version: torchvision-0.5.0-cp36-cp36m
+* Apex Version: commit hash 5633f6d
 
 This compares the following:
 
- - torch.nn.DataParallel
- - torch.nn.Parallel with ``apex.amp`` enabled (``O1``)
- - Ray (wrapping Pytorch DistributedDataParallel)
- - Ray (wrapping Pytorch DistributedDataParallel) with ``apex.amp`` enabled (``O1``)
+* torch.nn.DataParallel
+* torch.nn.Parallel with ``apex.amp`` enabled (``O1``)
+* Ray (wrapping Pytorch DistributedDataParallel)
+* Ray (wrapping Pytorch DistributedDataParallel) with ``apex.amp`` enabled (``O1``)
 
 .. code-block:: bash
 
