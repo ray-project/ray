@@ -176,9 +176,6 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  std::unique_ptr<std::thread> thread_io_service;
-  boost::asio::io_service io_service;
-
   // RAY_GCS_SERVICE_ENABLED only set in ci job, so we just check if it is null.
   if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);

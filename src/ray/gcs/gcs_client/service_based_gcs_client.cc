@@ -36,14 +36,18 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
 
   // Get gcs service address
-  std::pair<std::string, int> address;
-  GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
-                               &address);
+  auto get_server_address = [this]() {
+    std::pair<std::string, int> address;
+    GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+                                 &address);
+    return address;
+  };
+  std::pair<std::string, int> address = get_server_address();
 
   // Connect to gcs service
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
-  gcs_rpc_client_.reset(
-      new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_));
+  gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
+                                              *client_call_manager_, get_server_address));
 
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
@@ -79,7 +83,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
 
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().gcs_service_connect_wait_milliseconds() * 1000);
+    usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() * 1000);
     num_attempts++;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())

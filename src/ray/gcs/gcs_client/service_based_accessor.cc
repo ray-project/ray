@@ -840,7 +840,6 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
         }
         RAY_LOG(DEBUG) << "Finished reporting job error, status = " << status
                        << ", job id = " << job_id << ", type = " << type;
-        ;
       });
   return Status::OK();
 }

@@ -618,8 +618,6 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   rpc::DeleteTasksRequest delete_tasks_request;
   delete_tasks_request.add_task_id_list(task_id.Binary());
   ASSERT_TRUE(DeleteTasks(delete_tasks_request));
-  result = GetTask(task_id.Binary());
-  ASSERT_TRUE(!result.has_task());
 
   // Add task lease
   ClientID node_id = ClientID::FromRandom();
