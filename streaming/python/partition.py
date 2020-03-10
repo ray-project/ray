@@ -97,6 +97,7 @@ def load_partition(descriptor_partition_bytes: bytes):
     Returns:
         partition function
     """
+    assert len(descriptor_partition_bytes) > 0
     partition_bytes, module_name, function_name =\
         gateway_client.deserialize(descriptor_partition_bytes)
     if partition_bytes:

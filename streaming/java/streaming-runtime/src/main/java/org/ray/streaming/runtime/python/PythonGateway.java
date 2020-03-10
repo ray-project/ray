@@ -150,6 +150,9 @@ public class PythonGateway {
 
   private Method findMethod(Class<?> cls, String methodName, Class[] paramsTypes) {
     List<Method> methods = ReflectionUtils.findMethods(cls, methodName);
+    if (methods.size() == 1) {
+      return methods.get(0);
+    }
     // Convert all params types to primitive types if it's boxed type
     Class[] unwrappedTypes = Arrays.stream(paramsTypes)
         .map((Function<Class, Class>) Primitives::unwrap)

@@ -295,6 +295,7 @@ def load_function(descriptor_func_bytes: bytes):
     Returns:
         a streaming function
     """
+    assert len(descriptor_func_bytes) > 0
     function_bytes, module_name, function_name, function_interface\
         = gateway_client.deserialize(descriptor_func_bytes)
     if function_bytes:
