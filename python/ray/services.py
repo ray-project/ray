@@ -330,6 +330,7 @@ def create_redis_client(redis_address, password=None):
 
 def start_ray_process(command,
                       process_type,
+                      fate_share,
                       env_updates=None,
                       cwd=None,
                       use_valgrind=False,
@@ -339,8 +340,7 @@ def start_ray_process(command,
                       use_tmux=False,
                       stdout_file=None,
                       stderr_file=None,
-                      pipe_stdin=False,
-                      fate_share=None):
+                      pipe_stdin=False):
     """Start one of the Ray processes.
 
     TODO(rkn): We need to figure out how these commands interact. For example,
@@ -352,6 +352,8 @@ def start_ray_process(command,
         command (List[str]): The command to use to start the Ray process.
         process_type (str): The type of the process that is being started
             (e.g., "raylet").
+        fate_share: If true, the child will be killed if its parent (us) dies.
+            True must only be passed after detection of this functionality.
         env_updates (dict): A dictionary of additional environment variables to
             run the command with (in addition to the caller's environment
             variables).
@@ -369,8 +371,6 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
-        fate_share: If true, the child will be killed if its parent (us) dies.
-            Note that this functionality must be supported, or it is an error.
 
     Returns:
         Information about the process that was started including a handle to
@@ -452,8 +452,6 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
-    if fate_share is None:
-        logger.warning("fate_share= should be passed to start_ray_process()")
     if fate_share:
         assert ray.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
