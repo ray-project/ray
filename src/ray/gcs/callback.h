@@ -44,6 +44,14 @@ using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 template <typename Data>
 using ItemCallback = std::function<void(const Data &result)>;
 
+/// This callback is used to receive scan result from Storage.
+/// \param status Status indicates whether the scan was successful.
+/// \param has_more Whether there is more data not received yet.
+/// \param result The item returned by Storage.
+template <typename Data>
+using ScanCallback = std::function <
+                     void(Status status, bool has_more, const std::vector<Data> &result);
+
 }  // namespace gcs
 
 }  // namespace ray
