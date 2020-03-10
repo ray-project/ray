@@ -54,6 +54,9 @@ class NodeManagerServiceHandler {
 
   virtual void HandleGlobalGC(const GlobalGCRequest &request, GlobalGCReply *reply,
                               SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request, FormatGlobalMemoryInfoReply *reply,
+                              SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

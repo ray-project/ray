@@ -1367,7 +1367,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
 
-  reference_counter_->AddObjectRefStats(stats);
+  if (request.include_memory_info()) {
+    reference_counter_->AddObjectRefStats(stats);
+  }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

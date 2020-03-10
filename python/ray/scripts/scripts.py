@@ -948,6 +948,33 @@ def stat(address):
         print(reply)
 
 
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def memstat(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+
+    import grpc
+    from ray.core.generated import node_manager_pb2
+    from ray.core.generated import node_manager_pb2_grpc
+
+    # We can ask any Raylet for the global memory info.
+    raylet = ray.nodes()[0]
+    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                    ray.nodes()[0]["NodeManagerPort"])
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    reply = stub.FormatGlobalMemoryStats(
+        node_manager_pb2.FormatGlobalMemoryStatsRequest(), timeout=2.0)
+    print(reply)
+
+
 cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)

@@ -3284,7 +3284,7 @@ void NodeManager::FlushObjectsToFree() {
   last_free_objects_at_ms_ = current_time_ms();
 }
 
-void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
+void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // NOTE(sang): Currently reporting only infeasible/ready ActorCreationTask
@@ -3359,6 +3359,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
+    request.set_include_memory_info(node_stats_request.include_memory_info());
     auto status = worker->rpc_client()->GetCoreWorkerStats(
         request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
@@ -3381,6 +3382,13 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                        << status.ToString();
     }
   }
+}
+
+void NodeManager::HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
+                                     rpc::FormatGlobalMemoryInfoReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  reply->set_memory_summary("hello memory");
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
