@@ -10,8 +10,8 @@ import org.testng.annotations.Test;
 
 public class RayletConfigTest extends BaseTest {
 
-  private static final String RAY_CONFIG_KEY = "maximum_worker_processes";
-  private static final String RAY_CONFIG_VALUE = "6293475";
+  private static final String RAY_CONFIG_KEY = "num_workers_per_process_java";
+  private static final String RAY_CONFIG_VALUE = "2";
 
   @BeforeClass
   public void beforeClass() {

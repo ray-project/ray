@@ -1369,13 +1369,14 @@ def build_java_worker_command(
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
-    command += "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER "
+    command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
     if java_worker_options is None:
         options = []
     else:
+        java_worker_options = json.loads(java_worker_options)
         assert isinstance(java_worker_options, (tuple, list))
         options = list(java_worker_options)
     cp_index = -1
