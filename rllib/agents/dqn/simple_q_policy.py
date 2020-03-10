@@ -111,7 +111,7 @@ def simple_sample_action_from_q_network(policy, q_model, input_dict, obs_space,
 
     policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
-            policy.q_values, Categorical, q_model, explore, timestep)
+            policy.q_values, Categorical, q_model, timestep, explore)
 
     return policy.output_actions, policy.sampled_action_logp
 

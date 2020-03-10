@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.ray.api.annotation.RayRemote;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonPartition;
@@ -29,7 +28,6 @@ import org.slf4j.LoggerFactory;
  * `streaming/python/runtime/gateway_client.py`
  */
 @SuppressWarnings("unchecked")
-@RayRemote
 public class PythonGateway {
   private static final Logger LOG = LoggerFactory.getLogger(PythonGateway.class);
   private static final String REFERENCE_ID_PREFIX = "__gateway_reference_id__";

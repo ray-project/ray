@@ -48,13 +48,13 @@ Installing from a specific commit
 
 You can install the Ray wheels of any particular commit on ``master`` with the following template. You need to specify the commit hash, Ray version, Operating System, and Python version:
 
-.. code-block::
+.. code-block:: bash
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
 
 For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit ``a0ba4499ac645c9d3e82e68f3a281e48ad57f873``:
 
-.. code-block::
+.. code-block:: bash
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
@@ -168,7 +168,7 @@ If you are using Anaconda and have trouble installing ``psutil`` or
 The command ``ray.init()`` or ``ray start --head`` will print out the address of
 the dashboard. For example,
 
-.. code-block::
+.. code-block:: python
 
   >>> import ray
   >>> ray.init()

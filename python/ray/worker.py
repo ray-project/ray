@@ -146,11 +146,6 @@ class Worker:
         return self.node.load_code_from_local
 
     @property
-    def use_pickle(self):
-        self.check_connected()
-        return self.node.use_pickle
-
-    @property
     def current_job_id(self):
         if hasattr(self, "core_worker"):
             return self.core_worker.get_current_job_id()
@@ -270,8 +265,15 @@ class Worker:
                 "call 'put' on it (or return it).")
 
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id, pin_object=pin_object)
+        # This *must* be the first place that we construct this python
+        # ObjectID because an entry with 0 local references is created when
+        # the object is Put() in the core worker, expecting that this python
+        # reference will be created. If another reference is created and
+        # removed before this one, it will corrupt the state in the
+        # reference counter.
+        return ray.ObjectID(
+            self.core_worker.put_serialized_object(
+                serialized_value, object_id=object_id, pin_object=pin_object))
 
     def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
@@ -548,7 +550,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
-         use_pickle=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
+         use_pickle=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -642,7 +644,7 @@ def init(address=None,
             directory for the Ray process.
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
-        use_pickle: Whether data objects should be serialized with cloudpickle.
+        use_pickle: Deprecated.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -653,6 +655,9 @@ def init(address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if not use_pickle:
+        raise DeprecationWarning("The use_pickle argument is deprecated.")
 
     if redis_address is not None:
         raise DeprecationWarning("The redis_address argument is deprecated. "
@@ -724,7 +729,6 @@ def init(address=None,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            use_pickle=use_pickle,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -785,8 +789,7 @@ def init(address=None,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
-            use_pickle=use_pickle)
+            load_code_from_local=load_code_from_local)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -1357,27 +1360,16 @@ def _changeproctitle(title, next_title):
 
 
 def register_custom_serializer(cls,
-                               serializer=None,
-                               deserializer=None,
+                               serializer,
+                               deserializer,
                                use_pickle=False,
                                use_dict=False,
-                               local=None,
-                               job_id=None,
                                class_id=None):
     """Registers custom functions for efficient object serialization.
 
     The serializer and deserializer are used when transferring objects of
     `cls` across processes and nodes. This can be significantly faster than
     the Ray default fallbacks. Wraps `register_custom_serializer` underneath.
-
-    `use_pickle` tells Ray to automatically use cloudpickle for serialization,
-    and `use_dict` automatically uses `cls.__dict__`.
-
-    When calling this function, you can only provide one of the following:
-
-        1. serializer and deserializer
-        2. `use_pickle`
-        3. `use_dict`
 
     Args:
         cls (type): The class that ray should use this custom serializer for.
@@ -1387,34 +1379,24 @@ def register_custom_serializer(cls,
         deserializer: The custom deserializer that takes in a serialized
             representation of the cls and outputs a cls instance. use_pickle
             and use_dict must be False if provided.
-        use_pickle (bool): If true, objects of this class will be
-            serialized using pickle. Must be False if
-            use_dict is true.
-        use_dict (bool): If true, objects of this class be serialized turning
-            their __dict__ fields into a dictionary. Must be False if
-            use_pickle is true.
-        local: Deprecated.
-        job_id: Deprecated.
+        use_pickle: Deprecated.
+        use_dict: Deprecated.
         class_id (str): Unique ID of the class. Autogenerated if None.
     """
-    if job_id:
+    if use_pickle:
         raise DeprecationWarning(
-            "`job_id` is no longer a valid parameter and will be removed in "
-            "future versions of Ray. If this breaks your application, "
+            "`use_pickle` is no longer a valid parameter and will be removed "
+            "in future versions of Ray. If this breaks your application, "
             "see `SerializationContext.register_custom_serializer`.")
-    if local:
+    if use_dict:
         raise DeprecationWarning(
-            "`local` is no longer a valid parameter and will be removed in "
-            "future versions of Ray. If this breaks your application, "
+            "`use_pickle` is no longer a valid parameter and will be removed "
+            "in future versions of Ray. If this breaks your application, "
             "see `SerializationContext.register_custom_serializer`.")
+    assert serializer is not None and deserializer is not None
     context = global_worker.get_serialization_context()
     context.register_custom_serializer(
-        cls,
-        use_pickle=use_pickle,
-        use_dict=use_dict,
-        serializer=serializer,
-        deserializer=deserializer,
-        class_id=class_id)
+        cls, serializer, deserializer, class_id=class_id)
 
 
 def show_in_webui(message, key="", dtype="text"):

@@ -62,7 +62,7 @@ public class JobSchedulerImpl implements JobScheduler {
         switch (executionNode.getLanguage()) {
           case JAVA:
             RayActor<JobWorker> jobWorker = (RayActor<JobWorker>) worker;
-            waits.add(Ray.call(JobWorker::init, jobWorker,
+            waits.add(jobWorker.call(JobWorker::init,
                 new WorkerContext(taskId, executionGraph, jobConfig)));
             break;
           case PYTHON:
