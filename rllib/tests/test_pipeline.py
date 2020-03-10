@@ -7,10 +7,10 @@ from ray.rllib.agents.a3c import A2CTrainer
 class TestPipeline(unittest.TestCase):
     """General tests for the pipeline API."""
 
-    def setUp(self):
+    def setUpClass(cls) -> None:
         ray.init()
 
-    def tearDown(self):
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_pipeline_stats(ray_start_regular):

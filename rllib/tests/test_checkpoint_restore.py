@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
-import os
-import shutil
 import gym
 import numpy as np
-import ray
+import os
+import shutil
+import unittest
 
+import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.tune.trial import ExportFormat
 
@@ -15,9 +16,6 @@ def get_mean_action(alg, obs):
     for _ in range(2000):
         out.append(float(alg.compute_action(obs)))
     return np.mean(out)
-
-
-ray.init(num_cpus=10, object_store_memory=1e9)
 
 CONFIGS = {
     "SAC": {
@@ -149,19 +147,32 @@ def test_export(algo_name, failures):
     shutil.rmtree(export_dir)
 
 
-if __name__ == "__main__":
-    failures = []
-    for use_object_store in [False, True]:
-        for name in [
+class TestCheckpointRestore(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.init(num_cpus=10, object_store_memory=1e9)
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_checkpoint_restore(self):
+        failures = []
+        for use_object_store in [False, True]:
+            for name in [
                 "SAC", "ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG", "ARS"
-        ]:
-            test_ckpt_restore(use_object_store, name, failures)
+            ]:
+                test_ckpt_restore(use_object_store, name, failures)
+    
+        assert not failures, failures
+        print("All checkpoint restore tests passed!")
+    
+        failures = []
+        for name in ["SAC", "DQN", "DDPG", "PPO", "A3C"]:
+            test_export(name, failures)
+        assert not failures, failures
+        print("All export tests passed!")
 
-    assert not failures, failures
-    print("All checkpoint restore tests passed!")
 
-    failures = []
-    for name in ["SAC", "DQN", "DDPG", "PPO", "A3C"]:
-        test_export(name, failures)
-    assert not failures, failures
-    print("All export tests passed!")
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

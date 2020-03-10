@@ -7,6 +7,7 @@ import os
 import subprocess
 import tempfile
 import time
+import unittest
 
 import ray
 from ray.tune import run_experiments
@@ -57,30 +58,37 @@ def leaked_processes():
     return result
 
 
+class TestEnvWithSubprocess(unittest.TestCase):
+    def test_env_with_sub_process(self):
+        register_env("subproc", lambda config: EnvWithSubprocess(config))
+        ray.init()
+        assert os.path.exists(UNIQUE_FILE_0)
+        assert os.path.exists(UNIQUE_FILE_1)
+        assert not leaked_processes()
+        run_experiments({
+            "demo": {
+                "run": "PG",
+                "env": "subproc",
+                "num_samples": 1,
+                "config": {
+                    "num_workers": 1,
+                },
+                "stop": {
+                    "training_iteration": 1
+                },
+            },
+        })
+        time.sleep(10.0)
+        leaked = leaked_processes()
+        assert not leaked, "LEAKED PROCESSES: {}".format(leaked)
+        assert not os.path.exists(UNIQUE_FILE_0), "atexit handler not called"
+        assert not os.path.exists(UNIQUE_FILE_1), "atexit handler not called"
+        assert not os.path.exists(UNIQUE_FILE_2), "close not called"
+        assert not os.path.exists(UNIQUE_FILE_3), "close not called"
+        print("OK")
+
+
 if __name__ == "__main__":
-    register_env("subproc", lambda config: EnvWithSubprocess(config))
-    ray.init()
-    assert os.path.exists(UNIQUE_FILE_0)
-    assert os.path.exists(UNIQUE_FILE_1)
-    assert not leaked_processes()
-    run_experiments({
-        "demo": {
-            "run": "PG",
-            "env": "subproc",
-            "num_samples": 1,
-            "config": {
-                "num_workers": 1,
-            },
-            "stop": {
-                "training_iteration": 1
-            },
-        },
-    })
-    time.sleep(10.0)
-    leaked = leaked_processes()
-    assert not leaked, "LEAKED PROCESSES: {}".format(leaked)
-    assert not os.path.exists(UNIQUE_FILE_0), "atexit handler not called"
-    assert not os.path.exists(UNIQUE_FILE_1), "atexit handler not called"
-    assert not os.path.exists(UNIQUE_FILE_2), "close not called"
-    assert not os.path.exists(UNIQUE_FILE_3), "close not called"
-    print("OK")
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

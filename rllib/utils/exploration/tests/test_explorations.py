@@ -94,7 +94,11 @@ class TestExplorations(unittest.TestCase):
     Tests all Exploration components and the deterministic flag for
     compute_action calls.
     """
-    ray.init(ignore_reinit_error=True)
+    def setUpClass(cls) -> None:
+        ray.init(ignore_reinit_error=True)
+
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_a2c(self):
         test_explorations(
@@ -179,4 +183,6 @@ class TestExplorations(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

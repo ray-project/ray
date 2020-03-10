@@ -222,5 +222,6 @@ class TestPPO(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import unittest
-    unittest.main(verbosity=1)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
