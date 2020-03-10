@@ -23,7 +23,6 @@ from ray.rllib.utils import try_import_tf, try_import_torch
 tf = try_import_tf()
 _, nn = try_import_torch()
 
-
 DICT_SPACE = spaces.Dict({
     "sensors": spaces.Dict({
         "position": spaces.Box(low=-100, high=100, shape=(3, )),

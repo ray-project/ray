@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import sys
 import unittest
 
 
@@ -21,23 +22,25 @@ def test_rollout(algo, env="CartPole-v0"):
     checkpoint_path = os.popen(
         "ls {}/default/*/checkpoint_1/checkpoint-1".format(tmp_dir)).read()[:
                                                                             -1]
-    print("Checkpoint path {}".format(checkpoint_path))
     if not os.path.exists(checkpoint_path):
         sys.exit(1)
+    print("Checkpoint path {} (exists)".format(checkpoint_path))
 
     # Test rolling out n steps.
     os.popen("python {}/rollout.py --run={} \"{}\" --steps=25 "
              "--out=\"{}/rollouts_25steps.pkl\" --no-render".format(
-                 rllib_dir, checkpoint_path, algo, tmp_dir)).read()
+                 rllib_dir, algo, checkpoint_path, tmp_dir)).read()
     if not os.path.exists(tmp_dir + "/rollouts_25steps.pkl"):
         sys.exit(1)
+    print("rollout output (25 steps) exists!".format(checkpoint_path))
 
     # Test rolling out 1 episode.
     os.popen("python {}/rollout.py --run={} \"{}\" --episodes=1 "
              "--out=\"{}/rollouts_1episode.pkl\" --no-render".format(
-                 rllib_dir, checkpoint_path, algo, tmp_dir)).read()
+                 rllib_dir, algo, checkpoint_path, tmp_dir)).read()
     if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
         sys.exit(1)
+    print("rollout output (1 ep) exists!".format(checkpoint_path))
 
     # Cleanup.
     os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -89,5 +92,4 @@ class TestRollout(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
