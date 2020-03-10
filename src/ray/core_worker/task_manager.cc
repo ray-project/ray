@@ -118,23 +118,20 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
 
-    if (it->second.num_executions == 0) {
-      // This is the first time that the task has finished. Release the lineage
-      // for any non-plasma return IDs.
-      for (const auto &direct_return_id : direct_return_ids) {
-        RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
-                       << direct_return_id << ", now has "
-                       << it->second.plasma_returns_in_scope.size()
-                       << " plasma returns in scope";
-        if (it->second.plasma_returns_in_scope.erase(direct_return_id)) {
-          num_returns_to_release++;
-        }
+    // Release the lineage for any non-plasma return IDs.
+    for (const auto &direct_return_id : direct_return_ids) {
+      RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
+                     << direct_return_id << ", now has "
+                     << it->second.plasma_returns_in_scope.size()
+                     << " plasma returns in scope";
+      if (it->second.plasma_returns_in_scope.erase(direct_return_id)) {
+        num_returns_to_release++;
       }
     }
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
                    << it->second.plasma_returns_in_scope.size()
                    << " plasma returns in scope";
-    it->second.num_executions++;
+    it->second.pending = false;
 
     if (!lineage_pinning_enabled_) {
       pending_tasks_.erase(it);
@@ -296,7 +293,7 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
     }
   }
 
-  if (it->second.plasma_returns_in_scope.empty() && it->second.num_executions > 0) {
+  if (it->second.plasma_returns_in_scope.empty() && !it->second.pending) {
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
     pending_tasks_.erase(it);
