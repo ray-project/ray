@@ -1,7 +1,11 @@
 import logging
 import os
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Represents a generic tensor type.
+TensorType = Any
 
 
 def check_framework(framework="tf"):

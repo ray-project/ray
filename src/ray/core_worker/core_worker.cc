@@ -390,7 +390,7 @@ Status CoreWorker::Put(const RayObject &object,
                        ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+                                static_cast<uint8_t>(TaskTransportType::DIRECT));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                      rpc_address_);
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
@@ -419,7 +419,7 @@ Status CoreWorker::Put(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  return Status::OK();
+  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -427,7 +427,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+                                static_cast<uint8_t>(TaskTransportType::DIRECT));
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   // Only add the object to the reference counter if it didn't already exist.
@@ -462,7 +462,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
-  return Status::OK();
+  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
@@ -538,13 +538,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
-  if (object_id.IsDirectCallType()) {
-    bool in_plasma = false;
-    found = memory_store_->Contains(object_id, &in_plasma);
-    if (in_plasma) {
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
-    }
-  } else {
+  bool in_plasma = false;
+  found = memory_store_->Contains(object_id, &in_plasma);
+  if (in_plasma) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
@@ -667,14 +663,9 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects are always handled by ref counting only.
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
-  for (const auto &obj_id : object_ids) {
-    plasma_object_ids.insert(obj_id);
-  }
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
-                                                   delete_creating_tasks));
-
-  return Status::OK();
+  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only,
+                                        delete_creating_tasks);
 }
 
 void CoreWorker::TriggerGlobalGC() {
@@ -975,10 +966,8 @@ Status CoreWorker::AllocateReturnObjects(
         object_already_exists = !data_buffer;
       }
     }
-    // Leave the return object as a nullptr if there is no data or metadata.
-    // This allows the caller to prevent the core worker from storing an output
-    // (e.g., to support ray.experimental.no_return.NoReturn).
-    if (!object_already_exists && (data_buffer || metadatas[i])) {
+    // Leave the return object as a nullptr if the object already exists.
+    if (!object_already_exists) {
       return_objects->at(i) =
           std::make_shared<RayObject>(data_buffer, metadatas[i], contained_object_ids[i]);
     }
@@ -1407,7 +1396,10 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(plasma_done_callback_ != nullptr) << "Plasma done callback not defined.";
-  // This callback must be asynchronous to allow plasma to receive objects
+  // This callback needs to be asynchronous because it runs on the io_service_, so no
+  // RPCs can be processed while it's running. This can easily lead to deadlock (for
+  // example if the callback calls ray.get() on an object that is dependent on an RPC
+  // to be ready).
   plasma_done_callback_(ObjectID::FromBinary(request.object_id()), request.data_size(),
                         request.metadata_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);

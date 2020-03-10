@@ -44,15 +44,24 @@ def optimizer_creator(model, config):
 
 def data_creator(config):
     """Returns training dataloader, validation dataloader."""
-    return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+    train_dataset = LinearDataset(2, 5)
+    val_dataset = LinearDataset(2, 5, size=400)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=config["batch_size"],
+    )
+    validation_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=config["batch_size"])
+    return train_loader, validation_loader
 
 
 def tune_example(num_workers=1, use_gpu=False):
     config = {
-        "model_creator": tune.function(model_creator),
-        "data_creator": tune.function(data_creator),
-        "optimizer_creator": tune.function(optimizer_creator),
-        "loss_creator": tune.function(nn.MSELoss),
+        "model_creator": model_creator,
+        "data_creator": data_creator,
+        "optimizer_creator": optimizer_creator,
+        "loss_creator": nn.MSELoss,
         "num_workers": num_workers,
         "use_gpu": use_gpu,
         "config": {"batch_size": 512 // num_workers},
@@ -81,14 +90,12 @@ if __name__ == "__main__":
         "-n",
         type=int,
         default=1,
-        help="Sets number of replicas for training.")
+        help="Sets number of workers for training.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
         default=False,
         help="Enables GPU training")
-    parser.add_argument(
-        "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
 

@@ -3,13 +3,14 @@ import torch
 import torch.nn as nn
 import argparse
 from ray import tune
-import torch.utils.data
+from torch.utils.data import DataLoader, Subset
 import torchvision
 import torchvision.transforms as transforms
 
 import ray
 from ray.util.sgd.torch import (TorchTrainer, TorchTrainable)
 from ray.util.sgd.torch.resnet import ResNet18
+from ray.util.sgd.utils import BATCH_SIZE
 
 
 def initialization_hook():
@@ -40,11 +41,14 @@ def cifar_creator(config):
         root="~/data", train=False, download=False, transform=transform_test)
 
     if config.get("test_mode"):
-        train_dataset = torch.utils.data.Subset(train_dataset, list(range(64)))
-        validation_dataset = torch.utils.data.Subset(validation_dataset,
-                                                     list(range(64)))
+        train_dataset = Subset(train_dataset, list(range(64)))
+        validation_dataset = Subset(validation_dataset, list(range(64)))
 
-    return train_dataset, validation_dataset
+    train_loader = DataLoader(
+        train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+    validation_loader = DataLoader(
+        validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+    return train_loader, validation_loader
 
 
 def optimizer_creator(model, config):
@@ -72,7 +76,8 @@ def train_example(num_workers=1,
         num_workers=num_workers,
         config={
             "lr": 0.01,
-            "test_mode": test_mode
+            "test_mode": test_mode,
+            BATCH_SIZE: 128,
         },
         use_gpu=use_gpu,
         backend="nccl" if use_gpu else "gloo",
@@ -99,7 +104,7 @@ def tune_example(num_workers=1, use_gpu=False, test_mode=False):
         "use_gpu": use_gpu,
         "config": {
             "lr": tune.choice([1e-4, 1e-3]),
-            "batch_size": (16 if test_mode else 512) // num_workers,
+            BATCH_SIZE: 128,
             "test_mode": test_mode
         },
         "backend": "nccl" if use_gpu else "gloo"
@@ -127,7 +132,7 @@ if __name__ == "__main__":
         "-n",
         type=int,
         default=1,
-        help="Sets number of replicas for training.")
+        help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
     parser.add_argument(

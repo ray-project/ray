@@ -130,8 +130,6 @@ class SerializationContext:
 
     def __init__(self, worker):
         self.worker = worker
-        assert worker.use_pickle
-        self.use_pickle = worker.use_pickle
         self._thread_local = threading.local()
 
         def actor_handle_serializer(obj):
@@ -192,6 +190,10 @@ class SerializationContext:
                 # UniqueIDs are serialized as
                 # (class name, (unique bytes,)).
                 outer_id = context.get_outer_object_id()
+                # outer_id is None in the case that this ObjectID was closed
+                # over in a function or pickled directly using pickle.dumps().
+                if outer_id is None:
+                    outer_id = ray.ObjectID.nil()
                 worker.core_worker.deserialize_and_register_object_id(
                     obj_id[1][0], outer_id, owner_id[1][0], owner_address)
             return deserialized_object_id
@@ -206,8 +208,6 @@ class SerializationContext:
 
     def _register_cloudpickle_serializer(self, cls, custom_serializer,
                                          custom_deserializer):
-        assert pickle.FAST_CLOUDPICKLE_USED
-
         def _CloudPicklerReducer(obj):
             return custom_deserializer, (custom_serializer(obj), )
 
@@ -245,10 +245,6 @@ class SerializationContext:
         self._thread_local.object_ids.add(object_id)
 
     def _deserialize_pickle5_data(self, data):
-        if not self.use_pickle:
-            raise ValueError("Receiving pickle5 serialized objects "
-                             "while the serialization context is "
-                             "using a custom raw backend.")
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
@@ -362,8 +358,6 @@ class SerializationContext:
             else:
                 metadata = ray_constants.PICKLE5_BUFFER_METADATA
 
-            assert self.worker.use_pickle
-            assert ray.cloudpickle.FAST_CLOUDPICKLE_USED
             writer = Pickle5Writer()
             # TODO(swang): Check that contained_object_ids is empty.
             try:
@@ -382,10 +376,8 @@ class SerializationContext:
 
     def register_custom_serializer(self,
                                    cls,
-                                   use_pickle=False,
-                                   use_dict=False,
-                                   serializer=None,
-                                   deserializer=None,
+                                   serializer,
+                                   deserializer,
                                    local=False,
                                    job_id=None,
                                    class_id=None):
@@ -398,15 +390,8 @@ class SerializationContext:
         Args:
             cls (type): The class that ray should use this custom serializer
                 for.
-            use_pickle (bool): If true, then objects of this class will be
-                serialized using pickle.
-            use_dict: If true, then objects of this class be serialized
-                turning their __dict__ fields into a dictionary. Must be False
-                if use_pickle is true.
-            serializer: The custom serializer to use. This should be provided
-                if and only if use_pickle and use_dict are False.
-            deserializer: The custom deserializer to use. This should be
-                provided if and only if use_pickle and use_dict are False.
+            serializer: The custom serializer to use.
+            deserializer: The custom deserializer to use.
             local: True if the serializers should only be registered on the
                 current worker. This should usually be False.
             job_id: ID of the job that we want to register the class for.
@@ -417,23 +402,8 @@ class SerializationContext:
                 cannot be efficiently serialized by Ray.
             ValueError: Raised if ray could not autogenerate a class_id.
         """
-        assert (serializer is None) == (deserializer is None), (
-            "The serializer/deserializer arguments must both be provided or "
-            "both not be provided.")
-        use_custom_serializer = (serializer is not None)
-
-        assert use_custom_serializer + use_pickle + use_dict == 1, (
-            "Exactly one of use_pickle, use_dict, or serializer/deserializer "
-            "must be specified.")
-
-        if self.worker.use_pickle and serializer is None:
-            # In this case it should do nothing.
-            return
-
-        if use_dict:
-            # Raise an exception if cls cannot be serialized
-            # efficiently by Ray.
-            check_serializable(cls)
+        assert serializer is not None and deserializer is not None, (
+            "Must provide serializer and deserializer.")
 
         if class_id is None:
             if not local:
@@ -466,7 +436,6 @@ class SerializationContext:
         assert isinstance(job_id, JobID)
 
         def register_class_for_serialization(worker_info):
-            assert worker_info["worker"].use_pickle
             context = worker_info["worker"].get_serialization_context(job_id)
             context._register_cloudpickle_serializer(cls, serializer,
                                                      deserializer)
@@ -478,56 +447,3 @@ class SerializationContext:
             # Since we are pickling objects of this class, we don't actually
             # need to ship the class definition.
             register_class_for_serialization({"worker": self.worker})
-
-
-def check_serializable(cls):
-    """Throws an exception if Ray cannot serialize this class efficiently.
-
-    Args:
-        cls (type): The class to be serialized.
-
-    Raises:
-        Exception: An exception is raised if Ray cannot serialize this class
-            efficiently.
-    """
-    if is_named_tuple(cls):
-        # This case works.
-        return
-    if not hasattr(cls, "__new__"):
-        print("The class {} does not have a '__new__' attribute and is "
-              "probably an old-stye class. Please make it a new-style class "
-              "by inheriting from 'object'.")
-        raise RayNotDictionarySerializable("The class {} does not have a "
-                                           "'__new__' attribute and is "
-                                           "probably an old-style class. We "
-                                           "do not support this. Please make "
-                                           "it a new-style class by "
-                                           "inheriting from 'object'."
-                                           .format(cls))
-    try:
-        obj = cls.__new__(cls)
-    except Exception:
-        raise RayNotDictionarySerializable("The class {} has overridden "
-                                           "'__new__', so Ray may not be "
-                                           "able to serialize it "
-                                           "efficiently.".format(cls))
-    if not hasattr(obj, "__dict__"):
-        raise RayNotDictionarySerializable("Objects of the class {} do not "
-                                           "have a '__dict__' attribute, so "
-                                           "Ray cannot serialize it "
-                                           "efficiently.".format(cls))
-    if hasattr(obj, "__slots__"):
-        raise RayNotDictionarySerializable("The class {} uses '__slots__', so "
-                                           "Ray may not be able to serialize "
-                                           "it efficiently.".format(cls))
-
-
-def is_named_tuple(cls):
-    """Return True if cls is a namedtuple and False otherwise."""
-    b = cls.__bases__
-    if len(b) != 1 or b[0] != tuple:
-        return False
-    f = getattr(cls, "_fields", None)
-    if not isinstance(f, tuple):
-        return False
-    return all(type(n) == str for n in f)

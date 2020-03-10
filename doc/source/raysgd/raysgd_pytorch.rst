@@ -19,7 +19,7 @@ Setting up training
 
 The ``TorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it requires constructors for the Model, Data, Optimizer, Loss, and ``lr_scheduler`` to create replicated copies across different devices and machines.
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_trainer_start__
    :end-before: __torch_trainer_end__
@@ -31,7 +31,7 @@ Model Creator
 
 This is the signature needed for ``TorchTrainer(model_creator=...)``.
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_model_start__
    :end-before: __torch_model_end__
@@ -42,11 +42,10 @@ Optimizer Creator
 
 This is the signature needed for ``TorchTrainer(optimizer_creator=...)``.
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_optimizer_start__
    :end-before: __torch_optimizer_end__
-
 
 
 Data Creator
@@ -54,11 +53,36 @@ Data Creator
 
 This is the signature needed for ``TorchTrainer(data_creator=...)``.
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_data_start__
    :end-before: __torch_data_end__
 
+
+.. tip:: Setting the batch size: Using a provided ``ray.util.sgd.utils.BATCH_SIZE`` variable, you can provide a global batch size that will be divided among all workers automatically.
+
+.. code-block:: python
+
+    from torch.utils.data import DataLoader
+    from ray.util.sgd.utils import BATCH_SIZE
+
+    def data_creator(config):
+        # config[BATCH_SIZE] == provided BATCH_SIZE // num_workers
+        train_dataset, val_dataset = LinearDataset(2, 5), LinearDataset(2, 5)
+        train_loader = DataLoader(train_dataset, batch_size=config[BATCH_SIZE])
+        val_loader = DataLoader(val_dataset, batch_size=config[BATCH_SIZE])
+        return train_loader, val_loader
+
+    trainer = Trainer(
+        model_creator=model_creator,
+        optimizer_creator=optimizer_creator,
+        data_creator=batch_data_creator
+        config={BATCH_SIZE: 1024},
+        num_workers=128
+    )
+
+    # Each worker will process 1024 // 128 samples per batch
+    stats = Trainer.train()
 
 
 Loss Creator
@@ -66,7 +90,7 @@ Loss Creator
 
 This is the signature needed for ``TorchTrainer(loss_creator=...)``.
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_loss_start__
    :end-before: __torch_loss_end__
@@ -78,7 +102,7 @@ Scheduler Creator
 Optionally, you can provide a creator function for the learning rate scheduler. This is the signature needed
 for ``TorchTrainer(scheduler_creator=...)``.
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_scheduler_start__
    :end-before: __torch_scheduler_end__
@@ -91,14 +115,14 @@ Putting things together
 
 Before instantiating the trainer, first start or connect to a Ray cluster:
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_ray_start__
    :end-before: __torch_ray_end__
 
 Instantiate the trainer object:
 
-.. literalinclude:: ../../../python/ray/util/sgd/pytorch/examples/raysgd_torch_signatures.py
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
    :start-after: __torch_trainer_start__
    :end-before: __torch_trainer_end__
@@ -409,7 +433,7 @@ For distributed deep learning, jobs are often run on infrastructure where nodes 
     trainer.train(max_retries=N)
 
 
-During each ``train`` method, each parallel worker iterates through the dataset, synchronizing gradients and parameters at each batch. These synchronization primitives can hang when one or more of the parallel workers becomes unresponsive (i.e., when a node is lost). To address this, we've implemented the following protocol.
+During each ``train`` method, each parallel worker iterates through the iterable, synchronizing gradients and parameters at each batch. These synchronization primitives can hang when one or more of the parallel workers becomes unresponsive (i.e., when a node is lost). To address this, we've implemented the following protocol.
 
   1. If any worker node is lost, Ray will mark the training task as complete (``ray.wait`` will return).
   2. Ray will throw ``RayActorException`` when fetching the result for any worker, so the Trainer class will call ``ray.get`` on the "finished" training task.
@@ -420,7 +444,7 @@ During each ``train`` method, each parallel worker iterates through the dataset,
 
 Note that we assume the Trainer itself is not on a pre-emptible node. It is currently not possible to recover from a Trainer node failure.
 
-Users can set ``checkpoint="auto"`` to always checkpoint the current model before executing a pass over the training dataset.
+Users can set ``checkpoint="auto"`` to always checkpoint the current model before executing a pass over the training iterable.
 
 .. code-block:: python
 
