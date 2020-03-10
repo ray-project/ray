@@ -285,8 +285,10 @@ class TestRolloutWorker(unittest.TestCase):
         # steps).
         self.assertEqual(len(set(samples["eps_id"])), 2)
         # 2 done values after 6 and 12 steps.
-        check(samples["dones"], [False, False, False, False,
-            False, True, False, False, False, False, False, True])
+        check(samples["dones"], [
+            False, False, False, False, False, True, False, False, False,
+            False, False, True
+        ])
 
     def test_soft_horizon(self):
         ev = RolloutWorker(
