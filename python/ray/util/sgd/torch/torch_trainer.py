@@ -162,8 +162,7 @@ class TorchTrainer:
                 and callable(data_creator)):
             raise ValueError(
                 "Must provide a callable model_creator, optimizer_creator, "
-                "and data_creator."
-            )
+                "and data_creator.")
 
         if batch_size is not None:
             raise DeprecationWarning(
