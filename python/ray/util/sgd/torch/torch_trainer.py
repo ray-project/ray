@@ -148,6 +148,7 @@ class TorchTrainer:
             use_fp16=False,
             apex_args=None,
             scheduler_step_freq="batch",
+            num_replicas=None,
             batch_size=None,
             data_loader_args=None,
     ):
@@ -163,6 +164,10 @@ class TorchTrainer:
             raise ValueError(
                 "Must provide a callable model_creator, optimizer_creator, "
                 "and data_creator.")
+
+        if num_replicas is not None:
+            raise DeprecationWarning(
+                "num_replicas is deprecated. Use num_workers instead.")
 
         if batch_size is not None:
             raise DeprecationWarning(
