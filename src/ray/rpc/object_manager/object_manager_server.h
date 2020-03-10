@@ -10,10 +10,10 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS              \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Push, 5) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Pull, 5) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, 2)
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS           \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Push) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Pull) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
@@ -53,8 +53,7 @@ class ObjectManagerGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 

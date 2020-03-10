@@ -50,10 +50,9 @@ void GrpcServer::Run() {
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.
-  for (auto &entry : server_call_factories_and_concurrencies_) {
-    for (int i = 0; i < entry.second; i++) {
-      // Create and request calls from the factory.
-      entry.first->CreateCall();
+  for (auto &entry : server_call_factories_) {
+    for (int i = 0; i < num_threads_; i++) {
+      entry->CreateCall();
     }
   }
   // Start threads that polls incoming requests.
@@ -68,7 +67,7 @@ void GrpcServer::RegisterService(GrpcService &service) {
   services_.emplace_back(service.GetGrpcService());
 
   for (int i = 0; i < num_threads_; i++) {
-    service.InitServerCallFactories(cqs_[i], &server_call_factories_and_concurrencies_);
+    service.InitServerCallFactories(cqs_[i], &server_call_factories_);
   }
 }
 
