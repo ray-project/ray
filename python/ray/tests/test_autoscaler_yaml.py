@@ -17,7 +17,6 @@ CONFIG_PATHS += recursive_fnmatch(
 
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
-
         for config_path in CONFIG_PATHS:
             with open(config_path) as f:
                 config = yaml.safe_load(f)
@@ -27,21 +26,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             except Exception:
                 self.fail("Config did not pass validation test!")
 
-    @parameterized.expand([
-        ["tests/project_files/yaml_validation/additional_property.yaml"],
-        ["autoscaler/aws/development-example.yaml"],
-        ["autoscaler/aws/example-full.yaml"],
-        ["autoscaler/aws/example-gpu-docker.yaml"],
-        ["autoscaler/aws/example-minimal.yaml"],
-        ["autoscaler/gcp/example-full.yaml"],
-        ["autoscaler/gcp/example-gpu-docker.yaml"],
-        ["autoscaler/gcp/example-minimal.yaml"],
-        ["autoscaler/kubernetes/example-full.yaml"],
-        ["autoscaler/kubernetes/example-minimal.yaml"],
-        ["autoscaler/local/development-example.yaml"],
-        ["autoscaler/local/example-full.yaml"],
-    ])
-    def testInvalidConfig(self, config_path):
+    def _test_invalid_config(self, config_path):
         config = yaml.safe_load(os.path.join(RAY_PATH, config_path))
 
         with open(os.path.join(os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")) as f:
@@ -49,9 +34,32 @@ class AutoscalingConfigTest(unittest.TestCase):
 
         try:
             jsonschema.validate(config, json.loads(schema))
-            self.fail("Expected validation to fail")
+            self.fail("Expected validation to fail for {}".format(config_path))
         except:
             pass
+
+    def testInvalidConfig(self):
+        self._test_invalid_config("tests/project_files/yaml_validation/additional_property.yaml")
+
+    def testInvalidConfigAWS(self):
+        self._test_invalid_config("autoscaler/aws/development-example.yaml")
+        self._test_invalid_config("autoscaler/aws/example-full.yaml")
+        self._test_invalid_config("autoscaler/aws/example-gpu-docker.yaml")
+        self._test_invalid_config("autoscaler/aws/example-minimal.yaml")
+
+    def testInvalidConfigKubernetes (self):
+        self._test_invalid_config("autoscaler/kubernetes/example-full.yaml")
+        self._test_invalid_config("autoscaler/kubernetes/example-minimal.yaml")
+
+    def testInvalidConfigLocal(self):
+        self._test_invalid_config("autoscaler/local/development-example.yaml")
+        self._test_invalid_config("autoscaler/local/example-full.yaml")
+
+    def testInvalidConfigGCP(self):
+        self._test_invalid_config("autoscaler/gcp/example-full.yaml")
+        self._test_invalid_config("autoscaler/gcp/example-gpu-docker.yaml")
+        self._test_invalid_config("autoscaler/gcp/example-minimal.yaml")
+
 
 if __name__ == "__main__":
     import pytest

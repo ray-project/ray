@@ -75,8 +75,7 @@ extras = {
     "debug": [],
     "dashboard": [],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate", "tensorboardX"],
-    "test": ["pytest", "parameterized"]
+    "tune": ["tabulate", "tensorboardX"]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -177,6 +176,7 @@ requires = [
     "click",
     "colorama",
     "packaging",
+    "pytest",
     "pyyaml",
     "jsonschema",
     "redis>=3.3.2",
