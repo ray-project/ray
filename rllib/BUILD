@@ -545,15 +545,6 @@ py_test(
         ]
 )
 
-# From test_rollout.sh (deprecated test file).
-py_test(
-    name = "test_impala_rollout",
-    main = "tests/test_rollout.py",
-    data = ["train.py", "rollout.py"],
-    tags = ["quick_train"],
-    srcs = ["tests/test_rollout.py"]
-)
-
 # MARWIL
 
 py_test(
@@ -1047,6 +1038,15 @@ py_test(
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_reproducibility.py"]
+)
+
+py_test(
+    name = "test_rollout",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R", "test_rollout"],
+    size = "enormous",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"]
 )
 
 py_test(
