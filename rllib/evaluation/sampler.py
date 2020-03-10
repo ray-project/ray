@@ -263,10 +263,17 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
     """
 
     try:
-        if not horizon:
+        # If Trainer's horizon is provided, force-set the env's
+        # `max_episode_steps` spec to that value (otherwise, Trainer's horizon
+        # setting will be violated).
+        if horizon:
+            base_env.get_unwrapped()[0].spec.max_episode_steps = horizon
+        # Otherwise, limit Trainer's horizon to env's max-steps.
+        else:
             horizon = (base_env.get_unwrapped()[0].spec.max_episode_steps)
-    except Exception:
+    except Exception as e:
         logger.debug("No episode horizon specified, assuming inf.")
+
     if not horizon:
         horizon = float("inf")
 
