@@ -131,22 +131,26 @@ class TorchTrainer:
 
     """
 
-    def __init__(self,
-                 *,
-                 model_creator=None,
-                 data_creator=None,
-                 optimizer_creator=None,
-                 loss_creator=None,
-                 scheduler_creator=None,
-                 training_operator_cls=None,
-                 initialization_hook=None,
-                 config=None,
-                 num_workers=1,
-                 use_gpu=False,
-                 backend="auto",
-                 use_fp16=False,
-                 apex_args=None,
-                 scheduler_step_freq="batch"):
+    def __init__(
+            self,
+            *,
+            model_creator=None,
+            data_creator=None,
+            optimizer_creator=None,
+            loss_creator=None,
+            scheduler_creator=None,
+            training_operator_cls=None,
+            initialization_hook=None,
+            config=None,
+            num_workers=1,
+            use_gpu=False,
+            backend="auto",
+            use_fp16=False,
+            apex_args=None,
+            scheduler_step_freq="batch",
+            batch_size=None,
+            data_loader_args=None,
+    ):
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
@@ -156,6 +160,21 @@ class TorchTrainer:
 
         if not (model_creator and optimizer_creator and data_creator):
             raise ValueError("Must provide a Model, Optimizer, Data creator.")
+
+        if batch_size is not None:
+            raise DeprecationWarning(
+                "batch_size is deprecated. Use config={'batch_size': N} "
+                "specify a batch size for each worker, or "
+                "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
+                "batch size to be used across all workers.")
+
+        if data_loader_args:
+            raise ValueError(
+                "data_loader_args is deprecated. You can return a "
+                "torch.utils.data.DataLoader in data_creator. Ray will "
+                "automatically set a DistributedSampler if a DataLoader is "
+                "returned and num_workers > 1.")
+
         self.model_creator = model_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
