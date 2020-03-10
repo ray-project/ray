@@ -27,10 +27,26 @@
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
 #include "ray/common/status.h"
+#include <map>
 
 #include <assert.h>
 
 namespace ray {
+
+static const std::string kStatusCodeOK = "OK";
+static const std::string kStatusCodeOutOfMemory = "Out of memory";
+static const std::string kStatusCodeKeyError = "Key error";
+static const std::string kStatusCodeTypeError = "Type error";
+static const std::string kStatusCodeInvalid = "Invalid";
+static const std::string kStatusCodeIOError = "IOError";
+static const std::string kStatusCodeObjectExists = "ObjectExists";
+static const std::string kStatusCodeObjectStoreFull = "ObjectStoreFull";
+static const std::string kStatusCodeUnknownError = "Unknown error";
+static const std::string kStatusCodeNotImplemented = "NotImplemented";
+static const std::string kStatusCodeRedisError = "RedisError";
+static const std::string kStatusCodeTimedOut = "TimedOut";
+static const std::string kStatusCodeInterrupted = "Interrupted";
+static const std::string kStatusCodeUnknown = "Unknown";
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -50,55 +66,39 @@ void Status::CopyFrom(const State *state) {
 
 std::string Status::CodeAsString() const {
   if (state_ == NULL) {
-    return "OK";
+    return kStatusCodeOK;
   }
 
-  const char *type;
   switch (code()) {
   case StatusCode::OK:
-    type = "OK";
-    break;
+    return kStatusCodeOK;
   case StatusCode::OutOfMemory:
-    type = "Out of memory";
-    break;
+    return kStatusCodeOutOfMemory;
   case StatusCode::KeyError:
-    type = "Key error";
-    break;
+    return kStatusCodeKeyError;
   case StatusCode::TypeError:
-    type = "Type error";
-    break;
+    return kStatusCodeTypeError;
   case StatusCode::Invalid:
-    type = "Invalid";
-    break;
+    return kStatusCodeInvalid;
   case StatusCode::IOError:
-    type = "IOError";
-    break;
+    return kStatusCodeIOError;
   case StatusCode::ObjectExists:
-    type = "ObjectExists";
-    break;
+    return kStatusCodeObjectExists;
   case StatusCode::ObjectStoreFull:
-    type = "ObjectStoreFull";
-    break;
+    return kStatusCodeObjectStoreFull;
   case StatusCode::UnknownError:
-    type = "Unknown error";
-    break;
+    return kStatusCodeUnknownError;
   case StatusCode::NotImplemented:
-    type = "NotImplemented";
-    break;
+    return kStatusCodeNotImplemented;
   case StatusCode::RedisError:
-    type = "RedisError";
-    break;
+    return kStatusCodeRedisError;
   case StatusCode::TimedOut:
-    type = "TimedOut";
-    break;
+    return kStatusCodeTimedOut;
   case StatusCode::Interrupted:
-    type = "Interrupted";
-    break;
+    return kStatusCodeInterrupted;
   default:
-    type = "Unknown";
-    break;
+    return kStatusCodeUnknown;
   }
-  return std::string(type);
 }
 
 std::string Status::ToString() const {
@@ -109,6 +109,39 @@ std::string Status::ToString() const {
   result += ": ";
   result += state_->msg;
   return result;
+}
+
+Status Status::FromString(const std::string &value) {
+  static std::map<std::string, StatusCode> str_to_code = {
+      {kStatusCodeOK, StatusCode::OK},
+      {kStatusCodeOutOfMemory, StatusCode::OutOfMemory},
+      {kStatusCodeKeyError, StatusCode::KeyError},
+      {kStatusCodeTypeError, StatusCode::TypeError},
+      {kStatusCodeInvalid, StatusCode::Invalid},
+      {kStatusCodeIOError, StatusCode::IOError},
+      {kStatusCodeObjectExists, StatusCode::ObjectExists},
+      {kStatusCodeObjectStoreFull, StatusCode::ObjectStoreFull},
+      {kStatusCodeUnknownError, StatusCode::UnknownError},
+      {kStatusCodeNotImplemented, StatusCode::NotImplemented},
+      {kStatusCodeRedisError, StatusCode::RedisError},
+      {kStatusCodeTimedOut, StatusCode::TimedOut},
+      {kStatusCodeInterrupted, StatusCode::Interrupted},
+      {kStatusCodeUnknown, StatusCode::IntentionalSystemExit}};
+
+  size_t pos = value.find(": ");
+  std::string code_str;
+  std::string msg;
+  if (pos != std::string::npos) {
+    code_str = value.substr(0, pos);
+    msg = value.substr(pos + 1);
+  } else {
+    code_str = value;
+  }
+  StatusCode code = str_to_code[code_str];
+  if (code == StatusCode::OK) {
+    return Status();
+  }
+  return Status(code, msg);
 }
 
 }  // namespace ray
