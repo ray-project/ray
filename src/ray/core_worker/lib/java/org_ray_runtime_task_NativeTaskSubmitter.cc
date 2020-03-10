@@ -57,7 +57,9 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
         return JavaStringToNativeString(env, (jstring)java_key);
       },
       [](JNIEnv *env, jobject java_value) {
-        return env->CallDoubleMethod(java_value, java_double_double_value);
+        double value = env->CallDoubleMethod(java_value, java_double_double_value);
+        RAY_CHECK_JAVA_EXCEPTION(env);
+        return value;
       });
 }
 
