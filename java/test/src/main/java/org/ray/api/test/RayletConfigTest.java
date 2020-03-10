@@ -3,7 +3,6 @@ package org.ray.api.test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -24,7 +23,6 @@ public class RayletConfigTest extends BaseTest {
     System.clearProperty("ray.raylet.config." + RAY_CONFIG_KEY);
   }
 
-  @RayRemote
   public static class TestActor {
 
     public String getConfigValue() {
@@ -35,7 +33,7 @@ public class RayletConfigTest extends BaseTest {
   @Test
   public void testRayletConfigPassThrough() {
     RayActor<TestActor> actor = Ray.createActor(TestActor::new);
-    String configValue = Ray.call(TestActor::getConfigValue, actor).get();
+    String configValue = actor.call(TestActor::getConfigValue).get();
     Assert.assertEquals(configValue, RAY_CONFIG_VALUE);
   }
 }
