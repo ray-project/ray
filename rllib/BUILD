@@ -884,7 +884,7 @@ py_test(
     name = "test_explorations",
     tags = ["utils"],
     size = "large",
-    srcs = ["utils/explorations/tests/test_explorations.py"]
+    srcs = ["utils/exploration/tests/test_explorations.py"]
 )
 
 # Schedules
