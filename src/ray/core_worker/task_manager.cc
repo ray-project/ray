@@ -82,7 +82,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.
-      RAY_CHECK_OK(
+      RAY_UNUSED(
           in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
     } else {
       std::shared_ptr<LocalMemoryBuffer> data_buffer;
@@ -99,11 +99,13 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
-      RAY_CHECK_OK(in_memory_store_->Put(
+      bool stored_in_direct_memory = in_memory_store_->Put(
           RayObject(data_buffer, metadata_buffer,
                     IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id));
-      direct_return_ids.push_back(object_id);
+          object_id);
+      if (stored_in_direct_memory) {
+        direct_return_ids.push_back(object_id);
+      }
     }
   }
 
@@ -311,7 +313,7 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
     const auto object_id = ObjectID::ForTaskReturn(
         task_id, /*index=*/i + 1,
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
-    RAY_CHECK_OK(in_memory_store_->Put(RayObject(error_type), object_id));
+    RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
   }
 
   if (spec.IsActorCreationTask()) {

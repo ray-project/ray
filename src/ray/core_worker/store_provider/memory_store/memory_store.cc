@@ -157,18 +157,19 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   return nullptr;
 }
 
-Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
                                                   object.GetNestedIds(), true);
+  bool stored_in_direct_memory = true;
 
   {
     absl::MutexLock lock(&mu_);
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return Status::OK();  // Object already exists in the store, which is fine.
+      return true;  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -187,6 +188,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
         store_in_plasma_(object, object_id);
       }
       promoted_to_plasma_.erase(promoted_it);
+      stored_in_direct_memory = false;
     }
 
     bool should_add_entry = true;
@@ -217,7 +219,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     cb(object_entry);
   }
 
-  return Status::OK();
+  return stored_in_direct_memory;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
