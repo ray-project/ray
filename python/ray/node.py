@@ -66,8 +66,8 @@ class Node:
             self._register_shutdown_hooks()
 
         self.head = head
-        self.kernel_fate_share = (spawn_reaper
-                                  and ray.utils.detect_fate_sharing_support())
+        self.kernel_fate_share = bool(
+            spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
