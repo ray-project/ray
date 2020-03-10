@@ -158,7 +158,13 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing register or update operations of actors.";
   RAY_CHECK(subscribe != nullptr);
-  auto status = actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+
+  // Subscribe from Redis.
+  RAY_CHECK_OK(actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done));
+
+  // Get actors from GCS Service.
+  auto status = Status::OK();
+
   RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
   return status;
 }
@@ -771,8 +777,19 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
   RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
-  auto status =
-      object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  // Subscribe from Redis.
+  RAY_CHECK_OK(object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done));
+
+  // Get location set from GCS Service.
+  auto callback = [object_id, subscribe](
+      Status status, const std::vector<ObjectTableData> &locations) {
+    if (status.ok() && !locations.empty()) {
+      ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD, locations);
+      subscribe(object_id, notification);
+    }
+  };
+  auto status = AsyncGetLocations(object_id, callback);
+
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
   return status;
 }
