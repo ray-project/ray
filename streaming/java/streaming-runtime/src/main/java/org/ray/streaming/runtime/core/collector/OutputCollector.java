@@ -19,13 +19,13 @@ import org.slf4j.LoggerFactory;
 public class OutputCollector implements Collector<Record> {
   private static final Logger LOGGER = LoggerFactory.getLogger(OutputCollector.class);
 
-  private DataWriter writer;
-  private ChannelID[] outputQueues;
-  private Collection<RayActor> targetActors;
-  private Language[] targetLanguages;
-  private Partition partition;
-  private Serializer javaSerializer = new JavaSerializer();
-  private Serializer crossLangSerializer = new CrossLangSerializer();
+  private final DataWriter writer;
+  private final ChannelID[] outputQueues;
+  private final Collection<RayActor> targetActors;
+  private final Language[] targetLanguages;
+  private final Partition partition;
+  private final Serializer javaSerializer = new JavaSerializer();
+  private final Serializer crossLangSerializer = new CrossLangSerializer();
 
   public OutputCollector(DataWriter writer,
                          Collection<String> outputQueueIds,
