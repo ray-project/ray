@@ -25,6 +25,40 @@ This compares the following:
     # Images per second for ResNet50
     # Batches per worker = 128
     # GPU Type = V100
+    # Run on AWS us-east-1c, p3dn.24xlarge instances.
+
+    Number   Horovod  Ray (PyTorch)  Horovod  Ray (PyTorch)
+    of GPUs                          + Apex   + Apex
+    =======  =======  =============  =======  ==============
+    1 * 8    2769.7   5143           2962.7   6172
+    2 * 8    5492.2   9463           5886.1   10052.8
+    4 * 8    10733.4  18807          11705.9  20319.5
+    8 * 8    21872.5  36911.8        23317.9  38642
+
+
+.. image:: raysgd_multinode_benchmark.png
+    :scale: 30%
+    :align: center
+
+
+Here are benchmarking results on synthetic data (via ``benchmark.py`` and ``dp_benchmark.py``) as of 03/04/2020:
+
+ - PyTorch Version: torch-1.4.0-cp36-cp36m
+ - Torchvision Version: torchvision-0.5.0-cp36-cp36m
+ - Apex Version: commit hash 5633f6d
+
+This compares the following:
+
+ - Horovod
+ - Horovod with fp16-allreduce enabled
+ - Pytorch DistributedDataParallel
+ - Pytorch DistributedDataParallel with ``APEX amp`` enabled (``O1``)
+
+.. code-block:: bash
+
+    # Images per second for ResNet50
+    # Batches per worker = 128
+    # GPU Type = V100
     # Run on AWS us-east-1c, p3.16xlarge instances.
 
     Number of GPUs  Horovod   Horovod + FP16  PyTorch    PyTorch + Amp
