@@ -132,7 +132,7 @@ if __name__ == "__main__":
         "-n",
         type=int,
         default=1,
-        help="Sets number of replicas for training.")
+        help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
     parser.add_argument(
