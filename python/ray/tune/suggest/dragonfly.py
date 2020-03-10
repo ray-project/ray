@@ -107,7 +107,8 @@ class DragonflySearch(SuggestionAlgorithm):
         self._opt = optimizer
         self._opt.initialise()
         self._live_trial_mapping = {}
-        super(DragonflySearch, self).__init__(metric=self._metric, mode=mode, **kwargs)
+        super(DragonflySearch, self).__init__(
+            metric=self._metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
