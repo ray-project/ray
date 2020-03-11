@@ -93,7 +93,16 @@ def test_global_state_actor_table(ray_start_regular):
     # actor table should contain only this entry
     # even when the actor goes out of scope
     del a
-    assert len(ray.actors()) == 1
+    get_state = lambda : list(ray.actors().values())[0]["State"]
+    dead_state = ray.gcs_utils.ActorTableData.DEAD
+    passed = False
+    for _ in range(10):
+        if get_state() == dead_state:
+            break
+        else:
+            time.sleep(0.5)
+    assert get_state() == dead_state
+
 
 
 if __name__ == "__main__":
