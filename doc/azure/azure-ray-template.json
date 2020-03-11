@@ -90,7 +90,7 @@
         }
     },
     "variables": {
-        "azureScriptInitUrl": "https://raw.githubusercontent.com/eisber/ray/marcozo/arm/doc/azure/azure-init.sh",
+        "azureScriptInitUrl": "https://raw.githubusercontent.com/ray-project/ray/master/doc/azure/azure-init.sh",
         "vmName": "ray-node",
         "subnetWorkers": "10.32.0.0/16",
         "subnetHead": "10.33.0.0/16",

@@ -80,7 +80,6 @@ from ray.includes.ray_config cimport RayConfig
 import ray
 from ray.async_compat import (sync_to_async,
                               AsyncGetResponse, AsyncMonitorState)
-import ray.experimental.signal as ray_signal
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -91,7 +90,6 @@ from ray.exceptions import (
     ObjectStoreFullError,
     RayTimeoutError,
 )
-from ray.experimental.no_return import NoReturn
 from ray.utils import decode
 
 cimport cpython
@@ -475,17 +473,6 @@ cdef execute_task(
                 ray_constants.TASK_PUSH_ERROR,
                 str(failure_object),
                 job_id=worker.current_job_id)
-
-            # Send signal with the error.
-            ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
-
-    # Don't need to reset `current_job_id` if the worker is an
-    # actor. Because the following tasks should all have the
-    # same driver id.
-    if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        # Reset signal counters so that the next task can get
-        # all past signals.
-        ray_signal.reset()
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -878,7 +865,7 @@ cdef class CoreWorker:
 
         with nogil:
             check_status(self.core_worker.get().KillActor(
-                  c_actor_id))
+                  c_actor_id, True))
 
     def resource_ids(self):
         cdef:
@@ -907,15 +894,24 @@ cdef class CoreWorker:
             self.core_worker.get().CreateProfileEvent(event_type),
             extra_data)
 
-    def deserialize_and_register_actor_handle(self, const c_string &bytes):
+    def remove_actor_handle_reference(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        self.core_worker.get().RemoveActorHandleReference(c_actor_id)
+
+    def deserialize_and_register_actor_handle(self, const c_string &bytes,
+                                              ObjectID
+                                              outer_object_id):
         cdef:
             CActorHandle* c_actor_handle
-
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
-            bytes)
+            bytes, c_outer_object_id)
         check_status(self.core_worker.get().GetActorHandle(
             c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
@@ -953,14 +949,13 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
 
-    def serialize_actor_handle(self, actor_handle):
-        assert isinstance(actor_handle, ray.actor.ActorHandle)
+    def serialize_actor_handle(self, ActorID actor_id):
         cdef:
-            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
+            CObjectID c_actor_handle_id
         check_status(self.core_worker.get().SerializeActorHandle(
-            actor_id.native(), &output))
-        return output
+            actor_id.native(), &output, &c_actor_handle_id))
+        return output, ObjectID(c_actor_handle_id.Binary())
 
     def add_object_id_reference(self, ObjectID object_id):
         # Note: faster to not release GIL for short-running op.
@@ -987,7 +982,9 @@ cdef class CoreWorker:
             const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
-            CObjectID c_outer_object_id = outer_object_id.native()
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
 
@@ -998,7 +995,6 @@ cdef class CoreWorker:
                 c_owner_id,
                 c_owner_address)
 
-    # TODO: handle noreturn better
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns):
@@ -1016,10 +1012,6 @@ cdef class CoreWorker:
             if isinstance(output, ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-            elif output is NoReturn:
-                serialized_objects.append(output)
-                data_sizes.push_back(0)
-                metadatas.push_back(string_to_buffer(b''))
             else:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
@@ -1036,11 +1028,7 @@ cdef class CoreWorker:
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
-            if returns[0][i].get() == NULL:
-                continue
-            if serialized_object is NoReturn:
-                returns[0][i].reset()
-            else:
+            if returns[0][i].get() != NULL:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
 

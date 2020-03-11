@@ -116,13 +116,11 @@ class NevergradSearch(SuggestionAlgorithm):
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,
         # with fields args and kwargs
-        if hasattr(self._nevergrad_opt, "instrumentation"):
-            if not suggested_config.kwargs:
-                return dict(zip(self._parameters, suggested_config.args[0]))
-            else:
-                return suggested_config.kwargs
-        # legacy: output of ask() is a np.ndarray
-        return dict(zip(self._parameters, suggested_config))
+        if not suggested_config.kwargs:
+            print(suggested_config.args, suggested_config.kwargs)
+            return dict(zip(self._parameters, suggested_config.args[0]))
+        else:
+            return suggested_config.kwargs
 
     def on_trial_result(self, trial_id, result):
         pass

@@ -275,11 +275,6 @@ def dashboard(cluster_config_file, cluster_name, port):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
-@click.option(
-    "--use-pickle/--no-use-pickle",
-    is_flag=True,
-    default=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
-    help="Use pickle for serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port, memory,
@@ -287,8 +282,7 @@ def start(node_ip_address, redis_address, address, redis_port,
           head, include_webui, webui_host, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, use_pickle,
-          internal_config):
+          java_worker_options, load_code_from_local, internal_config):
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
@@ -334,7 +328,6 @@ def start(node_ip_address, redis_address, address, redis_port,
         webui_host=webui_host,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        use_pickle=use_pickle,
         _internal_config=internal_config)
     if head:
         # Start Ray on the head node.
