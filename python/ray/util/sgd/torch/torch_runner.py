@@ -108,7 +108,7 @@ class TorchRunner:
         else:
             self.criterion = self.loss_creator(self.config)
 
-        if torch.cuda.is_available() and hasattr("cuda", self.criterion):
+        if torch.cuda.is_available() and hasattr(self.criterion, "cuda"):
             self.criterion = self.criterion.cuda()
 
     def _create_schedulers_if_available(self):
