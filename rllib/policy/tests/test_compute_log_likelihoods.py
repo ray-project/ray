@@ -14,12 +14,12 @@ from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, \
 tf = try_import_tf()
 
 
-def test_log_likelihood(run,
-                        config,
-                        prev_a=None,
-                        continuous=False,
-                        layer_key=("fc", (0, 4)),
-                        logp_func=None):
+def do_test_log_likelihood(run,
+                           config,
+                           prev_a=None,
+                           continuous=False,
+                           layer_key=("fc", (0, 4)),
+                           logp_func=None):
     config = config.copy()
     # Run locally.
     config["num_workers"] = 0
@@ -111,7 +111,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config = dqn.DEFAULT_CONFIG.copy()
         # Soft-Q for DQN.
         config["exploration_config"] = {"type": "SoftQ", "temperature": 0.5}
-        test_log_likelihood(dqn.DQNTrainer, config)
+        do_test_log_likelihood(dqn.DQNTrainer, config)
 
     def test_pg_cont(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
@@ -119,7 +119,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
-        test_log_likelihood(
+        do_test_log_likelihood(
             pg.PGTrainer,
             config,
             prev_a,
@@ -130,7 +130,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
         config = pg.DEFAULT_CONFIG.copy()
         prev_a = np.array(0)
-        test_log_likelihood(pg.PGTrainer, config, prev_a)
+        do_test_log_likelihood(pg.PGTrainer, config, prev_a)
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
@@ -138,12 +138,12 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
-        test_log_likelihood(ppo.PPOTrainer, config, prev_a, continuous=True)
+        do_test_log_likelihood(ppo.PPOTrainer, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
         prev_a = np.array(0)
-        test_log_likelihood(ppo.PPOTrainer, ppo.DEFAULT_CONFIG, prev_a)
+        do_test_log_likelihood(ppo.PPOTrainer, ppo.DEFAULT_CONFIG, prev_a)
 
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
@@ -165,7 +165,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
 
-        test_log_likelihood(
+        do_test_log_likelihood(
             sac.SACTrainer,
             config,
             prev_a,
@@ -180,7 +180,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
         config["policy_model"]["hidden_activation"] = "linear"
         prev_a = np.array(0)
 
-        test_log_likelihood(
+        do_test_log_likelihood(
             sac.SACTrainer,
             config,
             prev_a,
