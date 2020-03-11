@@ -885,6 +885,8 @@ def modify_class(cls):
 
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
+            if worker.mode == ray.LOCAL_MODE:
+                return
             ray.actor.exit_actor()
 
         def __ray_checkpoint__(self):

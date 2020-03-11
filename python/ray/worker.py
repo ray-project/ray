@@ -53,7 +53,6 @@ from ray.utils import (
     is_cython,
     setup_logger,
 )
-from ray.local_mode_manager import LocalModeManager
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -281,6 +280,7 @@ class Worker:
 
         if self.mode == LOCAL_MODE and object_id != None:
             # TODO(ilr): Figure out how to make this work
+
             assert object_id is None, "Local Mode does not support inserting with an objectID"
 
         serialized_value = self.get_serialization_context().serialize(value)
@@ -455,10 +455,7 @@ def get_gpu_ids():
     Returns:
         A list of GPU IDs.
     """
-    if _mode() == LOCAL_MODE:
-        raise Exception("ray.get_gpu_ids() currently does not work in LOCAL "
-                        "MODE.")
-
+    #TODO(ilr) Make sure this works in Local_Mode (mostly in passing them in)
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
@@ -711,10 +708,7 @@ def init(address=None,
         node_ip_address = services.address_to_ip(node_ip_address)
 
     global _global_node
-    if driver_mode == LOCAL_MODE and False:
-        # If starting Ray in LOCAL_MODE, don't start any other processes.
-        _global_node = ray.node.LocalNode(use_pickle=use_pickle)
-    elif redis_address is None:
+    if redis_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
@@ -1126,7 +1120,7 @@ def connect(node,
 
     ray._raylet.set_internal_config(internal_config)
 
-    if mode:  #is not LOCAL_MODE :
+    if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
         # The Redis client can safely be shared between threads. However,
         # that is not true of Redis pubsub clients. See the documentation at
@@ -1134,7 +1128,19 @@ def connect(node,
         worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode is WORKER_MODE or LOCAL_MODE:
+    if mode is SCRIPT_MODE:
+        # This is the code path of driver mode.
+        if job_id is None:
+            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
+            job_id = JobID.from_int(
+                int(worker.redis_client.incr("JobCounter")))
+        # When tasks are executed on remote workers in the context of multiple
+        # drivers, the current job ID is used to keep track of which job is
+        # responsible for the task so that error messages will be propagated to
+        # the correct driver.
+        worker.worker_id = ray.utils.compute_driver_id_from_job(
+            job_id).binary()
+    else:
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1142,21 +1148,6 @@ def connect(node,
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray::IDLE")
-    else:
-        # This is the code path of driver mode.
-        if job_id is None:
-            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
-            if mode is LOCAL_MODE:
-                job_id = JobID.from_int(random.randint(1, 65535))
-            else:
-                job_id = JobID.from_int(
-                    int(worker.redis_client.incr("JobCounter")))
-        # When tasks are executed on remote workers in the context of multiple
-        # drivers, the current job ID is used to keep track of which job is
-        # responsible for the task so that error messages will be propagated to
-        # the correct driver.
-        worker.worker_id = ray.utils.compute_driver_id_from_job(
-            job_id).binary()
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
@@ -1165,12 +1156,6 @@ def connect(node,
     # after it is created.
     worker.node = node
     worker.set_mode(mode)
-
-    # If running Ray in LOCAL_MODE, there is no need to create call
-    # create_worker or to start the worker service.
-    # if mode == LOCAL_MODE:
-    #     worker.local_mode_manager = LocalModeManager()
-    #     return
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
@@ -1190,9 +1175,9 @@ def connect(node,
     worker.lock = threading.RLock()
 
     # Create an object for interfacing with the global state.
-    if mode:  # != LOCAL_MODE:
-        ray.state.state._initialize_global_state(
-            node.redis_address, redis_password=node.redis_password)
+    ray.state.state._initialize_global_state(
+        node.redis_address, redis_password=node.redis_password)
+
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
         # The concept of a driver is the same as the concept of a "job".
@@ -1256,10 +1241,9 @@ def connect(node,
     )
     ## A choice to choose driver mode for raylet
     worker.core_worker = ray._raylet.CoreWorker(
-        (mode == SCRIPT_MODE or mode == LOCAL_MODE),
-        node.plasma_store_socket_name, node.raylet_socket_name, job_id,
-        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
-        node.node_manager_port, mode == LOCAL_MODE)
+        mode == SCRIPT_MODE, node.plasma_store_socket_name,
+        node.raylet_socket_name, job_id, gcs_options, node.get_logs_dir_path(),
+        node.node_ip_address, node.node_manager_port, mode == LOCAL_MODE)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1499,6 +1483,7 @@ def get(object_ids, timeout=None):
 
     with profiling.profile("ray.get"):
         is_individual_id = isinstance(object_ids, ray.ObjectID)
+        print(type(object_ids))
         if is_individual_id:
             object_ids = [object_ids]
 
@@ -1622,10 +1607,6 @@ def wait(object_ids, num_returns=1, timeout=None):
     worker.check_connected()
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
-        # When Ray is run in LOCAL_MODE, all functions are run immediately,
-        # so all objects in object_id are ready.
-        if worker.mode == LOCAL_MODE:
-            return object_ids[:num_returns], object_ids[num_returns:]
 
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be

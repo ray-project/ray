@@ -271,9 +271,9 @@ cdef void prepare_args(
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
         ObjectID obj_id
-
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
+    print("ARgs are: ", args)
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
@@ -315,6 +315,7 @@ cdef deserialize_args(
 
     for arg in args:
         if isinstance(arg, RayError):
+            print("ERROR!!!!!!")
             raise arg
 
     return ray.signature.recover_args(args)
@@ -450,6 +451,7 @@ cdef execute_task(
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
+                    print(args, kwargs)
                     outputs = function_executor(*args, **kwargs)
                     task_exception = False
                     if c_return_ids.size() == 1:
@@ -609,7 +611,7 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, local_mode):
         self.core_worker.reset(new CCoreWorker(
-            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
+            WORKER_TYPE_DRIVER if (is_driver or local_mode) else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
