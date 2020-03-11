@@ -7,7 +7,7 @@ public class JavaSerializer implements Serializer {
   }
 
   @Override
-  public Object deserialize(byte[] bytes) {
+  public <T> T deserialize(byte[] bytes) {
     return org.ray.runtime.util.Serializer.decode(bytes);
   }
 }

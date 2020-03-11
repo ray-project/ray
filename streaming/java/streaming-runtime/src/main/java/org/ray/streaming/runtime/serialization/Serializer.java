@@ -4,6 +4,6 @@ public interface Serializer {
 
   byte[] serialize(Object object);
 
-  Object deserialize(byte[] bytes);
+  <T> T deserialize(byte[] bytes);
 
 }

@@ -146,7 +146,7 @@ public class PythonGateway {
     }
   }
 
-  private Method findMethod(Class<?> cls, String methodName, Class[] paramsTypes) {
+  private static Method findMethod(Class<?> cls, String methodName, Class[] paramsTypes) {
     List<Method> methods = ReflectionUtils.findMethods(cls, methodName);
     if (methods.size() == 1) {
       return methods.get(0);
@@ -165,7 +165,7 @@ public class PythonGateway {
     return any.get();
   }
 
-  private boolean returnReference(Object value) {
+  private static boolean returnReference(Object value) {
     return !(value instanceof Number) && !(value instanceof String) && !(value instanceof byte[]);
   }
 
