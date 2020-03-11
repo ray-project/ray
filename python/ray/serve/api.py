@@ -177,7 +177,7 @@ def set_backend_config(backend_tag, backend_config):
     backend_config_dict = dict(backend_config)
     old_backend_config_dict = global_state.backend_table.get_info(backend_tag)
 
-    if (old_backend_config_dict["has_accept_batch_annotation"] == False
+    if (not old_backend_config_dict["has_accept_batch_annotation"]
             and backend_config.max_batch_size is not None):
         raise batch_annotation_not_found
 
