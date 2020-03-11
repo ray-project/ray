@@ -262,7 +262,7 @@
         },
         {
             "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-03-01",
+            "apiVersion": "2019-07-01",
             "name": "[variables('vmNameHead')]",
             "location": "[resourceGroup().location]",
             "dependsOn": [
