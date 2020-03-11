@@ -234,7 +234,7 @@ class Monitor:
                       ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL):
                     message_handler = self.autoscaler_resource_request_handler
                 else:
-                    raise Exception("This code should be unreachable.")
+                    assert False, "This code should be unreachable."
 
                 # Call the handler.
                 message_handler(channel, data)
