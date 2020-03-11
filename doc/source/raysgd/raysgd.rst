@@ -24,11 +24,7 @@ You can start a ``TorchTrainer`` with the following:
 
 .. code-block:: python
 
-    import numpy as np
     import torch
-    import torch.nn as nn
-    from torch import distributed
-
     from ray.util.sgd import TorchTrainer
     from ray.util.sgd.examples.train_example import LinearDataset
 
@@ -42,9 +38,10 @@ You can start a ``TorchTrainer`` with the following:
         return torch.optim.SGD(model.parameters(), lr=1e-2)
 
 
-    def data_creator(batch_size, config):
-        """Returns training dataloader, validation dataloader."""
-        return LinearDataset(2, 5),  LinearDataset(2, 5, size=400)
+    def data_creator(config):
+        train_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
+        val_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
+        return train_loader, val_loader
 
     ray.init()
 
@@ -52,11 +49,10 @@ You can start a ``TorchTrainer`` with the following:
         model_creator,
         data_creator,
         optimizer_creator,
-        loss_creator=nn.MSELoss,
+        loss_creator=torch.nn.MSELoss,
         num_replicas=2,
         use_gpu=True,
-        batch_size=512,
-        backend="nccl")
+        config={"batch_size": 64})
 
     stats = trainer1.train()
     print(stats)
