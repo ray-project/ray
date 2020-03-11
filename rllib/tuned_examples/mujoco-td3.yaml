@@ -17,7 +17,8 @@ mujoco-td3:
     config:
         # === Exploration ===
         learning_starts: 10000
-        pure_exploration_steps: 10000
+        exploration_config:
+            random_timesteps: 10000
 
         # === Evaluation ===
         evaluation_interval: 5

@@ -1,9 +1,64 @@
 import time
 from collections import Counter
+import pytest
 
 import ray
 from ray.util.iter import from_items, from_iterators, from_range, \
-    from_actors, ParallelIteratorWorker
+    from_actors, ParallelIteratorWorker, LocalIterator
+
+
+def test_metrics(ray_start_regular_shared):
+    it = from_items([1, 2, 3, 4], num_shards=1)
+    it2 = from_items([1, 2, 3, 4], num_shards=1)
+
+    def f(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["foo"] += x
+        return metrics.counters["foo"]
+
+    it = it.gather_sync().for_each(f)
+    it2 = it2.gather_sync().for_each(f)
+
+    # Context cannot be accessed outside the iterator.
+    with pytest.raises(ValueError):
+        LocalIterator.get_metrics()
+
+    # Tests iterators have isolated contexts.
+    assert it.take(4) == [1, 3, 6, 10]
+    assert it2.take(4) == [1, 3, 6, 10]
+
+    # Context cannot be accessed outside the iterator.
+    with pytest.raises(ValueError):
+        LocalIterator.get_metrics()
+
+
+def test_metrics_union(ray_start_regular_shared):
+    it1 = from_items([1, 2, 3, 4], num_shards=1)
+    it2 = from_items([1, 2, 3, 4], num_shards=1)
+
+    def foo_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["foo"] += x
+        return metrics.counters["foo"]
+
+    def bar_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["bar"] += 100
+        return metrics.counters["bar"]
+
+    def verify_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["n"] += 1
+        if metrics.counters["n"] > 2:
+            assert "foo" in metrics.counters
+            assert "bar" in metrics.counters
+        return x
+
+    it1 = it1.gather_async().for_each(foo_metrics)
+    it2 = it2.gather_async().for_each(bar_metrics)
+    it3 = it1.union(it2, deterministic=True)
+    it3 = it3.for_each(verify_metrics)
+    assert it3.take(10) == [1, 100, 3, 200, 6, 300, 10, 400]
 
 
 def test_from_items(ray_start_regular_shared):
@@ -57,6 +112,17 @@ def test_combine(ray_start_regular_shared):
     assert list(it.gather_sync()) == [0, 0, 1, 1, 2, 2, 3, 3]
 
 
+def test_duplicate(ray_start_regular_shared):
+    it = from_range(5, num_shards=1)
+
+    it1, it2 = it.gather_sync().duplicate(2)
+    it1 = it1.batch(2)
+
+    it3 = it1.union(it2, deterministic=False)
+    results = it3.take(20)
+    assert results == [0, [0, 1], 1, 2, [2, 3], 3, 4, [4]]
+
+
 def test_chain(ray_start_regular_shared):
     it = from_range(4).for_each(lambda x: x * 2).for_each(lambda x: x * 2)
     assert repr(
@@ -102,15 +168,16 @@ def test_local_shuffle(ray_start_regular_shared):
 
 def test_repartition_less(ray_start_regular_shared):
     it = from_range(9, num_shards=3)
-    it1 = it.repartition(2)
+    # chaining operations after a repartition should work
+    it1 = it.repartition(2).for_each(lambda x: 2 * x)
     assert repr(it1) == ("ParallelIterator[from_range[9, " +
-                         "shards=3].repartition[num_partitions=2]]")
+                         "shards=3].repartition[num_partitions=2].for_each()]")
 
     assert it1.num_shards() == 2
     shard_0_set = set(it1.get_shard(0))
     shard_1_set = set(it1.get_shard(1))
-    assert shard_0_set == {0, 2, 3, 5, 6, 8}
-    assert shard_1_set == {1, 4, 7}
+    assert shard_0_set == {0, 4, 6, 10, 12, 16}
+    assert shard_1_set == {2, 8, 14}
 
 
 def test_repartition_more(ray_start_regular_shared):
@@ -128,10 +195,16 @@ def test_repartition_consistent(ray_start_regular_shared):
     # repartition should be deterministic
     it1 = from_range(9, num_shards=1).repartition(2)
     it2 = from_range(9, num_shards=1).repartition(2)
+    # union should work after repartition
+    it3 = it1.union(it2)
     assert it1.num_shards() == 2
     assert it2.num_shards() == 2
     assert set(it1.get_shard(0)) == set(it2.get_shard(0))
     assert set(it1.get_shard(1)) == set(it2.get_shard(1))
+
+    assert it3.num_shards() == 4
+    assert set(it3.gather_async()) == set(it1.gather_async()) | set(
+        it2.gather_async())
 
 
 def test_batch(ray_start_regular_shared):
@@ -271,6 +344,5 @@ def test_serialization(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

@@ -837,6 +837,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":platform_shims",
         ":sha256",
         "@boost//:asio",
         "@com_github_google_glog//:glog",
@@ -889,6 +890,11 @@ cc_library(
     includes = ["src/ray/thirdparty"],
 )
 
+alias(
+    name = "hiredis",
+    actual = "@com_github_antirez_redis//:hiredis",
+)
+
 cc_library(
     name = "gcs",
     srcs = glob(
@@ -906,13 +912,13 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs_cc_proto",
+        ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
         "@boost//:asio",
-        "@redis//:hiredis",
     ],
 )
 
@@ -1202,6 +1208,17 @@ filegroup(
 
 genrule(
     name = "redis",
+    srcs = [
+    ] + select({
+        # Windows is not supported yet, so make stubs for it
+        "@bazel_tools//src/conditions:windows": [
+            "@com_github_tporadowski_redis_bin//file",
+        ],
+        "//conditions:default": [
+            "@com_github_antirez_redis//:file",  # This is necessary so we can access the root of the directory
+            "@com_github_antirez_redis//:files",  # This is necessary to ensure entire directory tree is accessible
+        ],
+    }),
     outs = [
         "redis-server",
         "redis-cli",
@@ -1209,23 +1226,21 @@ genrule(
     cmd = select({
         # Windows is not supported yet, so make stubs for it
         "@bazel_tools//src/conditions:windows": """
-            set -eu
-            for f in $(OUTS); do
-                {
-                    echo '#!/usr/bin/env bash'
-                    echo 'echo "$${0##*/} is unsupported on this platform" 1>&2 && false'
-                } > "$$f"
-                chmod +x "$$f"
-            done
+            unzip -q -o -- $(location @com_github_tporadowski_redis_bin//file) redis-server.exe redis-cli.exe &&
+            mv -f -- redis-server.exe $(location redis-server) &&
+            mv -f -- redis-cli.exe    $(location redis-cli)
         """,
         "//conditions:default": """
             set -x &&
-            curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
-            make &&
-            mv ./src/redis-server $(location redis-server) &&
+            tmpdir="redis.tmp" &&
+            path=$(location @com_github_antirez_redis//:file) &&
+            cp -p -L -R -- "$${path%/*}" "$${tmpdir}" &&
+            make -s -C "$${tmpdir}" -j"$$(getconf _NPROCESSORS_ONLN || echo 1)" &&
+            mv "$${tmpdir}"/src/redis-server $(location redis-server) &&
             chmod +x $(location redis-server) &&
-            mv ./src/redis-cli $(location redis-cli) &&
-            chmod +x $(location redis-cli)
+            mv "$${tmpdir}"/src/redis-cli $(location redis-cli) &&
+            chmod +x $(location redis-cli) &&
+            rm -r -f -- "$${tmpdir}"
         """,
     }),
     visibility = ["//java:__subpackages__"],
@@ -1305,7 +1320,18 @@ genrule(
     cmd = """
         set -x &&
         WORK_DIR="$$(pwd)" &&
-        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
+        RAYDIR="$$WORK_DIR/python/ray"
+        RAYLET="$(location python/ray/_raylet.so)"
+        RAYLET_TARGET_FILENAME="$${RAYLET##*/}" &&
+        if [ "$${OSTYPE-}" = "msys" ]; then
+            # If Windows, we need to do things differently (e.g. use .pyd instead of .so)
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}" &&
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd" &&
+            if [ -f "$${RAYLET%.*}.pdb" ]; then
+                cp -f "$${RAYLET%.*}.pdb" "$${RAYDIR}";
+            fi;
+        fi &&
+        cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&

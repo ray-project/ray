@@ -10,7 +10,11 @@ class SoftQ(StochasticSampling):
     output divided by the temperature. Returns the argmax iff explore=False.
     """
 
-    def __init__(self, action_space, temperature=1.0, framework="tf",
+    def __init__(self,
+                 action_space,
+                 *,
+                 temperature=1.0,
+                 framework="tf",
                  **kwargs):
         """Initializes a SoftQ Exploration object.
 
@@ -19,11 +23,10 @@ class SoftQ(StochasticSampling):
             temperature (Schedule): The temperature to divide model outputs by
                 before creating the Categorical distribution to sample from.
             framework (Optional[str]): One of None, "tf", "torch".
-            kwargs (dict): Passed on to super constructor.
         """
         assert isinstance(action_space, Discrete)
         super().__init__(
-            action_space=action_space,
+            action_space,
             static_params=dict(temperature=temperature),
             framework=framework,
             **kwargs)

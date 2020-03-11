@@ -80,7 +80,6 @@ from ray.includes.ray_config cimport RayConfig
 import ray
 from ray.async_compat import (sync_to_async,
                               AsyncGetResponse, AsyncMonitorState)
-import ray.experimental.signal as ray_signal
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
@@ -91,7 +90,6 @@ from ray.exceptions import (
     ObjectStoreFullError,
     RayTimeoutError,
 )
-from ray.experimental.no_return import NoReturn
 from ray.utils import decode
 
 cimport cpython
@@ -177,10 +175,9 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
         The output vector.
     """
     cdef:
-        ObjectID object_id
         c_vector[CObjectID] result
     for object_id in object_ids:
-        result.push_back(object_id.native())
+        result.push_back((<ObjectID>object_id).native())
     return result
 
 
@@ -267,7 +264,6 @@ cdef void prepare_args(
         int64_t put_threshold
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
-        ObjectID obj_id
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -288,8 +284,8 @@ cdef void prepare_args(
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
-                for obj_id in serialized_arg.contained_object_ids:
-                    inlined_ids.push_back(obj_id.native())
+                for object_id in serialized_arg.contained_object_ids:
+                    inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
                         arg_data, string_to_buffer(serialized_arg.metadata),
@@ -298,7 +294,7 @@ cdef void prepare_args(
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference((CObjectID.FromBinary(
-                        core_worker.put_serialized_cobject(serialized_arg)))))
+                        core_worker.put_serialized_object(serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -478,17 +474,6 @@ cdef execute_task(
                 str(failure_object),
                 job_id=worker.current_job_id)
 
-            # Send signal with the error.
-            ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
-
-    # Don't need to reset `current_job_id` if the worker is an
-    # actor. Because the following tasks should all have the
-    # same driver id.
-    if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        # Reset signal counters so that the next task can get
-        # all past signals.
-        ray_signal.reset()
-
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
@@ -563,9 +548,10 @@ cdef void gc_collect() nogil:
         start = time.perf_counter()
         num_freed = gc.collect()
         end = time.perf_counter()
-        logger.info(
-            "gc.collect() freed {} refs in {} seconds".format(
-                num_freed, end - start))
+        if num_freed > 0:
+            logger.info(
+                "gc.collect() freed {} refs in {} seconds".format(
+                    num_freed, end - start))
 
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
@@ -634,9 +620,12 @@ cdef class CoreWorker:
     def set_actor_title(self, title):
         self.core_worker.get().SetActorTitle(title)
 
-    def subscribe_to_plasma(self, plasma_event_handler):
+    def set_plasma_added_callback(self, plasma_event_handler):
         self.plasma_event_handler = plasma_event_handler
-        self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback)
+        self.core_worker.get().SetPlasmaAddedCallback(async_plasma_callback)
+
+    def subscribe_to_plasma_object(self, ObjectID object_id):
+        self.core_worker.get().SubscribeToPlasmaAdd(object_id.native())
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
@@ -690,12 +679,6 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
                               c_bool pin_object=True):
-        return ObjectID(self.put_serialized_cobject(
-            serialized_object, object_id, pin_object))
-
-    def put_serialized_cobject(self, serialized_object,
-                               ObjectID object_id=None,
-                               c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -782,7 +765,6 @@ cdef class CoreWorker:
                     FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
-                    c_bool is_direct_call,
                     resources,
                     int max_retries):
         cdef:
@@ -795,7 +777,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call, c_resources)
+                num_return_vals, True, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
@@ -814,7 +796,6 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_bool is_asyncio,
@@ -838,7 +819,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, max_concurrency,
+                        max_reconstructions, True, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
@@ -884,7 +865,7 @@ cdef class CoreWorker:
 
         with nogil:
             check_status(self.core_worker.get().KillActor(
-                  c_actor_id))
+                  c_actor_id, True))
 
     def resource_ids(self):
         cdef:
@@ -913,13 +894,24 @@ cdef class CoreWorker:
             self.core_worker.get().CreateProfileEvent(event_type),
             extra_data)
 
-    def deserialize_and_register_actor_handle(self, const c_string &bytes):
-        cdef CActorHandle* c_actor_handle
+    def remove_actor_handle_reference(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        self.core_worker.get().RemoveActorHandleReference(c_actor_id)
+
+    def deserialize_and_register_actor_handle(self, const c_string &bytes,
+                                              ObjectID
+                                              outer_object_id):
+        cdef:
+            CActorHandle* c_actor_handle
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
-            bytes)
+            bytes, c_outer_object_id)
         check_status(self.core_worker.get().GetActorHandle(
             c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
@@ -957,14 +949,13 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
 
-    def serialize_actor_handle(self, actor_handle):
-        assert isinstance(actor_handle, ray.actor.ActorHandle)
+    def serialize_actor_handle(self, ActorID actor_id):
         cdef:
-            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
+            CObjectID c_actor_handle_id
         check_status(self.core_worker.get().SerializeActorHandle(
-            actor_id.native(), &output))
-        return output
+            actor_id.native(), &output, &c_actor_handle_id))
+        return output, ObjectID(c_actor_handle_id.Binary())
 
     def add_object_id_reference(self, ObjectID object_id):
         # Note: faster to not release GIL for short-running op.
@@ -991,9 +982,12 @@ cdef class CoreWorker:
             const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
-            CObjectID c_outer_object_id = outer_object_id.native()
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
+
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
@@ -1001,7 +995,6 @@ cdef class CoreWorker:
                 c_owner_id,
                 c_owner_address)
 
-    # TODO: handle noreturn better
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns):
@@ -1019,10 +1012,6 @@ cdef class CoreWorker:
             if isinstance(output, ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-            elif output is NoReturn:
-                serialized_objects.append(output)
-                data_sizes.push_back(0)
-                metadatas.push_back(string_to_buffer(b''))
             else:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
@@ -1033,16 +1022,13 @@ cdef class CoreWorker:
                 contained_ids.push_back(
                     ObjectIDsToVector(serialized_object.contained_object_ids))
 
-        check_status(self.core_worker.get().AllocateReturnObjects(
-            return_ids, data_sizes, metadatas, contained_ids, returns))
+        with nogil:
+            check_status(self.core_worker.get().AllocateReturnObjects(
+                return_ids, data_sizes, metadatas, contained_ids, returns))
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
-            if returns[0][i].get() == NULL:
-                continue
-            if serialized_object is NoReturn:
-                returns[0][i].reset()
-            else:
+            if returns[0][i].get() != NULL:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
 

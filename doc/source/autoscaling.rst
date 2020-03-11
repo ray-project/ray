@@ -40,30 +40,31 @@ Test that it works by running the following commands from your local machine:
 
 .. note:: You may see a message like: ``bash: cannot set terminal process group (-1): Inappropriate ioctl for device bash: no job control in this shell`` This is a harmless error. If the cluster launcher fails, it is most likely due to some other factor.
 
-Azure
-~~~~~
+Azure Portal
+~~~~~~~~~~~~
 
-First, install the Azure CLI (``pip install azure-cli azure-core``) then login using (``az login``). 
+Alternatively, you can deploy a cluster using Azure portal directly. Please note that auto scaling is done using Azure VM Scale Sets and not through
+the Ray autoscaler. This will deploy `Azure Data Science VMs (DSVM) <https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/>`_
+for both the head node and an auto-scale cluster managed by `Azure Virtual Machine Scale Sets <https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/>`_.
+The head node conviently exposes both SSH as well as JupyterLab.
 
-Set the subscription to use from the command line (``az account set -s <subscription_id>``) or by modifying the provider section of the config provided e.g: `ray/python/ray/autoscaler/azure/example-full.yaml`
+.. image:: https://aka.ms/deploytoazurebutton
+   :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
+   :alt: Deploy to Azure
 
-Once the Azure CLI is configured to manage resources on your Azure account, you should be ready to run the autoscaler. The provided `ray/python/ray/autoscaler/azure/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/azure/example-full.yaml>`__ cluster config file will create a small cluster with a Standard DS2v3 head node (on-demand) configured to autoscale up to two Standard DS2v3 `spot workers <https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms>`__. Note that you'll need to fill in your resource group and location in those templates.
+Once the template is successfully deploy the deployment output page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
+Use the following code connect to the Ray cluster.
 
-Test that it works by running the following commands from your local machine:
+.. code-block:: python
 
-.. code-block:: bash
+    import ray
+    ray.init(address='auto')
 
-    # Create or update the cluster. When the command finishes, it will print
-    # out the command that can be used to SSH into the cluster head node.
-    $ ray up ray/python/ray/autoscaler/azure/example-full.yaml
+Note that on each node the `azure-init.sh <https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh>`_ script is executed and performs
 
-    # Get a remote screen on the head node.
-    $ ray attach ray/python/ray/autoscaler/azure/example-full.yaml
-    $ source activate tensorflow_p36
-    $ # Try running a Ray program with 'ray.init(address="auto")'.
-
-    # Tear down the cluster.
-    $ ray down ray/python/ray/autoscaler/azure/example-full.yaml
+1. activate one of the conda environments available on DSVM
+2. install Ray and any other user-specified dependencies
+3. setup of a systemd task (``/lib/systemd/system/ray.service``) which starting ray in head or worker mode
 
 GCP
 ~~~

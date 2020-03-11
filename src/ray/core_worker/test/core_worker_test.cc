@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/core_worker.h"
 
 #include <boost/asio.hpp>
@@ -618,9 +632,10 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      /*is_detached*/ false,
                                      /*is_asyncio*/ false};
   const auto job_id = NextJobId();
-  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), job_id,
-                           ObjectID::FromRandom(), function.GetLanguage(), true,
-                           function.GetFunctionDescriptor(), "");
+  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+                           TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                           function.GetLanguage(), true, function.GetFunctionDescriptor(),
+                           "");
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -734,8 +749,9 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(ZeroNodeTest, TestActorHandle) {
   // Test actor handle serialization and deserialization round trip.
   JobID job_id = NextJobId();
-  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), job_id,
-                       ObjectID::FromRandom(), Language::PYTHON, /*is_direct_call=*/false,
+  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
+                       TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                       Language::PYTHON, /*is_direct_call=*/false,
                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "");
   std::string output;
   original.Serialize(&output);
@@ -949,76 +965,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
-}
-
-TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
-  CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                     node_manager_port, nullptr);
-
-  CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
-                     raylet_socket_names_[1], NextJobId(), gcs_options_, "", "127.0.0.1",
-                     node_manager_port, nullptr);
-
-  uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
-
-  std::vector<std::shared_ptr<LocalMemoryBuffer>> buffers;
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)));
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)));
-
-  std::vector<ObjectID> ids(buffers.size());
-  for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Put(RayObject(buffers[i], nullptr, std::vector<ObjectID>()), {},
-                             &ids[i]));
-  }
-
-  // Test Get() from remote node.
-  std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(worker2.Get(ids, -1, &results));
-
-  ASSERT_EQ(results.size(), 2);
-  for (size_t i = 0; i < ids.size(); i++) {
-    ASSERT_EQ(results[i]->GetData()->Size(), buffers[i]->Size());
-    ASSERT_EQ(*(results[i]->GetData()), *buffers[i]);
-  }
-
-  // Test Wait() from remote node.
-  ObjectID non_existent_id = ObjectID::FromRandom();
-  std::vector<ObjectID> all_ids(ids);
-  all_ids.push_back(non_existent_id);
-
-  std::vector<bool> wait_results;
-  RAY_CHECK_OK(worker2.Wait(all_ids, 2, -1, &wait_results));
-  ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
-
-  RAY_CHECK_OK(worker2.Wait(all_ids, 3, 100, &wait_results));
-  ASSERT_EQ(wait_results.size(), 3);
-  ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
-
-  // Test Delete() from all machines.
-  // clear the reference held by PlasmaBuffer.
-  results.clear();
-  RAY_CHECK_OK(worker2.Delete(ids, false, false));
-
-  // Note that Delete() calls RayletClient::FreeObjects and would not
-  // wait for objects being deleted, so wait a while for plasma store
-  // to process the command.
-  usleep(1000 * 1000);
-  // Verify objects are deleted from both machines.
-  ASSERT_TRUE(worker2.Get(ids, 0, &results).IsTimedOut());
-  ASSERT_EQ(results.size(), 2);
-  ASSERT_TRUE(!results[0]);
-  ASSERT_TRUE(!results[1]);
-
-  // TODO(edoakes): this currently fails because the object is pinned on the
-  // creating node. Should be fixed or removed once we decide the semantics
-  // for Delete() with pinning.
-  // ASSERT_TRUE(worker1.Get(ids, 0, &results).IsTimedOut());
-  // ASSERT_EQ(results.size(), 2);
-  // ASSERT_TRUE(!results[0]);
-  // ASSERT_TRUE(!results[1]);
 }
 
 TEST_F(SingleNodeTest, TestNormalTaskLocal) {

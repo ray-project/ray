@@ -5,6 +5,8 @@ import logging
 import pickle
 
 import ray
+from ray.util.debug import log_once, disable_log_once_globally, \
+    enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
@@ -26,8 +28,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
-    summarize, enable_periodic_logging
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -545,9 +546,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         }
 
     @override(EvaluatorInterface)
-    def set_weights(self, weights):
+    def set_weights(self, weights, global_vars=None):
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
+        if global_vars:
+            self.set_global_vars(global_vars)
 
     @override(EvaluatorInterface)
     def compute_gradients(self, samples):

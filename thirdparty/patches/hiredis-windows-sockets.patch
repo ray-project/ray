@@ -1,11 +1,27 @@
+diff --git deps/hiredis/hiredis.c deps/hiredis/hiredis.c
+--- deps/hiredis/hiredis.c
++++ deps/hiredis/hiredis.c
+@@ -620,1 +620,1 @@
+-        close(c->fd);
++        redisContextCloseFd(c);
+@@ -648,1 +648,1 @@
+-        close(c->fd);
++        redisContextCloseFd(c);
+diff --git deps/hiredis/net.h deps/hiredis/net.h
+--- deps/hiredis/net.h
++++ deps/hiredis/net.h
+@@ -44,1 +44,2 @@
++void redisContextCloseFd(redisContext *c);
+ int redisContextConnectTcp(redisContext *c, const char *addr, int port, const struct timeval *timeout);
 diff --git deps/hiredis/net.c deps/hiredis/net.c
 --- deps/hiredis/net.c
 +++ deps/hiredis/net.c
 @@ -60,6 +60,10 @@
- static void redisContextCloseFd(redisContext *c) {
+-static void redisContextCloseFd(redisContext *c) {
++void redisContextCloseFd(redisContext *c) {
      if (c && c->fd >= 0) {
 +#ifdef _WINSOCKAPI_
-+        closesocket(c->fd);
++        closesocket(_get_osfhandle(c->fd)) == 0 || (WSAGetLastError() == WSAENOTSOCK && _close(c->fd) == 0);
 +#else
          close(c->fd);
 +#endif

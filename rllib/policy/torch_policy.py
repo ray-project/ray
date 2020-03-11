@@ -7,6 +7,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
@@ -86,20 +87,21 @@ class TorchPolicy(Policy):
             action_dist = None
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    logits, self.dist_class, self.model, explore,
+                    logits, self.dist_class, self.model,
                     timestep if timestep is not None else
-                    self.global_timestep)
+                    self.global_timestep, explore)
             input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,
                                                      self.model, action_dist)
             if logp is not None:
+                logp = convert_to_non_torch_type(logp)
                 extra_action_out.update({
-                    ACTION_PROB: torch.exp(logp),
+                    ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
-            return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
-                    extra_action_out)
+            return convert_to_non_torch_type(
+                (actions, state, extra_action_out))
 
     @override(Policy)
     def compute_log_likelihoods(self,
@@ -276,10 +278,10 @@ class LearningRateSchedule:
     def __init__(self, lr, lr_schedule):
         self.cur_lr = lr
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr)
+            self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:
             self.lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1])
+                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
@@ -302,18 +304,21 @@ class EntropyCoeffSchedule:
         self.entropy_coeff = entropy_coeff
 
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff)
+            self.entropy_coeff_schedule = ConstantSchedule(
+                entropy_coeff, framework=None)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1])
+                    outside_value=entropy_coeff_schedule[-1][-1],
+                    framework=None)
             else:
                 # Implements previous version but enforces outside_value
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0)
+                    outside_value=0.0,
+                    framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):

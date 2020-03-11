@@ -86,7 +86,8 @@ class NevergradSearch(SuggestionAlgorithm):
             self._metric_op = 1.
         self._nevergrad_opt = optimizer
         self._live_trial_mapping = {}
-        super(NevergradSearch, self).__init__(**kwargs)
+        super(NevergradSearch, self).__init__(
+            metric=metric, mode=mode, **kwargs)
         # validate parameters
         if hasattr(optimizer, "instrumentation"):  # added in v0.2.0
             if optimizer.instrumentation.kwargs:
@@ -108,20 +109,18 @@ class NevergradSearch(SuggestionAlgorithm):
             raise ValueError("len(parameters_names) must match optimizer "
                              "dimension for non-instrumented optimizers")
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
         suggested_config = self._nevergrad_opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
         # in v0.2.0+, output of ask() is a Candidate,
         # with fields args and kwargs
-        if hasattr(self._nevergrad_opt, "instrumentation"):
-            if not suggested_config.kwargs:
-                return dict(zip(self._parameters, suggested_config.args[0]))
-            else:
-                return suggested_config.kwargs
-        # legacy: output of ask() is a np.ndarray
-        return dict(zip(self._parameters, suggested_config))
+        if not suggested_config.kwargs:
+            print(suggested_config.args, suggested_config.kwargs)
+            return dict(zip(self._parameters, suggested_config.args[0]))
+        else:
+            return suggested_config.kwargs
 
     def on_trial_result(self, trial_id, result):
         pass

@@ -1,7 +1,11 @@
+from typing import Union
+
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -18,24 +22,24 @@ class StochasticSampling(Exploration):
 
     def __init__(self,
                  action_space,
-                 framework="tf",
+                 *,
                  static_params=None,
                  time_dependent_params=None,
+                 framework="tf",
                  **kwargs):
         """Initializes a StochasticSampling Exploration object.
 
         Args:
             action_space (Space): The gym action space used by the environment.
-            framework (Optional[str]): One of None, "tf", "torch".
             static_params (Optional[dict]): Parameters to be passed as-is into
                 the action distribution class' constructor.
             time_dependent_params (dict): Parameters to be evaluated based on
                 `timestep` and then passed into the action distribution
                 class' constructor.
+            framework (Optional[str]): One of None, "tf", "torch".
         """
         assert framework is not None
-        super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
+        super().__init__(action_space, framework=framework, **kwargs)
 
         self.static_params = static_params or {}
 
@@ -45,11 +49,11 @@ class StochasticSampling(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
+                               distribution_inputs: TensorType,
+                               action_dist_class: type,
+                               model: ModelV2,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
         kwargs = self.static_params.copy()
 
         # TODO(sven): create schedules for these via easy-config patterns

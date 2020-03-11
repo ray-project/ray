@@ -711,28 +711,31 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                    explore=None,
                    perturbation_interval=10,
                    log_config=False,
+                   hyperparams=None,
+                   hyperparam_mutations=None,
                    step_once=True):
+        hyperparam_mutations = hyperparam_mutations or {
+            "float_factor": lambda: 100.0,
+            "int_factor": lambda: 10,
+            "id_factor": [100]
+        }
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
             perturbation_interval=perturbation_interval,
             resample_probability=resample_prob,
             quantile_fraction=0.25,
-            hyperparam_mutations={
-                "id_factor": [100],
-                "float_factor": lambda: 100.0,
-                "int_factor": lambda: 10,
-            },
+            hyperparam_mutations=hyperparam_mutations,
             custom_explore_fn=explore,
             log_config=log_config)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
-            trial = _MockTrial(
-                i, {
-                    "id_factor": i,
-                    "float_factor": 2.0,
-                    "const_factor": 3,
-                    "int_factor": 10
-                })
+            trial_hyperparams = hyperparams or {
+                "float_factor": 2.0,
+                "const_factor": 3,
+                "int_factor": 10,
+                "id_factor": i
+            }
+            trial = _MockTrial(i, trial_hyperparams)
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
             if step_once:
@@ -957,6 +960,37 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Expect call count to be 100 because we call explore 100 times
         self.assertEqual(custom_explore_fn.call_count, 100)
+
+    def testDictPerturbation(self):
+        pbt, runner = self.basicSetup(
+            resample_prob=1.0,
+            hyperparams={
+                "float_factor": 2.0,
+                "nest": {
+                    "nest_float": 3.0
+                },
+                "int_factor": 10,
+                "const_factor": 3
+            },
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "nest": {
+                    "nest_float": lambda: 101.0
+                },
+                "int_factor": lambda: 10,
+            })
+        trials = runner.get_trials()
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[0], result(20, -100)),
+            TrialScheduler.CONTINUE)
+        self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
+        self.assertEqual(trials[0].config["float_factor"], 100.0)
+        self.assertIsInstance(trials[0].config["float_factor"], float)
+        self.assertEqual(trials[0].config["int_factor"], 10)
+        self.assertIsInstance(trials[0].config["int_factor"], int)
+        self.assertEqual(trials[0].config["const_factor"], 3)
+        self.assertEqual(trials[0].config["nest"]["nest_float"], 101.0)
+        self.assertIsInstance(trials[0].config["nest"]["nest_float"], float)
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
