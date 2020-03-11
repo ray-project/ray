@@ -19,10 +19,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
-
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -44,6 +43,10 @@ DEFINE_bool(disable_stats, false, "Whether disable the stats.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
             "Whether enable the stdout exporter for stats.");
+// store options
+DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
+DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
+DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 
 #ifndef RAYLET_TEST
 
@@ -75,6 +78,9 @@ int main(int argc, char *argv[]) {
   const bool disable_stats = FLAGS_disable_stats;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
+  const int64_t object_store_memory = FLAGS_object_store_memory;
+  const std::string plasma_directory = FLAGS_plasma_directory;
+  const bool huge_pages = FLAGS_huge_pages;
   gflags::ShutDownCommandLineFlags();
 
   // Initialize stats.
@@ -158,6 +164,9 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_pull_timeout_ms();
   object_manager_config.push_timeout_ms =
       RayConfig::instance().object_manager_push_timeout_ms();
+  object_manager_config.object_store_memory = object_store_memory;
+  object_manager_config.plasma_directory = plasma_directory;
+  object_manager_config.huge_pages = huge_pages;
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
   object_manager_config.rpc_service_threads_number =

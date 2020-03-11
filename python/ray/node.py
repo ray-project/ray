@@ -510,23 +510,6 @@ class Node:
             redis_client = self.create_redis_client()
             redis_client.hmset("webui", {"url": self._webui_url})
 
-    def start_plasma_store(self):
-        """Start the plasma store."""
-        stdout_file, stderr_file = self.new_log_files("plasma_store")
-        process_info = ray.services.start_plasma_store(
-            self.get_resource_spec(),
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            plasma_directory=self._ray_params.plasma_directory,
-            huge_pages=self._ray_params.huge_pages,
-            plasma_store_socket_name=self._plasma_store_socket_name,
-            fate_share=self.kernel_fate_share)
-        assert (
-            ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
-        self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
-            process_info
-        ]
-
     def start_gcs_server(self):
         """Start the gcs server.
         """
@@ -574,6 +557,8 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
+            plasma_directory=self._ray_params.plasma_directory,
+            huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -644,7 +629,6 @@ class Node:
             "Process STDOUT and STDERR is being redirected to {}.".format(
                 self._logs_dir))
 
-        self.start_plasma_store()
         self.start_raylet()
         self.start_reporter()
 

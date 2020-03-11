@@ -34,6 +34,7 @@
 
 namespace plasma {
 
+std::mutex mmap_records_lock;
 std::unordered_map<void*, MmapRecord> mmap_records;
 
 static void* pointer_advance(void* p, ptrdiff_t n) { return (unsigned char*)p + n; }
@@ -43,6 +44,7 @@ static ptrdiff_t pointer_distance(void const* pfrom, void const* pto) {
 }
 
 void GetMallocMapinfo(void* addr, int* fd, int64_t* map_size, ptrdiff_t* offset) {
+  std::lock_guard<std::mutex> l(mmap_records_lock);
   // TODO(rshin): Implement a more efficient search through mmap_records.
   for (const auto& entry : mmap_records) {
     if (addr >= entry.first && addr < pointer_advance(entry.first, entry.second.size)) {
@@ -58,6 +60,7 @@ void GetMallocMapinfo(void* addr, int* fd, int64_t* map_size, ptrdiff_t* offset)
 }
 
 int64_t GetMmapSize(int fd) {
+  std::lock_guard<std::mutex> l(mmap_records_lock);
   for (const auto& entry : mmap_records) {
     if (entry.second.fd == fd) {
       return entry.second.size;

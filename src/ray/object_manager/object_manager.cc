@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
 #include "ray/object_manager/object_manager.h"
+
 #include "ray/common/common_protocol.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
-#include "ray/plasma/store.h"
 
 namespace asio = boost::asio;
 
@@ -24,12 +25,31 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 
 namespace ray {
 
+ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config)
+    : plasma_store_(config.store_socket_name, config.object_store_memory,
+                    config.huge_pages, config.plasma_directory, "") {
+  // Initialize object store.
+  store_thread_ = std::thread(&plasma::PlasmaStoreRunner::Start, &plasma_store_);
+  // Sleep for sometime until the store is working. This can suppress some
+  // connection warnings.
+  std::this_thread::sleep_for(std::chrono::microseconds(500));
+}
+
+ObjectStoreRunner::~ObjectStoreRunner() {
+  // Try to stop the eventloop gracefully with a timeout.
+  plasma_store_.Stop();
+  std::this_thread::sleep_for(std::chrono::microseconds(100));
+  pthread_kill(store_thread_.native_handle(), SIGTERM);
+  store_thread_.join();
+}
+
 ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &self_node_id,
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
+      object_store_internal_(config),
       store_notification_(main_service, config_.store_socket_name),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),

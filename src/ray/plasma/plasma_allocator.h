@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 
 namespace plasma {
 
@@ -55,6 +56,7 @@ class PlasmaAllocator {
   static int64_t Allocated();
 
  private:
+  static std::mutex malloc_lock_;
   static int64_t allocated_;
   static int64_t footprint_limit_;
 };

@@ -15,29 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+include "common.fbs";
+
 // Plasma protocol specification
 namespace plasma.flatbuf;
-
-// Object information data structure.
-table ObjectInfo {
-  // Object ID of this object.
-  object_id: string;
-  // Number of bytes the content of this object occupies in memory.
-  data_size: long;
-  // Number of bytes the metadata of this object occupies in memory.
-  metadata_size: long;
-  // Number of clients using the objects.
-  ref_count: int;
-  // Unix epoch of when this object was created.
-  create_time: long;
-  // How long creation of this object took.
-  construct_duration: long;
-  // Hash of the object content. If the object is not sealed yet this is
-  // an empty string.
-  digest: string;
-  // Specifies if this object was deleted or added.
-  is_deletion: bool;
-}
 
 enum MessageType:long {
   // Message that gets send when a client hangs up.

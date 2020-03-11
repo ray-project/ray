@@ -38,7 +38,6 @@
 
 namespace {
 
-std::string store_executable;
 std::string raylet_executable;
 int node_manager_port = 0;
 std::string raylet_monitor_executable;
@@ -105,7 +104,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     // start plasma store.
     for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket = StartStore();
+      store_socket = ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
     }
 
     // start gcs server
@@ -131,10 +130,6 @@ class CoreWorkerTest : public ::testing::Test {
       StopRaylet(raylet_socket);
     }
 
-    for (const auto &store_socket : raylet_store_socket_names_) {
-      StopStore(store_socket);
-    }
-
     if (!raylet_monitor_pid_.empty()) {
       StopRayletMonitor(raylet_monitor_pid_);
     }
@@ -149,28 +144,6 @@ class CoreWorkerTest : public ::testing::Test {
     return JobID::FromInt(job_counter++);
   }
 
-  std::string StartStore() {
-    std::string store_socket_name =
-        ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
-    std::string store_pid = store_socket_name + ".pid";
-    std::string plasma_command = store_executable + " -m 10000000 -s " +
-                                 store_socket_name +
-                                 " 1> /dev/null 2> /dev/null & echo $! > " + store_pid;
-    RAY_LOG(DEBUG) << plasma_command;
-    RAY_CHECK(system(plasma_command.c_str()) == 0);
-    usleep(200 * 1000);
-    return store_socket_name;
-  }
-
-  void StopStore(std::string store_socket_name) {
-    std::string store_pid = store_socket_name + ".pid";
-    std::string kill_9 = "kill -9 `cat " + store_pid + "`";
-    RAY_LOG(DEBUG) << kill_9;
-    ASSERT_EQ(system(kill_9.c_str()), 0);
-    ASSERT_EQ(system(("rm -rf " + store_socket_name).c_str()), 0);
-    ASSERT_EQ(system(("rm -rf " + store_socket_name + ".pid").c_str()), 0);
-  }
-
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           int port, std::string redis_address, std::string resource) {
     std::string raylet_socket_name =
@@ -179,6 +152,7 @@ class CoreWorkerTest : public ::testing::Test {
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
         .append(" --object_manager_port=0 --node_manager_port=" + std::to_string(port))
+        .append(" --object-store-memory=10000000")
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -1003,12 +977,11 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 7);
-  store_executable = std::string(argv[1]);
-  raylet_executable = std::string(argv[2]);
-  node_manager_port = std::stoi(std::string(argv[3]));
-  raylet_monitor_executable = std::string(argv[4]);
-  mock_worker_executable = std::string(argv[5]);
-  gcs_server_executable = std::string(argv[6]);
+  RAY_CHECK(argc == 6);
+  raylet_executable = std::string(argv[1]);
+  node_manager_port = std::stoi(std::string(argv[2]));
+  raylet_monitor_executable = std::string(argv[3]);
+  mock_worker_executable = std::string(argv[4]);
+  gcs_server_executable = std::string(argv[5]);
   return RUN_ALL_TESTS();
 }

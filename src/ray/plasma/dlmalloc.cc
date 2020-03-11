@@ -128,10 +128,12 @@ void* fake_mmap(size_t size) {
 
   // Increase dlmalloc's allocation granularity directly.
   mparams.granularity *= GRANULARITY_MULTIPLIER;
-
-  MmapRecord& record = mmap_records[pointer];
-  record.fd = fd;
-  record.size = size;
+  {
+    std::lock_guard<std::mutex> l(mmap_records_lock);
+    MmapRecord& record = mmap_records[pointer];
+    record.fd = fd;
+    record.size = size;
+  }
 
   // We lie to dlmalloc about where mapped memory actually lives.
   pointer = pointer_advance(pointer, kMmapRegionsGap);
@@ -143,22 +145,23 @@ int fake_munmap(void* addr, int64_t size) {
   ARROW_LOG(DEBUG) << "fake_munmap(" << addr << ", " << size << ")";
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
+  {
+    std::lock_guard<std::mutex> l(mmap_records_lock);
+    auto entry = mmap_records.find(addr);
+    if (entry == mmap_records.end() || entry->second.size != size) {
+      // Reject requests to munmap that don't directly match previous
+      // calls to mmap, to prevent dlmalloc from trimming.
+      return -1;
+    }
 
-  auto entry = mmap_records.find(addr);
+    int r = munmap(addr, size);
+    if (r == 0) {
+      close(entry->second.fd);
+    }
 
-  if (entry == mmap_records.end() || entry->second.size != size) {
-    // Reject requests to munmap that don't directly match previous
-    // calls to mmap, to prevent dlmalloc from trimming.
-    return -1;
+    mmap_records.erase(entry);
+    return r;
   }
-
-  int r = munmap(addr, size);
-  if (r == 0) {
-    close(entry->second.fd);
-  }
-
-  mmap_records.erase(entry);
-  return r;
 }
 
 void SetMallocGranularity(int value) { change_mparam(M_GRANULARITY, value); }
