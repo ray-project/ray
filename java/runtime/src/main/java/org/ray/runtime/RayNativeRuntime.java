@@ -137,10 +137,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void killActor(RayActor<?> actor) {
-    if (!((NativeRayActor) actor).isDirectCallActor()) {
-      throw new UnsupportedOperationException("Only direct call actors can be killed.");
-    }
-    nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes());
+    throw new UnsupportedOperationException("Only direct call actors can be killed.");
   }
 
   @Override

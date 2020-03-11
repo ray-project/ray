@@ -130,14 +130,12 @@ public class ActorTest extends BaseTest {
             .get());
   }
 
+  // TODO(qwang): Will re-enable this test case once ref counting is supported in Java.
+  @Test(enabled = false)
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    if (((AbstractRayRuntime) Ray.internal()).getRayConfig().runMode != RunMode.SINGLE_PROCESS) {
-      throw new SkipException("1111111111111111111");
-    }
 
     // The UnreconstructableException is created by raylet.
-    // TODO(qwang):
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     // Call an actor method.
     RayObject value = Ray.call(Counter::getValue, counter);

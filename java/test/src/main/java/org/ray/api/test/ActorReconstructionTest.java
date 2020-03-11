@@ -63,7 +63,6 @@ public class ActorReconstructionTest extends BaseTest {
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
 
-    // TODO(qwang): Check
     int value = Ray.call(Counter::increase, actor).get();
     Assert.assertEquals(value, 1);
 
