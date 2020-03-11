@@ -32,12 +32,14 @@ class StatusReporter:
     def __init__(self,
                  result_queue,
                  continue_semaphore,
-                 trial_info=None,
+                 trial_name=None,
+                 trial_id=None,
                  logdir=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
-        self._trial_info = trial_info
+        self._trial_name = trial_name
+        self._trial_id = trial_id
         self._logdir = logdir
 
     def __call__(self, **kwargs):
@@ -86,12 +88,12 @@ class StatusReporter:
     @property
     def trial_name(self):
         """Trial name for the corresponding trial of this Trainable."""
-        return self._trial_info.trial_name
+        return self._trial_name
 
     @property
     def trial_id(self):
         """Trial id for the corresponding trial of this Trainable."""
-        return self._trial_info.trial_id
+        return self._trial_id
 
 
 class _RunnerThread(threading.Thread):
@@ -150,7 +152,8 @@ class FunctionRunner(Trainable):
         self._status_reporter = StatusReporter(
             self._results_queue,
             self._continue_semaphore,
-            trial_info=self._trial_info,
+            trial_name=self.trial_name,
+            trial_id=self.trial_id,
             logdir=self.logdir)
         self._last_result = {}
         config = config.copy()

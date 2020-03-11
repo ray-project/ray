@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from ray.tune.trial import Trial, TrialInfo
+from ray.tune.trial import Trial
 from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
 from ray.tune.logger import UnifiedLogger, Logger
 
