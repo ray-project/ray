@@ -852,12 +852,15 @@ py_test(
 # Tag: optimizers
 # --------------------------------------------------------------------
 
-py_test(
-    name = "test_segment_tree",
-    tags = ["optimizers"],
-    size = "small",
-    srcs = ["optimizers/tests/test_segment_tree.py"]
-)
+# This has bugs: See PR https://github.com/ray-project/ray/pull/7534
+# which fixes these and re-adds this test.
+
+# py_test(
+#     name = "test_segment_tree",
+#     tags = ["optimizers"],
+#     size = "small",
+#    srcs = ["optimizers/tests/test_segment_tree.py"]
+# )
 
 # --------------------------------------------------------------------
 # Policies

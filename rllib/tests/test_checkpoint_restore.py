@@ -66,7 +66,7 @@ CONFIGS = {
 }
 
 
-def test_ckpt_restore(use_object_store, alg_name, failures):
+def ckpt_restore_test(use_object_store, alg_name, failures):
     cls = get_agent_class(alg_name)
     if "DDPG" in alg_name or "SAC" in alg_name:
         alg1 = cls(config=CONFIGS[alg_name], env="Pendulum-v0")
@@ -105,7 +105,7 @@ def test_ckpt_restore(use_object_store, alg_name, failures):
             failures.append((alg_name, [a1, a2]))
 
 
-def test_export(alg_name, failures):
+def export_test(alg_name, failures):
     def valid_tf_model(model_dir):
         return os.path.exists(os.path.join(model_dir, "saved_model.pb")) \
             and os.listdir(os.path.join(model_dir, "variables"))
@@ -149,10 +149,12 @@ def test_export(alg_name, failures):
 
 
 class TestCheckpointRestore(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=10, object_store_memory=1e9)
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_checkpoint_restore(self):
@@ -162,14 +164,14 @@ class TestCheckpointRestore(unittest.TestCase):
                     "SAC", "ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG",
                     "ARS"
             ]:
-                test_ckpt_restore(use_object_store, name, failures)
+                ckpt_restore_test(use_object_store, name, failures)
 
         assert not failures, failures
         print("All checkpoint restore tests passed!")
 
         failures = []
         for name in ["SAC", "DQN", "DDPG", "PPO", "A3C"]:
-            test_export(name, failures)
+            export_test(name, failures)
         assert not failures, failures
         print("All export tests passed!")
 

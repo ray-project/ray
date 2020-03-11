@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import unittest
 
 
@@ -29,5 +30,4 @@ class TestDependency(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
