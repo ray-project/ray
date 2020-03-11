@@ -14,12 +14,12 @@ import ray.rllib.agents.sac as sac
 from ray.rllib.utils import check
 
 
-def test_explorations(run,
-                      env,
-                      config,
-                      dummy_obs,
-                      prev_a=None,
-                      expected_mean_action=None):
+def do_test_explorations(run,
+                         env,
+                         config,
+                         dummy_obs,
+                         prev_a=None,
+                         expected_mean_action=None):
     """Calls an Agent's `compute_actions` with different `explore` options."""
 
     config = config.copy()
@@ -95,14 +95,16 @@ class TestExplorations(unittest.TestCase):
     compute_action calls.
     """
 
-    def setUpClass(cls) -> None:
+    @classmethod
+    def setUpClass(cls):
         ray.init(ignore_reinit_error=True)
 
-    def tearDownClass(cls) -> None:
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_a2c(self):
-        test_explorations(
+        do_test_explorations(
             a3c.A2CTrainer,
             "CartPole-v0",
             a3c.DEFAULT_CONFIG,
@@ -110,7 +112,7 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(1))
 
     def test_a3c(self):
-        test_explorations(
+        do_test_explorations(
             a3c.A3CTrainer,
             "CartPole-v0",
             a3c.DEFAULT_CONFIG,
@@ -118,7 +120,7 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(1))
 
     def test_ddpg(self):
-        test_explorations(
+        do_test_explorations(
             ddpg.DDPGTrainer,
             "Pendulum-v0",
             ddpg.DEFAULT_CONFIG,
@@ -126,15 +128,17 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_simple_dqn(self):
-        test_explorations(dqn.SimpleQTrainer, "CartPole-v0",
-                          dqn.DEFAULT_CONFIG, np.array([0.0, 0.1, 0.0, 0.0]))
+        do_test_explorations(
+            dqn.SimpleQTrainer, "CartPole-v0",
+            dqn.DEFAULT_CONFIG, np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_dqn(self):
-        test_explorations(dqn.DQNTrainer, "CartPole-v0", dqn.DEFAULT_CONFIG,
-                          np.array([0.0, 0.1, 0.0, 0.0]))
+        do_test_explorations(
+            dqn.DQNTrainer, "CartPole-v0", dqn.DEFAULT_CONFIG,
+            np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_impala(self):
-        test_explorations(
+        do_test_explorations(
             impala.ImpalaTrainer,
             "CartPole-v0",
             impala.DEFAULT_CONFIG,
@@ -142,7 +146,7 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(0))
 
     def test_pg(self):
-        test_explorations(
+        do_test_explorations(
             pg.PGTrainer,
             "CartPole-v0",
             pg.DEFAULT_CONFIG,
@@ -150,7 +154,7 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(1))
 
     def test_ppo_discr(self):
-        test_explorations(
+        do_test_explorations(
             ppo.PPOTrainer,
             "CartPole-v0",
             ppo.DEFAULT_CONFIG,
@@ -158,7 +162,7 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(0))
 
     def test_ppo_cont(self):
-        test_explorations(
+        do_test_explorations(
             ppo.PPOTrainer,
             "Pendulum-v0",
             ppo.DEFAULT_CONFIG,
@@ -167,7 +171,7 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_sac(self):
-        test_explorations(
+        do_test_explorations(
             sac.SACTrainer,
             "Pendulum-v0",
             sac.DEFAULT_CONFIG,
@@ -175,7 +179,7 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_td3(self):
-        test_explorations(
+        do_test_explorations(
             td3.TD3Trainer,
             "Pendulum-v0",
             td3.TD3_DEFAULT_CONFIG,
