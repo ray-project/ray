@@ -128,14 +128,13 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_simple_dqn(self):
-        do_test_explorations(
-            dqn.SimpleQTrainer, "CartPole-v0",
-            dqn.DEFAULT_CONFIG, np.array([0.0, 0.1, 0.0, 0.0]))
+        do_test_explorations(dqn.SimpleQTrainer,
+                             "CartPole-v0", dqn.DEFAULT_CONFIG,
+                             np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_dqn(self):
-        do_test_explorations(
-            dqn.DQNTrainer, "CartPole-v0", dqn.DEFAULT_CONFIG,
-            np.array([0.0, 0.1, 0.0, 0.0]))
+        do_test_explorations(dqn.DQNTrainer, "CartPole-v0", dqn.DEFAULT_CONFIG,
+                             np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_impala(self):
         do_test_explorations(
