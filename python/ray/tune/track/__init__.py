@@ -6,14 +6,6 @@ logger = logging.getLogger(__name__)
 
 _session = None
 
-trial_info = None
-"""TrialInfo: TrialInfo object of the current trial.
-
-This can be accessed with ``tune.track.trial_info`` if using the Function API.
-If using the Trainable API, please see the ``Trainable`` class for
-documentation on accessing the TrialInfo there.
-"""
-
 
 def get_session():
     global _session
@@ -32,7 +24,6 @@ def init(ignore_reinit_error=True, **session_kwargs):
         >>> track.init()
     """
     global _session
-    global trial_info
 
     if _session:
         # TODO(ng): would be nice to stack crawl at creation time to report
@@ -47,7 +38,6 @@ def init(ignore_reinit_error=True, **session_kwargs):
             raise ValueError(reinit_msg)
 
     _session = TrackSession(**session_kwargs)
-    trial_info = _session.trial_info
 
 
 def shutdown():
@@ -74,7 +64,25 @@ def trial_dir():
     return _session.logdir
 
 
+def trial_name():
+    """Trial name for the corresponding trial of this Trainable.
+
+    This is not set if not using Tune.
+    """
+    _session = get_session()
+    return _session.trial_name
+
+
+def trial_id():
+    """Trial id for the corresponding trial of this Trainable.
+
+    This is not set if not using Tune.
+    """
+    _session = get_session()
+    return _session.trial_id
+
+
 __all__ = [
-    "TrackSession", "session", "log", "trial_dir", "trial_info", "init",
-    "shutdown"
+    "TrackSession", "session", "log", "trial_dir", "init", "shutdown",
+    "trial_name", "trial_id"
 ]

@@ -514,21 +514,28 @@ class Trainable:
         return os.path.join(self._logdir, "")
 
     @property
-    def trial_info(self):
-        """TrialInfo object for the corresponding trial of this Trainable.
-
-        This allows you to obtain the trial_id and trial name
-        inside the training loop. See the documentation on TrialInfo for more
-        information.
+    def trial_name(self):
+        """Trial name for the corresponding trial of this Trainable.
 
         This is not set if not using Tune.
 
         .. code-block:: python
 
-            name = self.trial_info.trial_name
-            trial_id = self.trial_info.trial_id
+            name = self.trial_name
         """
-        return self._trial_info
+        return self._trial_info.trial_name
+
+    @property
+    def trial_id(self):
+        """Trial ID for the corresponding trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            trial_id = self.trial_id
+        """
+        return self._trial_info.trial_id
 
     @property
     def iteration(self):

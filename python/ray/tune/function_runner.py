@@ -84,8 +84,14 @@ class StatusReporter:
         return self._logdir
 
     @property
-    def trial_info(self):
-        return self._trial_info
+    def trial_name(self):
+        """Trial name for the corresponding trial of this Trainable."""
+        return self._trial_info.trial_name
+
+    @property
+    def trial_id(self):
+        """Trial id for the corresponding trial of this Trainable."""
+        return self._trial_info.trial_id
 
 
 class _RunnerThread(threading.Thread):

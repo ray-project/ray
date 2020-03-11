@@ -583,10 +583,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
             def _train(self):
-                result = {
-                    "name": self.trial_info.trial_name,
-                    "trial_id": self.trial_info.trial_id
-                }
+                result = {"name": self.trial_name, "trial_id": self.trial_id}
                 print(result)
                 return result
 
@@ -597,9 +594,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testTrialInfoAccessFunction(self):
         def train(config, reporter):
-            reporter(
-                name=reporter.trial_info.trial_name,
-                trial_id=reporter.trial_info.trial_id)
+            reporter(name=reporter.trial_name, trial_id=reporter.trial_id)
 
         analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
         trial = analysis.trials[0]
@@ -608,8 +603,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         def track_train(config):
             tune.track.log(
-                name=tune.track.trial_info.trial_name,
-                trial_id=tune.track.trial_info.trial_id)
+                name=tune.track.trial_name, trial_id=tune.track.trial_id)
 
         analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
         trial = analysis.trials[0]
