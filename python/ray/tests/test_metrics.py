@@ -202,7 +202,7 @@ def test_raylet_info_endpoint(shutdown_only):
             try:
                 assert len(actor_info) == 1
                 _, parent_actor_info = actor_info.popitem()
-                assert parent_actor_info["numObjectIdsInScope"] == 11
+                assert parent_actor_info["numObjectIdsInScope"] == 13
                 assert parent_actor_info["numLocalObjects"] == 10
                 children = parent_actor_info["children"]
                 assert len(children) == 2

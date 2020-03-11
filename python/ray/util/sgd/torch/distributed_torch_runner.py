@@ -18,13 +18,15 @@ class DistributedTorchRunner(TorchRunner):
 
     Args:
         args: Arguments for TorchRunner.
-        backend (string): backend used by distributed PyTorch.
+        backend (string): Backend used by distributed PyTorch.
         kwargs: Keyword arguments for TorchRunner.
 
     """
 
     def __init__(self, *args, backend="gloo", **kwargs):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
+        if backend not in ("gloo", "nccl"):
+            raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
