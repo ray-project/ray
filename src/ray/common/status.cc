@@ -33,23 +33,23 @@
 
 namespace ray {
 
-static const std::string kStatusCodeOK = "OK";
-static const std::string kStatusCodeOutOfMemory = "Out of memory";
-static const std::string kStatusCodeKeyError = "Key error";
-static const std::string kStatusCodeTypeError = "Type error";
-static const std::string kStatusCodeInvalid = "Invalid";
-static const std::string kStatusCodeIOError = "IOError";
-static const std::string kStatusCodeObjectExists = "ObjectExists";
-static const std::string kStatusCodeObjectStoreFull = "ObjectStoreFull";
-static const std::string kStatusCodeUnknownError = "Unknown error";
-static const std::string kStatusCodeNotImplemented = "NotImplemented";
-static const std::string kStatusCodeRedisError = "RedisError";
-static const std::string kStatusCodeTimedOut = "TimedOut";
-static const std::string kStatusCodeInterrupted = "Interrupted";
-static const std::string kStatusCodeUnknown = "Unknown";
-static const std::string kStatusCodeIntentionalSystemExit = "IntentionalSystemExit";
-static const std::string kStatusCodeUnexpectedSystemExit = "UnexpectedSystemExit";
-static const std::string kStatusSeparator = ": ";
+#define STATUS_CODE_OK "OK"
+#define STATUS_CODE_OUT_OF_MEMORY "Out of memory"
+#define STATUS_CODE_KEY_ERROR "Key error"
+#define STATUS_CODE_TYPE_ERROR "Type error"
+#define STATUS_CODE_INVALID "Invalid"
+#define STATUS_CODE_IO_ERROR "IOError"
+#define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
+#define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
+#define STATUS_CODE_UNKNOWN_ERROR "Unknown error"
+#define STATUS_CODE_NOT_IMPLEMENTED "NotImplemented"
+#define STATUS_CODE_REDIS_ERROR "RedisError"
+#define STATUS_CODE_TIMED_OUT "TimedOut"
+#define STATUS_CODE_INTERRUPTED "Interrupted"
+#define STATUS_CODE_INTENTIONAL_SYSTEM_EXIT "IntentionalSystemExit"
+#define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
+#define STATUS_CODE_UNKNOWN "Unknown"
+#define STATUS_SEPARATOR ": "
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -69,43 +69,30 @@ void Status::CopyFrom(const State *state) {
 
 std::string Status::CodeAsString() const {
   if (state_ == NULL) {
-    return kStatusCodeOK;
+    return STATUS_CODE_OK;
   }
 
-  switch (code()) {
-  case StatusCode::OK:
-    return kStatusCodeOK;
-  case StatusCode::OutOfMemory:
-    return kStatusCodeOutOfMemory;
-  case StatusCode::KeyError:
-    return kStatusCodeKeyError;
-  case StatusCode::TypeError:
-    return kStatusCodeTypeError;
-  case StatusCode::Invalid:
-    return kStatusCodeInvalid;
-  case StatusCode::IOError:
-    return kStatusCodeIOError;
-  case StatusCode::ObjectExists:
-    return kStatusCodeObjectExists;
-  case StatusCode::ObjectStoreFull:
-    return kStatusCodeObjectStoreFull;
-  case StatusCode::UnknownError:
-    return kStatusCodeUnknownError;
-  case StatusCode::NotImplemented:
-    return kStatusCodeNotImplemented;
-  case StatusCode::RedisError:
-    return kStatusCodeRedisError;
-  case StatusCode::TimedOut:
-    return kStatusCodeTimedOut;
-  case StatusCode::Interrupted:
-    return kStatusCodeInterrupted;
-  case StatusCode::IntentionalSystemExit:
-    return kStatusCodeIntentionalSystemExit;
-  case StatusCode::UnexpectedSystemExit:
-    return kStatusCodeUnexpectedSystemExit;
-  default:
-    return kStatusCodeUnknown;
+  static std::map<StatusCode, std::string> code_to_str = {
+      {StatusCode::OK, STATUS_CODE_OK},
+      {StatusCode::OutOfMemory, STATUS_CODE_OUT_OF_MEMORY},
+      {StatusCode::KeyError, STATUS_CODE_KEY_ERROR},
+      {StatusCode::TypeError, STATUS_CODE_TYPE_ERROR},
+      {StatusCode::Invalid, STATUS_CODE_INVALID},
+      {StatusCode::IOError, STATUS_CODE_IO_ERROR},
+      {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
+      {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
+      {StatusCode::UnknownError, STATUS_CODE_UNKNOWN_ERROR},
+      {StatusCode::NotImplemented, STATUS_CODE_NOT_IMPLEMENTED},
+      {StatusCode::RedisError, STATUS_CODE_REDIS_ERROR},
+      {StatusCode::TimedOut, STATUS_CODE_TIMED_OUT},
+      {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
+      {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
+      {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT}};
+
+  if (!code_to_str.count(code())) {
+    return STATUS_CODE_UNKNOWN;
   }
+  return code_to_str[code()];
 }
 
 std::string Status::ToString() const {
@@ -113,35 +100,35 @@ std::string Status::ToString() const {
   if (state_ == NULL) {
     return result;
   }
-  result += kStatusSeparator;
+  result += STATUS_SEPARATOR;
   result += state_->msg;
   return result;
 }
 
 Status Status::FromString(const std::string &value) {
   static std::map<std::string, StatusCode> str_to_code = {
-      {kStatusCodeOK, StatusCode::OK},
-      {kStatusCodeOutOfMemory, StatusCode::OutOfMemory},
-      {kStatusCodeKeyError, StatusCode::KeyError},
-      {kStatusCodeTypeError, StatusCode::TypeError},
-      {kStatusCodeInvalid, StatusCode::Invalid},
-      {kStatusCodeIOError, StatusCode::IOError},
-      {kStatusCodeObjectExists, StatusCode::ObjectExists},
-      {kStatusCodeObjectStoreFull, StatusCode::ObjectStoreFull},
-      {kStatusCodeUnknownError, StatusCode::UnknownError},
-      {kStatusCodeNotImplemented, StatusCode::NotImplemented},
-      {kStatusCodeRedisError, StatusCode::RedisError},
-      {kStatusCodeTimedOut, StatusCode::TimedOut},
-      {kStatusCodeInterrupted, StatusCode::Interrupted},
-      {kStatusCodeIntentionalSystemExit, StatusCode::IntentionalSystemExit},
-      {kStatusCodeUnexpectedSystemExit, StatusCode::UnexpectedSystemExit}};
+      {STATUS_CODE_OK, StatusCode::OK},
+      {STATUS_CODE_OUT_OF_MEMORY, StatusCode::OutOfMemory},
+      {STATUS_CODE_KEY_ERROR, StatusCode::KeyError},
+      {STATUS_CODE_TYPE_ERROR, StatusCode::TypeError},
+      {STATUS_CODE_INVALID, StatusCode::Invalid},
+      {STATUS_CODE_IO_ERROR, StatusCode::IOError},
+      {STATUS_CODE_OBJECT_EXISTS, StatusCode::ObjectExists},
+      {STATUS_CODE_OBJECT_STORE_FULL, StatusCode::ObjectStoreFull},
+      {STATUS_CODE_UNKNOWN_ERROR, StatusCode::UnknownError},
+      {STATUS_CODE_NOT_IMPLEMENTED, StatusCode::NotImplemented},
+      {STATUS_CODE_REDIS_ERROR, StatusCode::RedisError},
+      {STATUS_CODE_TIMED_OUT, StatusCode::TimedOut},
+      {STATUS_CODE_INTERRUPTED, StatusCode::Interrupted},
+      {STATUS_CODE_INTENTIONAL_SYSTEM_EXIT, StatusCode::IntentionalSystemExit},
+      {STATUS_CODE_UNEXPECTED_SYSTEM_EXIT, StatusCode::UnexpectedSystemExit}};
 
-  size_t pos = value.find(kStatusSeparator);
+  size_t pos = value.find(STATUS_SEPARATOR);
   if (pos != std::string::npos) {
     std::string code_str = value.substr(0, pos);
     RAY_CHECK(str_to_code.count(code_str));
     StatusCode code = str_to_code[code_str];
-    return Status(code, value.substr(pos + kStatusSeparator.size()));
+    return Status(code, value.substr(pos + strlen(STATUS_SEPARATOR)));
   } else {
     // Status ok does not include ":".
     return Status();
