@@ -96,13 +96,13 @@ def test_log_likelihood(run,
         else:
             for a in [0, 1, 2, 3]:
                 count = actions.count(a)
-                expected_logp = np.log(count / num_actions)
+                expected_prob = count / num_actions
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
                     preprocessed_obs_batch,
                     prev_action_batch=np.array([prev_a]),
                     prev_reward_batch=np.array([prev_r]))
-                check(logp, expected_logp, rtol=0.3)
+                check(np.exp(logp), expected_prob, atol=0.2)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):
