@@ -160,7 +160,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  auto status = core_worker->KillActor(JavaByteArrayToId<ActorID>(env, actorId));
+  auto status = core_worker->KillActor(JavaByteArrayToId<ActorID>(env, actorId),
+                                       /*force_kill=*/true);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 

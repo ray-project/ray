@@ -48,11 +48,16 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    task_deps.push_back(actor_creation_return_id);
+  }
   reference_counter_->UpdateSubmittedTaskReferences(task_deps);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  if (spec.IsActorTask()) {
     num_returns--;
   }
   for (size_t i = 0; i < num_returns; i++) {
@@ -224,6 +229,11 @@ void TaskManager::RemoveFinishedTaskReferences(
       plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
                                  inlined_ids.end());
     }
+  }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    plasma_dependencies.push_back(actor_creation_return_id);
   }
 
   std::vector<ObjectID> deleted;

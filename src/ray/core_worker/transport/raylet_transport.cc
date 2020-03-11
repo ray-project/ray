@@ -20,11 +20,8 @@ namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     const WorkerID &worker_id, std::shared_ptr<raylet::RayletClient> &raylet_client,
-    const TaskHandler &task_handler, const std::function<void(bool)> &exit_handler)
-    : worker_id_(worker_id),
-      raylet_client_(raylet_client),
-      task_handler_(task_handler),
-      exit_handler_(exit_handler) {}
+    const TaskHandler &task_handler)
+    : worker_id_(worker_id), raylet_client_(raylet_client), task_handler_(task_handler) {}
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
@@ -66,7 +63,6 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   // transport.
   auto status = task_handler_(task_spec, resource_ids, &results, &borrower_refs);
   if (status.IsSystemExit()) {
-    exit_handler_(status.IsIntentionalSystemExit());
     return;
   }
 
