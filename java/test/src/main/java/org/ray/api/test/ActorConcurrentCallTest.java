@@ -15,7 +15,6 @@ import org.testng.annotations.Test;
 @Test
 public class ActorConcurrentCallTest extends BaseTest {
 
-  @RayRemote
   public static class ConcurrentActor {
     private final CountDownLatch countDownLatch = new CountDownLatch(3);
 
@@ -35,9 +34,9 @@ public class ActorConcurrentCallTest extends BaseTest {
         .setMaxConcurrency(3)
         .createActorCreationOptions();
     RayActor<ConcurrentActor> actor = Ray.createActor(ConcurrentActor::new, op);
-    RayObject<String> obj1 = Ray.call(ConcurrentActor::countDown, actor);
-    RayObject<String> obj2 = Ray.call(ConcurrentActor::countDown, actor);
-    RayObject<String> obj3 = Ray.call(ConcurrentActor::countDown, actor);
+    RayObject<String> obj1 = actor.call(ConcurrentActor::countDown);
+    RayObject<String> obj2 = actor.call(ConcurrentActor::countDown);
+    RayObject<String> obj3 = actor.call(ConcurrentActor::countDown);
 
     List<Integer> expectedResult = ImmutableList.of(1, 2, 3);
     Assert.assertEquals(obj1.get(), "ok");

@@ -10,8 +10,8 @@ import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -19,7 +19,6 @@ import org.testng.annotations.Test;
 @Test
 public class ActorTest extends BaseTest {
 
-  @RayRemote
   public static class Counter {
 
     private int value;
@@ -50,13 +49,13 @@ public class ActorTest extends BaseTest {
   public void testCreateAndCallActor() {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
-    Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    Assert.assertNotEquals(actor.getId(), ActorId.NIL);
     // A java actor is not a python actor
     Assert.assertFalse(actor instanceof RayPyActor);
     // Test calling an actor
-    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
-    Ray.call(Counter::increase, actor, 1);
-    Assert.assertEquals(Integer.valueOf(3), Ray.call(Counter::increaseAndGet, actor, 1).get());
+    Assert.assertEquals(Integer.valueOf(1), actor.call(Counter::getValue).get());
+    actor.call(Counter::increase, 1);
+    Assert.assertEquals(Integer.valueOf(3), actor.call(Counter::increaseAndGet, 1).get());
   }
 
   /**
@@ -71,7 +70,7 @@ public class ActorTest extends BaseTest {
    */
   public void testGetDirectObjectTwice() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
-    RayObject<Integer> result = Ray.call(Counter::getValue, actor);
+    RayObject<Integer> result = actor.call(Counter::getValue);
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
@@ -82,10 +81,9 @@ public class ActorTest extends BaseTest {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     LargeObject largeObject = new LargeObject();
     Assert.assertEquals(Integer.valueOf(largeObject.data.length + 1),
-        Ray.call(Counter::accessLargeObject, actor, largeObject).get());
+        actor.call(Counter::accessLargeObject, largeObject).get());
   }
 
-  @RayRemote
   static Counter factory(int initValue) {
     return new Counter(initValue);
   }
@@ -95,24 +93,21 @@ public class ActorTest extends BaseTest {
     RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     // Test calling an actor
-    Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
+    Assert.assertEquals(Integer.valueOf(1), actor.call(Counter::getValue).get());
   }
 
-  @RayRemote
   static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
-    RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor, delta);
+    RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
-  @RayRemote
   static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
-    RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor, delta);
+    RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
-  @RayRemote
   static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
-    RayObject<Integer> res = Ray.call(Counter::increaseAndGet, actor.get(0), delta);
+    RayObject<Integer> res = actor.get(0).call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
@@ -135,7 +130,7 @@ public class ActorTest extends BaseTest {
     // The UnreconstructableException is created by raylet.
     RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     // Call an actor method.
-    RayObject value = Ray.call(Counter::getValue, counter);
+    RayObject value = counter.call(Counter::getValue);
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);

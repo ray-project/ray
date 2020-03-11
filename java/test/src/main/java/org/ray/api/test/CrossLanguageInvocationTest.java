@@ -114,7 +114,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     return (byte[])res.get();
   }
 
-  @RayRemote  // Python can create java actors without @RayRemote
   public static class TestActor {
     public TestActor(byte[] v) {
       value = v;

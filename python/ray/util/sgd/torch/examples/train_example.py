@@ -1,5 +1,4 @@
-"""
-This file holds code for a Training guide for PytorchSGD in the documentation.
+"""Example code for RaySGD Torch in the documentation.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
@@ -13,7 +12,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ray.util.sgd import PyTorchTrainer
+from ray.util.sgd import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -44,7 +43,7 @@ def optimizer_creator(model, config):
 def scheduler_creator(optimizer, config):
     """Returns a learning rate scheduler wrapping the optimizer.
 
-    You will need to set ``PyTorchTrainer(scheduler_step_freq="epoch")``
+    You will need to set ``TorchTrainer(scheduler_step_freq="epoch")``
     for the scheduler to be incremented correctly.
 
     If using a scheduler for validation loss, be sure to call
@@ -55,20 +54,32 @@ def scheduler_creator(optimizer, config):
 
 def data_creator(config):
     """Returns training dataloader, validation dataloader."""
-    return LinearDataset(2, 5),  LinearDataset(2, 5, size=400)
+    train_dataset = LinearDataset(2, 5, size=config.get("data_size", 1000))
+    val_dataset = LinearDataset(2, 5, size=config.get("val_size", 400))
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=config.get("batch_size", 32),
+    )
+    validation_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=config.get("batch_size", 32))
+    return train_loader, validation_loader
 
 
-def train_example(num_replicas=1, use_gpu=False):
-    trainer1 = PyTorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+def train_example(num_workers=1, use_gpu=False):
+    trainer1 = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         scheduler_creator=scheduler_creator,
-        num_replicas=num_replicas,
+        num_workers=num_workers,
         use_gpu=use_gpu,
-        batch_size=num_replicas * 4,
-        config={"lr": 1e-2, "hidden_size": 1},
+        config={
+            "lr": 1e-2,  # used in optimizer_creator
+            "hidden_size": 1,  # used in model_creator
+            "batch_size": 4,  # used in data_creator
+        },
         backend="gloo",
         scheduler_step_freq="epoch")
     for i in range(5):
@@ -91,11 +102,11 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Ray")
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=1,
-        help="Sets number of replicas for training.")
+        help="Sets number of workers for training.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
@@ -109,4 +120,4 @@ if __name__ == "__main__":
     import ray
 
     ray.init(address=args.address)
-    train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    train_example(num_workers=args.num_workers, use_gpu=args.use_gpu)

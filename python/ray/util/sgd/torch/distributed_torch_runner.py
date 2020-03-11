@@ -1,30 +1,30 @@
 import collections
-from filelock import FileLock
 import logging
-import os
+import torch
 import torch.nn as nn
 import torch.distributed as dist
-import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel
+from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
-from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.util.sgd.torch.torch_runner import TorchRunner
 
 logger = logging.getLogger(__name__)
 
 
-class DistributedPyTorchRunner(PyTorchRunner):
+class DistributedTorchRunner(TorchRunner):
     """Manages a distributed PyTorch model replica.
 
 
     Args:
-        args: Arguments for PyTorchRunner.
+        args: Arguments for TorchRunner.
         backend (string): backend used by distributed PyTorch.
-        kwargs: Keyword arguments for PyTorchRunner.
+        kwargs: Keyword arguments for TorchRunner.
 
     """
 
     def __init__(self, *args, backend="gloo", **kwargs):
-        super(DistributedPyTorchRunner, self).__init__(*args, **kwargs)
+        super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
@@ -39,17 +39,15 @@ class DistributedPyTorchRunner(PyTorchRunner):
         self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
-        with self._timers["setup_proc"]:
-            self.world_rank = world_rank
-            logger.debug(
-                "Connecting to {} world_rank: {} world_size: {}".format(
-                    url, world_rank, world_size))
-            logger.debug("using {}".format(self.backend))
-            dist.init_process_group(
-                backend=self.backend,
-                init_method=url,
-                rank=world_rank,
-                world_size=world_size)
+        self.world_rank = world_rank
+        logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
+            url, world_rank, world_size))
+        logger.debug("using {}".format(self.backend))
+        dist.init_process_group(
+            backend=self.backend,
+            init_method=url,
+            rank=world_rank,
+            world_size=world_size)
 
     def _setup_training(self):
         logger.debug("Creating model")
@@ -68,42 +66,56 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.optimizers = [self.optimizers]
 
         self._create_schedulers_if_available()
-
         self._try_setup_apex()
-
         # This needs to happen after apex
         self.models = [DistributedDataParallel(model) for model in self.models]
 
-        logger.debug("Creating loss.")
         self._create_loss()
+        self._initialize_dataloaders()
 
-        logger.debug("Creating dataset.")
-        with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            datasets = self.data_creator(self.config)
-            train_set, val_set = self._validate_datasets(datasets)
+        self.training_operator = self.training_operator_cls(
+            self.config,
+            models=self.models,
+            optimizers=self.optimizers,
+            criterion=self.criterion,
+            schedulers=self.schedulers,
+            use_fp16=self.use_fp16)
 
-        train_loader_config = self.dataloader_config.copy()
-        train_loader_config.update(
-            sampler=torch.utils.data.distributed.DistributedSampler(train_set),
-            shuffle=False)
+    def _initialize_dataloaders(self):
+        super(DistributedTorchRunner, self)._initialize_dataloaders()
 
-        self.train_loader = torch.utils.data.DataLoader(
-            train_set, batch_size=self.batch_size, **train_loader_config)
+        def with_sampler(loader):
+            # Automatically set the DistributedSampler
+            data_loader_args = {
+                "dataset": loader.dataset,
+                "batch_size": loader.batch_size,
+                "shuffle": False,
+                "num_workers": loader.num_workers,
+                "collate_fn": loader.collate_fn,
+                "pin_memory": loader.pin_memory,
+                "drop_last": loader.drop_last,
+                "timeout": loader.timeout,
+                "worker_init_fn": loader.worker_init_fn,
+                "sampler": DistributedSampler(loader.dataset)
+            }
+            return DataLoader(**data_loader_args)
 
-        self.validation_loader = None
-        if val_set:
-            self.validation_loader = torch.utils.data.DataLoader(
-                val_set, batch_size=self.batch_size, **self.dataloader_config)
+        if isinstance(self.train_loader, DataLoader):
+            self.train_loader = with_sampler(self.train_loader)
 
-    def step(self):
+        if self.validation_loader and isinstance(self.validation_loader,
+                                                 DataLoader):
+            self.validation_loader = with_sampler(self.validation_loader)
+
+    def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        logger.debug("Starting step")
-        if hasattr(self.train_loader.sampler, "set_epoch"):
-            self.train_loader.sampler.set_epoch(self.epoch)
-        return super(DistributedPyTorchRunner, self).step()
+        if hasattr(self.train_loader, "sampler") and hasattr(
+                self.train_loader.sampler, "set_epoch"):
+            self.train_loader.sampler.set_epoch(self.epochs)
+        return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
     def _get_model_state_dicts(self):
         """Fetch state from ``model.module`` instead of ``model``.
@@ -125,7 +137,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
     # def shutdown(self):
         """Attempts to shut down the worker."""
-        # super(DistributedPyTorchRunner, self).shutdown()
+        # super(DistributedTorchRunner, self).shutdown()
         # TODO: Temporarily removing since it causes hangs on MacOSX.
         # However, it seems to be harmless to remove permanently
         # since the processes are shutdown anyways. This comment can be

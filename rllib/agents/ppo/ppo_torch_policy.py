@@ -67,9 +67,15 @@ class PPOLoss:
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
+        if valid_mask is not None:
 
-        def reduce_mean_valid(t):
-            return torch.mean(t * valid_mask)
+            def reduce_mean_valid(t):
+                return torch.mean(t * valid_mask)
+
+        else:
+
+            def reduce_mean_valid(t):
+                return torch.mean(t)
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -109,13 +115,11 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
+    mask = None
     if state:
         max_seq_len = torch.max(train_batch["seq_lens"])
         mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = torch.reshape(mask, [-1])
-    else:
-        mask = torch.ones_like(
-            train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
 
     policy.loss_obj = PPOLoss(
         dist_class,
