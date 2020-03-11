@@ -143,7 +143,7 @@ def get_address_info_from_redis_helper(redis_address,
 
     client_table = ray.state._parse_client_table(redis_client)
     if len(client_table) == 0:
-        raise Exception(
+        raise RuntimeError(
             "Redis has started but no raylets have registered yet.")
 
     relevant_client = None
@@ -155,7 +155,7 @@ def get_address_info_from_redis_helper(redis_address,
             relevant_client = client_info
             break
     if relevant_client is None:
-        raise Exception(
+        raise RuntimeError(
             "Redis has started but no raylets have registered yet.")
 
     return {
@@ -207,8 +207,8 @@ def remaining_processes_alive():
             ray.init().
     """
     if ray.worker._global_node is None:
-        raise Exception("This process is not in a position to determine "
-                        "whether all processes are alive or not.")
+        raise RuntimeError("This process is not in a position to determine "
+                           "whether all processes are alive or not.")
     return ray.worker._global_node.remaining_processes_alive()
 
 
@@ -330,6 +330,7 @@ def create_redis_client(redis_address, password=None):
 
 def start_ray_process(command,
                       process_type,
+                      fate_share,
                       env_updates=None,
                       cwd=None,
                       use_valgrind=False,
@@ -339,8 +340,7 @@ def start_ray_process(command,
                       use_tmux=False,
                       stdout_file=None,
                       stderr_file=None,
-                      pipe_stdin=False,
-                      fate_share=None):
+                      pipe_stdin=False):
     """Start one of the Ray processes.
 
     TODO(rkn): We need to figure out how these commands interact. For example,
@@ -352,6 +352,8 @@ def start_ray_process(command,
         command (List[str]): The command to use to start the Ray process.
         process_type (str): The type of the process that is being started
             (e.g., "raylet").
+        fate_share: If true, the child will be killed if its parent (us) dies.
+            True must only be passed after detection of this functionality.
         env_updates (dict): A dictionary of additional environment variables to
             run the command with (in addition to the caller's environment
             variables).
@@ -369,8 +371,6 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
-        fate_share: If true, the child will be killed if its parent (us) dies.
-            Note that this functionality must be supported, or it is an error.
 
     Returns:
         Information about the process that was started including a handle to
@@ -452,8 +452,6 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
-    if fate_share is None:
-        logger.warning("fate_share= should be passed to start_ray_process()")
     if fate_share:
         assert ray.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
@@ -526,9 +524,9 @@ def wait_for_redis_to_start(redis_ip_address,
         else:
             break
     if counter == num_retries:
-        raise Exception("Unable to connect to Redis. If the Redis instance is "
-                        "on a different machine, check that your firewall is "
-                        "configured properly.")
+        raise RuntimeError("Unable to connect to Redis. If the Redis instance "
+                           "is on a different machine, check that your "
+                           "firewall is configured properly.")
 
 
 def _compute_version_info():
@@ -586,7 +584,7 @@ def check_version_info(redis_client):
                          "    Ray: " + version_info[0] + "\n"
                          "    Python: " + version_info[1] + "\n")
         if version_info[:2] != true_version_info[:2]:
-            raise Exception(error_message)
+            raise RuntimeError(error_message)
         else:
             logger.warning(error_message)
 
@@ -682,8 +680,8 @@ def start_redis(node_ip_address,
     if redis_shard_ports is None:
         redis_shard_ports = num_redis_shards * [None]
     elif len(redis_shard_ports) != num_redis_shards:
-        raise Exception("The number of Redis shard ports does not match the "
-                        "number of Redis shards.")
+        raise RuntimeError("The number of Redis shard ports does not match "
+                           "the number of Redis shards.")
 
     processes = []
 
@@ -693,10 +691,10 @@ def start_redis(node_ip_address,
         if password is not None:
             # TODO(pschafhalter) remove this once credis supports
             # authenticating Redis ports
-            raise Exception("Setting the `redis_password` argument is not "
-                            "supported in credis. To run Ray with "
-                            "password-protected Redis ports, ensure that "
-                            "the environment variable `RAY_USE_NEW_GCS=off`.")
+            raise ValueError("Setting the `redis_password` argument is not "
+                             "supported in credis. To run Ray with "
+                             "password-protected Redis ports, ensure that "
+                             "the environment variable `RAY_USE_NEW_GCS=off`.")
         assert num_redis_shards == 1, (
             "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
             "supports 1-node chain for that shard only.")
@@ -909,8 +907,9 @@ def _start_redis_instance(executable,
         port = new_port()
         counter += 1
     if counter == num_retries:
-        raise Exception("Couldn't start Redis. Check log files: {} {}".format(
-            stdout_file.name, stderr_file.name))
+        raise RuntimeError("Couldn't start Redis. "
+                           "Check log files: {} {}".format(
+                               stdout_file.name, stderr_file.name))
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(
@@ -1227,7 +1226,7 @@ def start_raylet(redis_address,
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
 
     if use_valgrind and use_profiler:
-        raise Exception("Cannot use valgrind and profiler at the same time.")
+        raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     assert resource_spec.resolved()
     num_initial_workers = resource_spec.num_cpus
@@ -1321,9 +1320,9 @@ def get_ray_jars_dir():
     current_dir = os.path.abspath(os.path.dirname(__file__))
     jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
     if not os.path.exists(jars_dir):
-        raise Exception("Ray jars is not packaged into ray. "
-                        "Please build ray with java enabled "
-                        "(set env var RAY_INSTALL_JAVA=1)")
+        raise RuntimeError("Ray jars is not packaged into ray. "
+                           "Please build ray with java enabled "
+                           "(set env var RAY_INSTALL_JAVA=1)")
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
@@ -1446,7 +1445,7 @@ def determine_plasma_store_config(object_store_memory,
 
         # Do some sanity checks.
         if object_store_memory > system_memory:
-            raise Exception(
+            raise ValueError(
                 "The requested object store memory size is greater "
                 "than the total available memory.")
     else:
@@ -1455,7 +1454,7 @@ def determine_plasma_store_config(object_store_memory,
                        "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
-        raise Exception(
+        raise ValueError(
             "The file {} does not exist or is not a directory.".format(
                 plasma_directory))
 
@@ -1496,16 +1495,16 @@ def _start_plasma_store(plasma_store_memory,
             plasma store process.
     """
     if use_valgrind and use_profiler:
-        raise Exception("Cannot use valgrind and profiler at the same time.")
+        raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     if huge_pages and not (sys.platform == "linux"
                            or sys.platform == "linux2"):
-        raise Exception("The huge_pages argument is only supported on "
-                        "Linux.")
+        raise ValueError("The huge_pages argument is only supported on "
+                         "Linux.")
 
     if huge_pages and plasma_directory is None:
-        raise Exception("If huge_pages is True, then the "
-                        "plasma_directory argument must be provided.")
+        raise ValueError("If huge_pages is True, then the "
+                         "plasma_directory argument must be provided.")
 
     if not isinstance(plasma_store_memory, int):
         plasma_store_memory = int(plasma_store_memory)

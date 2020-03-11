@@ -525,6 +525,53 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
 
     stats = trainer.train()
 
+Benchmarks
+----------
+
+RaySGD TorchTrainer provides comparable or better performance than other existing solutions for parallel or distributed training.
+
+**Multi-GPU (Single Node) benchmarks**:
+
+
+.. code-block:: bash
+
+    # Images per second for ResNet50
+    # Batch size per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3dn.24xlarge instance.
+
+
+    Number   DataParallel  Ray (PyTorch)  DataParallel  Ray (PyTorch)
+    of GPUs                               + Apex        + Apex
+    =======  ============  =============  ============  ==============
+    1        355.5         356            776           770
+    2        656           701            1303          1346
+    4        1289          1401           2606          2695
+    8        2521          2795           4795          5862
+
+**Multi-node benchmarks**:
+
+.. code-block:: bash
+
+    # Images per second for ResNet50
+    # Batch size per worker = 128
+    # GPU Type = V100
+    # Run on AWS us-east-1c, p3dn.24xlarge instances.
+
+    Number   Horovod  Ray (PyTorch)  Horovod  Ray (PyTorch)
+    of GPUs                          + Apex   + Apex
+    =======  =======  =============  =======  ==============
+    1 * 8    2769.7   2962.7         5143     6172
+    2 * 8    5492.2   5886.1         9463     10052.8
+    4 * 8    10733.4  11705.9        18807    20319.5
+    8 * 8    21872.5  23317.9        36911.8  38642
+
+
+
+You can see more details in the `benchmarking README <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/benchmarks/README.rst>`_.
+
+DISCLAIMER: RaySGD does not provide any custom communication primitives. If you see any performance issues, you may need to file them on the PyTorch github repository.
+
 
 Feature Requests
 ----------------

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/core_worker.h"
 
 #include <boost/asio.hpp>
@@ -618,9 +632,10 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      /*is_detached*/ false,
                                      /*is_asyncio*/ false};
   const auto job_id = NextJobId();
-  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), job_id,
-                           ObjectID::FromRandom(), function.GetLanguage(), true,
-                           function.GetFunctionDescriptor(), "");
+  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+                           TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                           function.GetLanguage(), true, function.GetFunctionDescriptor(),
+                           "");
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -734,8 +749,9 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(ZeroNodeTest, TestActorHandle) {
   // Test actor handle serialization and deserialization round trip.
   JobID job_id = NextJobId();
-  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), job_id,
-                       ObjectID::FromRandom(), Language::PYTHON, /*is_direct_call=*/false,
+  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
+                       TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                       Language::PYTHON, /*is_direct_call=*/false,
                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "");
   std::string output;
   original.Serialize(&output);
