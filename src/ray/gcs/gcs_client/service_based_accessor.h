@@ -99,6 +99,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   ActorSubscriptionExecutor actor_sub_executor_;
 
   Sequencer<ActorID> sequencer_;
+
+  std::unordered_map<ActorID, std::shared_ptr<ActorTableData>> actor_map_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor
