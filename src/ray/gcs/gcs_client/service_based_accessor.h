@@ -90,6 +90,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
  private:
+  void FilterSubscribedData(const rpc::ActorTableData &actor_table_data,
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe);
+
   ServiceBasedGcsClient *client_impl_;
 
   ClientID subscribe_id_;
@@ -168,6 +171,9 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
  private:
+  void FilterSubscribedData(const rpc::GcsNodeInfo &node_info,
+                            const SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe);
+
   ServiceBasedGcsClient *client_impl_;
 
   typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
@@ -186,6 +192,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   ClientID local_node_id_;
 
   Sequencer<ClientID> sequencer_;
+
+  std::unordered_map<ClientID, std::shared_ptr<GcsNodeInfo>> node_map_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor

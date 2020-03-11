@@ -208,6 +208,8 @@ message GcsNodeInfo {
 
   // The Hostname address of the node manager.
   string node_manager_hostname = 8;
+  // The UNIX timestamp corresponding to this event (node added or removed).
+  int64 timestamp = 9;
 }
 
 message HeartbeatTableData {
