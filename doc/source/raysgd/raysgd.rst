@@ -24,13 +24,16 @@ You can start a ``TorchTrainer`` with the following:
 
 .. code-block:: python
 
-    import torch
+    import ray
     from ray.util.sgd import TorchTrainer
-    from ray.util.sgd.examples.train_example import LinearDataset
+    from ray.util.sgd.torch.examples.train_example import LinearDataset
+
+    import torch
+    from torch.utils.data import DataLoader
 
 
     def model_creator(config):
-        return nn.Linear(1, 1)
+        return torch.nn.Linear(1, 1)
 
 
     def optimizer_creator(model, config):
@@ -46,12 +49,12 @@ You can start a ``TorchTrainer`` with the following:
     ray.init()
 
     trainer1 = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
         loss_creator=torch.nn.MSELoss,
-        num_replicas=2,
-        use_gpu=True,
+        num_workers=2,
+        use_gpu=False,
         config={"batch_size": 64})
 
     stats = trainer1.train()
