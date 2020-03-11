@@ -70,7 +70,8 @@ class SyncReplayOptimizer(PolicyOptimizer):
             endpoints=[(0, prioritized_replay_beta),
                        (prioritized_replay_beta_annealing_timesteps,
                         final_prioritized_replay_beta)],
-            outside_value=final_prioritized_replay_beta)
+            outside_value=final_prioritized_replay_beta,
+            framework=None)
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
         self.before_learn_on_batch = before_learn_on_batch

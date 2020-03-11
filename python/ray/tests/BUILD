@@ -345,14 +345,6 @@ py_test(
 )
 
 py_test(
-    name = "test_signal",
-    size = "medium",
-    srcs = ["test_signal.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_tempfile",
     size = "small",
     srcs = ["test_tempfile.py"],
@@ -396,6 +388,14 @@ py_test(
     name = "test_asyncio",
     size = "small",
     srcs = ["test_asyncio.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_numba",
+    size = "small",
+    srcs = ["test_numba.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

@@ -5,7 +5,7 @@ from tensorflow.python.eager.context import eager_mode
 import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
-    SquashedGaussian
+    SquashedGaussian, GumbelSoftmax
 from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical
 from ray.rllib.utils import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, softmax
@@ -50,7 +50,6 @@ class TestDistributions(unittest.TestCase):
             shape=(num_sub_distributions, batch_size),
             dtype=np.int32)
 
-        # The Component to test.
         inputs = inputs_space.sample()
         input_lengths = [num_categories] * num_sub_distributions
         inputs_split = np.split(inputs, num_sub_distributions, axis=1)
@@ -58,6 +57,7 @@ class TestDistributions(unittest.TestCase):
         for fw in ["tf", "eager", "torch"]:
             print("framework={}".format(fw))
 
+            # Create the correct distribution object.
             cls = MultiCategorical if fw != "torch" else TorchMultiCategorical
             multi_categorical = cls(inputs, None, input_lengths)
 
@@ -168,6 +168,30 @@ class TestDistributions(unittest.TestCase):
 
             out = squashed_distribution.logp(values)
             check(out, log_prob)
+
+    def test_gumbel_softmax(self):
+        """Tests the GumbelSoftmax ActionDistribution (tf-eager only)."""
+        with eager_mode():
+            batch_size = 1000
+            num_categories = 5
+            input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))
+
+            # Batch of size=n and deterministic.
+            inputs = input_space.sample()
+            gumbel_softmax = GumbelSoftmax(inputs, {}, temperature=1.0)
+
+            expected = softmax(inputs)
+            # Sample n times, expect always mean value (deterministic draw).
+            out = gumbel_softmax.deterministic_sample()
+            check(out, expected)
+
+            # Batch of size=n and non-deterministic -> expect roughly that
+            # the max-likelihood (argmax) ints are output (most of the time).
+            inputs = input_space.sample()
+            gumbel_softmax = GumbelSoftmax(inputs, {}, temperature=1.0)
+            expected_mean = np.mean(np.argmax(inputs, -1)).astype(np.float32)
+            outs = gumbel_softmax.sample()
+            check(np.mean(np.argmax(outs, -1)), expected_mean, rtol=0.08)
 
 
 if __name__ == "__main__":

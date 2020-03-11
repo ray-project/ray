@@ -329,11 +329,12 @@ def test_incorrect_method_calls(ray_start_regular):
 
 
 def test_worker_raising_exception(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_calls=2)
     def f():
         # This is the only reasonable variable we can set here that makes the
         # execute_task function fail after the task got executed.
-        ray.experimental.signal.reset = None
+        worker = ray.worker.global_worker
+        worker.function_actor_manager.increase_task_counter = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.
@@ -1100,23 +1101,21 @@ def test_fate_sharing(ray_start_cluster):
         pid = ray.get(a.get_pid.remote())
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(
-            lambda: not child_resource_available(), timeout_ms=10000)
+        assert wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         os.kill(pid, 9)
-        assert wait_for_condition(child_resource_available, timeout_ms=10000)
+        assert wait_for_condition(child_resource_available)
 
     # Test fate sharing if the parent node dies.
     def test_node_failure(node_to_kill, use_actors):
         a = Actor.options(resources={"parent": 1}).remote()
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(
-            lambda: not child_resource_available(), timeout_ms=10000)
+        assert wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
-        assert wait_for_condition(child_resource_available, timeout_ms=10000)
+        assert wait_for_condition(child_resource_available)
         return node_to_kill
 
     test_process_failure(use_actors=True)

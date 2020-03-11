@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/core_worker.h"
 
 #include "boost/fiber/all.hpp"
@@ -967,10 +981,8 @@ Status CoreWorker::AllocateReturnObjects(
         object_already_exists = !data_buffer;
       }
     }
-    // Leave the return object as a nullptr if there is no data or metadata.
-    // This allows the caller to prevent the core worker from storing an output
-    // (e.g., to support ray.experimental.no_return.NoReturn).
-    if (!object_already_exists && (data_buffer || metadatas[i])) {
+    // Leave the return object as a nullptr if the object already exists.
+    if (!object_already_exists) {
       return_objects->at(i) =
           std::make_shared<RayObject>(data_buffer, metadatas[i], contained_object_ids[i]);
     }

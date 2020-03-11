@@ -10,7 +10,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object
+from ray.test_utils import SignalActor, put_object, wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -166,17 +166,22 @@ def test_pass_returned_object_id(one_worker_100MiB, use_ray_put, failure):
     # Remove the local reference to the returned ID.
     del outer_oid
 
-    # Check that the inner ID is pinned by the remote task ID.
-    _fill_object_store_and_get(inner_oid_binary)
-
-    # Check that the task finishing unpins the object.
+    # Check that the inner ID is pinned by the remote task ID and finishing
+    # the task unpins the object.
     ray.get(signal.send.remote())
     try:
+        # Should succeed because inner_oid is pinned if no failure.
         ray.get(pending_oid)
         assert not failure
     except ray.exceptions.RayWorkerError:
         assert failure
-    _fill_object_store_and_get(inner_oid_binary, succeed=False)
+
+    def ref_not_exists():
+        worker = ray.worker.global_worker
+        inner_oid = ray.ObjectID(inner_oid_binary)
+        return not worker.core_worker.object_exists(inner_oid)
+
+    assert wait_for_condition(ref_not_exists)
 
 
 # Call a recursive chain of tasks that pass a serialized reference that was
