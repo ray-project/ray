@@ -20,9 +20,11 @@ func DefaultServiceConfig(instance rayiov1alpha1.RayCluster, podName string) *Se
 	}
 }
 
-// Build service for pod, for now only head pod will have service.
+// Build the service for a pod. Currently, there is only one service that allows
+// the worker nodes to connect to the head node.
 func ServiceForPod(conf *ServiceConfig) *corev1.Service {
 	name := conf.PodName
+	// Format the service name as "<cluster_name>-head."
 	if strings.Contains(conf.PodName, Head) {
 		name = utils.Before(conf.PodName, Head) + "head"
 	}
@@ -33,8 +35,11 @@ func ServiceForPod(conf *ServiceConfig) *corev1.Service {
 			Namespace: conf.RayCluster.Namespace,
 		},
 		Spec: corev1.ServiceSpec{
-			ClusterIP: "None",
-			// select this raycluster's component
+			Ports: []corev1.ServicePort{{Name: "redis", Port: int32(defaultRedisPort)}},
+			// TODO(edoakes): ClusterIPNone (headless service) should work but I wasn't
+			// able to get the environment variables for service discovery to work.
+			// ClusterIP: corev1.ClusterIPNone,
+			// This selector must match the label of the head node.
 			Selector: map[string]string{
 				rayclusterComponent: conf.PodName,
 			},

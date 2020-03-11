@@ -117,7 +117,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
         CRayStatus KillActor(
-            const CActorID &actor_id, c_bool no_reconstruction)
+            const CActorID &actor_id, c_bool force_kill,
+            c_bool no_reconstruction)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -135,9 +136,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetWebuiDisplay(const c_string &key, const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
-        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
+        void RemoveActorHandleReference(const CActorID &actor_id)
+        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
+                                                   CObjectID &outer_object_id)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
-                                        *bytes)
+                                        *bytes,
+                                        CObjectID *c_actor_handle_id)
         CRayStatus GetActorHandle(const CActorID &actor_id,
                                   CActorHandle **actor_handle) const
         void AddLocalReference(const CObjectID &object_id)

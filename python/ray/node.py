@@ -252,10 +252,6 @@ class Node:
         return self._ray_params.load_code_from_local
 
     @property
-    def use_pickle(self):
-        return self._ray_params.use_pickle
-
-    @property
     def object_id_seed(self):
         """Get the seed for deterministic generation of object IDs"""
         return self._ray_params.object_id_seed
@@ -401,7 +397,8 @@ class Node:
         """
         if socket_path is not None:
             if os.path.exists(socket_path):
-                raise Exception("Socket file {} exists!".format(socket_path))
+                raise RuntimeError(
+                    "Socket file {} exists!".format(socket_path))
             socket_dir = os.path.dirname(socket_path)
             try_to_create_directory(socket_dir)
             return socket_path
@@ -569,7 +566,6 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            use_pickle=self._ray_params.use_pickle,
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -682,9 +678,10 @@ class Node:
             # Handle the case where the process has already exited.
             if process.poll() is not None:
                 if check_alive:
-                    raise Exception("Attempting to kill a process of type "
-                                    "'{}', but this process is already dead."
-                                    .format(process_type))
+                    raise RuntimeError(
+                        "Attempting to kill a process of type "
+                        "'{}', but this process is already dead."
+                        .format(process_type))
                 else:
                     continue
 
@@ -701,7 +698,7 @@ class Node:
                     if process_info.stderr_file is not None:
                         with open(process_info.stderr_file, "r") as f:
                             message += "\nPROCESS STDERR:\n" + f.read()
-                    raise Exception(message)
+                    raise RuntimeError(message)
                 continue
 
             if process_info.use_valgrind_profiler:

@@ -38,31 +38,31 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python -m pytest /ray/python/ray/util/sgd/tests
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/doc/examples/doc_code/raysgd_torch_signatures.py
+    python /ray/python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/train_example.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/python/ray/util/sgd/torch/examples/train_example.py --num-replicas=2
+    python /ray/python/ray/util/sgd/torch/examples/train_example.py --num-workers=2
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/tune_example.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/python/ray/util/sgd/torch/examples/tune_example.py --num-replicas=2
+    python /ray/python/ray/util/sgd/torch/examples/tune_example.py --num-workers=2
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py --smoke-test --num-replicas=2
+    python /ray/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py --smoke-test --num-workers=2
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/torch/examples/cifar_pytorch_example.py --smoke-test --tune
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    python /ray/python/ray/util/sgd/torch/examples/dcgan.py --smoke-test --num-replicas=2
+    python /ray/python/ray/util/sgd/torch/examples/dcgan.py --smoke-test --num-workers=2
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/util/sgd/tf/examples/tensorflow_train_example.py
@@ -172,6 +172,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/python/ray/tune/examples/skopt_example.py \
+    --smoke-test
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/dragonfly_example.py \
     --smoke-test
 
 # Commenting out because flaky

@@ -61,11 +61,11 @@ class TestTorchRunner(unittest.TestCase):
         runner.setup()
         runner.train_epoch()
         runner.train_epoch()
-        runner.train_epoch()
+        result = runner.train_epoch()
         self.assertEqual(runner.training_operator.validate.call_count, 0)
         runner.validate()
         self.assertTrue(runner.training_operator.validate.called)
-        self.assertEqual(runner.stats()["epoch"], 3)
+        self.assertEqual(result["epoch"], 3)
 
     def testtrain_epoch(self):
         class MockOperator(TrainingOperator):
@@ -88,7 +88,7 @@ class TestTorchRunner(unittest.TestCase):
         result = runner.train_epoch()
         self.assertEqual(runner.training_operator.count, 3)
         self.assertEqual(result["count"], 3)
-        self.assertEqual(runner.stats()["epoch"], 3)
+        self.assertEqual(result["epoch"], 3)
 
     def testGivens(self):
         class MockOperator(TrainingOperator):
