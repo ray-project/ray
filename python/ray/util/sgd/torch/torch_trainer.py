@@ -544,7 +544,7 @@ class TorchTrainer:
         return False
 
     @classmethod
-    def to_trainable(cls, **kwargs):
+    def as_trainable(cls, **kwargs):
         class TorchTrainable(Trainable):
             _kwargs = kwargs
             @classmethod

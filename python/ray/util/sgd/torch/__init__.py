@@ -2,7 +2,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 TorchTrainer = None
-TorchTrainable = None
 TrainingOperator = None
 
 try:

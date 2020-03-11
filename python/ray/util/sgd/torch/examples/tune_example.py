@@ -57,20 +57,19 @@ def data_creator(config):
 
 
 def tune_example(num_workers=1, use_gpu=False):
-    config = {
-        "model_creator": model_creator,
-        "data_creator": data_creator,
-        "optimizer_creator": optimizer_creator,
-        "loss_creator": nn.MSELoss,
-        "num_workers": num_workers,
-        "use_gpu": use_gpu,
-        "config": {"batch_size": 512 // num_workers},
-        "backend": "gloo"
-    }
+    TorchTrainable = TorchTrainer.as_trainable(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.MSELoss,
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        config={BATCH_SIZE: 128}
+    )
 
     analysis = tune.run(
         TorchTrainable,
-        num_samples=12,
+        num_samples=8,
         config=config,
         stop={"training_iteration": 2},
         verbose=1)

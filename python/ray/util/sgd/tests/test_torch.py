@@ -10,7 +10,7 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.util.sgd.torch import TorchTrainer, TorchTrainable
+from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.training_operator import (_TestingOperator,
                                                   _TestMetricsOperator)
 from ray.util.sgd.torch.constants import SCHEDULER_STEP
@@ -410,8 +410,7 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
-
-    config = {
+    TorchTrainable = TorchTrainer.as_trainable(**{
         "model_creator": model_creator,
         "data_creator": data_creator,
         "optimizer_creator": optimizer_creator,
@@ -423,12 +422,11 @@ def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
             "batch_size": 512,
             "lr": 0.001
         }
-    }
+    })
 
     analysis = tune.run(
         TorchTrainable,
         num_samples=2,
-        config=config,
         stop={"training_iteration": 2},
         verbose=1)
 

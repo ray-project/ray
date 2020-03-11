@@ -8,7 +8,7 @@ import torchvision
 import torchvision.transforms as transforms
 
 import ray
-from ray.util.sgd.torch import (TorchTrainer, TorchTrainable)
+from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
 
@@ -80,7 +80,6 @@ def train_example(num_workers=1,
             BATCH_SIZE: 128,
         },
         use_gpu=use_gpu,
-        backend="nccl" if use_gpu else "gloo",
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
     for i in range(num_epochs):
@@ -94,26 +93,27 @@ def train_example(num_workers=1,
 
 
 def tune_example(num_workers=1, use_gpu=False, test_mode=False):
-    config = {
-        "model_creator": ResNet18,
-        "data_creator": cifar_creator,
-        "optimizer_creator": optimizer_creator,
-        "loss_creator": nn.CrossEntropyLoss,
-        "num_workers": num_workers,
-        "initialization_hook": initialization_hook,
-        "use_gpu": use_gpu,
-        "config": {
-            "lr": tune.choice([1e-4, 1e-3]),
+    TorchTrainable = TorchTrainer.as_trainable(
+        model_creator=ResNet18,
+        data_creator=cifar_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.CrossEntropyLoss,
+        scheduler_creator=scheduler_creator,
+        initialization_hook=initialization_hook,
+        num_workers=num_workers,
+        config={
+            "lr": 0.01,  # lr is overriden by the provided config
+            "test_mode": test_mode,
             BATCH_SIZE: 128,
-            "test_mode": test_mode
         },
-        "backend": "nccl" if use_gpu else "gloo"
-    }
+        use_gpu=use_gpu,
+        scheduler_step_freq="epoch",
+        use_fp16=use_fp16)
 
     analysis = tune.run(
         TorchTrainable,
         num_samples=2,
-        config=config,
+        config={"lr": tune.choice([1e-4, 1e-3])},
         stop={"training_iteration": 2},
         verbose=2)
 
