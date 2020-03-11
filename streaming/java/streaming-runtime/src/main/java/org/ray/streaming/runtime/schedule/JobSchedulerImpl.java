@@ -41,7 +41,6 @@ public class JobSchedulerImpl implements JobScheduler {
     this.jobGraph = jobGraph;
     if (Ray.internal() == null) {
       System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-      System.setProperty("ray.run-mode", "CLUSTER");
       Ray.init();
     }
 

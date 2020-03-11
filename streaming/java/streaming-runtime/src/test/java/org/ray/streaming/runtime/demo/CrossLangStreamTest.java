@@ -32,7 +32,6 @@ public class CrossLangStreamTest {
     DataStreamSource<String> streamSource =
         DataStreamSource.fromCollection(context, Arrays.asList("a", "b", "c"));
     streamSource.map(x -> x + x)
-        .setParallelism(2)
         .asPython()
         .map("ray.streaming.tests.test_cross_lang_stream", "map_func1")
         .filter("ray.streaming.tests.test_cross_lang_stream", "filter_func1")

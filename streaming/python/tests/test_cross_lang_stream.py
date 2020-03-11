@@ -23,8 +23,10 @@ def test_data_stream():
     ctx = StreamingContext.Builder().build()
     stream = ctx.from_values("a", "b", "c") \
         .as_java() \
-        .map("org.ray.streaming.runtime.python.PythonGateway$Mapper1") \
-        .sink("org.ray.streaming.runtime.python.PythonGateway$Sink1")
+        .map("org.ray.streaming.runtime.demo.CrossLangStreamTest$Mapper1") \
+        .filter("org.ray.streaming.runtime.demo.CrossLangStreamTest$Filter1") \
+        .as_python() \
+        .sink(print)
     ctx.submit("cross_lang_word_count")
     import time
     time.sleep(3)

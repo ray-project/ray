@@ -30,7 +30,6 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
 
   @Test
   public void testWordCount() {
-    Ray.init();
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, String> config = new HashMap<>();
     config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
@@ -64,7 +63,6 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
       }
     }
     Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1));
-    Ray.shutdown();
   }
 
   private static class WordAndCount implements Serializable {
