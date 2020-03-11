@@ -15,7 +15,6 @@ import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.generated.RemoteCall;
 import org.ray.streaming.runtime.python.GraphPbBuilder;
 import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.runtime.worker.context.WorkerContext;
 import org.ray.streaming.schedule.JobScheduler;
 
 /**
@@ -61,8 +60,9 @@ public class JobSchedulerImpl implements JobScheduler {
         switch (executionNode.getLanguage()) {
           case JAVA:
             RayActor<JobWorker> jobWorker = (RayActor<JobWorker>) worker;
-            waits.add(Ray.call(JobWorker::init, jobWorker,
-                new WorkerContext(taskId, executionGraph, jobConfig)));
+            //Next pr delete the class.
+            //waits.add(Ray.call(JobWorker::init, jobWorker,
+            //    new WorkerContext(taskId, executionGraph, jobConfig)));
             break;
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(

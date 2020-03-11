@@ -6,25 +6,32 @@ import org.ray.streaming.runtime.worker.JobWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SourceStreamTask<IN> extends StreamTask {
-  private static final Logger LOGGER = LoggerFactory.getLogger(SourceStreamTask.class);
+public class SourceStreamTask extends StreamTask {
 
-  public SourceStreamTask(int taskId, Processor processor, JobWorker worker) {
-    super(taskId, processor, worker);
+  private static final Logger LOG = LoggerFactory.getLogger(
+      SourceStreamTask.class);
+
+  private final SourceProcessor sourceProcessor;
+
+  public SourceStreamTask(int taskId, Processor sourceProcessor, JobWorker jobWorker) {
+    super(taskId, sourceProcessor, jobWorker);
+    this.sourceProcessor = (SourceProcessor) processor;
   }
 
   @Override
-  protected void init() {
-  }
-
-  @Override
-  public void run() {
-    final SourceProcessor<IN> sourceProcessor = (SourceProcessor<IN>) this.processor;
-    sourceProcessor.run();
+  protected void init() throws Exception {
   }
 
   @Override
   protected void cancelTask() throws Exception {
   }
 
+  @Override
+  public void run() {
+    LOG.info("Source stream task thread start.");
+
+    while (running) {
+      sourceProcessor.run();
+    }
+  }
 }

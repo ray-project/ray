@@ -8,7 +8,9 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
+import org.ray.streaming.runtime.config.StreamingWorkerConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
+import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.core.resource.Slot;
 import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.worker.JobWorker;
@@ -37,17 +39,32 @@ public class ExecutionVertex implements Serializable {
    */
   private final Map<String, Double> resources;
 
+  private final StreamingWorkerConfig workerConfig;
+
+  private final StreamProcessor streamProcessor;
+
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private Slot slot;
   private RayActor<JobWorker> workerActor;
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
+  private int parallelism;
+  private long buildTime;
 
-  public ExecutionVertex(int jobVertexId, int index, ExecutionJobVertex executionJobVertex) {
+  public ExecutionVertex(int jobVertexId,
+                         int index,
+                         ExecutionJobVertex executionJobVertex,
+                         StreamingWorkerConfig workerConfig,
+                         StreamProcessor streamProcessor,
+                         long buildTime) {
     this.vertexId = generateExecutionVertexId(jobVertexId, index);
     this.vertexIndex = index;
     this.vertexName = executionJobVertex.getJobVertexName() + "-" + vertexIndex;
     this.resources = generateResources(executionJobVertex.getRuntimeContext());
+    this.workerConfig = workerConfig;
+    this.streamProcessor = streamProcessor;
+    this.parallelism = executionJobVertex.getParallelism();
+    this.buildTime = buildTime;
   }
 
   private int generateExecutionVertexId(int jobVertexId, int index) {
@@ -134,6 +151,18 @@ public class ExecutionVertex implements Serializable {
     }
   }
 
+  public StreamProcessor getStreamProcessor() {
+    return streamProcessor;
+  }
+
+  public int getParallelism() {
+    return parallelism;
+  }
+
+  public long getBuildTime() {
+    return buildTime;
+  }
+
   private Map<String, Double> generateResources(JobRuntimeContext runtimeContext) {
     Map<String, Double> resourceMap = new HashMap<>();
     ResourceConfig resourceConfig = runtimeContext.getConf().masterConfig.resourceConfig;
@@ -146,6 +175,10 @@ public class ExecutionVertex implements Serializable {
     return resourceMap;
   }
 
+  public StreamingWorkerConfig getWorkerConfig() {
+    return workerConfig;
+  }
+
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
@@ -156,6 +189,7 @@ public class ExecutionVertex implements Serializable {
         .add("state", state)
         .add("slot", slot)
         .add("workerActor", workerActor)
+        .add("buildTime", buildTime)
         .toString();
   }
 }

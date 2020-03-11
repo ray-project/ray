@@ -7,6 +7,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+
+
+import org.aeonbits.owner.ConfigFactory;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
@@ -14,6 +17,7 @@ import org.ray.api.id.ActorId;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import org.ray.streaming.runtime.config.StreamingWorkerConfig;
 import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.DataMessage;
 import org.ray.streaming.runtime.transfer.DataReader;
@@ -109,7 +113,8 @@ class ReaderWorker extends Worker {
     conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
-    dataReader = new DataReader(inputQueueList, inputActorIds, conf);
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataReader = new DataReader(inputQueueList, inputActorIds, workerConfig);
 
     // Should not GetBundle in RayCall thread
     Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
@@ -235,7 +240,8 @@ class WriterWorker extends Worker {
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
 
-    dataWriter = new DataWriter(this.outputQueueList, this.outputActorIds, conf);
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataWriter = new DataWriter(this.outputQueueList, this.outputActorIds, workerConfig);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
       @Override
       public void run() {

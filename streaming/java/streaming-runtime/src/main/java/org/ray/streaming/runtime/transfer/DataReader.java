@@ -5,11 +5,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import org.ray.api.id.ActorId;
+import org.ray.streaming.runtime.config.StreamingWorkerConfig;
+import org.ray.streaming.runtime.config.types.TransferChannelType;
 import org.ray.streaming.runtime.util.Platform;
-import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +25,7 @@ public class DataReader {
 
   public DataReader(List<String> inputChannels,
                     List<ActorId> fromActors,
-                    Map<String, String> conf) {
+                    StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
     byte[][] inputChannelsBytes = inputChannels.stream()
@@ -38,15 +38,13 @@ public class DataReader {
       seqIds[i] = 0;
       msgIds[i] = 0;
     }
-    long timerInterval = Long.parseLong(
-        conf.getOrDefault(Config.TIMER_INTERVAL_MS, "-1"));
-    String channelType = conf.getOrDefault(Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+    long timerInterval = workerConfig.transferConfig.readerTimerIntervalMs();
+    TransferChannelType channelType = workerConfig.transferConfig.channelType();
     boolean isMock = false;
-    if (Config.MEMORY_CHANNEL.equals(channelType)) {
+    if (TransferChannelType.MEMORY_CHANNEL == channelType) {
       isMock = true;
     }
-    boolean isRecreate = Boolean.parseBoolean(
-        conf.getOrDefault(Config.IS_RECREATE, "false"));
+    boolean isRecreate = workerConfig.transferConfig.readerIsRecreate();
     this.nativeReaderPtr = createDataReaderNative(
         inputChannelsBytes,
         fromActorsBytes,
@@ -54,7 +52,7 @@ public class DataReader {
         msgIds,
         timerInterval,
         isRecreate,
-        ChannelUtils.toNativeConf(conf),
+        ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
     LOGGER.info("create DataReader succeed");

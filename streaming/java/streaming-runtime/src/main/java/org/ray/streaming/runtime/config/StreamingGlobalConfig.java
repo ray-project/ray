@@ -9,6 +9,7 @@ import org.aeonbits.owner.Config.DefaultValue;
 import org.aeonbits.owner.Config.Key;
 import org.aeonbits.owner.ConfigFactory;
 import org.ray.streaming.runtime.config.global.CommonConfig;
+import org.ray.streaming.runtime.config.global.TransferConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,12 +22,15 @@ public class StreamingGlobalConfig implements Serializable {
 
   public final CommonConfig commonConfig;
 
+  public TransferConfig transferConfig;
+
   public final Map<String, String> configMap;
 
   public StreamingGlobalConfig(final Map<String, String> conf) {
     configMap = new HashMap<>(conf);
 
     commonConfig = ConfigFactory.create(CommonConfig.class, conf);
+    transferConfig = ConfigFactory.create(TransferConfig.class, conf);
     globalConfig2Map();
   }
 
@@ -38,6 +42,7 @@ public class StreamingGlobalConfig implements Serializable {
   private void globalConfig2Map() {
     try {
       configMap.putAll(config2Map(this.commonConfig));
+      configMap.putAll(config2Map(this.transferConfig));
     } catch (Exception e) {
       LOG.error("Couldn't convert global config to a map.", e);
     }
