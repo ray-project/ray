@@ -525,7 +525,6 @@ class TorchTrainer:
                 return
             else:
                 delay = 2**i
-                logger.info("Resources: {}".format(resources))
                 logger.warning(
                     "No new workers found. Retrying in %d sec." % delay)
                 time.sleep(delay)
@@ -562,7 +561,6 @@ class TorchTrainable(Trainable):
         validation_stats = self._trainer.validate()
 
         train_stats.update(validation_stats)
-        # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
         return train_stats
 
     def _save(self, checkpoint_dir):
