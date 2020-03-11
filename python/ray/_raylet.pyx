@@ -561,6 +561,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
         msg = "<unknown>"
         while frame:
             filename = frame.f_code.co_filename
+            # Walk upwards until we are no longer in a Ray internal frame.
             if (not filename.endswith("python/ray/worker.py") and
                     not filename.endswith("python/ray/remote_function.py") and
                     not filename.endswith("python/ray/actor.py")):
