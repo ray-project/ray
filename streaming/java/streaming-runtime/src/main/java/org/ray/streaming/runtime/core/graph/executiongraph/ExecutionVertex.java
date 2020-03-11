@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
+import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.runtime.config.StreamingWorkerConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
@@ -41,7 +42,7 @@ public class ExecutionVertex implements Serializable {
 
   private final StreamingWorkerConfig workerConfig;
 
-  private final StreamProcessor streamProcessor;
+  private final StreamOperator streamOperator;
 
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private Slot slot;
@@ -55,14 +56,14 @@ public class ExecutionVertex implements Serializable {
                          int index,
                          ExecutionJobVertex executionJobVertex,
                          StreamingWorkerConfig workerConfig,
-                         StreamProcessor streamProcessor,
+                         StreamOperator streamOperator,
                          long buildTime) {
     this.vertexId = generateExecutionVertexId(jobVertexId, index);
     this.vertexIndex = index;
     this.vertexName = executionJobVertex.getJobVertexName() + "-" + vertexIndex;
     this.resources = generateResources(executionJobVertex.getRuntimeContext());
     this.workerConfig = workerConfig;
-    this.streamProcessor = streamProcessor;
+    this.streamOperator = streamOperator;
     this.parallelism = executionJobVertex.getParallelism();
     this.buildTime = buildTime;
   }
@@ -151,8 +152,8 @@ public class ExecutionVertex implements Serializable {
     }
   }
 
-  public StreamProcessor getStreamProcessor() {
-    return streamProcessor;
+  public StreamOperator getStreamOperator() {
+    return streamOperator;
   }
 
   public int getParallelism() {

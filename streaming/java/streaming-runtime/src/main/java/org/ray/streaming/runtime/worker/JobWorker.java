@@ -10,6 +10,7 @@ import org.ray.streaming.runtime.config.types.TransferChannelType;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.processor.OneInputProcessor;
+import org.ray.streaming.runtime.core.processor.ProcessBuilder;
 import org.ray.streaming.runtime.core.processor.SourceProcessor;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.core.processor.TwoInputProcessor;
@@ -80,7 +81,8 @@ public class JobWorker implements IJobWorker {
 
   private StreamTask createStreamTask() {
     StreamTask task;
-    StreamProcessor streamProcessor = executionVertex.getStreamProcessor();
+    StreamProcessor streamProcessor = ProcessBuilder
+        .buildProcessor(executionVertex.getStreamOperator());
     if (streamProcessor instanceof SourceProcessor) {
       task = new SourceStreamTask(executionVertex.getVertexId(), streamProcessor, this);
     } else if (streamProcessor instanceof OneInputProcessor) {
