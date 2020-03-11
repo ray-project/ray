@@ -530,10 +530,10 @@ class TorchTrainable(Trainable):
         self._trainer = TorchTrainer(**config)
 
     def _train(self):
-        train_stats = self._trainer.train(profile=True)
-        validation_stats = self._trainer.validate(profile=True)
+        train_stats = self._trainer.train()
+        validation_stats = self._trainer.validate()
 
-        train_stats.update(val=validation_stats)
+        train_stats.update(validation_stats)
         return train_stats
 
     def _save(self, checkpoint_dir):
