@@ -75,10 +75,13 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         check(component.add(-1.1).numpy(), -2.1)  # prop_b == -1.0
 
         # Test recognizing default package path.
-        component = from_config(Exploration, {
-            "type": "EpsilonGreedy",
-            "action_space": Discrete(2)
-        })
+        component = from_config(
+            Exploration, {
+                "type": "EpsilonGreedy",
+                "action_space": Discrete(2),
+                "num_workers": 0,
+                "worker_index": 0,
+            })
         check(component.epsilon_schedule.outside_value, 0.05)  # default
 
         # Create torch Component from yaml-string.

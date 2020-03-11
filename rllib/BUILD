@@ -82,6 +82,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 
+# APEXTrainer
+py_test(
+    name = "test_apex",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_apex.py"]
+)
+
 # IMPALA
 py_test(
     name = "test_vtrace",
