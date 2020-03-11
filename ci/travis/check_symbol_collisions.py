@@ -1,9 +1,11 @@
 """
-This script ensures that various libraries do not conflict with ray by 
+This script ensures that various libraries do not conflict with ray by
 trying to import both libraries in both orders.
 A specific example is that importing ray after pyarrow causes a Segfault.
 """
-import sys, subprocess, importlib
+import sys
+import subprocess
+import importlib
 
 TESTED_LIBRARIES = ["pyarrow"]
 
