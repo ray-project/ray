@@ -321,7 +321,12 @@ void CoreWorker::RunIOService() {
 }
 
 void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
-  // TODO(swang): Handler for dead raylets.
+  const auto node_id = ClientID::FromBinary(node_info.node_id());
+  const auto lost_objects = reference_counter_->HandleNodeRemoved(node_id);
+  for (const auto &object_id : lost_objects) {
+    RAY_LOG(INFO) << "Owned object " << object_id << " lost due to node failure "
+                  << node_id;
+  }
 }
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {

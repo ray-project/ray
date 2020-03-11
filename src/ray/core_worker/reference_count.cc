@@ -185,6 +185,7 @@ void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &pl
                                                  const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
   for (const auto &plasma_id : plasma_ids) {
+    RAY_LOG(DEBUG) << "Marking plasma object " << plasma_id << " pinned at " << node_id;
     auto it = object_id_refs_.find(plasma_id);
     RAY_CHECK(it != object_id_refs_.end()) << plasma_id;
     RAY_CHECK(!it->second.pinned_at_raylet.has_value());
@@ -193,13 +194,19 @@ void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &pl
 }
 
 std::vector<ObjectID> ReferenceCounter::HandleNodeRemoved(const ClientID &node_id) {
-  // TODO(swang): Clear the pinned locations, delete callbacks in the
-  // ReferenceCounter.
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> lost_objects;
-  for (const auto &ref : object_id_refs_) {
+  // Clear the pinned locations and deletion callbacks for any
+  // objects that were pinned by the dead node.
+  for (auto &ref : object_id_refs_) {
     if (ref.second.pinned_at_raylet.value_or(ClientID::Nil()) == node_id) {
+      RAY_CHECK(ref.second.owned_by_us);
       lost_objects.push_back(ref.first);
+      ref.second.pinned_at_raylet.reset();
+      if (ref.second.on_delete) {
+        ref.second.on_delete(ref.first);
+        ref.second.on_delete = nullptr;
+      }
     }
   }
   return lost_objects;

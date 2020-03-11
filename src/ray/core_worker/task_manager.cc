@@ -142,10 +142,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     // Release the lineage for any non-plasma return IDs.
     for (const auto &direct_return_id : direct_return_ids) {
-      RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
-                     << direct_return_id << ", now has "
-                     << it->second.plasma_returns_in_scope.size()
-                     << " plasma returns in scope";
       if (it->second.plasma_returns_in_scope.erase(direct_return_id)) {
         num_returns_to_release++;
       }
@@ -174,8 +170,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // TODO: Move this inside the lock? I don't think this is correct otherwise.
   RemoveFinishedTaskReferences(spec, num_returns_to_release, worker_addr,
                                reply.borrowed_refs());
-  reference_counter_->MarkPlasmaObjectsPinnedAt(
-      plasma_returns_in_scope, ClientID::FromBinary(worker_addr.raylet_id()));
+  if (lineage_pinning_enabled_) {
+    reference_counter_->MarkPlasmaObjectsPinnedAt(
+        plasma_returns_in_scope, ClientID::FromBinary(worker_addr.raylet_id()));
+  }
 
   ShutdownIfNeeded();
 }
