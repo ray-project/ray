@@ -518,19 +518,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
 Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
     const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
     const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Reporting batch heartbeat, batch size = " << data_ptr->batch_size();
-  rpc::ReportBatchHeartbeatRequest request;
-  request.mutable_heartbeat_batch()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportBatchHeartbeat(
-      request, [data_ptr, callback](const Status &status,
-                                    const rpc::ReportBatchHeartbeatReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished reporting batch heartbeat, status = " << status
-                       << ", batch size = " << data_ptr->batch_size();
-      });
-  return Status::OK();
+  throw std::runtime_error(
+      "Unsupported method of AsyncReportBatchHeartbeat in ServiceBasedNodeInfoAccessor.");
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(

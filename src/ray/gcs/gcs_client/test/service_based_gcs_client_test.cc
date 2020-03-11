@@ -225,14 +225,6 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool ReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> batch_heartbeat) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportBatchHeartbeat(
-        batch_heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(
@@ -585,12 +577,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitPendingDone(heartbeat_count, 1);
-
-  // Report batch heartbeat
-  auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
-  batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
-  ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
-  WaitPendingDone(heartbeat_batch_count, 1);
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {

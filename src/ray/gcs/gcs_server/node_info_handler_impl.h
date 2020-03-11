@@ -42,10 +42,6 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
                              ReportHeartbeatReply *reply,
                              SendReplyCallback send_reply_callback) override;
 
-  void HandleReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
-                                  ReportBatchHeartbeatReply *reply,
-                                  SendReplyCallback send_reply_callback) override;
-
   void HandleGetResources(const GetResourcesRequest &request, GetResourcesReply *reply,
                           SendReplyCallback send_reply_callback) override;
 
