@@ -6,7 +6,6 @@ import java.util.concurrent.CountDownLatch;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;

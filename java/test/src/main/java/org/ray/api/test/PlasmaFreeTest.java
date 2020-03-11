@@ -25,12 +25,8 @@ public class PlasmaFreeTest extends BaseTest {
     final boolean result = TestUtils.waitForCondition(() ->
         !TestUtils.getRuntime().getObjectStore()
           .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0), 50);
-    if (TestUtils.isDirectActorCallEnabled()) {
-      // Direct call will not delete object from im-memory store.
-      Assert.assertFalse(result);
-    } else {
-      Assert.assertTrue(result);
-    }
+    // Direct call will not delete object from im-memory store.
+    Assert.assertFalse(result);
   }
 
   @Test
