@@ -1,7 +1,7 @@
 package org.ray.streaming.api.stream;
 
 
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.function.impl.FilterFunction;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.KeyFunction;
@@ -25,8 +25,8 @@ import org.ray.streaming.operator.impl.SinkOperator;
  */
 public class DataStream<T> extends Stream<T> {
 
-  public DataStream(StreamingContext streamingContext, StreamOperator streamOperator) {
-    super(streamingContext, streamOperator);
+  public DataStream(StreamContext streamContext, StreamOperator streamOperator) {
+    super(streamContext, streamOperator);
   }
 
   public DataStream(DataStream input, StreamOperator streamOperator) {

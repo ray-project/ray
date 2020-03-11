@@ -39,7 +39,7 @@ public class PythonGateway {
 
   public byte[] createStreamingContext() {
     streamingContext = StreamingContext.buildContext();
-    LOG.info("StreamingContext created");
+    LOG.info("StreamContext created");
     referenceMap.put(getReferenceId(streamingContext), streamingContext);
     return serializer.serialize(getReferenceId(streamingContext));
   }

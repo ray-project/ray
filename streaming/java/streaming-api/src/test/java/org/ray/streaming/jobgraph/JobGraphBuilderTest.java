@@ -2,7 +2,7 @@ package org.ray.streaming.jobgraph;
 
 import com.google.common.collect.Lists;
 import java.util.List;
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.partition.impl.KeyPartition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
@@ -37,8 +37,8 @@ public class JobGraphBuilderTest {
   }
 
   public JobGraph buildDataSyncJobGraph() {
-    StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    StreamContext streamContext = StreamContext.buildContext();
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
@@ -72,8 +72,8 @@ public class JobGraphBuilderTest {
   }
 
   public JobGraph buildKeyByJobGraph() {
-    StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    StreamContext streamContext = StreamContext.buildContext();
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamContext,
         Lists.newArrayList("1", "2", "3", "4"));
     StreamSink streamSink = dataStream.keyBy(x -> x)
         .sink(x -> LOG.info(x));

@@ -17,7 +17,7 @@ import org.ray.streaming.schedule.JobScheduler;
 /**
  * Encapsulate the context information of a streaming Job.
  */
-public class StreamingContext implements Serializable {
+public class StreamContext implements Serializable {
 
   private transient AtomicInteger idGenerator;
 
@@ -36,14 +36,14 @@ public class StreamingContext implements Serializable {
    */
   private JobGraph jobGraph;
 
-  private StreamingContext() {
+  private StreamContext() {
     this.idGenerator = new AtomicInteger(0);
     this.streamSinks = new ArrayList<>();
     this.jobConfig = new HashMap<>();
   }
 
-  public static StreamingContext buildContext() {
-    return new StreamingContext();
+  public static StreamContext buildContext() {
+    return new StreamContext();
   }
 
   /**

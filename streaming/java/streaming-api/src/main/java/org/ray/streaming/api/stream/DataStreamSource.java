@@ -1,7 +1,7 @@
 package org.ray.streaming.api.stream;
 
 import java.util.Collection;
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.function.impl.SourceFunction;
 import org.ray.streaming.api.function.internal.CollectionSourceFunction;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
@@ -14,8 +14,8 @@ import org.ray.streaming.operator.impl.SourceOperator;
  */
 public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T> {
 
-  public DataStreamSource(StreamingContext streamingContext, SourceFunction<T> sourceFunction) {
-    super(streamingContext, new SourceOperator<>(sourceFunction));
+  public DataStreamSource(StreamContext streamContext, SourceFunction<T> sourceFunction) {
+    super(streamContext, new SourceOperator<>(sourceFunction));
     super.partition = new RoundRobinPartition<>();
   }
 
@@ -28,7 +28,7 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
    * @return A DataStreamSource.
    */
   public static <T> DataStreamSource<T> buildSource(
-      StreamingContext context, Collection<T> values) {
+      StreamContext context, Collection<T> values) {
     return new DataStreamSource(context, new CollectionSourceFunction(values));
   }
 

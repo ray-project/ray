@@ -1,7 +1,7 @@
 package org.ray.streaming.api.stream;
 
 import java.io.Serializable;
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.operator.StreamOperator;
@@ -19,14 +19,14 @@ public abstract class Stream<T> implements Serializable {
   protected int parallelism = 1;
   protected StreamOperator operator;
   protected Stream<T> inputStream;
-  protected StreamingContext streamingContext;
+  protected StreamContext streamContext;
   protected Partition<T> partition;
 
   @SuppressWarnings("unchecked")
-  public Stream(StreamingContext streamingContext, StreamOperator streamOperator) {
-    this.streamingContext = streamingContext;
+  public Stream(StreamContext streamContext, StreamOperator streamOperator) {
+    this.streamContext = streamContext;
     this.operator = streamOperator;
-    this.id = streamingContext.generateId();
+    this.id = streamContext.generateId();
     if (streamOperator instanceof PythonOperator) {
       this.partition = PythonPartition.RoundRobinPartition;
     } else {
@@ -37,9 +37,9 @@ public abstract class Stream<T> implements Serializable {
   public Stream(Stream<T> inputStream, StreamOperator streamOperator) {
     this.inputStream = inputStream;
     this.parallelism = inputStream.getParallelism();
-    this.streamingContext = this.inputStream.getStreamingContext();
+    this.streamContext = this.inputStream.getStreamContext();
     this.operator = streamOperator;
-    this.id = streamingContext.generateId();
+    this.id = streamContext.generateId();
     this.partition = selectPartition();
   }
 
@@ -64,8 +64,8 @@ public abstract class Stream<T> implements Serializable {
     this.operator = operator;
   }
 
-  public StreamingContext getStreamingContext() {
-    return streamingContext;
+  public StreamContext getStreamContext() {
+    return streamContext;
   }
 
   public int getParallelism() {

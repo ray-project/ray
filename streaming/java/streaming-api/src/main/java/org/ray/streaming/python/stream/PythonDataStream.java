@@ -1,6 +1,6 @@
 package org.ray.streaming.python.stream;
 
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonFunction.FunctionInterface;
@@ -12,9 +12,9 @@ import org.ray.streaming.python.PythonPartition;
  */
 public class PythonDataStream extends Stream implements PythonStream {
 
-  protected PythonDataStream(StreamingContext streamingContext,
+  protected PythonDataStream(StreamContext streamContext,
                              PythonOperator pythonOperator) {
-    super(streamingContext, pythonOperator);
+    super(streamContext, pythonOperator);
   }
 
   public PythonDataStream(PythonDataStream input, PythonOperator pythonOperator) {

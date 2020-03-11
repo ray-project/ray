@@ -1,6 +1,6 @@
 package org.ray.streaming.python.stream;
 
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonFunction.FunctionInterface;
@@ -12,8 +12,8 @@ import org.ray.streaming.python.PythonPartition;
  */
 public class PythonStreamSource extends PythonDataStream implements StreamSource {
 
-  private PythonStreamSource(StreamingContext streamingContext, PythonFunction sourceFunction) {
-    super(streamingContext, new PythonOperator(sourceFunction));
+  private PythonStreamSource(StreamContext streamContext, PythonFunction sourceFunction) {
+    super(streamContext, new PythonOperator(sourceFunction));
     super.partition = PythonPartition.RoundRobinPartition;
   }
 
@@ -22,10 +22,10 @@ public class PythonStreamSource extends PythonDataStream implements StreamSource
     return this;
   }
 
-  public static PythonStreamSource from(StreamingContext streamingContext,
+  public static PythonStreamSource from(StreamContext streamContext,
                                    PythonFunction sourceFunction) {
     sourceFunction.setFunctionInterface(FunctionInterface.SOURCE_FUNCTION);
-    return new PythonStreamSource(streamingContext, sourceFunction);
+    return new PythonStreamSource(streamContext, sourceFunction);
   }
 
 }
