@@ -113,6 +113,24 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
+    def testPauseUnpause(self):
+        """Tests that unpausing works for trials being processed."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        trial.last_result = self.trial_executor.fetch_result(trial)
+        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 1)
+        self.trial_executor.pause_trial(trial)
+        self.assertEqual(Trial.PAUSED, trial.status)
+        self.trial_executor.unpause_trial(trial)
+        self.assertEqual(Trial.PENDING, trial.status)
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        trial.last_result = self.trial_executor.fetch_result(trial)
+        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 2)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""
         trial = Trial("__fake")
@@ -146,24 +164,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.config.get("hi"), 1)
         self.assertEqual(trial.experiment_tag, "modified_mock")
         self.assertEqual(Trial.RUNNING, trial.status)
-
-    def testPauseUnpause(self):
-        """Tests that unpausing works for trials being processed."""
-        trial = Trial("__fake")
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
-        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 1)
-        self.trial_executor.pause_trial(trial)
-        self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.unpause_trial(trial)
-        self.assertEqual(Trial.PENDING, trial.status)
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
-        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 2)
-        self.trial_executor.stop_trial(trial)
-        self.assertEqual(Trial.TERMINATED, trial.status)
 
     @staticmethod
     def generate_trials(spec, name):
