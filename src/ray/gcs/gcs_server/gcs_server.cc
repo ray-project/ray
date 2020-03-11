@@ -15,6 +15,7 @@
 #include "gcs_server.h"
 #include "actor_info_handler_impl.h"
 #include "error_info_handler_impl.h"
+#include "gcs_node_manager.h"
 #include "job_info_handler_impl.h"
 #include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
@@ -35,6 +36,9 @@ GcsServer::~GcsServer() { Stop(); }
 void GcsServer::Start() {
   // Init backend client.
   InitBackendClient();
+
+  // Init gcs node_manager
+  InitGcsNodeManager();
 
   // Register rpc service.
   job_info_handler_ = InitJobInfoHandler();
@@ -103,6 +107,11 @@ void GcsServer::InitBackendClient() {
   redis_gcs_client_ = std::make_shared<RedisGcsClient>(options);
   auto status = redis_gcs_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+}
+
+void GcsServer::InitGcsNodeManager() {
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_);
+  gcs_node_manager_->Start();
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
