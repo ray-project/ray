@@ -62,6 +62,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
+    import os
+    hosted_addr_override = os.environ.get('RAY_HOSTED_ADDR')
+
     try:
         dashboard_controller = DashboardController(
             args.redis_address, args.redis_password)
@@ -71,7 +74,7 @@ if __name__ == "__main__":
             args.redis_address,
             args.temp_dir,
             dashboard_controller,
-            hosted_dashboard_addr=args.hosted_dashboard_addr,
+            hosted_dashboard_addr=hosted_addr_override or args.hosted_dashboard_addr,
             redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:

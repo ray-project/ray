@@ -21,6 +21,8 @@ class Exporter(threading.Thread):
                  update_frequency=1.0):
         self.dashboard_controller = dashboard_controller
         self.export_address = export_address
+        if not self.export_address.startswith('http://'):
+            self.export_address = 'http://' + self.export_address
         self.update_frequency = update_frequency
         # SANG-TODO delete it.
         # self.channel = grpc.insecure_channel(self.export_address)
