@@ -150,7 +150,7 @@ class FunctionRunner(Trainable):
         self._status_reporter = StatusReporter(
             self._results_queue,
             self._continue_semaphore,
-            trial_info=self.trial_info,
+            trial_info=self._trial_info,
             logdir=self.logdir)
         self._last_result = {}
         config = config.copy()
