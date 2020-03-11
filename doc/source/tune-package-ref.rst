@@ -18,9 +18,6 @@ ray.tune
 .. autoclass:: ray.tune.function_runner.StatusReporter
     :members: __call__, logdir
 
-
-.. autoclass:: ray.tune.trial.TrialInfo
-
 ray.tune.schedulers
 -------------------
 
