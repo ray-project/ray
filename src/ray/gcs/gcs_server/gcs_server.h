@@ -64,7 +64,8 @@ class GcsServer {
   virtual void InitBackendClient();
 
   /// Initialize the gcs node manager.
-  /// The gcs node manager is responsible for detecting the activity or failure of nodes.
+  /// The gcs node manager is responsible for managing and monitoring all nodes in the
+  /// cluster.
   virtual void InitGcsNodeManager();
 
   /// The job info handler

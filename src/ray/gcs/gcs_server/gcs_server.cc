@@ -111,7 +111,6 @@ void GcsServer::InitBackendClient() {
 
 void GcsServer::InitGcsNodeManager() {
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(main_service_, redis_gcs_client_);
-  gcs_node_manager_->Start();
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
@@ -126,7 +125,7 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
 
 std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
   return std::unique_ptr<rpc::DefaultNodeInfoHandler>(
-      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_));
+      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_, *gcs_node_manager_));
 }
 
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {

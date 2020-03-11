@@ -88,21 +88,10 @@ void DefaultNodeInfoHandler::HandleReportHeartbeat(
     SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
   RAY_LOG(DEBUG) << "Reporting heartbeat, node id = " << node_id;
-
-  auto on_done = [node_id, reply, send_reply_callback](Status status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to report heartbeat: " << status.ToString()
-                     << ", node id = " << node_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat_data->CopyFrom(request.heartbeat());
-  Status status = gcs_client_.Nodes().AsyncReportHeartbeat(heartbeat_data, on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
+  rpc::HeartbeatTableData heartbeat_data;
+  heartbeat_data.CopyFrom(request.heartbeat());
+  gcs_node_manager_.HandleHeartbeat(node_id, std::move(heartbeat_data));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
   RAY_LOG(DEBUG) << "Finished reporting heartbeat, node id = " << node_id;
 }
 

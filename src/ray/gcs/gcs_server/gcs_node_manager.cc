@@ -12,22 +12,18 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
     : client_call_manager_(io_service),
       gcs_client_(std::move(gcs_client)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      heartbeat_timer_(io_service) {}
+      heartbeat_timer_(io_service) {
+  Start();
+}
 
 void GcsNodeManager::HandleHeartbeat(const ClientID &node_id,
-                                     const rpc::HeartbeatTableData &heartbeat_data) {
+                                     rpc::HeartbeatTableData &&heartbeat_data) {
   heartbeats_[node_id] = num_heartbeats_timeout_;
   heartbeat_buffer_[node_id] = heartbeat_data;
 }
 
 void GcsNodeManager::Start() {
   RAY_LOG(INFO) << "Starting gcs node manager.";
-  const auto heartbeat_callback = [this](const ClientID &id,
-                                         const rpc::HeartbeatTableData &heartbeat_data) {
-    HandleHeartbeat(id, heartbeat_data);
-  };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_callback, nullptr));
-
   const auto lookup_callback = [this](Status status,
                                       const std::vector<GcsNodeInfo> &node_info_list) {
     for (const auto &node_info : node_info_list) {
@@ -52,18 +48,18 @@ void GcsNodeManager::Start() {
 
 /// A periodic timer that checks for timed out clients.
 void GcsNodeManager::Tick() {
-  DetectDeadClients();
+  DetectDeadNodes();
   SendBatchedHeartbeat();
   ScheduleTick();
 }
 
-void GcsNodeManager::DetectDeadClients() {
+void GcsNodeManager::DetectDeadNodes() {
   for (auto it = heartbeats_.begin(); it != heartbeats_.end();) {
     it->second = it->second - 1;
     if (it->second == 0) {
       if (dead_nodes_.count(it->first) == 0) {
         auto node_id = it->first;
-        RAY_LOG(WARNING) << "Client timed out: " << node_id;
+        RAY_LOG(WARNING) << "Node timed out: " << node_id;
         auto lookup_callback = [this, node_id](Status status,
                                                const std::vector<GcsNodeInfo> &all_node) {
           RAY_CHECK_OK(status);
@@ -82,7 +78,7 @@ void GcsNodeManager::DetectDeadClients() {
             // TODO(rkn): Define this constant somewhere else.
             std::string type = "node_removed";
             std::ostringstream error_message;
-            error_message << "The node with client ID " << node_id
+            error_message << "The node with node ID " << node_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
             auto error_data_ptr =

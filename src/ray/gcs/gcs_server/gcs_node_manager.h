@@ -9,22 +9,26 @@ namespace ray {
 
 namespace gcs {
 class RedisGcsClient;
+/// GcsNodeManager is responsible for managing and monitoring nodes.
 class GcsNodeManager {
  public:
+  /// Create a GcsNodeManager.
+  ///
+  /// \param io_service The event loop to run the monitor on.
+  /// \param gcs_client The client of gcs to access/pub/sub data.
   explicit GcsNodeManager(boost::asio::io_service &io_service,
                           std::shared_ptr<gcs::RedisGcsClient> gcs_client);
 
+  /// Handle a heartbeat from a Raylet.
+  ///
+  /// \param node_id The client ID of the Raylet that sent the heartbeat.
+  /// \param heartbeat_data The heartbeat sent by the client.
+  void HandleHeartbeat(const ClientID &node_id, rpc::HeartbeatTableData &&heartbeat_data);
+
+ protected:
   /// Listen for heartbeats from Raylets and mark Raylets
   /// that do not send a heartbeat within a given period as dead.
   void Start();
-
- protected:
-  /// Handle a heartbeat from a Raylet.
-  ///
-  /// \param client_id The client ID of the Raylet that sent the heartbeat.
-  /// \param heartbeat_data The heartbeat sent by the client.
-  void HandleHeartbeat(const ClientID &client_id,
-                       const rpc::HeartbeatTableData &heartbeat_data);
 
   /// A periodic timer that fires on every heartbeat period. Raylets that have
   /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
@@ -33,7 +37,7 @@ class GcsNodeManager {
 
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
   /// If found any, mark it as dead.
-  void DetectDeadClients();
+  void DetectDeadNodes();
 
   /// Send any buffered heartbeats as a single publish.
   void SendBatchedHeartbeat();
@@ -45,7 +49,7 @@ class GcsNodeManager {
   rpc::ClientCallManager client_call_manager_;
   /// A client to the GCS, through which heartbeats are received.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
-  /// The number of heartbeats that can be missed before a client is removed.
+  /// The number of heartbeats that can be missed before a node is removed.
   int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
   boost::asio::deadline_timer heartbeat_timer_;
