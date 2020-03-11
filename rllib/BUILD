@@ -82,6 +82,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 
+# APEXTrainer
+py_test(
+    name = "test_apex",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_apex.py"]
+)
+
 # IMPALA
 py_test(
     name = "test_vtrace",
@@ -105,6 +113,14 @@ py_test(
     size = "medium",
     srcs = ["agents/ppo/tests/test_ppo.py",
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
+)
+
+# SAC
+py_test(
+    name = "test_sac",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/sac/tests/test_sac.py"]
 )
 
 # TD3Trainer

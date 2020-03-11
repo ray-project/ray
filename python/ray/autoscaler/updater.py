@@ -2,6 +2,7 @@ try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
+import click
 import hashlib
 import logging
 import os
@@ -274,7 +275,7 @@ class SSHCommandRunner:
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                raise Exception(
+                raise click.ClickException(
                     "Command failed: \n\n  {}\n".format(quoted_cmd))
             else:
                 raise
