@@ -847,6 +847,34 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Optimizers
+# rllib/optimizers/
+#
+# Tag: optimizers
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_optimizers",
+    tags = ["optimizers"],
+    size = "large",
+    srcs = ["optimizers/tests/test_optimizers.py"]
+)
+
+py_test(
+    name = "test_segment_tree",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_segment_tree.py"]
+)
+
+py_test(
+    name = "test_prioritized_replay_buffer",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+)
+
+# --------------------------------------------------------------------
 # Policies
 # rllib/policy/
 #
@@ -1026,13 +1054,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_N"],
     size = "large",
     srcs = ["tests/test_nested_spaces.py"]
-)
-
-py_test(
-    name = "tests/test_optimizers",
-    tags = ["tests_dir", "tests_dir_O"],
-    size = "large",
-    srcs = ["tests/test_optimizers.py"]
 )
 
 py_test(

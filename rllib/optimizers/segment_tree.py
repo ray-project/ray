@@ -2,140 +2,148 @@ import operator
 
 
 class SegmentTree:
-    def __init__(self, capacity, operation, neutral_element):
-        """Build a Segment Tree data structure.
+    """A Segment Tree data structure.
 
-        https://en.wikipedia.org/wiki/Segment_tree
+    https://en.wikipedia.org/wiki/Segment_tree
 
-        Can be used as regular array, but with two
-        important differences:
+    Can be used as regular array, but with two important differences:
 
-          a) setting item's value is slightly slower.
-             It is O(lg capacity) instead of O(1).
-          b) user has access to an efficient `reduce`
-             operation which reduces `operation` over
-             a contiguous subsequence of items in the
-             array.
+      a) Setting an item's value is slightly slower. It is O(lg capacity),
+         instead of O(1).
+      b) Offers efficient `reduce` operation which reduces the tree's values
+         over some specified contiguous subsequence of items in the array.
+         Operation could be e.g. min/max/sum.
+    """
 
-        Paramters
-        ---------
-        capacity: int
-          Total size of the array - must be a power of two.
-        operation: lambda obj, obj -> obj
-          and operation for combining elements (eg. sum, max)
-          must for a mathematical group together with the set of
-          possible values for array elements.
-        neutral_element: obj
-          neutral element for the operation above. eg. float('-inf')
-          for max and 0 for sum.
+    def __init__(self, capacity, operation, neutral_element=None):
+        """Initializes a Segment Tree object.
+
+        Args:
+            capacity (int): Total size of the array - must be a power of two.
+            operation (operation): Lambda obj, obj -> obj
+                The operation for combining elements (eg. sum, max).
+                Must be a mathematical group together with the set of
+                possible values for array elements.
+            neutral_element (Optional[obj]): The neutral element for
+                `operation`. Use None for automatically finding a value:
+                max: float("-inf"), min: float("inf"), sum: 0.0.
         """
 
         assert capacity > 0 and capacity & (capacity - 1) == 0, \
-            "capacity must be positive and a power of 2."
-        self._capacity = capacity
-        self._value = [neutral_element for _ in range(2 * capacity)]
-        self._operation = operation
-
-    def _reduce_helper(self, start, end, node, node_start, node_end):
-        if start == node_start and end == node_end:
-            return self._value[node]
-        mid = (node_start + node_end) // 2
-        if end <= mid:
-            return self._reduce_helper(start, end, 2 * node, node_start, mid)
-        else:
-            if mid + 1 <= start:
-                return self._reduce_helper(start, end, 2 * node + 1, mid + 1,
-                                           node_end)
-            else:
-                return self._operation(
-                    self._reduce_helper(start, mid, 2 * node, node_start, mid),
-                    self._reduce_helper(mid + 1, end, 2 * node + 1, mid + 1,
-                                        node_end))
+            "Capacity must be positive and a power of 2!"
+        self.capacity = capacity
+        if neutral_element is None:
+            neutral_element = 0.0 if operation is operator.add else \
+                float("-inf") if operation is max else float("inf")
+        self.neutral_element = neutral_element
+        self.value = [self.neutral_element for _ in range(2 * capacity)]
+        self.operation = operation
 
     def reduce(self, start=0, end=None):
-        """Returns result of applying `self.operation`
-        to a contiguous subsequence of the array.
+        """Applies `self.operation` to subsequence of our values.
+
+        Subsequence is contiguous, includes `start` and excludes `end`.
 
           self.operation(
               arr[start], operation(arr[start+1], operation(... arr[end])))
 
-        Parameters
-        ----------
-        start: int
-          beginning of the subsequence
-        end: int
-          end of the subsequences
+        Args:
+            start (int): Start index to apply reduction to.
+            end (int): Start index to apply reduction to (excluded).
 
-        Returns
-        -------
-        reduced: obj
-          result of reducing self.operation over the specified range of array
-          elements.
+        Returns:
+            any: The result of reducing self.operation over the specified
+                range of `self._value` elements.
         """
         if end is None:
-            end = self._capacity - 1
-        if end < 0:
-            end += self._capacity
-        return self._reduce_helper(start, end, 1, 0, self._capacity - 1)
+            end = self.capacity
+        elif end < 0:
+            end += self.capacity
+
+        # Init result with neutral element.
+        result = self.neutral_element
+        start += self.capacity
+        end += self.capacity
+
+        while start < end:
+            if start & 1:
+                result = self.operation(result, self.value[start])
+                start += 1
+            if end & 1:
+                end -= 1
+                result = self.operation(result, self.value[end])
+            start = start >> 1
+            end = end >> 1
+        return result
 
     def __setitem__(self, idx, val):
-        # index of the leaf
-        idx += self._capacity
-        self._value[idx] = val
-        idx //= 2
+        """
+        Inserts/overwrites a value in/into the tree.
+
+        Args:
+            idx (int): The index to insert to. Must be in [0, `self.capacity`[
+            val (float): The value to insert.
+        """
+        assert 0 <= idx < self.capacity
+
+        # Index of the leaf to insert into (always insert in "second half"
+        # of the tree, the first half is reserved for already calculated
+        # reduction-values).
+        idx += self.capacity
+        self.value[idx] = val
+
+        # Reclculate all affected reduction values (in "first half" of tree).
+        idx = idx >> 1  # Divide by 2 (fater than division).
         while idx >= 1:
-            self._value[idx] = self._operation(self._value[2 * idx],
-                                               self._value[2 * idx + 1])
-            idx //= 2
+            update_idx = 2 * idx  # calculate only once
+            # Update the reduction value at the correct "first half" idx.
+            self.value[idx] = self.operation(
+                self.value[update_idx], self.value[update_idx + 1])
+            idx = idx >> 1  # Divide by 2 (fater than division).
 
     def __getitem__(self, idx):
-        assert 0 <= idx < self._capacity
-        return self._value[self._capacity + idx]
+        assert 0 <= idx < self.capacity
+        return self.value[idx + self.capacity]
 
 
 class SumSegmentTree(SegmentTree):
+    """A SegmentTree with the reduction `operation`=operator.add."""
     def __init__(self, capacity):
         super(SumSegmentTree, self).__init__(
-            capacity=capacity, operation=operator.add, neutral_element=0.0)
+            capacity=capacity, operation=operator.add)
 
     def sum(self, start=0, end=None):
-        """Returns arr[start] + ... + arr[end]"""
-        return super(SumSegmentTree, self).reduce(start, end)
+        """Returns the sum over a sub-segment of the tree."""
+        return self.reduce(start, end)
 
     def find_prefixsum_idx(self, prefixsum):
-        """Find the highest index `i` in the array such that
-          sum(arr[0] + arr[1] + ... + arr[i - i]) <= prefixsum
+        """Finds highest i, for which: sum(arr[0]+..+arr[i - i]) <= prefixsum.
 
-        if array values are probabilities, this function
-        allows to sample indexes according to the discrete
-        probability efficiently.
+        Args:
+            prefixsum (float): `prefixsum` upper bound in above constraint.
 
-        Parameters
-        ----------
-        perfixsum: float
-          upperbound on the sum of array prefix
-
-        Returns
-        -------
-        idx: int
-          highest index satisfying the prefixsum constraint
+        Returns:
+            int: Largest possible index (i) satisfying above constraint.
         """
         assert 0 <= prefixsum <= self.sum() + 1e-5
+        # Global sum node.
         idx = 1
-        while idx < self._capacity:  # while non-leaf
-            if self._value[2 * idx] > prefixsum:
-                idx = 2 * idx
+
+        # While non-leaf (first half of tree).
+        while idx < self.capacity:
+            update_idx = 2 * idx
+            if self.value[update_idx] > prefixsum:
+                idx = update_idx
             else:
-                prefixsum -= self._value[2 * idx]
-                idx = 2 * idx + 1
-        return idx - self._capacity
+                prefixsum -= self.value[update_idx]
+                idx = update_idx + 1
+        return idx - self.capacity
 
 
 class MinSegmentTree(SegmentTree):
     def __init__(self, capacity):
-        super(MinSegmentTree, self).__init__(
-            capacity=capacity, operation=min, neutral_element=float("inf"))
+        super(MinSegmentTree, self).__init__(capacity=capacity, operation=min)
 
     def min(self, start=0, end=None):
         """Returns min(arr[start], ...,  arr[end])"""
-        return super(MinSegmentTree, self).reduce(start, end)
+        return self.reduce(start, end)

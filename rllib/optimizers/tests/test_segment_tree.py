@@ -101,3 +101,4 @@ if __name__ == "__main__":
     test_prefixsum_idx()
     test_prefixsum_idx2()
     test_max_interval_tree()
+    print("ok")
