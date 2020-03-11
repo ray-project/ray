@@ -3419,9 +3419,9 @@ std::string FormatMemoryInfo(
         }
         if (!pid_printed) {
           if (worker_stats.is_driver()) {
-            builder << "  driver pid=" << worker_stats.pid() << "\n";
+            builder << "; driver pid=" << worker_stats.pid() << "\n";
           } else {
-            builder << "  worker pid=" << worker_stats.pid() << "\n";
+            builder << "; worker pid=" << worker_stats.pid() << "\n";
           }
           pid_printed = true;
         }
