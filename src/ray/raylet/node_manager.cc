@@ -3384,11 +3384,78 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
 }
 
-void NodeManager::HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
-                                     rpc::FormatGlobalMemoryInfoReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
-  reply->set_memory_summary("hello memory");
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+std::string FormatMemoryInfo(
+    std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> node_stats) {
+  // First pass to compute object sizes.
+  absl::flat_hash_map<ObjectID, int64_t> object_sizes;
+  for (const auto &reply : node_stats) {
+    for (const auto &worker_stats : reply->workers_stats()) {
+      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
+        if (object_ref.object_size() > 0) {
+          object_sizes[obj_id] = object_ref.object_size();
+        }
+      }
+    }
+  }
+
+  std::ostringstream builder;
+  builder
+      << "----------------------------------------------------------------------------\n";
+  builder << "Reference Type      Object Size   Reference Site\n";
+  builder
+      << "============================================================================\n";
+
+  // Second pass builds the summary string for each node.
+  for (const auto &reply : node_stats) {
+    for (const auto &worker_stats : reply->workers_stats()) {
+      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        if (object_ref.local_ref_count() == 0 &&
+            object_ref.submitted_task_ref_count() == 0 &&
+            object_ref.contained_in_owned_size() == 0) {
+          continue;
+        }
+        if (object_ref.local_ref_count() > 0) {
+          builder << "LOCAL_REFERENCE     ";
+        } else if (object_ref.submitted_task_ref_count() > 0) {
+          builder << "SUBMITTED_TASK_ARG  ";
+        } else {
+          builder << "CAPTURED_IN_OBJECT  ";
+        }
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
+        builder << std::right << std::setfill(' ') << std::setw(11)
+                << object_sizes[obj_id];
+        builder << "   " << object_ref.call_site();
+        builder << "\n";
+      }
+    }
+  }
+  builder
+      << "----------------------------------------------------------------------------\n";
+
+  return builder.str();
+}
+
+void NodeManager::HandleFormatGlobalMemoryInfo(
+    const rpc::FormatGlobalMemoryInfoRequest &request,
+    rpc::FormatGlobalMemoryInfoReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> replies;
+
+  auto local_request = std::make_shared<rpc::GetNodeStatsRequest>();
+  auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
+  local_request->set_include_memory_info(true);
+
+  // TODO(ekl): for (const auto &entry : remote_node_manager_clients_) {}
+  // to handle remote nodes
+
+  HandleGetNodeStats(*local_request, local_reply.get(),
+                     [local_request, local_reply, replies, reply, send_reply_callback](
+                         Status status, std::function<void()> success,
+                         std::function<void()> failure) mutable {
+                       replies.push_back(local_reply);
+                       reply->set_memory_summary(FormatMemoryInfo(replies));
+                       send_reply_callback(Status::OK(), nullptr, nullptr);
+                     });
 }
 
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,

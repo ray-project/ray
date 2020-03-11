@@ -560,7 +560,9 @@ cdef void get_py_stack(c_string* stack_out) nogil:
         frame = inspect.currentframe()
         msg = "<unknown>"
         while frame:
-            if not frame.f_code.co_filename.endswith("worker.py"):
+            filename = frame.f_code.co_filename
+            if (not filename.endswith("python/ray/worker.py") and
+                    not filename.endswith("python/ray/actor.py")):
                 msg = "{}:{}:{}".format(
                     frame.f_code.co_filename, frame.f_code.co_name,
                     frame.f_lineno)

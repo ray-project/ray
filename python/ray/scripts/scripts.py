@@ -944,7 +944,8 @@ def stat(address):
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         reply = stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest(), timeout=2.0)
+            node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
+            timeout=30.0)
         print(reply)
 
 
@@ -970,9 +971,9 @@ def memstat(address):
                                     ray.nodes()[0]["NodeManagerPort"])
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    reply = stub.FormatGlobalMemoryStats(
-        node_manager_pb2.FormatGlobalMemoryStatsRequest(), timeout=2.0)
-    print(reply)
+    reply = stub.FormatGlobalMemoryInfo(
+        node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
+    print(reply.memory_summary)
 
 
 cli.add_command(dashboard)
@@ -992,6 +993,7 @@ cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(stat)
+cli.add_command(memstat)
 cli.add_command(timeline)
 cli.add_command(project_cli)
 cli.add_command(session_cli)

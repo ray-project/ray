@@ -218,6 +218,12 @@ message ObjectRefInfo {
   string call_site = 2;
   // Size of the object if this core worker is the owner, otherwise -1.
   int64 object_size = 3;
+  // Number of local references to the object.
+  int64 local_ref_count = 4;
+  // Number of references in submitted tasks.
+  int64 submitted_task_ref_count = 5;
+  // Object ids that contain this object.
+  repeated bytes contained_in_owned = 6;
 }
 
 // Debug info returned from the core worker.

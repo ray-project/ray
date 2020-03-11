@@ -171,6 +171,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string DebugString() const;
 
+  std::string CallSiteString() const;
+
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
  private:

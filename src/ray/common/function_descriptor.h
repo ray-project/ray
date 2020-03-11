@@ -30,6 +30,8 @@ class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescripto
 
   virtual std::string ToString() const = 0;
 
+  virtual std::string CallSiteString() const { return ToString(); }
+
   template <typename Subtype>
   Subtype *As() {
     return reinterpret_cast<Subtype *>(this);
@@ -117,6 +119,11 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
            ", class_name=" + typed_message_->class_name() +
            ", function_name=" + typed_message_->function_name() +
            ", function_hash=" + typed_message_->function_hash() + "}";
+  }
+
+  virtual std::string CallSiteString() const {
+    return typed_message_->module_name() + "." + typed_message_->class_name() + "." +
+           typed_message_->function_name();
   }
 
   std::string ModuleName() const { return typed_message_->module_name(); }

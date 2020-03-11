@@ -216,7 +216,8 @@ class ReferenceCounter {
 
   void DebugDump() {
     for (const auto &ref : object_id_refs_) {
-      RAY_LOG(ERROR) << ref.second.object_size << " byte object at " << ref.second.call_site;
+      RAY_LOG(ERROR) << ref.second.object_size << " byte object at "
+                     << ref.second.call_site;
     }
   }
 
@@ -226,6 +227,11 @@ class ReferenceCounter {
       ref_proto->set_object_id(ref.first.Binary());
       ref_proto->set_call_site(ref.second.call_site);
       ref_proto->set_object_size(ref.second.object_size);
+      ref_proto->set_local_ref_count(ref.second.local_ref_count);
+      ref_proto->set_submitted_task_ref_count(ref.second.submitted_task_ref_count);
+      for (const auto &obj_id : ref.second.contained_in_owned) {
+        ref_proto->add_contained_in_owned(obj_id.Binary());
+      }
     }
   }
 

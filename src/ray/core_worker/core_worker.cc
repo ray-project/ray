@@ -1023,8 +1023,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // Pin the borrowed IDs for the duration of the task.
   for (const auto &borrowed_id : borrowed_ids) {
     RAY_LOG(DEBUG) << "Incrementing ref for borrowed ID " << borrowed_id;
-    reference_counter_->AddLocalReference(borrowed_id,
-                                          "ExecuteTask::" + task_spec.DebugString());
+    reference_counter_->AddLocalReference(borrowed_id, task_spec.CallSiteString());
   }
 
   const auto transport_type = worker_context_.CurrentTaskIsDirectCall()

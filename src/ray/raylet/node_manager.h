@@ -582,8 +582,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handle a `FormatGlobalMemoryInfo`` request.
   void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
-                          rpc::FormatGlobalMemoryInfoReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+                                    rpc::FormatGlobalMemoryInfoReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
