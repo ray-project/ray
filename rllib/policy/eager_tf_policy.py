@@ -457,11 +457,11 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def export_model(self, export_dir):
-            pass  # TODO(sven): implement
+            tf.saved_model.save(self.model, export_dir)
 
         @override(Policy)
         def export_checkpoint(self, export_dir):
-            pass  # TODO(sven): implement
+            chkpoint = tf.train.Checkpoint()
 
         @override(Policy)
         def import_model_from_h5(self, import_file):
