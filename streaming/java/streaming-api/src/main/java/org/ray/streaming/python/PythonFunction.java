@@ -1,6 +1,7 @@
 package org.ray.streaming.python;
 
-import javax.annotation.Nullable;
+import com.google.common.base.Preconditions;
+import org.apache.commons.lang3.StringUtils;
 import org.ray.streaming.api.function.Function;
 
 /**
@@ -38,9 +39,12 @@ public class PythonFunction implements Function {
     }
   }
 
-  private byte[] function;
-  private String moduleName;
-  private String functionName;
+  // null if this function is constructed from moduleName/functionName.
+  private final byte[] function;
+  // null if this function is constructed from serialized python function.
+  private final String moduleName;
+  // null if this function is constructed from serialized python function.
+  private final String functionName;
   /**
    * FunctionInterface can be used to validate python function,
    * and look up operator class from FunctionInterface.
@@ -48,19 +52,29 @@ public class PythonFunction implements Function {
   private String functionInterface;
 
   /**
-   * Create a python function.
+   * Create a {@link PythonFunction} from a serialized streaming python function.
    *
-   * @param function serialized streaming python function from python driver. If it's null,
-   *     then function is constructed from moduleName and functionName.
-   * @param moduleName streaming python function module name. <code>moduleName<code/> will be null
-   *     if this function is constructed from serialized python function.
-   * @param functionName streaming python function function name. <code>functionName<code/> will
-   *     be null if this function is constructed from serialized python function.
+   * @param function serialized streaming python function from python driver.
    */
-  private PythonFunction(@Nullable byte[] function,
-                         @Nullable String moduleName,
-                         @Nullable String functionName) {
+  public PythonFunction(byte[] function) {
+    Preconditions.checkNotNull(function);
     this.function = function;
+    this.moduleName = null;
+    this.functionName = null;
+  }
+
+  /**
+   * Create a {@link PythonFunction} from a moduleName and streaming function name.
+   *
+   * @param moduleName module name of streaming function.
+   * @param functionName function name of streaming function. {@code functionName} is the name
+   *     of a python function, or class name of subclass of `ray.streaming.function.`
+   */
+  public PythonFunction(String moduleName,
+                        String functionName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(moduleName));
+    Preconditions.checkArgument(StringUtils.isNotBlank(functionName));
+    this.function = null;
     this.moduleName = moduleName;
     this.functionName = functionName;
   }
@@ -85,23 +99,4 @@ public class PythonFunction implements Function {
     return functionInterface;
   }
 
-  /**
-   * Create a {@link PythonFunction} using python serialized function
-   *
-   * @param function serialized python function sent from python driver
-   */
-  public static PythonFunction fromFunction(byte[] function) {
-    return new PythonFunction(function, null, null);
-  }
-
-  /**
-   * Create a {@link PythonFunction} using <code>moduleName</code> and
-   * <code>functionName</code>.
-   *
-   * @param moduleName user function module name
-   * @param functionName function/class name of the user function.
-   */
-  public static PythonFunction fromFunctionName(String moduleName, String functionName) {
-    return new PythonFunction(null, moduleName, functionName);
-  }
 }

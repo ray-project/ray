@@ -45,7 +45,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   public PythonDataStream map(String moduleName, String funcName) {
-    return map(PythonFunction.fromFunctionName(moduleName, funcName));
+    return map(new PythonFunction(moduleName, funcName));
   }
 
   /**
@@ -60,7 +60,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   public PythonDataStream flatMap(String moduleName, String funcName) {
-    return flatMap(PythonFunction.fromFunctionName(moduleName, funcName));
+    return flatMap(new PythonFunction(moduleName, funcName));
   }
 
   /**
@@ -75,7 +75,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   public PythonDataStream filter(String moduleName, String funcName) {
-    return filter(PythonFunction.fromFunctionName(moduleName, funcName));
+    return filter(new PythonFunction(moduleName, funcName));
   }
 
   /**
@@ -91,7 +91,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   public PythonStreamSink sink(String moduleName, String funcName) {
-    return sink(PythonFunction.fromFunctionName(moduleName, funcName));
+    return sink(new PythonFunction(moduleName, funcName));
   }
 
   /**
@@ -106,7 +106,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   public PythonKeyDataStream keyBy(String moduleName, String funcName) {
-    return keyBy(PythonFunction.fromFunctionName(moduleName, funcName));
+    return keyBy(new PythonFunction(moduleName, funcName));
   }
 
   /**

@@ -1,5 +1,7 @@
 package org.ray.streaming.python;
 
+import com.google.common.base.Preconditions;
+import org.apache.commons.lang3.StringUtils;
 import org.ray.streaming.api.partition.Partition;
 
 /**
@@ -27,6 +29,7 @@ public class PythonPartition implements Partition<Object> {
   private String functionName;
 
   public PythonPartition(byte[] partition) {
+    Preconditions.checkNotNull(partition);
     this.partition = partition;
   }
 
@@ -36,6 +39,8 @@ public class PythonPartition implements Partition<Object> {
    * @param functionName function/class name of the partition function.
    */
   public PythonPartition(String moduleName, String functionName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(moduleName));
+    Preconditions.checkArgument(StringUtils.isNotBlank(functionName));
     this.moduleName = moduleName;
     this.functionName = functionName;
   }

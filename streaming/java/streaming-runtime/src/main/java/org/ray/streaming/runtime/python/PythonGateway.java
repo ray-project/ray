@@ -73,7 +73,7 @@ public class PythonGateway {
     Preconditions.checkNotNull(streamingContext);
     try {
       PythonStreamSource pythonStreamSource = PythonStreamSource.from(
-          streamingContext, PythonFunction.fromFunction(pySourceFunc));
+          streamingContext, new PythonFunction(pySourceFunc));
       referenceMap.put(getReferenceId(pythonStreamSource), pythonStreamSource);
       return serializer.serialize(getReferenceId(pythonStreamSource));
     } catch (Exception e) {
@@ -89,7 +89,7 @@ public class PythonGateway {
   }
 
   public byte[] createPyFunc(byte[] pyFunc) {
-    PythonFunction function = PythonFunction.fromFunction(pyFunc);
+    PythonFunction function = new PythonFunction(pyFunc);
     referenceMap.put(getReferenceId(function), function);
     return serializer.serialize(getReferenceId(function));
   }

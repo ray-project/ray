@@ -26,7 +26,7 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   }
 
   public PythonDataStream reduce(String moduleName, String funcName) {
-    return reduce(PythonFunction.fromFunctionName(moduleName, funcName));
+    return reduce(new PythonFunction(moduleName, funcName));
   }
 
   /**
