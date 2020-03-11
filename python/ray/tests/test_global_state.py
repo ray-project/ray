@@ -76,6 +76,26 @@ def test_add_remove_cluster_resources(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 6
 
 
+def test_global_state_actor_table(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    # actor table should be empty at first
+    assert len(ray.actors()) == 0
+
+    # actor table should contain only one entry
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    assert len(ray.actors()) == 1
+
+    # actor table should contain only this entry
+    # even when the actor goes out of scope
+    del a
+    assert len(ray.actors()) == 1
+
+
 if __name__ == "__main__":
     import pytest
     import sys
