@@ -1248,7 +1248,8 @@ def start_raylet(redis_address,
     if include_java is True:
         default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
-            json.loads(java_worker_options) if java_worker_options else ["-classpath", default_cp],
+            json.loads(java_worker_options)
+            if java_worker_options else ["-classpath", default_cp],
             redis_address,
             node_manager_port,
             plasma_store_name,
