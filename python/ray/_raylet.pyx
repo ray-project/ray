@@ -865,7 +865,7 @@ cdef class CoreWorker:
 
         with nogil:
             check_status(self.core_worker.get().KillActor(
-                  c_actor_id))
+                  c_actor_id, True))
 
     def resource_ids(self):
         cdef:
@@ -894,15 +894,24 @@ cdef class CoreWorker:
             self.core_worker.get().CreateProfileEvent(event_type),
             extra_data)
 
-    def deserialize_and_register_actor_handle(self, const c_string &bytes):
+    def remove_actor_handle_reference(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        self.core_worker.get().RemoveActorHandleReference(c_actor_id)
+
+    def deserialize_and_register_actor_handle(self, const c_string &bytes,
+                                              ObjectID
+                                              outer_object_id):
         cdef:
             CActorHandle* c_actor_handle
-
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
-            bytes)
+            bytes, c_outer_object_id)
         check_status(self.core_worker.get().GetActorHandle(
             c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
@@ -940,14 +949,13 @@ cdef class CoreWorker:
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
 
-    def serialize_actor_handle(self, actor_handle):
-        assert isinstance(actor_handle, ray.actor.ActorHandle)
+    def serialize_actor_handle(self, ActorID actor_id):
         cdef:
-            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
+            CObjectID c_actor_handle_id
         check_status(self.core_worker.get().SerializeActorHandle(
-            actor_id.native(), &output))
-        return output
+            actor_id.native(), &output, &c_actor_handle_id))
+        return output, ObjectID(c_actor_handle_id.Binary())
 
     def add_object_id_reference(self, ObjectID object_id):
         # Note: faster to not release GIL for short-running op.
@@ -974,7 +982,9 @@ cdef class CoreWorker:
             const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
-            CObjectID c_outer_object_id = outer_object_id.native()
+            CObjectID c_outer_object_id = (outer_object_id.native() if
+                                           outer_object_id else
+                                           CObjectID.Nil())
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
 
