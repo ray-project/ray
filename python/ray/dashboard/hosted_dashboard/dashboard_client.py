@@ -22,7 +22,8 @@ class DashboardClient:
         self.auth_info = self._connect()
         self.exporter = Exporter(
             self.auth_info.get("ingestor_url"),
-            self.auth_info.get("access_token"), dashboard_controller)
+            self.auth_info.get("access_token"),
+            dashboard_controller)
         self.hosted_dashboard_url = self.auth_info["dashboard_url"]
 
     def _authorize(self):
