@@ -362,6 +362,12 @@ ObjectID ObjectID::FromRandom() {
       flags);
 }
 
+ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
+  return ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_id),
+                                 /*return_index=*/1,
+                                 static_cast<int>(TaskTransportType::DIRECT));
+}
+
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
                                     ObjectIDFlagsType flags,
                                     ObjectIDIndexType object_index) {

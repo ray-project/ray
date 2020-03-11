@@ -652,6 +652,14 @@ class ActorHandle:
                     decorator=self._ray_method_decorators.get(method_name))
                 setattr(self, method_name, method)
 
+    def __del__(self):
+        # Mark that this actor handle has gone out of scope. Once all actor
+        # handles are out of scope, the actor will exit.
+        worker = ray.worker.get_global_worker()
+        if worker.connected and hasattr(worker, "core_worker"):
+            worker.core_worker.remove_actor_handle_reference(
+                self._ray_actor_id)
+
     def _actor_method_call(self,
                            method_name,
                            args=None,
@@ -752,36 +760,6 @@ class ActorHandle:
             self._ray_actor_creation_function_descriptor.class_name,
             self._actor_id.hex())
 
-    def __del__(self):
-        """Terminate the worker that is running this actor."""
-        # TODO(swang): Also clean up forked actor handles.
-        # Kill the worker if this is the original actor handle, created
-        # with Class.remote(). TODO(rkn): Even without passing handles around,
-        # this is not the right policy. the actor should be alive as long as
-        # there are ANY handles in scope in the process that created the actor,
-        # not just the first one.
-        worker = ray.worker.get_global_worker()
-        exported_in_current_session_and_job = (
-            self._ray_session_and_job == worker.current_session_and_job)
-        if (worker.mode == ray.worker.SCRIPT_MODE
-                and not exported_in_current_session_and_job):
-            # If the worker is a driver and driver id has changed because
-            # Ray was shut down re-initialized, the actor is already cleaned up
-            # and we don't need to send `__ray_terminate__` again.
-            logger.warning(
-                "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.", self._ray_actor_id,
-                self._ray_actor_creation_function_descriptor.class_name)
-            return
-        if worker.connected and self._ray_original_handle:
-            # Note: in py2 the weakref is destroyed prior to calling __del__
-            # so we need to set the hardref here briefly
-            try:
-                self.__ray_terminate__._actor_hard_ref = self
-                self.__ray_terminate__.remote()
-            finally:
-                self.__ray_terminate__._actor_hard_ref = None
-
     def __ray_kill__(self):
         """Deprecated - use ray.kill() instead."""
         logger.warning("actor.__ray_kill__() is deprecated and will be removed"
@@ -792,12 +770,8 @@ class ActorHandle:
     def _actor_id(self):
         return self._ray_actor_id
 
-    def _serialization_helper(self, ray_forking):
+    def _serialization_helper(self):
         """This is defined in order to make pickling work.
-
-        Args:
-            ray_forking: True if this is being called because Ray is forking
-                the actor handle and false if it is being called by pickling.
 
         Returns:
             A dictionary of the information needed to reconstruct the object.
@@ -807,10 +781,11 @@ class ActorHandle:
 
         if hasattr(worker, "core_worker"):
             # Non-local mode
-            state = worker.core_worker.serialize_actor_handle(self)
+            state = worker.core_worker.serialize_actor_handle(
+                self._ray_actor_id)
         else:
             # Local mode
-            state = {
+            state = ({
                 "actor_language": self._ray_actor_language,
                 "actor_id": self._ray_actor_id,
                 "method_decorators": self._ray_method_decorators,
@@ -819,18 +794,20 @@ class ActorHandle:
                 "actor_method_cpus": self._ray_actor_method_cpus,
                 "actor_creation_function_descriptor": self.
                 _ray_actor_creation_function_descriptor,
-            }
+            }, None)
 
         return state
 
     @classmethod
-    def _deserialization_helper(cls, state, ray_forking):
+    def _deserialization_helper(cls, state, outer_object_id=None):
         """This is defined in order to make pickling work.
 
         Args:
             state: The serialized state of the actor handle.
-            ray_forking: True if this is being called because Ray is forking
-                the actor handle and false if it is being called by pickling.
+            outer_object_id: The ObjectID that the serialized actor handle was
+                contained in, if any. This is used for counting references to
+                the actor handle.
+
         """
         worker = ray.worker.get_global_worker()
         worker.check_connected()
@@ -838,7 +815,7 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state)
+                state, outer_object_id)
         else:
             # Local mode
             return cls(
@@ -855,8 +832,8 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper(False)
-        return ActorHandle._deserialization_helper, (state, False)
+        state = self._serialization_helper()
+        return ActorHandle._deserialization_helper, (state)
 
 
 def modify_class(cls):

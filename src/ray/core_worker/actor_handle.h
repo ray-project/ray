@@ -32,7 +32,8 @@ class ActorHandle {
       : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
-  ActorHandle(const ActorID &actor_id, const JobID &job_id,
+  ActorHandle(const ActorID &actor_id, const TaskID &owner_id,
+              const rpc::Address &owner_address, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
               bool is_direct_call,
               const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
@@ -42,6 +43,10 @@ class ActorHandle {
   ActorHandle(const std::string &serialized);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
+
+  TaskID GetOwnerId() const { return TaskID::FromBinary(inner_.owner_id()); }
+
+  rpc::Address GetOwnerAddress() const { return inner_.owner_address(); }
 
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
