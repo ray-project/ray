@@ -7,13 +7,21 @@ import sys, subprocess, importlib
 
 TESTED_LIBRARIES = ["pyarrow"]
 
+
+def try_imports(library1, library2):
+    program_name = sys.argv[0]
+    return_info = subprocess.run(["python", program_name, library1, library2])
+    if return_info.returncode != 0:
+        print("Importing {} before {} caused an error".format(
+            library1, library2))
+    return return_info.returncode
+
+
 if len(sys.argv) == 1:
     final_exit_code = 0
-    program_name = sys.argv[0]
     for library in TESTED_LIBRARIES:
-        order_one = subprocess.run(["python", program_name, library, "ray"])
-        order_two = subprocess.run(["python", program_name, "ray", library])
-        final_exit_code += order_one.returncode + order_two.returncode
+        final_exit_code += try_imports("ray", library)
+        final_exit_code += try_imports(library, "ray")
     sys.exit(final_exit_code)
 
 if len(sys.argv) == 3:
