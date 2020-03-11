@@ -34,9 +34,9 @@ Status ServiceBasedJobInfoAccessor::AsyncAdd(
       request,
       [job_id, data_ptr, callback](const Status &status, const rpc::AddJobReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished adding job, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished adding job, status = " << status
                        << ", job id = " << job_id
                        << ", driver pid = " << data_ptr->driver_pid();
       });
@@ -52,9 +52,9 @@ Status ServiceBasedJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
       request,
       [job_id, callback](const Status &status, const rpc::MarkJobFinishedReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished marking job state, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished marking job state, status = " << status
                        << ", job id = " << job_id;
       });
   return Status::OK();
@@ -91,11 +91,11 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
       [actor_id, callback](const Status &status, const rpc::GetActorInfoReply &reply) {
         if (reply.has_actor_table_data()) {
           rpc::ActorTableData actor_table_data(reply.actor_table_data());
-          callback(Status::FromString(reply.status()), actor_table_data);
+          callback(status, actor_table_data);
         } else {
-          callback(Status::FromString(reply.status()), boost::none);
+          callback(status, boost::none);
         }
-        RAY_LOG(DEBUG) << "Finished getting actor info, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", actor id = " << actor_id;
       });
   return Status::OK();
@@ -115,9 +115,9 @@ Status ServiceBasedActorInfoAccessor::AsyncRegister(
         request, [actor_id, callback, done_callback](
                      const Status &status, const rpc::RegisterActorInfoReply &reply) {
           if (callback) {
-            callback(Status::FromString(reply.status()));
+            callback(status);
           }
-          RAY_LOG(DEBUG) << "Finished registering actor info, status = " << reply.status()
+          RAY_LOG(DEBUG) << "Finished registering actor info, status = " << status
                          << ", actor id = " << actor_id;
           done_callback();
         });
@@ -141,9 +141,9 @@ Status ServiceBasedActorInfoAccessor::AsyncUpdate(
         request, [actor_id, callback, done_callback](
                      const Status &status, const rpc::UpdateActorInfoReply &reply) {
           if (callback) {
-            callback(Status::FromString(reply.status()));
+            callback(status);
           }
-          RAY_LOG(DEBUG) << "Finished updating actor info, status = " << reply.status()
+          RAY_LOG(DEBUG) << "Finished updating actor info, status = " << status
                          << ", actor id = " << actor_id;
           done_callback();
         });
@@ -202,10 +202,10 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
         request, [actor_id, checkpoint_id, callback, done_callback](
                      const Status &status, const rpc::AddActorCheckpointReply &reply) {
           if (callback) {
-            callback(Status::FromString(reply.status()));
+            callback(status);
           }
-          RAY_LOG(DEBUG) << "Finished adding actor checkpoint, status = "
-                         << reply.status() << ", actor id = " << actor_id
+          RAY_LOG(DEBUG) << "Finished adding actor checkpoint, status = " << status
+                         << ", actor id = " << actor_id
                          << ", checkpoint id = " << checkpoint_id;
           done_callback();
         });
@@ -226,11 +226,11 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
                                          const rpc::GetActorCheckpointReply &reply) {
         if (reply.has_checkpoint_data()) {
           rpc::ActorCheckpointData checkpoint_data(reply.checkpoint_data());
-          callback(Status::FromString(reply.status()), checkpoint_data);
+          callback(status, checkpoint_data);
         } else {
-          callback(Status::FromString(reply.status()), boost::none);
+          callback(status, boost::none);
         }
-        RAY_LOG(DEBUG) << "Finished getting actor checkpoint, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished getting actor checkpoint, status = " << status
                        << ", checkpoint id = " << checkpoint_id;
       });
   return Status::OK();
@@ -247,12 +247,12 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
                                     const rpc::GetActorCheckpointIDReply &reply) {
         if (reply.has_checkpoint_id_data()) {
           rpc::ActorCheckpointIdData checkpoint_id_data(reply.checkpoint_id_data());
-          callback(Status::FromString(reply.status()), checkpoint_id_data);
+          callback(status, checkpoint_id_data);
         } else {
-          callback(Status::FromString(reply.status()), boost::none);
+          callback(status, boost::none);
         }
-        RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, status = "
-                       << reply.status() << ", actor id = " << actor_id;
+        RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, status = " << status
+                       << ", actor id = " << actor_id;
       });
   return Status::OK();
 }
@@ -276,11 +276,11 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   client_impl_->GetGcsRpcClient().RegisterNode(
       request, [this, node_id, &local_node_info](const Status &status,
                                                  const rpc::RegisterNodeReply &reply) {
-        if (Status::FromString(reply.status()).ok()) {
+        if (status.ok()) {
           local_node_info_.CopyFrom(local_node_info);
           local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
         }
-        RAY_LOG(DEBUG) << "Finished registering node info, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
                        << ", node id = " << node_id;
       });
   return Status::OK();
@@ -295,11 +295,11 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   client_impl_->GetGcsRpcClient().UnregisterNode(
       request,
       [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
-        if (Status::FromString(reply.status()).ok()) {
+        if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = ClientID::Nil();
         }
-        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
                        << ", node id = " << node_id;
       });
   return Status::OK();
@@ -321,9 +321,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_
       request,
       [node_id, callback](const Status &status, const rpc::RegisterNodeReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished registering node info, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
                        << ", node id = " << node_id;
       });
   return Status::OK();
@@ -338,9 +338,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
       request,
       [node_id, callback](const Status &status, const rpc::UnregisterNodeReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished unregistering node info, status = " << status
                        << ", node id = " << node_id;
       });
   return Status::OK();
@@ -357,9 +357,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
         for (int index = 0; index < reply.node_info_list_size(); ++index) {
           result.emplace_back(reply.node_info_list(index));
         }
-        callback(Status::FromString(reply.status()), result);
+        callback(status, result);
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
-                       << reply.status();
+                       << status;
       });
   return Status::OK();
 }
@@ -411,8 +411,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
           resource_map[resource.first] =
               std::make_shared<rpc::ResourceTableData>(resource.second);
         }
-        callback(Status::FromString(reply.status()), resource_map);
-        RAY_LOG(DEBUG) << "Finished getting node resources, status = " << reply.status()
+        callback(status, resource_map);
+        RAY_LOG(DEBUG) << "Finished getting node resources, status = " << status
                        << ", node id = " << node_id;
       });
   return Status::OK();
@@ -434,10 +434,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
         request, [node_id, callback, done_callback](
                      const Status &status, const rpc::UpdateResourcesReply &reply) {
           if (callback) {
-            callback(Status::FromString(reply.status()));
+            callback(status);
           }
-          RAY_LOG(DEBUG) << "Finished updating node resources, status = "
-                         << reply.status() << ", node id = " << node_id;
+          RAY_LOG(DEBUG) << "Finished updating node resources, status = " << status
+                         << ", node id = " << node_id;
           done_callback();
         });
   };
@@ -462,10 +462,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
         request, [node_id, callback, done_callback](
                      const Status &status, const rpc::DeleteResourcesReply &reply) {
           if (callback) {
-            callback(Status::FromString(reply.status()));
+            callback(status);
           }
-          RAY_LOG(DEBUG) << "Finished deleting node resources, status = "
-                         << reply.status() << ", node id = " << node_id;
+          RAY_LOG(DEBUG) << "Finished deleting node resources, status = " << status
+                         << ", node id = " << node_id;
           done_callback();
         });
   };
@@ -496,9 +496,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
       request,
       [node_id, callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished reporting heartbeat, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished reporting heartbeat, status = " << status
                        << ", node id = " << node_id;
       });
   return Status::OK();
@@ -525,10 +525,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
       request, [data_ptr, callback](const Status &status,
                                     const rpc::ReportBatchHeartbeatReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished reporting batch heartbeat, status = "
-                       << reply.status() << ", batch size = " << data_ptr->batch_size();
+        RAY_LOG(DEBUG) << "Finished reporting batch heartbeat, status = " << status
+                       << ", batch size = " << data_ptr->batch_size();
       });
   return Status::OK();
 }
@@ -566,9 +566,9 @@ Status ServiceBasedTaskInfoAccessor::AsyncAdd(
       request,
       [task_id, job_id, callback](const Status &status, const rpc::AddTaskReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished adding task, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished adding task, status = " << status
                        << ", task id = " << task_id << ", job id = " << job_id;
       });
   return Status::OK();
@@ -583,11 +583,11 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
       request, [task_id, callback](const Status &status, const rpc::GetTaskReply &reply) {
         if (reply.has_task_data()) {
           TaskTableData task_table_data(reply.task_data());
-          callback(Status::FromString(reply.status()), task_table_data);
+          callback(status, task_table_data);
         } else {
-          callback(Status::FromString(reply.status()), boost::none);
+          callback(status, boost::none);
         }
-        RAY_LOG(DEBUG) << "Finished getting task, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished getting task, status = " << status
                        << ", task id = " << task_id;
       });
   return Status::OK();
@@ -604,9 +604,9 @@ Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task
       request,
       [task_ids, callback](const Status &status, const rpc::DeleteTasksReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished deleting tasks, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished deleting tasks, status = " << status
                        << ", task id list size = " << task_ids.size();
       });
   return Status::OK();
@@ -643,9 +643,9 @@ Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
       request, [task_id, node_id, callback](const Status &status,
                                             const rpc::AddTaskLeaseReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished adding task lease, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished adding task lease, status = " << status
                        << ", task id = " << task_id << ", node id = " << node_id;
       });
   return Status::OK();
@@ -685,9 +685,9 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
       [data_ptr, node_id, callback](const Status &status,
                                     const rpc::AttemptTaskReconstructionReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished reconstructing task, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished reconstructing task, status = " << status
                        << ", reconstructions num = " << data_ptr->num_reconstructions()
                        << ", node id = " << node_id;
       });
@@ -713,8 +713,8 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
         for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
           result.emplace_back(reply.object_table_data_list(index));
         }
-        callback(Status::FromString(reply.status()), result);
-        RAY_LOG(DEBUG) << "Finished getting object locations, status = " << reply.status()
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting object locations, status = " << status
                        << ", object id = " << object_id;
       });
   return Status::OK();
@@ -735,10 +735,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
         request, [object_id, node_id, callback, done_callback](
                      const Status &status, const rpc::AddObjectLocationReply &reply) {
           if (callback) {
-            callback(Status::FromString(reply.status()));
+            callback(status);
           }
 
-          RAY_LOG(DEBUG) << "Finished adding object location, status = " << reply.status()
+          RAY_LOG(DEBUG) << "Finished adding object location, status = " << status
                          << ", object id = " << object_id << ", node id = " << node_id;
           done_callback();
         });
@@ -762,11 +762,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
         request, [object_id, node_id, callback, done_callback](
                      const Status &status, const rpc::RemoveObjectLocationReply &reply) {
           if (callback) {
-            callback(Status::FromString(reply.status()));
+            callback(status);
           }
-          RAY_LOG(DEBUG) << "Finished removing object location, status = "
-                         << reply.status() << ", object id = " << object_id
-                         << ", node id = " << node_id;
+          RAY_LOG(DEBUG) << "Finished removing object location, status = " << status
+                         << ", object id = " << object_id << ", node id = " << node_id;
           done_callback();
         });
   };
@@ -812,9 +811,9 @@ Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
       request, [data_ptr, node_id, callback](const Status &status,
                                              const rpc::AddProfileDataReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished adding profile data, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished adding profile data, status = " << status
                        << ", component type = " << data_ptr->component_type()
                        << ", node id = " << node_id;
       });
@@ -837,9 +836,9 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
       request, [job_id, type, callback](const Status &status,
                                         const rpc::ReportJobErrorReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished reporting job error, status = " << reply.status()
+        RAY_LOG(DEBUG) << "Finished reporting job error, status = " << status
                        << ", job id = " << job_id << ", type = " << type;
       });
   return Status::OK();
@@ -873,10 +872,10 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
       request, [worker_address, callback](const Status &status,
                                           const rpc::ReportWorkerFailureReply &reply) {
         if (callback) {
-          callback(Status::FromString(reply.status()));
+          callback(status);
         }
         RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                       << worker_address.DebugString() << ", status = " << reply.status();
+                       << worker_address.DebugString() << ", status = " << status;
       });
   return Status::OK();
 }

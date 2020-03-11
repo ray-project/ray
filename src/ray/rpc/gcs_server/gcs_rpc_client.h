@@ -53,7 +53,7 @@ class Executor {
     auto operation_callback = [this, request, callback, executor](                    \
                                   const Status &status, const METHOD##Reply &reply) { \
       if (!status.IsIOError()) {                                                      \
-        callback(status, reply);                                                      \
+        callback(Status::FromString(reply.status()), reply);                          \
         delete executor;                                                              \
       } else {                                                                        \
         Reconnect();                                                                  \
