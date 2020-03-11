@@ -507,12 +507,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing heartbeat.";
-  RAY_CHECK(subscribe != nullptr);
-  auto status =
-      heartbeat_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing heartbeat.";
-  return status;
+  throw std::runtime_error(
+      "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.");
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(

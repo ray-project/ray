@@ -555,14 +555,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
-  int heartbeat_count = 0;
-  auto heartbeat_subscribe = [&heartbeat_count](const ClientID &id,
-                                                const gcs::HeartbeatTableData &result) {
-    ++heartbeat_count;
-  };
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_subscribe, nullptr));
-
   int heartbeat_batch_count = 0;
   auto heartbeat_batch_subscribe =
       [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
@@ -576,7 +568,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitPendingDone(heartbeat_count, 1);
+  WaitPendingDone(heartbeat_batch_count, 1);
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
