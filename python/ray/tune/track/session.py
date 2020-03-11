@@ -42,16 +42,15 @@ class TrackSession:
         self._upload_dir = None
         self.trial_config = None
         self._iteration = -1
-        self._trial_info = None
         self.is_tune_session = bool(_tune_reporter)
         if self.is_tune_session:
             self._logger = _ReporterHook(_tune_reporter)
             self._logdir = _tune_reporter.logdir
-            self._trial_info = _tune_reporter.trial_info
+            self._trial_name = _tune_reporter.trial_name
+            self._trial_id = _tune_reporter.trial_id
         else:
-            trial_id = Trial.generate_id()
-            self._trial_info = TrialInfo(
-                trial_id=trial_id, trial_name=trial_name or trial_id)
+            self._trial_id = Trial.generate_id()
+            self._trial_name = trial_name or self._trial_id
             self._initialize_logging(experiment_dir, upload_dir, trial_config)
 
     def _initialize_logging(self,
@@ -115,16 +114,10 @@ class TrackSession:
 
     @property
     def trial_name(self):
-        """Trial name for the corresponding trial of this Trainable.
-
-        This is not set if not using Tune.
-        """
-        return self._trial_info.trial_name
+        """Trial name for the corresponding trial of this Trainable"""
+        return self._trial_name
 
     @property
     def trial_id(self):
-        """Trial id for the corresponding trial of this Trainable.
-
-        This is not set if not using Tune.
-        """
-        return self._trial_info.trial_id
+        """Trial id for the corresponding trial of this Trainable"""
+        return self._trial_id
