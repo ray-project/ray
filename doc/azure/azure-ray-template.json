@@ -35,7 +35,15 @@
                 "description": "The size of the worker node Virtual Machine"
             }
         },
-         "workerInitial": {
+        "vmPriorityWorker": {
+            "type": "string",
+            "defaultValue": "Spot",
+            "allowedValues": ["Regular", "Low", "Spot"],
+            "metadata": { 
+                "description": "Use Azure Spot instance for worker nodes"
+            }
+        },
+        "workerInitial": {
             "type": "int",
             "defaultValue": 1,
             "minValue": 0,
@@ -336,6 +344,7 @@
                     "mode": "Manual"
                 },
                 "virtualMachineProfile": {
+                    "priority": "[parameters('vmPriorityWorker')]",
                     "storageProfile": {
                         "osDisk": {
                             "createOption": "fromImage",
