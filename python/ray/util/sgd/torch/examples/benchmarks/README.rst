@@ -13,7 +13,7 @@ Single Node Results
 Here are benchmarking results comparing the following:
 
 * torch.nn.DataParallel
-* torch.nn.Parallel with ``apex.amp`` enabled (``O1``)
+* torch.nn.DataParallel with ``apex.amp`` enabled (``O1``)
 * Ray (wrapping Pytorch DistributedDataParallel)
 * Ray (wrapping Pytorch DistributedDataParallel) with ``apex.amp`` enabled (``O1``)
 
@@ -36,10 +36,10 @@ Framework versions used:
     Number   DataParallel  Ray (PyTorch)  DataParallel  Ray (PyTorch)
     of GPUs                               + Apex        + Apex
     =======  ============  =============  ============  ==============
-    1        2769.7        5143           2962.7        6172
-    2        5492.2        9463           5886.1        10052.8
-    4        10733.4       18807          11705.9       20319.5
-    8        21872.5       36911.8        23317.9       38642
+    1        355.5         356            776           770
+    2        656           701            1303          1346
+    4        1289          1401           2606          2695
+    8        2521          2795           4795          5862
 
 
 .. image:: raysgd_multigpu_benchmark.png
@@ -54,8 +54,8 @@ Here are benchmarking results comparing the following:
 
 * Horovod
 * Horovod with ``apex.amp`` enabled  (``O1``)
-* Pytorch DistributedDataParallel
-* Pytorch DistributedDataParallel with ``apex.amp`` enabled (``O1``)
+* Ray (wrapping Pytorch DistributedDataParallel)
+* Ray (wrapping Pytorch DistributedDataParallel) with ``apex.amp`` enabled (``O1``)
 
 on synthetic ImageNet data (via ``benchmark.py`` and ``horovod_benchmark_apex.py``) as of 03/04/2020.
 
