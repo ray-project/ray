@@ -544,10 +544,10 @@ RaySGD TorchTrainer provides comparable or better performance than other existin
     Number   DataParallel  Ray (PyTorch)  DataParallel  Ray (PyTorch)
     of GPUs                               + Apex        + Apex
     =======  ============  =============  ============  ==============
-    1        2769.7        5143           2962.7        6172
-    2        5492.2        9463           5886.1        10052.8
-    4        10733.4       18807          11705.9       20319.5
-    8        21872.5       36911.8        23317.9       38642
+    1        355.5         356            776           770
+    2        656           701            1303          1346
+    4        1289          1401           2606          2695
+    8        2521          2795           4795          5862
 
 **Multi-node benchmarks**:
 
@@ -561,10 +561,10 @@ RaySGD TorchTrainer provides comparable or better performance than other existin
     Number   Horovod  Ray (PyTorch)  Horovod  Ray (PyTorch)
     of GPUs                          + Apex   + Apex
     =======  =======  =============  =======  ==============
-    1 * 8    2769.7   5143           2962.7   6172
-    2 * 8    5492.2   9463           5886.1   10052.8
-    4 * 8    10733.4  18807          11705.9  20319.5
-    8 * 8    21872.5  36911.8        23317.9  38642
+    1 * 8    2769.7   2962.7         5143     6172
+    2 * 8    5492.2   5886.1         9463     10052.8
+    4 * 8    10733.4  11705.9        18807    20319.5
+    8 * 8    21872.5  23317.9        36911.8  38642
 
 
 
