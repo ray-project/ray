@@ -8,13 +8,13 @@ import org.ray.api.Ray;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.runtime.core.collector.OutputCollector;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.processor.Processor;
 import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.DataReader;
 import org.ray.streaming.runtime.transfer.DataWriter;
-import org.ray.streaming.runtime.transfer.collector.StreamCollector;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.worker.context.StreamingRuntimeContext;
 import org.slf4j.Logger;
@@ -72,7 +72,7 @@ public abstract class StreamTask implements Runnable {
         targetActorIds.add(actorId);
       });
       DataWriter writer = new DataWriter(channelIDs, targetActorIds, jobWorker.getWorkerConfig());
-      collectors.add(new StreamCollector(channelIDs, writer,
+      collectors.add(new OutputCollector(channelIDs, writer,
           executionVertex.getOutputEdges().get(0).getPartition()));
     }
 

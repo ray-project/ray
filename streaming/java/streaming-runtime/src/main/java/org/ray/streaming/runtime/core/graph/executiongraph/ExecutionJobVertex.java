@@ -57,10 +57,9 @@ public class ExecutionJobVertex {
   private List<ExecutionVertex> createExecutionVertices(StreamOperator streamOperator,
                                                         long buildTime) {
     List<ExecutionVertex> executionVertices = new ArrayList<>();
-    StreamProcessor streamProcessor = ProcessBuilder.buildProcessor(streamOperator);
     for (int index = 1; index <= parallelism; index++) {
       executionVertices.add(new ExecutionVertex(jobVertexId, index, this,
-          runtimeContext.getConf().workerConfigTemplate, streamProcessor, buildTime));
+          runtimeContext.getConf().workerConfigTemplate, streamOperator, buildTime));
     }
     return executionVertices;
   }
