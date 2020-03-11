@@ -75,14 +75,16 @@ extras = {
     "debug": [],
     "dashboard": [],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate", "tensorboardX"],
+    "tune": ["tabulate", "tensorboardX"]
 }
 
 extras["rllib"] = extras["tune"] + [
-    "pyyaml",
+    "atari_py",
+    "dm_tree",
     "gym[atari]",
-    "opencv-python-headless",
     "lz4",
+    "opencv-python-headless",
+    "pyyaml",
     "scipy",
 ]
 
@@ -176,6 +178,7 @@ requires = [
     "packaging",
     "pytest",
     "pyyaml",
+    "jsonschema",
     "redis>=3.3.2",
     # NOTE: Don't upgrade the version of six! Doing so causes installation
     # problems. See https://github.com/ray-project/ray/issues/4169.

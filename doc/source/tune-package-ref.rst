@@ -38,6 +38,8 @@ ray.tune.suggest
     :private-members:
     :show-inheritance:
 
+.. autoclass:: ray.tune.suggest.Repeater
+
 ray.tune.track
 --------------
 
