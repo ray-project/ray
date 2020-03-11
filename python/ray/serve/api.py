@@ -14,7 +14,7 @@ from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.serve.utils import (block_until_http_ready, get_random_letters,
                              expand)
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
 from ray.serve.queues import Query
@@ -175,8 +175,12 @@ def set_backend_config(backend_tag, backend_config):
                       BackendConfig), ("backend_config must be"
                                        " of instance BackendConfig")
     backend_config_dict = dict(backend_config)
-
     old_backend_config_dict = global_state.backend_table.get_info(backend_tag)
+
+    if (old_backend_config_dict["has_accept_batch_annotation"] == False
+            and backend_config.max_batch_size is not None):
+        raise batch_annotation_not_found
+
     global_state.backend_table.register_info(backend_tag, backend_config_dict)
 
     # inform the router about change in configuration
@@ -194,10 +198,10 @@ def set_backend_config(backend_tag, backend_config):
         for k in BackendConfig.restart_on_change_fields)
     if need_to_restart_replicas:
         # kill all the replicas for restarting with new configurations
-        scale(backend_tag, 0)
+        _scale(backend_tag, 0)
 
     # scale the replicas with new configuration
-    scale(backend_tag, backend_config_dict["num_replicas"])
+    _scale(backend_tag, backend_config_dict["num_replicas"])
 
 
 @_ensure_connected
@@ -213,11 +217,18 @@ def get_backend_config(backend_tag):
     return BackendConfig(**backend_config_dict)
 
 
+def _backend_accept_batch(func_or_class):
+    if inspect.isfunction(func_or_class):
+        return hasattr(func_or_class, "serve_accept_batch")
+    elif inspect.isclass(func_or_class):
+        return hasattr(func_or_class.__call__, "serve_accept_batch")
+
+
 @_ensure_connected
 def create_backend(func_or_class,
                    backend_tag,
                    *actor_init_args,
-                   backend_config=BackendConfig()):
+                   backend_config=None):
     """Create a backend using func_or_class and assign backend_tag.
 
     Args:
@@ -230,33 +241,28 @@ def create_backend(func_or_class,
         *actor_init_args (optional): the argument to pass to the class
             initialization method.
     """
+    # Configure backend_config
+    if backend_config is None:
+        backend_config = BackendConfig()
     assert isinstance(backend_config,
                       BackendConfig), ("backend_config must be"
                                        " of instance BackendConfig")
-    backend_config_dict = dict(backend_config)
 
+    # Make sure the batch size is correct
     should_accept_batch = (True if backend_config.max_batch_size is not None
                            else False)
-    batch_annotation_not_found = RayServeException(
-        "max_batch_size is set in config but the function or method does not "
-        "accept batching. Please use @serve.accept_batch to explicitly mark "
-        "the function or method as batchable and takes in list as arguments.")
+    if should_accept_batch and not _backend_accept_batch(func_or_class):
+        raise batch_annotation_not_found
+    if _backend_accept_batch(func_or_class):
+        backend_config.has_accept_batch_annotation = True
 
     arg_list = []
     if inspect.isfunction(func_or_class):
-        if should_accept_batch and not hasattr(func_or_class,
-                                               "serve_accept_batch"):
-            raise batch_annotation_not_found
-
         # arg list for a fn is function itself
         arg_list = [func_or_class]
         # ignore lint on lambda expression
         creator = lambda kwrgs: TaskRunnerActor._remote(**kwrgs)  # noqa: E731
     elif inspect.isclass(func_or_class):
-        if should_accept_batch and not hasattr(func_or_class.__call__,
-                                               "serve_accept_batch"):
-            raise batch_annotation_not_found
-
         # Python inheritance order is right-to-left. We put RayServeMixin
         # on the left to make sure its methods are not overriden.
         @ray.remote
@@ -271,6 +277,8 @@ def create_backend(func_or_class,
             "Backend must be a function or class, it is {}.".format(
                 type(func_or_class)))
 
+    backend_config_dict = dict(backend_config)
+
     # save creator which starts replicas
     global_state.backend_table.register_backend(backend_tag, creator)
 
@@ -284,7 +292,7 @@ def create_backend(func_or_class,
     # particularly for max-batch-size
     ray.get(global_state.init_or_get_router().set_backend_config.remote(
         backend_tag, backend_config_dict))
-    scale(backend_tag, backend_config_dict["num_replicas"])
+    _scale(backend_tag, backend_config_dict["num_replicas"])
 
 
 def _start_replica(backend_tag):
@@ -344,7 +352,7 @@ def _remove_replica(backend_tag):
 
 
 @_ensure_connected
-def scale(backend_tag, num_replicas):
+def _scale(backend_tag, num_replicas):
     """Set the number of replicas for backend_tag.
 
     Args:
@@ -462,6 +470,20 @@ def stat(percentiles=[50, 90, 95],
 
 
 class route:
+    """Convient method to create a backend and link to service.
+
+    When called, the following will happen:
+    - An endpoint is created with the same of the function
+    - A backend is created and instantiate the function
+    - The endpoint and backend are linked together
+    - The handle is returned
+
+    Usage:
+        @serve.route("/path")
+        def my_handler(flask_request):
+            ...
+    """
+
     def __init__(self, url_route):
         self.route = url_route
 
@@ -472,3 +494,5 @@ class route:
         create_backend(func_or_class, backend_tag)
         create_endpoint(name, self.route)
         link(name, backend_tag)
+
+        return get_handle(name)
