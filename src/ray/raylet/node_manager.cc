@@ -3401,20 +3401,29 @@ std::string FormatMemoryInfo(
 
   std::ostringstream builder;
   builder << "---------------------------------------------------------------------------"
-             "-----\n";
-  builder << "Object ID                                 Reference Type      Object Size  "
+             "-------------------------\n";
+  builder << " Object ID                                Reference Type      Object Size  "
              " Reference Creation Site\n";
   builder << "==========================================================================="
-             "=====\n";
+             "=========================\n";
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
     for (const auto &worker_stats : reply->workers_stats()) {
+      bool pid_printed = false;
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
         if (object_ref.local_ref_count() == 0 &&
             object_ref.submitted_task_ref_count() == 0 &&
             object_ref.contained_in_owned_size() == 0) {
           continue;
+        }
+        if (!pid_printed) {
+          if (worker_stats.is_driver()) {
+            builder << "  driver pid=" << worker_stats.pid() << "\n";
+          } else {
+            builder << "  worker pid=" << worker_stats.pid() << "\n";
+          }
+          pid_printed = true;
         }
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         builder << obj_id.Hex() << "  ";
@@ -3437,7 +3446,7 @@ std::string FormatMemoryInfo(
     }
   }
   builder << "---------------------------------------------------------------------------"
-             "-----\n";
+             "-------------------------\n";
 
   return builder.str();
 }
