@@ -195,8 +195,8 @@ class ESTrainer(Trainer):
         # Create the actors.
         logger.info("Creating actors.")
         self._workers = [
-            Worker.remote(config, policy_params, env_creator, noise_id, idx+1)
-            for idx in range(config["num_workers"])
+            Worker.remote(config, policy_params, env_creator, noise_id,
+                          idx + 1) for idx in range(config["num_workers"])
         ]
 
         self.episodes_so_far = 0
