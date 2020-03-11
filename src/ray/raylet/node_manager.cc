@@ -3401,10 +3401,10 @@ std::string FormatMemoryInfo(
 
   std::ostringstream builder;
   builder
-      << "----------------------------------------------------------------------------\n";
-  builder << "Reference Type      Object Size   Reference Site\n";
+      << "--------------------------------------------------------------------------------\n";
+  builder << "Object ID                                 Reference Type      Object Size   Reference Creation Site\n";
   builder
-      << "============================================================================\n";
+      << "================================================================================\n";
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
@@ -3415,23 +3415,28 @@ std::string FormatMemoryInfo(
             object_ref.contained_in_owned_size() == 0) {
           continue;
         }
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
+        builder << obj_id.Hex() << "  ";
         if (object_ref.local_ref_count() > 0) {
           builder << "LOCAL_REFERENCE     ";
         } else if (object_ref.submitted_task_ref_count() > 0) {
-          builder << "SUBMITTED_TASK_ARG  ";
+          builder << "USED_BY_TASK        ";
         } else {
           builder << "CAPTURED_IN_OBJECT  ";
         }
-        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
-        builder << std::right << std::setfill(' ') << std::setw(11)
-                << object_sizes[obj_id];
+        builder << std::right << std::setfill(' ') << std::setw(11);
+        if (object_sizes.contains(obj_id)) {
+          builder << object_sizes[obj_id];
+        } else {
+          builder << "          ?";
+        }
         builder << "   " << object_ref.call_site();
         builder << "\n";
       }
     }
   }
   builder
-      << "----------------------------------------------------------------------------\n";
+      << "--------------------------------------------------------------------------------\n";
 
   return builder.str();
 }
