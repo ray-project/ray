@@ -188,7 +188,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
       // by the task that created the object.
       should_put_in_plasma = !object.IsInPlasmaError();
       promoted_to_plasma_.erase(promoted_it);
-      stored_in_direct_memory = false;
     }
 
     bool should_add_entry = true;
@@ -219,6 +218,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   // in-memory store (would cause deadlock).
   if (should_put_in_plasma) {
     store_in_plasma_(object, object_id);
+    stored_in_direct_memory = false;
   }
 
   // It's important for performance to run the callbacks outside the lock.

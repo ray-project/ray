@@ -124,9 +124,10 @@ class TaskManager : public TaskFinisherInterface {
 
  private:
   struct TaskEntry {
-    TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg)
+    TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg,
+              size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
-      for (size_t i = 0; i < spec.NumReturns(); i++) {
+      for (size_t i = 0; i < num_returns; i++) {
         plasma_returns_in_scope.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
       }
     }

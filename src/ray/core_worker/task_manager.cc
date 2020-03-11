@@ -50,7 +50,8 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
         spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
     task_deps.push_back(actor_creation_return_id);
   }
-  reference_counter_->UpdateSubmittedTaskReferences(task_deps, lineage_pinning_enabled_ ? spec.NumReturns() : 0);
+  reference_counter_->UpdateSubmittedTaskReferences(
+      task_deps, lineage_pinning_enabled_ ? spec.NumReturns() : 0);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
@@ -68,7 +69,9 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
   }
 
   absl::MutexLock lock(&mu_);
-  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries)).second);
+  RAY_CHECK(
+      pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries, num_returns))
+          .second);
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
