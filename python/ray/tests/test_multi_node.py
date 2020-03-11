@@ -594,26 +594,6 @@ print("success")
     ray.get(f.remote())
 
 
-@pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --use-pickle"],
-    indirect=True)
-def test_use_pickle(call_ray_start):
-    address = call_ray_start
-
-    ray.init(address=address, use_pickle=True)
-
-    assert ray.worker.global_worker.use_pickle
-    x = (2, "hello")
-
-    @ray.remote
-    def f(x):
-        assert x == (2, "hello")
-        assert ray.worker.global_worker.use_pickle
-        return (3, "world")
-
-    assert ray.get(f.remote(x)) == (3, "world")
-
-
 if __name__ == "__main__":
     import pytest
     import sys

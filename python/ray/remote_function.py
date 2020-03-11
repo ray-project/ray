@@ -97,7 +97,7 @@ class RemoteFunction:
         self.remote = _remote_proxy
 
     def __call__(self, *args, **kwargs):
-        raise Exception("Remote functions cannot be called directly. Instead "
+        raise TypeError("Remote functions cannot be called directly. Instead "
                         "of running '{}()', try '{}.remote()'.".format(
                             self._function_name, self._function_name))
 
