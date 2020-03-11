@@ -3427,10 +3427,10 @@ std::string FormatMemoryInfo(
         }
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         builder << obj_id.Hex() << "  ";
-        if (object_ref.local_ref_count() > 0) {
-          builder << "LOCAL_REFERENCE     ";
-        } else if (object_ref.submitted_task_ref_count() > 0) {
+        if (object_ref.submitted_task_ref_count() > 0) {
           builder << "USED_BY_TASK        ";
+        } else if (object_ref.local_ref_count() > 0) {
+          builder << "LOCAL_REFERENCE     ";
         } else {
           builder << "CAPTURED_IN_OBJECT  ";
         }

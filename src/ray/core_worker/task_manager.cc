@@ -90,6 +90,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
+    reference_counter_->UpdateObjectSize(object_id, return_object.size());
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.

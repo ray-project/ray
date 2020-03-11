@@ -96,6 +96,12 @@ class ReferenceCounter {
                       const rpc::Address &owner_address, const std::string &call_site,
                       const int64_t object_size) LOCKS_EXCLUDED(mutex_);
 
+  /// Update the size of the object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] size The known size of the object.
+  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size);
+
   /// Add an object that we are borrowing.
   ///
   /// \param[in] object_id The ID of the object that we are borrowing.

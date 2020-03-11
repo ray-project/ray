@@ -94,6 +94,13 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   }
 }
 
+void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    it->second.object_size = object_size;
+  }
+}
+
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
                                          const std::string &call_site) {
   absl::MutexLock lock(&mutex_);
