@@ -97,8 +97,8 @@ class SegmentTree:
         while idx >= 1:
             update_idx = 2 * idx  # calculate only once
             # Update the reduction value at the correct "first half" idx.
-            self.value[idx] = self.operation(
-                self.value[update_idx], self.value[update_idx + 1])
+            self.value[idx] = self.operation(self.value[update_idx],
+                                             self.value[update_idx + 1])
             idx = idx >> 1  # Divide by 2 (fater than division).
 
     def __getitem__(self, idx):
@@ -108,6 +108,7 @@ class SegmentTree:
 
 class SumSegmentTree(SegmentTree):
     """A SegmentTree with the reduction `operation`=operator.add."""
+
     def __init__(self, capacity):
         super(SumSegmentTree, self).__init__(
             capacity=capacity, operation=operator.add)

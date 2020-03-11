@@ -2,28 +2,28 @@ from collections import Counter
 import numpy as np
 import unittest
 
-from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
-    PrioritizedReplayBuffer
+from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.utils.test_utils import check
 
 
 class TestPrioritizedReplayBuffer(unittest.TestCase):
     """
-    Tests insertion and (weighted) sampling of the PrioritizedReplayBuffer Component.
+    Tests insertion and (weighted) sampling of the PrioritizedReplayBuffer.
     """
-    def _generate_data(self):
-        return (
-            np.random.random((4,)),  # obs_t
-            np.random.choice([0, 1]),  # action
-            np.random.rand(),  # reward
-            np.random.random((4,)),  # obs_tp1
-            np.random.choice([False, True]),  # done
-        )
-    
+
     capacity = 10
     alpha = 1.0
     beta = 1.0
     max_priority = 1.0
+
+    def _generate_data(self):
+        return (
+            np.random.random((4, )),  # obs_t
+            np.random.choice([0, 1]),  # action
+            np.random.rand(),  # reward
+            np.random.random((4, )),  # obs_tp1
+            np.random.choice([False, True]),  # done
+        )
 
     def test_add(self):
         memory = PrioritizedReplayBuffer(
@@ -67,7 +67,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         # Fetch records, their indices and weights.
         _, _, _, _, _, weights, indices = \
             memory.sample(3, beta=self.beta)
-        check(weights, np.ones(shape=(3,)))
+        check(weights, np.ones(shape=(3, )))
         self.assertEqual(3, len(indices))
         self.assertTrue(len(memory) == num_records)
         self.assertTrue(memory._next_idx == num_records)
@@ -81,7 +81,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             _, _, _, _, _, weights, indices = memory.sample(
                 1000, beta=self.beta)
             self.assertTrue(970 < np.sum(indices) < 1100)
-            
+
         # Update weight of indices 0 and 1 to >> 0.01.
         # Expect to sample 0 and 1 equally (and some 2s, 3s, and 4s).
         for _ in range(10):
@@ -147,14 +147,12 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         # Expect an approximately correct distribution of indices.
         self.assertTrue(
             counts[9] >= counts[8] >= counts[7] >= counts[6] >= counts[5] >=
-            counts[4] >= counts[3] >= counts[2] >= counts[1] >= counts[0]
-        )
+            counts[4] >= counts[3] >= counts[2] >= counts[1] >= counts[0])
 
     def test_alpha_parameter(self):
         # Test sampling from a PR with a very small alpha (should behave just
         # like a regular ReplayBuffer).
-        memory = PrioritizedReplayBuffer(
-            size=self.capacity, alpha=0.01)
+        memory = PrioritizedReplayBuffer(size=self.capacity, alpha=0.01)
 
         # Insert n samples.
         num_records = 5
