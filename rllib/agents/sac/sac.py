@@ -4,8 +4,8 @@ from ray.rllib.agents.sac.sac_policy import SACTFPolicy
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "rollout_fragment_length",
-    "train_batch_size", "learning_starts"
+    "prioritized_replay_beta", "prioritized_replay_eps",
+    "rollout_fragment_length", "train_batch_size", "learning_starts"
 ]
 
 # yapf: disable

@@ -52,7 +52,8 @@ def validate_config(config):
             config["rollout_fragment_length"] * config["num_envs_per_worker"])
     else:
         raise ValueError(
-            "Set rollout_fragment_length instead of train_batch_size for DDPPO.")
+            "Set rollout_fragment_length instead of train_batch_size for DDPPO."
+        )
     ppo.validate_config(config)
 
 

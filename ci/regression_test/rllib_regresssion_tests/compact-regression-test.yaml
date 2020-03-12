@@ -12,7 +12,7 @@ atari-impala:
     stop:
         time_total_s: 3600
     config:
-        rollout_length: 50
+        rollout_fragment_length: 50
         train_batch_size: 500
         num_workers: 10
         num_envs_per_worker: 5
@@ -36,7 +36,7 @@ atari-ppo-tf:
         vf_clip_param: 10.0
         entropy_coeff: 0.01
         train_batch_size: 5000
-        rollout_length: 100
+        rollout_fragment_length: 100
         sgd_minibatch_size: 500
         num_sgd_iter: 10
         num_workers: 10
@@ -60,7 +60,7 @@ atari-ppo-torch:
         vf_clip_param: 10.0
         entropy_coeff: 0.01
         train_batch_size: 5000
-        rollout_length: 100
+        rollout_fragment_length: 100
         sgd_minibatch_size: 500
         num_sgd_iter: 10
         num_workers: 10
@@ -94,7 +94,7 @@ apex:
         num_gpus: 1
         num_workers: 8
         num_envs_per_worker: 8
-        rollout_length: 20
+        rollout_fragment_length: 20
         train_batch_size: 512
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
@@ -105,7 +105,7 @@ atari-a2c:
     stop:
         time_total_s: 3600
     config:
-        rollout_length: 20
+        rollout_fragment_length: 20
         clip_rewards: True
         num_workers: 5
         num_envs_per_worker: 5
@@ -133,7 +133,7 @@ atari-basic-dqn:
         hiddens: [512]
         learning_starts: 20000
         buffer_size: 1000000
-        rollout_length: 4
+        rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:
           epsilon_timesteps: 200000

@@ -223,8 +223,8 @@ def validate_config_and_setup_param_noise(config):
         }
 
     # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["rollout_fragment_length"], config.get(
-        "n_step", 1))
+    adjusted_batch_size = max(config["rollout_fragment_length"],
+                              config.get("n_step", 1))
     config["rollout_fragment_length"] = adjusted_batch_size
 
     # Setup parameter noise.
