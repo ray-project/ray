@@ -278,14 +278,14 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
             raise ValueError(
                 "Your `horizon` setting ({}) is larger than the Env's own "
                 "timestep limit ({})! Try to increase the Env's limit via "
-                "setting its `spec.max_episode_steps` property.".
-                    format(horizon, max_episode_steps))
+                "setting its `spec.max_episode_steps` property.".format(
+                    horizon, max_episode_steps))
     # Otherwise, set Trainer's horizon to env's max-steps.
     elif max_episode_steps:
         horizon = max_episode_steps
         logger.debug(
             "No episode horizon specified, setting it to Env's limit ({}).".
-                format(max_episode_steps))
+            format(max_episode_steps))
     else:
         horizon = float("inf")
         logger.debug("No episode horizon specified, assuming inf.")
