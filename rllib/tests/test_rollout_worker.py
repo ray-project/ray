@@ -221,7 +221,8 @@ class TestRolloutWorker(unittest.TestCase):
                 "rollout_fragment_length": 5,
                 "num_envs_per_worker": 2,
             })
-        results = pg.workers.foreach_worker(lambda ev: ev.rollout_fragment_length)
+        results = pg.workers.foreach_worker(
+            lambda ev: ev.rollout_fragment_length)
         results2 = pg.workers.foreach_worker_with_index(
             lambda ev, i: (i, ev.rollout_fragment_length))
         results3 = pg.workers.foreach_worker(

@@ -82,11 +82,11 @@ class TreeAggregator(Aggregator):
 
         self.aggregators = aggregators
         for i, agg in enumerate(self.aggregators):
-            agg.init.remote(self.broadcasted_weights, assigned_workers[i],
-                            self.max_sample_requests_in_flight_per_worker,
-                            self.replay_proportion,
-                            self.replay_buffer_num_slots,
-                            self.train_batch_size, self.rollout_fragment_length)
+            agg.init.remote(
+                self.broadcasted_weights, assigned_workers[i],
+                self.max_sample_requests_in_flight_per_worker,
+                self.replay_proportion, self.replay_buffer_num_slots,
+                self.train_batch_size, self.rollout_fragment_length)
 
         self.agg_tasks = TaskPool()
         for agg in self.aggregators:
@@ -140,7 +140,8 @@ class AggregationWorker(AggregationWorkerBase):
 
     def init(self, initial_weights_obj_id, remote_workers,
              max_sample_requests_in_flight_per_worker, replay_proportion,
-             replay_buffer_num_slots, train_batch_size, rollout_fragment_length):
+             replay_buffer_num_slots, train_batch_size,
+             rollout_fragment_length):
         """Deferred init that assigns sub-workers to this aggregator."""
 
         logger.info("Assigned workers {} to aggregation worker {}".format(

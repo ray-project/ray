@@ -312,8 +312,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         active_envs, to_eval, outputs = _process_observations(
             base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
-            preprocessors, obs_filters, rollout_fragment_length, pack, callbacks,
-            soft_horizon, no_done_at_end)
+            preprocessors, obs_filters, rollout_fragment_length, pack,
+            callbacks, soft_horizon, no_done_at_end)
         perf_stats.processing_time += time.time() - t1
         for o in outputs:
             yield o
@@ -341,8 +341,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
 def _process_observations(base_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
                           infos, off_policy_actions, horizon, preprocessors,
-                          obs_filters, rollout_fragment_length, pack, callbacks,
-                          soft_horizon, no_done_at_end):
+                          obs_filters, rollout_fragment_length, pack,
+                          callbacks, soft_horizon, no_done_at_end):
     """Record new data from the environment and prepare for policy evaluation.
 
     Returns:

@@ -895,7 +895,8 @@ class Trainer(Trainable):
         # Warning if user override config has deprecated value.
         if ("sample_batch_size" in config2
                 and config2["sample_batch_size"] != DEPRECATED_VALUE):
-            deprecation_warning("sample_batch_size", new="rollout_fragment_length")
+            deprecation_warning(
+                "sample_batch_size", new="rollout_fragment_length")
             config2["rollout_fragment_length"] = config2["sample_batch_size"]
             del config2["sample_batch_size"]
         return deep_update(config1, config2, cls._allow_unknown_configs,

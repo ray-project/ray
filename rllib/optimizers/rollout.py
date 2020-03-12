@@ -27,7 +27,8 @@ def collect_samples(agents, rollout_fragment_length, num_envs_per_worker,
         trajectories.append(next_sample)
 
         # Only launch more tasks if we don't already have enough pending
-        pending = len(agent_dict) * rollout_fragment_length * num_envs_per_worker
+        pending = len(
+            agent_dict) * rollout_fragment_length * num_envs_per_worker
         if num_timesteps_so_far + pending < train_batch_size:
             fut_sample2 = agent.sample.remote()
             agent_dict[fut_sample2] = agent

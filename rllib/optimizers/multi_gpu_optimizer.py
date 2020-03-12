@@ -132,9 +132,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
         with self.sample_timer:
             if self.workers.remote_workers():
-                samples = collect_samples(
-                    self.workers.remote_workers(), self.rollout_fragment_length,
-                    self.num_envs_per_worker, self.train_batch_size)
+                samples = collect_samples(self.workers.remote_workers(),
+                                          self.rollout_fragment_length,
+                                          self.num_envs_per_worker,
+                                          self.train_batch_size)
                 if samples.count > self.train_batch_size * 2:
                     logger.info(
                         "Collected more training samples than expected "

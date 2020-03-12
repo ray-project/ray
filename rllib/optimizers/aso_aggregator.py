@@ -53,7 +53,8 @@ class AggregationWorkerBase:
 
     def __init__(self, initial_weights_obj_id, remote_workers,
                  max_sample_requests_in_flight_per_worker, replay_proportion,
-                 replay_buffer_num_slots, train_batch_size, rollout_fragment_length):
+                 replay_buffer_num_slots, train_batch_size,
+                 rollout_fragment_length):
         """Initialize an aggregator.
 
         Arguments:
@@ -78,7 +79,8 @@ class AggregationWorkerBase:
                 raise ValueError(
                     "Replay buffer size is too small to produce train, "
                     "please increase replay_buffer_num_slots.",
-                    replay_buffer_num_slots, rollout_fragment_length, train_batch_size)
+                    replay_buffer_num_slots, rollout_fragment_length,
+                    train_batch_size)
 
         # Kick off async background sampling
         self.sample_tasks = TaskPool()
