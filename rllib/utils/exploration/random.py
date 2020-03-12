@@ -53,7 +53,6 @@ class Random(Exploration):
             return self.get_torch_exploration_action(action_dist, explore)
 
     def get_tf_exploration_action_op(self, action_dist, explore):
-
         def true_fn():
             action = tf.py_function(self.action_space.sample, [],
                                     self.dtype_sample)
