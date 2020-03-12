@@ -30,8 +30,7 @@ import org.slf4j.LoggerFactory;
 @RayRemote
 public class JobWorker {
 
-  private static final Logger LOG = LoggerFactory.getLogger(
-      org.ray.streaming.runtime.worker.JobWorker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(JobWorker.class);
 
   static {
     EnvUtil.loadNativeLibraries();
