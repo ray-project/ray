@@ -25,6 +25,7 @@ import numpy as np
 
 from ray.rllib.utils import try_import_tf
 import ray.rllib.agents.impala.vtrace as vtrace
+from ray.rllib.utils.numpy import softmax
 
 tf = try_import_tf()
 
@@ -32,11 +33,6 @@ tf = try_import_tf()
 def _shaped_arange(*shape):
     """Runs np.arange, converts to float and reshapes."""
     return np.arange(np.prod(shape), dtype=np.float32).reshape(*shape)
-
-
-def _softmax(logits):
-    """Applies softmax non-linearity on inputs."""
-    return np.exp(logits) / np.sum(np.exp(logits), axis=-1, keepdims=True)
 
 
 def _ground_truth_calculation(discounts, log_rhos, rewards, values,
@@ -108,7 +104,7 @@ class LogProbsFromLogitsAndActionsTest(tf.test.TestCase,
         # numerically stable. However, in this test we have well-behaved
         # values.
         ground_truth_v = index_with_mask(
-            np.log(_softmax(policy_logits)), action_index_mask)
+            np.log(softmax(policy_logits)), action_index_mask)
 
         with self.test_session() as session:
             self.assertAllClose(ground_truth_v,

@@ -8,7 +8,7 @@ Ray comes with a built-in autoscaler that makes deploying a Ray cluster simple, 
 Setup
 -----
 
-This section provides instructions for configuring the autoscaler to launch a Ray cluster on AWS/GCP, an existing Kubernetes cluster, or on a private cluster of host machines.
+This section provides instructions for configuring the autoscaler to launch a Ray cluster on AWS/Azure/GCP, an existing Kubernetes cluster, or on a private cluster of host machines.
 
 Once you have finished configuring the autoscaler to create a cluster, see the Quickstart guide below for more details on how to get started running Ray programs on it.
 
@@ -39,6 +39,32 @@ Test that it works by running the following commands from your local machine:
 .. tip:: For the AWS node configuration, you can set ``"ImageId: latest_dlami"`` to automatically use the newest `Deep Learning AMI <https://aws.amazon.com/machine-learning/amis/>`_ for your region. For example, ``head_node: {InstanceType: c5.xlarge, ImageId: latest_dlami}``.
 
 .. note:: You may see a message like: ``bash: cannot set terminal process group (-1): Inappropriate ioctl for device bash: no job control in this shell`` This is a harmless error. If the cluster launcher fails, it is most likely due to some other factor.
+
+Azure Portal
+~~~~~~~~~~~~
+
+Alternatively, you can deploy a cluster using Azure portal directly. Please note that auto scaling is done using Azure VM Scale Sets and not through
+the Ray autoscaler. This will deploy `Azure Data Science VMs (DSVM) <https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/>`_
+for both the head node and an auto-scale cluster managed by `Azure Virtual Machine Scale Sets <https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/>`_.
+The head node conviently exposes both SSH as well as JupyterLab.
+
+.. image:: https://aka.ms/deploytoazurebutton
+   :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
+   :alt: Deploy to Azure
+
+Once the template is successfully deploy the deployment output page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
+Use the following code connect to the Ray cluster.
+
+.. code-block:: python
+
+    import ray
+    ray.init(address='auto')
+
+Note that on each node the `azure-init.sh <https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh>`_ script is executed and performs
+
+1. activate one of the conda environments available on DSVM
+2. install Ray and any other user-specified dependencies
+3. setup of a systemd task (``/lib/systemd/system/ray.service``) which starting ray in head or worker mode
 
 GCP
 ~~~

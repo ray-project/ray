@@ -1,15 +1,34 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
 
 import "src/ray/protobuf/gcs.proto";
 
+message GcsStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
 message AddJobRequest {
   JobTableData data = 1;
 }
 
 message AddJobReply {
-  bool success = 1;
+  GcsStatus status = 1;
 }
 
 message MarkJobFinishedRequest {
@@ -17,7 +36,7 @@ message MarkJobFinishedRequest {
 }
 
 message MarkJobFinishedReply {
-  bool success = 1;
+  GcsStatus status = 1;
 }
 
 // Service for job info access.
@@ -34,8 +53,9 @@ message GetActorInfoRequest {
 }
 
 message GetActorInfoReply {
+  GcsStatus status = 1;
   // Data of actor.
-  ActorTableData actor_table_data = 1;
+  ActorTableData actor_table_data = 2;
 }
 
 message RegisterActorInfoRequest {
@@ -44,6 +64,7 @@ message RegisterActorInfoRequest {
 }
 
 message RegisterActorInfoReply {
+  GcsStatus status = 1;
 }
 
 message UpdateActorInfoRequest {
@@ -54,6 +75,7 @@ message UpdateActorInfoRequest {
 }
 
 message UpdateActorInfoReply {
+  GcsStatus status = 1;
 }
 
 message AddActorCheckpointRequest {
@@ -61,6 +83,7 @@ message AddActorCheckpointRequest {
 }
 
 message AddActorCheckpointReply {
+  GcsStatus status = 1;
 }
 
 message GetActorCheckpointRequest {
@@ -68,7 +91,8 @@ message GetActorCheckpointRequest {
 }
 
 message GetActorCheckpointReply {
-  ActorCheckpointData checkpoint_data = 1;
+  GcsStatus status = 1;
+  ActorCheckpointData checkpoint_data = 2;
 }
 
 message GetActorCheckpointIDRequest {
@@ -76,7 +100,8 @@ message GetActorCheckpointIDRequest {
 }
 
 message GetActorCheckpointIDReply {
-  ActorCheckpointIdData checkpoint_id_data = 1;
+  GcsStatus status = 1;
+  ActorCheckpointIdData checkpoint_id_data = 2;
 }
 
 // Service for actor info access.
@@ -102,6 +127,7 @@ message RegisterNodeRequest {
 }
 
 message RegisterNodeReply {
+  GcsStatus status = 1;
 }
 
 message UnregisterNodeRequest {
@@ -110,13 +136,15 @@ message UnregisterNodeRequest {
 }
 
 message UnregisterNodeReply {
+  GcsStatus status = 1;
 }
 
 message GetAllNodeInfoRequest {
 }
 
 message GetAllNodeInfoReply {
-  repeated GcsNodeInfo node_info_list = 1;
+  GcsStatus status = 1;
+  repeated GcsNodeInfo node_info_list = 2;
 }
 
 message ReportHeartbeatRequest {
@@ -124,6 +152,7 @@ message ReportHeartbeatRequest {
 }
 
 message ReportHeartbeatReply {
+  GcsStatus status = 1;
 }
 
 message ReportBatchHeartbeatRequest {
@@ -131,6 +160,7 @@ message ReportBatchHeartbeatRequest {
 }
 
 message ReportBatchHeartbeatReply {
+  GcsStatus status = 1;
 }
 
 message GetResourcesRequest {
@@ -138,7 +168,8 @@ message GetResourcesRequest {
 }
 
 message GetResourcesReply {
-  map<string, ResourceTableData> resources = 1;
+  GcsStatus status = 1;
+  map<string, ResourceTableData> resources = 2;
 }
 
 message UpdateResourcesRequest {
@@ -147,6 +178,7 @@ message UpdateResourcesRequest {
 }
 
 message UpdateResourcesReply {
+  GcsStatus status = 1;
 }
 
 message DeleteResourcesRequest {
@@ -155,6 +187,7 @@ message DeleteResourcesRequest {
 }
 
 message DeleteResourcesReply {
+  GcsStatus status = 1;
 }
 
 // Service for node info access.
@@ -184,8 +217,9 @@ message GetObjectLocationsRequest {
 }
 
 message GetObjectLocationsReply {
+  GcsStatus status = 1;
   // Data of object
-  repeated ObjectTableData object_table_data_list = 1;
+  repeated ObjectTableData object_table_data_list = 2;
 }
 
 message AddObjectLocationRequest {
@@ -196,6 +230,7 @@ message AddObjectLocationRequest {
 }
 
 message AddObjectLocationReply {
+  GcsStatus status = 1;
 }
 
 message RemoveObjectLocationRequest {
@@ -206,6 +241,7 @@ message RemoveObjectLocationRequest {
 }
 
 message RemoveObjectLocationReply {
+  GcsStatus status = 1;
 }
 
 // Service for object info access.
@@ -224,6 +260,7 @@ message AddTaskRequest {
 }
 
 message AddTaskReply {
+  GcsStatus status = 1;
 }
 
 message GetTaskRequest {
@@ -231,7 +268,8 @@ message GetTaskRequest {
 }
 
 message GetTaskReply {
-  TaskTableData task_data = 1;
+  GcsStatus status = 1;
+  TaskTableData task_data = 2;
 }
 
 message DeleteTasksRequest {
@@ -239,6 +277,7 @@ message DeleteTasksRequest {
 }
 
 message DeleteTasksReply {
+  GcsStatus status = 1;
 }
 
 message AddTaskLeaseRequest {
@@ -246,6 +285,7 @@ message AddTaskLeaseRequest {
 }
 
 message AddTaskLeaseReply {
+  GcsStatus status = 1;
 }
 
 message AttemptTaskReconstructionRequest {
@@ -253,6 +293,7 @@ message AttemptTaskReconstructionRequest {
 }
 
 message AttemptTaskReconstructionReply {
+  GcsStatus status = 1;
 }
 
 // Service for task info access.
@@ -275,6 +316,7 @@ message AddProfileDataRequest {
 }
 
 message AddProfileDataReply {
+  GcsStatus status = 1;
 }
 
 // Service for stats access.
@@ -288,6 +330,7 @@ message ReportJobErrorRequest {
 }
 
 message ReportJobErrorReply {
+  GcsStatus status = 1;
 }
 
 // Service for error info access.
@@ -301,6 +344,7 @@ message ReportWorkerFailureRequest {
 }
 
 message ReportWorkerFailureReply {
+  GcsStatus status = 1;
 }
 
 // Service for worker info access.

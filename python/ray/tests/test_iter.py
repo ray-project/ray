@@ -124,6 +124,17 @@ def test_combine(ray_start_regular_shared):
     assert list(it.gather_sync()) == [0, 0, 1, 1, 2, 2, 3, 3]
 
 
+def test_duplicate(ray_start_regular_shared):
+    it = from_range(5, num_shards=1)
+
+    it1, it2 = it.gather_sync().duplicate(2)
+    it1 = it1.batch(2)
+
+    it3 = it1.union(it2, deterministic=False)
+    results = it3.take(20)
+    assert results == [0, [0, 1], 1, 2, [2, 3], 3, 4, [4]]
+
+
 def test_chain(ray_start_regular_shared):
     it = from_range(4).for_each(lambda x: x * 2).for_each(lambda x: x * 2)
     assert repr(

@@ -7,10 +7,12 @@ from ray.rllib.agents.a3c import A2CTrainer
 class TestDistributedExecution(unittest.TestCase):
     """General tests for the distributed execution API."""
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         ray.init()
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_exec_plan_stats(ray_start_regular):

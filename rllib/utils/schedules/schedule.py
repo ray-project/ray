@@ -22,7 +22,7 @@ class Schedule(metaclass=ABCMeta):
     value and returns the value dependent on the Schedule and the passed time.
     """
 
-    def __init__(self, framework=None):
+    def __init__(self, framework):
         self.framework = check_framework(framework)
 
     @abstractmethod

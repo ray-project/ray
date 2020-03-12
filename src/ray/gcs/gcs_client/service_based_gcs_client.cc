@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include <unistd.h>
 #include "ray/common/ray_config.h"
@@ -22,14 +36,18 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
 
   // Get gcs service address
-  std::pair<std::string, int> address;
-  GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
-                               &address);
+  auto get_server_address = [this]() {
+    std::pair<std::string, int> address;
+    GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+                                 &address);
+    return address;
+  };
+  std::pair<std::string, int> address = get_server_address();
 
   // Connect to gcs service
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
-  gcs_rpc_client_.reset(
-      new rpc::GcsRpcClient(address.first, address.second, *client_call_manager_));
+  gcs_rpc_client_.reset(new rpc::GcsRpcClient(address.first, address.second,
+                                              *client_call_manager_, get_server_address));
 
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
@@ -65,7 +83,7 @@ void ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
 
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().gcs_service_connect_wait_milliseconds() * 1000);
+    usleep(RayConfig::instance().internal_gcs_service_connect_wait_milliseconds() * 1000);
     num_attempts++;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())
