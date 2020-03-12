@@ -103,7 +103,9 @@ class GrpcClient {
                    .CreateCall<GrpcService, Request, Reply>(
                        *stub_, prepare_async_function, request, callback)
                    ->GetStatus();
-      if (status.error_code() == 14) {
+      // Retry requests that failed with a transient error.
+      // https://grpc.github.io/grpc/core/md_doc_statuscodes.html.
+      if (status.error_code() == grpc::UNAVAILABLE) {
         // Exponential backoff.
         uint64_t delay = 2 ^ retries * 100;
         RAY_LOG(WARNING) << "RPC got status UNAVAILABLE, retrying after " << delay
