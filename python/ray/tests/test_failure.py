@@ -974,7 +974,7 @@ def test_fill_object_store_lru_fallback(shutdown_only):
         oids.append(oid)
 
     # NOTE: Needed to unset the config set by the lru_evict flag, for Travis.
-    ray.worker.global_worker.set_internal_config({
+    ray._raylet.set_internal_config({
         "object_pinning_enabled": 1,
         "object_store_full_max_retries": 5,
     })
