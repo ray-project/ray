@@ -100,7 +100,8 @@ def build_q_models(policy, obs_space, action_space, config):
 
 
 def get_distribution_inputs_and_class(
-        policy, q_model, obs_batch, *, states, prev_actions, prev_rewards,
+        policy, q_model, obs_batch, *, state_batches,
+        prev_action_batch, prev_reward_batch,
         explore, is_training):
     q_vals = _compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals

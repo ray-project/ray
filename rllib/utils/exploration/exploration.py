@@ -3,6 +3,7 @@ from typing import Union
 
 from ray.rllib.env import BaseEnv
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
 
@@ -36,9 +37,10 @@ class Exploration:
 
     def forward(self,
                 model: ModelV2,
-                input_dict: dict,
-                states,
-                seq_lens):
+                obs_batch,
+                state_batches=None,
+                seq_lens=None,
+                **kwargs):
         """Performs a forward pass through the given model.
 
         Should be overridden to implement custom forward pass exploration
@@ -46,14 +48,15 @@ class Exploration:
 
         Args:
             model (ModelV2): The model object to use for the forward pass.
-            input_dict (dict): The input dict.
-            states (List): The list of internal states to pass through the
-                model.
-            seq_lens (List): The list of sequence-lengths to pass through the
-                model.
+            obs_batch (dict): The observations batch.
+            state_batches (List): The list of internal state batches to pass
+                through the model.
+            seq_lens: The sequence lengths for the RNN case.
+            **kwargs: Forward compatibility kwargs.
         """
         # Default behavior: Call the model with the given params.
-        return model(input_dict, states, seq_lens)
+        return model(
+            {SampleBatch.CUR_OBS: obs_batch}, state_batches or [], seq_lens)
 
     def get_exploration_action(self,
                                distribution_inputs: TensorType,

@@ -1,15 +1,14 @@
 from gym.spaces import Discrete
 import numpy as np
 from scipy.stats import entropy
-from typing import Union
 
 from ray.rllib.env.base_env import BaseEnv
-from ray.rllib.policy.policy import ACTION_PROB, ACTION_LOGP
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    TensorType
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.framework import get_variable
 from ray.rllib.utils.numpy import softmax
@@ -74,7 +73,9 @@ class ParameterNoise(Exploration):
             raise NotImplementedError
 
     @override(Exploration)
-    def forward(self, model, input_dict, states, seq_lens, explore=True):
+    def forward(self, model, obs_batch, *,
+                state_batches=None, seq_lens=None, prev_action_batch=None,
+                prev_reward_batch=None, explore=True, is_training=True):
         # Initialize all noise_vars.
         if self.noise is None:
             self.model_variables = [v for v in model.variables()
@@ -86,18 +87,19 @@ class ParameterNoise(Exploration):
                     framework=self.framework,
                     tf_name=var.name.split(":")[0] + "_noisy"))
 
+        input_dict = {SampleBatch.CUR_OBS: obs_batch}
         if self.framework == "tf" and not tf.executing_eagerly():
             return self._tf_forward_op(
-                explore, model, input_dict, states, seq_lens)
+                explore, model, input_dict, state_batches, seq_lens)
         else:
             # Exploration: Normal behavior.
             if explore:
-                return model(input_dict, states, seq_lens)
+                return model(input_dict, state_batches, seq_lens)
     
             # No exploration: Revert noise, forward-pass, then re-apply noise.
             else:
                 remove_op = self._remove_noise(model)
-                out = model(input_dict, states, seq_lens)
+                out = model(input_dict, state_batches, seq_lens)
                 self._apply_noise(model)
                 return out
 
@@ -149,6 +151,8 @@ class ParameterNoise(Exploration):
 
         inputs, dist_class, _ = policy.compute_distribution_inputs(
             model, batch, explore=False)
+
+        new_stddev = 0.0
         # Categorical case (e.g. DQN).
         if dist_class is Categorical:
             noisy_action_dist = softmax(inputs)
@@ -199,7 +203,7 @@ class ParameterNoise(Exploration):
             return tf.group(*add_noise_ops)
         # Add noise.
         else:
-            for i in range(len(self.noisy_weights)):
+            for i in range(len(self.noise)):
                 # Add noise to weights in-place.
                 torch.add_(self.model_variables[i], self.noise[i])
 

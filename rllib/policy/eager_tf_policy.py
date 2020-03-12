@@ -247,9 +247,16 @@ def build_eager_tf_policy(name,
             }
             if forward_fn:
                 _, self.dist_class, _ = forward_fn(
-                    self, self.model,
-                    input_dict, self._state_in, tf.convert_to_tensor([1]),
-                    observation_space, action_space, explore=True)
+                    self, self.model, input_dict[SampleBatch.CUR_OBS],
+                    state_batches=self._state_in,
+                    seq_lens=tf.convert_to_tensor([1]),
+                    prev_action_batch=input_dict[SampleBatch.PREV_ACTIONS],
+                    prev_reward_batch=input_dict[SampleBatch.PREV_REWARDS],
+                    explore=True, is_training=True)
+                #_, self.dist_class, _ = forward_fn(
+                #    self, self.model,
+                #    input_dict, self._state_in, tf.convert_to_tensor([1]),
+                #    explore=True)
             else:
                 self.model(
                     input_dict, self._state_in, tf.convert_to_tensor([1]))
@@ -349,7 +356,7 @@ def build_eager_tf_policy(name,
             #        if timestep is not None else self.global_timestep)
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
-                dist_inputs, dist_class, state_outs = \
+                dist_inputs, dist_class, state_out = \
                     self.compute_distribution_inputs(
                         obs_batch=tf.convert_to_tensor(obs_batch),
                         state_batches=state_batches,
@@ -394,8 +401,7 @@ def build_eager_tf_policy(name,
                     state_batches=state_batches,
                     prev_action_batch=prev_action_batch,
                     prev_reward_batch=prev_reward_batch,
-                    explore=explore,
-                    is_training=is_training)
+                    explore=explore, is_training=is_training)
             # Forward pass through our exploration object.
             else:
                 dist_class = self.dist_class

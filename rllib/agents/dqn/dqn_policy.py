@@ -201,8 +201,7 @@ def build_q_model(policy, obs_space, action_space, config):
 
 
 def get_distribution_inputs_and_class(
-        policy, q_model, obs_batch, *, states, prev_actions, prev_rewards,
-        explore, is_training):
+        policy, q_model, obs_batch, *, explore=True, **kwargs):
     q_vals = _compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
@@ -381,8 +380,7 @@ def _compute_q_values(policy, model, obs, explore):
         "obs": obs,
         "is_training": policy._get_is_training_placeholder(),
     }
-    model_out, state = policy.exploration.forward(
-        model, input_dict, [], None, explore=explore)
+    model_out, state = policy.exploration.forward(model, obs, explore=explore)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
