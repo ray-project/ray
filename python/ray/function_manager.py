@@ -172,7 +172,7 @@ class FunctionActorManager:
         # This is a placeholder in case the function can't be unpickled. This
         # will be overwritten if the function is successfully registered.
         def f(*args, **kwargs):
-            raise Exception("This function was not imported properly.")
+            raise RuntimeError("This function was not imported properly.")
 
         # This function is called by ImportThread. This operation needs to be
         # atomic. Otherwise, there is race condition. Another thread may use
@@ -275,7 +275,7 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         except Exception:
             logger.exception("Failed to load function %s.", function_name)
-            raise Exception(
+            raise RuntimeError(
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
 
@@ -447,7 +447,7 @@ class FunctionActorManager:
                 return actor_class
         except Exception:
             logger.exception("Failed to load actor_class %s.", class_name)
-            raise Exception(
+            raise RuntimeError(
                 "Actor {} failed to be imported from local code.".format(
                     class_name))
 
@@ -456,7 +456,7 @@ class FunctionActorManager:
             pass
 
         def temporary_actor_method(*args, **kwargs):
-            raise Exception(
+            raise RuntimeError(
                 "The actor with name {} failed to be imported, "
                 "and so cannot execute this method.".format(actor_class_name))
 
