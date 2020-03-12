@@ -748,6 +748,19 @@ Note that in the ``on_postprocess_traj`` callback you have full access to the tr
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
+To access the policy / model (``policy.model``) in the callbacks, note that ``info['pre_batch']`` returns a tuple where the first element is a policy and the second one is the batch itself. You can also access all the rollout worker state using the following call:
+
+.. code-block:: python
+
+    from ray.rllib.evaluation.rollout_worker import get_global_worker
+
+    # You can use this from any callback to get a reference to the
+    # RolloutWorker running in the process, which in turn has references to
+    # all the policies, etc: see rollout_worker.py for more info.
+    rollout_worker = get_global_worker()
+
+Policy losses are defined over the ``post_batch`` data, so you can mutate that in the callbacks to change what data the policy loss function sees.
+
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
 
