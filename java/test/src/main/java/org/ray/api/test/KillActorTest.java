@@ -71,6 +71,14 @@ public class KillActorTest extends BaseTest {
     // The get operation will fail with RayActorException
     Assert.expectThrows(RayActorException.class, result::get);
 
+    try {
+      // Sleep 1s here to make sure the driver has received the actor notification
+      // (of state RECONSTRUCTING or DEAD).
+      Thread.sleep(1000);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+
     if (noReconstruction) {
       // The actor should not be reconstructed.
       Assert.expectThrows(RayActorException.class, () -> actor.call(HangActor::hang).get());

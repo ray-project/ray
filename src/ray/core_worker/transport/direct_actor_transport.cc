@@ -112,9 +112,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   }
-  if (pending_requests_.count(actor_id) > 0) {
-    SendPendingTasks(actor_id);
-  }
+  SendPendingTasks(actor_id);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
