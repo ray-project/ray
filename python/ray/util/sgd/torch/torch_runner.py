@@ -95,6 +95,12 @@ class TorchRunner:
         with FileLock(os.path.join(tempfile.gettempdir(), ".ray_data.lock")):
             loaders = self.data_creator(self.config)
             train_loader, val_loader = self._validate_loaders(loaders)
+            if not isinstance(train_loader, torch.utils.data.DataLoader):
+                logger.warning(
+                    "TorchTrainer data_creator return values are no longer "
+                    "wrapped as DataLoaders. Users must return DataLoader(s) "
+                    "in data_creator. This warning will be removed in "
+                    "a future version of Ray.")
 
         self.train_loader, self.validation_loader = train_loader, val_loader
 
@@ -108,7 +114,7 @@ class TorchRunner:
         else:
             self.criterion = self.loss_creator(self.config)
 
-        if torch.cuda.is_available() and hasattr("cuda", self.criterion):
+        if torch.cuda.is_available() and hasattr(self.criterion, "cuda"):
             self.criterion = self.criterion.cuda()
 
     def _create_schedulers_if_available(self):

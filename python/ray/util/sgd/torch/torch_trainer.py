@@ -131,22 +131,27 @@ class TorchTrainer:
 
     """
 
-    def __init__(self,
-                 *,
-                 model_creator=None,
-                 data_creator=None,
-                 optimizer_creator=None,
-                 loss_creator=None,
-                 scheduler_creator=None,
-                 training_operator_cls=None,
-                 initialization_hook=None,
-                 config=None,
-                 num_workers=1,
-                 use_gpu=False,
-                 backend="auto",
-                 use_fp16=False,
-                 apex_args=None,
-                 scheduler_step_freq="batch"):
+    def __init__(
+            self,
+            *,
+            model_creator,
+            data_creator,
+            optimizer_creator,
+            loss_creator=None,
+            scheduler_creator=None,
+            training_operator_cls=None,
+            initialization_hook=None,
+            config=None,
+            num_workers=1,
+            use_gpu=False,
+            backend="auto",
+            use_fp16=False,
+            apex_args=None,
+            scheduler_step_freq="batch",
+            num_replicas=None,
+            batch_size=None,
+            data_loader_args=None,
+    ):
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
@@ -154,8 +159,30 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not (model_creator and optimizer_creator and data_creator):
-            raise ValueError("Must provide a Model, Optimizer, Data creator.")
+        if not (callable(model_creator) and callable(optimizer_creator)
+                and callable(data_creator)):
+            raise ValueError(
+                "Must provide a callable model_creator, optimizer_creator, "
+                "and data_creator.")
+
+        if num_replicas is not None:
+            raise DeprecationWarning(
+                "num_replicas is deprecated. Use num_workers instead.")
+
+        if batch_size is not None:
+            raise DeprecationWarning(
+                "batch_size is deprecated. Use config={'batch_size': N} "
+                "specify a batch size for each worker or "
+                "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
+                "batch size to be used across all workers.")
+
+        if data_loader_args:
+            raise ValueError(
+                "data_loader_args is deprecated. You can return a "
+                "torch.utils.data.DataLoader in data_creator. Ray will "
+                "automatically set a DistributedSampler if a DataLoader is "
+                "returned and num_workers > 1.")
+
         self.model_creator = model_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
@@ -498,7 +525,6 @@ class TorchTrainer:
                 return
             else:
                 delay = 2**i
-                logger.info("Resources: {}".format(resources))
                 logger.warning(
                     "No new workers found. Retrying in %d sec." % delay)
                 time.sleep(delay)
@@ -535,7 +561,6 @@ class TorchTrainable(Trainable):
         validation_stats = self._trainer.validate()
 
         train_stats.update(validation_stats)
-        # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
         return train_stats
 
     def _save(self, checkpoint_dir):

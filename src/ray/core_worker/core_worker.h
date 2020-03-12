@@ -95,6 +95,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   virtual ~CoreWorker();
 
+  void Exit(bool intentional);
+
   void Disconnect();
 
   WorkerType GetWorkerType() const { return worker_type_; }
@@ -140,9 +142,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
-    return reference_counter_->GetAllReferenceCounts();
-  }
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
   /// Promote an object to plasma and get its owner information. This should be
   /// called when serializing an object ID, and the returned information should
@@ -395,7 +395,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id ID of the actor to kill.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id);
+  Status KillActor(const ActorID &actor_id, bool force_kill);
+
+  /// Decrease the reference count for this actor. Should be called by the
+  /// language frontend when a reference to the ActorHandle destroyed.
+  ///
+  /// \param[in] actor_id The actor ID to decrease the reference count for.
+  void RemoveActorHandleReference(const ActorID &actor_id);
 
   /// Add an actor handle from a serialized string.
   ///
@@ -404,8 +410,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// actor.
   ///
   /// \param[in] serialized The serialized actor handle.
+  /// \param[in] outer_object_id The object ID that contained the serialized
+  /// actor handle, if any.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized);
+  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
+                                            const ObjectID &outer_object_id);
 
   /// Serialize an actor handle.
   ///
@@ -414,8 +423,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id The ID of the actor handle to serialize.
   /// \param[out] The serialized handle.
+  /// \param[out] The ID used to track references to the actor handle. If the
+  /// serialized actor handle in the language frontend is stored inside an
+  /// object, then this must be recorded in the worker's ReferenceCounter.
   /// \return Status::Invalid if we don't have the specified handle.
-  Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
+  Status SerializeActorHandle(const ActorID &actor_id, std::string *output,
+                              ObjectID *actor_handle_id) const;
 
   ///
   /// Public methods related to task execution. Should not be used by driver processes.
@@ -572,9 +585,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
+  /// \param is_owner_handle Whether this is the owner's handle to the actor.
+  /// The owner is the creator of the actor and is responsible for telling the
+  /// actor to disconnect once all handles are out of scope.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
@@ -812,6 +828,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Plasma Callback
   PlasmaSubscriptionCallback plasma_done_callback_;
+
+  /// Whether we are shutting down and not running further tasks.
+  bool exiting_ = false;
 
   friend class CoreWorkerTest;
 };

@@ -51,6 +51,7 @@ MOCK_MODULES = [
     "torch.nn",
     "torch.nn.parallel",
     "torch.utils.data",
+    "torch.utils.data.distributed"
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
