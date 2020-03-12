@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * The streaming worker implementation class, it is ray actor.
  */
 @RayRemote
-public class JobWorker implements IJobWorker {
+public class JobWorker {
 
   private static final Logger LOG = LoggerFactory.getLogger(
       org.ray.streaming.runtime.worker.JobWorker.class);
@@ -47,7 +47,6 @@ public class JobWorker implements IJobWorker {
     LOG.info("Job worker init success.");
   }
 
-  @Override
   public Boolean init(JobWorkerContext workerContext) {
     LOG.info("Init worker context {}. workerId: {}.", workerContext, workerContext.getWorkerId());
     this.workerContext = workerContext;
@@ -99,7 +98,6 @@ public class JobWorker implements IJobWorker {
     return task;
   }
 
-  @Override
   public Boolean start() {
     try {
       task.start();
@@ -110,7 +108,6 @@ public class JobWorker implements IJobWorker {
     return true;
   }
 
-  @Override
   public void shutdown() {
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
       LOG.info("Worker shutdown now.");
@@ -118,7 +115,6 @@ public class JobWorker implements IJobWorker {
     System.exit(0);
   }
 
-  @Override
   public Boolean destroy() {
     try {
       if (task != null) {

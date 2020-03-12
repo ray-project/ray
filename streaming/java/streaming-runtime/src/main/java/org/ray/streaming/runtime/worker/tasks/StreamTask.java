@@ -25,8 +25,7 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class StreamTask implements Runnable {
 
-  private static final Logger LOG = LoggerFactory.getLogger(
-      StreamTask.class);
+  private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
 
   protected int taskId;
   protected Processor processor;
