@@ -1,4 +1,4 @@
-#include "ray/gcs/store_based_gcs_service_discovery_client.h"
+#include "ray/gcs/service_discovery/store_based_gcs_service_discovery_client.h"
 
 namespace ray {
 

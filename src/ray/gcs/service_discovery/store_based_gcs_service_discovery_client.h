@@ -1,9 +1,9 @@
-#ifndef GCS_STORE_BASED_GCS_SERVICE_DISCOVERY_CLIENT_H
-#define GCS_STORE_BASED_GCS_SERVICE_DISCOVERY_CLIENT_H
+#ifndef GCS_SERVICE_DISCOVERY_STORE_BASED_GCS_SERVICE_DISCOVERY_CLIENT_H
+#define GCS_SERVICE_DISCOVERY_STORE_BASED_GCS_SERVICE_DISCOVERY_CLIENT_H
 
 #include <memory>
-#include "ray/gcs/gcs_service_discovery_client.h"
-#include "ray/gcs/gcs_store/redis_store_client.h"
+#include "ray/gcs/service_discovery/gcs_service_discovery_client.h"
+#include "ray/gcs/store_client/redis_store_client.h"
 
 namespace ray {
 
@@ -53,4 +53,4 @@ class StoreBasedGcsServiceDiscoveryClient : public GcsServiceDiscoveryClient {
 
 }  // namespace ray
 
-#endif  // GCS_STORE_BASED_GCS_SERVICE_DISCOVERY_CLIENT_H
+#endif  // GCS_SERVICE_DISCOVERY_STORE_BASED_GCS_SERVICE_DISCOVERY_CLIENT_H
