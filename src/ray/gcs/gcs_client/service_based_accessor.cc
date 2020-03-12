@@ -567,7 +567,15 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
         std::vector<rpc::NodeResources> node_resources_list =
             VectorFromProtobuf(reply.resources_list());
         for (auto &node_resources : node_resources_list) {
-          subscribe(ClientID::FromBinary(node_resources.node_id()), );
+          std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+              resources_map;
+          for (auto resource : node_resources.resources()) {
+            resources_map[resource.first] =
+                std::make_shared<rpc::ResourceTableData>(resource.second);
+          }
+          ResourceChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
+                                                  resources_map);
+          subscribe(ClientID::FromBinary(node_resources.node_id()), notification);
         }
       });
 
