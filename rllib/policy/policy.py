@@ -169,7 +169,9 @@ class Policy(metaclass=ABCMeta):
                                     obs_batch,
                                     state_batches=None,
                                     prev_action_batch=None,
-                                    prev_reward_batch=None):
+                                    prev_reward_batch=None,
+                                    explore=True,
+                                    is_training=True):
         """Computes inputs to action distribution for a given observation.
 
         Args:

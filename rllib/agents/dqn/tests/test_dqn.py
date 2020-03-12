@@ -108,7 +108,7 @@ class TestDQN(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["eager", "tf", "torch"]:
+        for fw in ["tf", "eager", "torch"]:
             if fw == "torch":
                 continue
 
@@ -124,6 +124,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(50):
                 a = trainer.compute_action(obs, explore=False)
                 check(a, a_)
+
             # explore=None (default: explore) should return different actions.
             actions = []
             for _ in range(50):

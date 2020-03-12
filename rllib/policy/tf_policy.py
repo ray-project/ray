@@ -1,9 +1,9 @@
 import errno
 import logging
+import numpy as np
 import os
 import tree
 
-import numpy as np
 import ray
 import ray.experimental.tf_utils
 from ray.util.debug import log_once
@@ -62,6 +62,8 @@ class TFPolicy(Policy):
                  sampled_action_logp=None,
                  action_input=None,
                  log_likelihood=None,
+                 distribution_inputs=None,
+                 dist_class=None,
                  state_inputs=None,
                  state_outputs=None,
                  prev_action_input=None,
@@ -98,6 +100,8 @@ class TFPolicy(Policy):
                 logp/log-likelihood calculations.
             log_likelihood (Optional[Tensor]): Tensor to calculate the
                 log_likelihood (given action_input and obs_input).
+            distribution_inputs (Optional[Tensor]): Tensor to calculate
+                only the distribution inputs.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
@@ -163,8 +167,11 @@ class TFPolicy(Policy):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
-        # Generate the log-likelihood calculator.
+        # The log-likelihood calculator op.
         self._log_likelihood = log_likelihood
+        # The distribution inputs calculator op.
+        self._distribution_inputs = distribution_inputs
+        self.dist_class = dist_class
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -270,6 +277,43 @@ class TFPolicy(Policy):
         return builder.get(fetches)
 
     @override(Policy)
+    def compute_distribution_inputs(self,
+                                    obs_batch,
+                                    state_batches=None,
+                                    prev_action_batch=None,
+                                    prev_reward_batch=None,
+                                    explore=None,
+                                    is_training=None):
+        explore = explore if explore is not None else self.config["explore"]
+
+        if self.dist_class is None:
+            raise ValueError("Cannot return distribution_inputs w/o a "
+                             "self.dist_class!")
+
+        builder = TFRunBuilder(self._sess, "compute_distribution_inputs")
+        state_batches = state_batches or []
+        if len(self._state_inputs) != len(state_batches):
+            raise ValueError(
+                "Must pass in RNN state batches for placeholders {}, got {}".
+                format(self._state_inputs, state_batches))
+        builder.add_feed_dict(self.extra_compute_action_feed_dict())
+        builder.add_feed_dict({self._obs_input: obs_batch})
+        if state_batches:
+            builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
+        if self._prev_action_input is not None and \
+           prev_action_batch is not None:
+            builder.add_feed_dict({self._prev_action_input: prev_action_batch})
+        if self._prev_reward_input is not None and \
+           prev_reward_batch is not None:
+            builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
+        builder.add_feed_dict({self._is_training: False})
+        builder.add_feed_dict({self._is_exploring: explore})
+        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
+        fetches = builder.add_fetches([self._distribution_inputs] +
+                                      self._state_outputs)
+        return fetches[0], self.dist_class, fetches[1:-1]
+
+    @override(Policy)
     def compute_log_likelihoods(self,
                                 actions,
                                 obs_batch,
@@ -280,8 +324,6 @@ class TFPolicy(Policy):
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
                              "self._log_likelihood op!")
 
-        # Do the forward pass through the model to capture the parameters
-        # for the action distribution, then do a logp on that distribution.
         builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
         # Feed actions (for which we want logp values) into graph.
         builder.add_feed_dict({self._action_input: actions})

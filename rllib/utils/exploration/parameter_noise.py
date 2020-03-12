@@ -199,11 +199,11 @@ class ParameterNoise(Exploration):
         def false_fn():
             remove_op = self._remove_noise(model)
             with tf.control_dependencies([remove_op]):
-                out = model(input_dict, states, seq_lens)
+                out, states_out = model(input_dict, states, seq_lens)
                 with tf.control_dependencies([out]):
                     re_apply_op = self._apply_noise(model)
                     with tf.control_dependencies([re_apply_op]):
-                        return out
+                        return out, states_out
 
         return tf.cond(
             tf.constant(explore) if isinstance(explore, bool) else explore,
