@@ -531,5 +531,13 @@ DEFINE_UNIQUE_ID(ObjectID);
 #include "id_def.h"
 
 #undef DEFINE_UNIQUE_ID
+
 }  // namespace std
+
+namespace ray {
+
+TaskID RandomTaskId();
+
+}  // namespace ray
+
 #endif  // RAY_ID_H_

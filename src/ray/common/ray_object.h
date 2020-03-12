@@ -100,6 +100,12 @@ class RayObject {
   bool has_data_copy_;
 };
 
+// A helper function to return a random task id.
+TaskID RandomTaskId();
+
+std::shared_ptr<RayObject> GenerateRandomObject(
+    const std::vector<ObjectID> &inlined_ids = {});
+
 }  // namespace ray
 
 #endif  // RAY_COMMON_RAY_OBJECT_H

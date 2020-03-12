@@ -403,4 +403,10 @@ ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 
+TaskID RandomTaskId() {
+  std::string data(TaskID::Size(), 0);
+  FillRandom(&data);
+  return TaskID::FromBinary(data);
+}
+
 }  // namespace ray

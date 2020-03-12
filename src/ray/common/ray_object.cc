@@ -14,6 +14,8 @@
 
 #include "ray/common/ray_object.h"
 
+#include "ray/util/test_util.h"
+
 namespace ray {
 
 std::shared_ptr<LocalMemoryBuffer> MakeErrorMetadataBuffer(rpc::ErrorType error_type) {
@@ -54,6 +56,22 @@ bool RayObject::IsInPlasmaError() const {
   const std::string metadata(reinterpret_cast<const char *>(metadata_->Data()),
                              metadata_->Size());
   return metadata == std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
+}
+
+std::shared_ptr<Buffer> GenerateRandomBuffer() {
+  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  std::mt19937 gen(seed);
+  std::uniform_int_distribution<> dis(1, 10);
+  std::uniform_int_distribution<> value_dis(1, 255);
+
+  std::vector<uint8_t> arg1(dis(gen), value_dis(gen));
+  return std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size(), true);
+}
+
+std::shared_ptr<RayObject> GenerateRandomObject(
+    const std::vector<ObjectID> &inlined_ids) {
+  return std::shared_ptr<RayObject>(
+      new RayObject(GenerateRandomBuffer(), nullptr, inlined_ids));
 }
 
 }  // namespace ray
