@@ -46,25 +46,30 @@ class Executor {
 };
 
 // Define a void GCS RPC client method.
-#define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, SPECS)               \
-  void METHOD(const METHOD##Request &request,                                         \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {                  \
-    auto executor = new Executor(this);                                               \
-    auto operation_callback = [this, request, callback, executor](                    \
-                                  const Status &status, const METHOD##Reply &reply) { \
-      if (!status.IsIOError()) {                                                      \
-        callback(status, reply);                                                      \
-        delete executor;                                                              \
-      } else {                                                                        \
-        Reconnect();                                                                  \
-        executor->Retry();                                                            \
-      }                                                                               \
-    };                                                                                \
-    auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {    \
-      RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,        \
-                                 gcs_rpc_client->grpc_client));                       \
-    };                                                                                \
-    executor->Execute(operation);                                                     \
+#define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, SPECS)                \
+  void METHOD(const METHOD##Request &request,                                          \
+              const ClientCallback<METHOD##Reply> &callback) SPECS {                   \
+    auto executor = new Executor(this);                                                \
+    auto operation_callback = [this, request, callback, executor](                     \
+                                  const ray::Status &status,                           \
+                                  const METHOD##Reply &reply) {                        \
+      if (!status.IsIOError()) {                                                       \
+        auto status =                                                                  \
+            reply.status().code() == (int)StatusCode::OK                               \
+                ? Status()                                                             \
+                : Status(StatusCode(reply.status().code()), reply.status().message()); \
+        callback(status, reply);                                                       \
+        delete executor;                                                               \
+      } else {                                                                         \
+        Reconnect();                                                                   \
+        executor->Retry();                                                             \
+      }                                                                                \
+    };                                                                                 \
+    auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {     \
+      RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,         \
+                                 gcs_rpc_client->grpc_client));                        \
+    };                                                                                 \
+    executor->Execute(operation);                                                      \
   }
 
 /// Client used for communicating with gcs server.
