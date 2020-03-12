@@ -29,7 +29,7 @@ public class PlasmaFreeTest extends BaseTest {
     if (TestUtils.isSingleProcessMode()) {
       Assert.assertTrue(result);
     } else {
-      // The cluster mode use ref-counting to delete the object.
+      // The cluster mode uses ref-counting to delete the objects.
       Assert.assertFalse(result);
     }
   }
