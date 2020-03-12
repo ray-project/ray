@@ -46,6 +46,11 @@ namespace rpc {
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER)
 
+#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
+  reply->mutable_status()->set_code((int)status.code());       \
+  reply->mutable_status()->set_message(status.message());      \
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr)
+
 class JobInfoGcsServiceHandler {
  public:
   virtual ~JobInfoGcsServiceHandler() = default;
