@@ -7,7 +7,8 @@ import ray
 
 from ray.util.sgd.utils import TimerStat, AverageMeter
 from ray.util.sgd.torch.constants import (
-    SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT)
+    SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT,
+    BATCH_LOGS_RATE_LIMIT)
 
 amp = None
 
@@ -97,12 +98,12 @@ class TrainingOperator:
     def _set_batch_logs_reporter(self, r):
         self._batch_logs_reporter = r
 
-    def send_setup_info(self, data):
+    def _send_setup_info(self, data):
         return ray.get(self._batch_logs_reporter._send_setup.remote(data))
 
-    def send_batch_logs(self, data):
+    def _send_batch_logs(self, data):
         cur_time = time.monotonic()
-        if cur_time - self._last_batch_logs_send < .2:
+        if cur_time - self._last_batch_logs_send < BATCH_LOGS_RATE_LIMIT:
             return
 
         self._last_batch_logs_send = cur_time
@@ -140,6 +141,13 @@ class TrainingOperator:
         """
         self._last_batch_logs_send = 0
         self._losses = AverageMeter()
+
+        if self.world_rank == 0:
+            tqdm_setup = {
+                "packet_type": "tqdm_setup",
+                "loader_len": len(self.train_loader)
+            }
+            self._send_setup_info(tqdm_setup)
 
         self.model.train()
         with self.timers["epoch_time"]:
@@ -179,6 +187,9 @@ class TrainingOperator:
     def forward(self, features, target):
         output = self.model(features)
         loss = self.criterion(output, target)
+
+    def make_progress_bar_metrics(self, logs):
+        return {}
 
     def train_batch(self, batch, batch_info):
         """Computes loss and updates the model over one batch.
@@ -231,7 +242,17 @@ class TrainingOperator:
         # Call step of optimizer to update model params.
         with self.timers["apply"]:
             self.optimizer.step()
-        return {"loss": loss.item(), "num_samples": features.size(0)}
+
+        logs = {"loss": loss.item(), "num_samples": features.size(0)}
+
+        pbar_metrics = self.make_progress_bar_metrics(logs)
+        self._send_batch_logs({
+            "packet_type": "batch_logs",
+            "batch_idx": batch_info["batch_idx"],
+            "pbar_metrics": pbar_metrics
+        })
+
+        return logs
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.

@@ -6,6 +6,7 @@ import tempfile
 import time
 import torch
 import torch.distributed as dist
+from tqdm import tqdm
 
 import ray
 
@@ -16,7 +17,8 @@ from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
 from ray.util.sgd import utils
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.torch.constants import (
+    VALID_SCHEDULER_STEP, BATCH_LOGS_RATE_LIMIT)
 from ray.util.sgd.torch.batch_logs_reporter import BatchLogsReporter
 
 logger = logging.getLogger(__name__)
@@ -271,8 +273,7 @@ class TorchTrainer:
               num_steps=None,
               max_retries=0,
               checkpoint="auto",
-              info=None,
-              batch_logs_handler=None):
+              info=None):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
@@ -311,9 +312,38 @@ class TorchTrainer:
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers(checkpoint=checkpoint)
 
+        batch_pbar = None
+        def batch_logs_handler(packet):
+            nonlocal batch_pbar
+
+            if packet["packet_type"] == "tqdm_setup":
+                n = num_steps
+                if n is None:
+                    n = packet["loader_len"]
+
+                desc = ""
+                if "epoch_idx" in info:
+                    if "total_epochs" in info:
+                        "{}/{}e".format(info["epoch_idx"]+1, info["num_epochs"])
+                    else:
+                        "{}e".format(info["epoch_idx"]+1)
+
+                batch_pbar = tqdm(
+                    total=num_steps,
+                    desc=desc,
+                    unit="batch",
+                    leave=False
+                )
+                return
+
+            if packet["packet_type"] == "batch_logs":
+                batch_pbar.n = packet["batch_idx"]+1
+                batch_pbar.set_postfix(packet["pbar_metrics"])
+
         with self.optimizer_timer:
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, info=info, batch_logs_handler=batch_logs_handler)
+                num_steps=num_steps, info=info,
+                batch_logs_handler=batch_logs_handler)
             # Fault handling
             for i in range(max_retries):
                 if success:
@@ -324,7 +354,8 @@ class TorchTrainer:
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
                 success, worker_stats = self._train_epoch(
-                    num_steps=num_steps, info=info, batch_logs_handler=batch_logs_handler)
+                    num_steps=num_steps, info=info,
+                    batch_logs_handler=batch_logs_handler)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -348,13 +379,15 @@ class TorchTrainer:
         unfinished = worker_trains
         try:
             while len(unfinished) > 0:
-                finished, unfinished = ray.wait(unfinished, timeout=.2)
+                finished, unfinished = ray.wait(unfinished,
+                    timeout=BATCH_LOGS_RATE_LIMIT)
 
                 # throw errors on agent failure
                 finished = ray.get(finished)
 
                 if batch_logs_handler is not None:
-                    setup_read = ray.get(self.batch_reporter._read_setup.remote())
+                    setup_read = ray.get(
+                        self.batch_reporter._read_setup.remote())
                     if setup_read["new_data"]:
                         batch_logs_handler(setup_read["data"])
 

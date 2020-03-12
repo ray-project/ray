@@ -3,7 +3,7 @@ import argparse
 import sys
 import logging
 
-from tqdm import tqdm, trange
+from tqdm import trange
 
 import torch.cuda as cuda
 from torch.utils.data import Subset
@@ -34,10 +34,6 @@ def _get_training_operator_cls(super_cls):
             self.myconfig = config.training_op_config
             self.logger = self.myconfig.logging_cls(config)
 
-            if self.world_rank == 0:
-                self.batch_logs = Namespace()
-                self.batch_logs.packet_type = "batch_logs"
-
             super().setup(self.myconfig.user_config)
 
         # todo: this is kind of ugly
@@ -53,25 +49,18 @@ def _get_training_operator_cls(super_cls):
             self.logger.log_object("Train loss", self.last_logs["loss"])
 
         # todo: this is kind of ugly
-        def make_pbar_metrics(self):
+        def make_progress_bar_metrics(self, logs):
+            self.last_logs = logs
+
             res = {
                 k: self.last_logs[k] for k in ["loss"]
             }
-            if hasattr(super(), "make_pbar_metrics"):
-                return super().make_pbar_metrics(res)
+            if hasattr(super(), "make_progress_bar_metrics"):
+                return super().make_progress_bar_metrics(logs)
             return res
 
         def train_epoch(self, iterator, info):
             self.sysinfo = info["_system_training_op_info"]
-
-            if self.world_rank == 0:
-                tqdm_setup = Namespace()
-                tqdm_setup.packet_type = "tqdm_setup"
-                tqdm_setup.loader_len = len(self.train_loader)
-
-                # todo: we need a proper way to wait here for the pbar to finish initing
-                self.send_setup_info(tqdm_setup)
-
             return super().train_epoch(iterator, info)
 
         def train_batch(self, batch, batch_info):
@@ -100,13 +89,6 @@ def _get_training_operator_cls(super_cls):
                 run_intervals("log", self.batch_interval_log)
                 run_intervals("checkpoint", lambda interval: print("Checkpoint mock executed"))
                 run_intervals("backup", lambda interval: print("Debug mock executed"))
-
-                pbar_logs = self.make_pbar_metrics()
-
-                self.batch_logs.batch_idx = batch_idx
-                self.batch_logs.pbar_logs = pbar_logs
-
-                self.send_batch_logs(self.batch_logs)
 
                 self.batch_log()
                 self.logger.commit_batch()
@@ -225,49 +207,10 @@ class System():
                 info.update(kwargs["info"])
             kwargs["info"] = info
 
-
-            batch_pbar = None
-            def handle_head_packet(packet):
-                nonlocal batch_pbar
-
-                if packet.packet_type == "tqdm_setup":
-                    num_steps = kwargs.get("num_steps", packet.loader_len)
-
-                    unit = "batch"
-                    if self.args.progress_bar_units == "batches":
-                        unit = "batch"
-                    # todo: verify that it's one of these
-                    elif self.args.progress_bar_units == "samples":
-                        unit = "sample"
-                        num_steps *= self.args.total_batch_size
-
-                    batch_pbar = tqdm(
-                        total=num_steps,
-                        desc="{}/{}e".format(epoch_idx+1, self.args.num_epochs),
-                        unit=unit,
-                        leave=False
-                    )
-                    return
-
-                if packet.packet_type == "batch_logs":
-                    if self.args.progress_bar_units == "batches":
-                        batch_pbar.n = packet.batch_idx+1
-                    elif self.args.progress_bar_units == "samples":
-                        # todo: all of our total_batch_size stuff is incompatible with
-                        # user-set batch size in custom dataloaders
-                        batch_pbar.n = packet.batch_idx * self.args.total_batch_size + 1
-
-                    # batch_pbar.refresh() # will be needed if set_postfix
-                                           # is ever removed
-                    batch_pbar.set_postfix(packet.pbar_logs)
-
-
-            kwargs["batch_logs_handler"] = handle_head_packet
             logs = self.trainer.train(*args, **kwargs)
 
             if self.args.debug_batch:
-                # todo: should we log this?
-                batch_pbar.write("--debug-batch is set. Quitting after one batch.")
+                logger.info("--debug-batch is set. Quitting after one batch.")
 
 
             # todo: make this customizable
