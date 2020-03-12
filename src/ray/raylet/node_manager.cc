@@ -3414,12 +3414,15 @@ std::string FormatMemoryInfo(
   }
 
   std::ostringstream builder;
-  builder << "----------------------------------------------------------------------------"
-             "-------------------------\n";
-  builder << " Object ID                                Reference Type       Object Size  "
-             " Reference Creation Site\n";
-  builder << "============================================================================"
-             "=========================\n";
+  builder
+      << "----------------------------------------------------------------------------"
+         "-------------------------\n";
+  builder
+      << " Object ID                                Reference Type       Object Size  "
+         " Reference Creation Site\n";
+  builder
+      << "============================================================================"
+         "=========================\n";
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
@@ -3459,8 +3462,9 @@ std::string FormatMemoryInfo(
       }
     }
   }
-  builder << "----------------------------------------------------------------------------"
-             "-------------------------\n";
+  builder
+      << "----------------------------------------------------------------------------"
+         "-------------------------\n";
 
   return builder.str();
 }

@@ -30,7 +30,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)        \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)       \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC) \
+  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)           \
   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.

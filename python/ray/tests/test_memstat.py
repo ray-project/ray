@@ -2,7 +2,6 @@ import ray
 import numpy as np
 import time
 from ray.internal.internal_api import memstat
-from ray.test_utils import SignalActor
 
 # Unique strings.
 DRIVER_PID = "driver pid"
@@ -63,7 +62,9 @@ def test_worker_task_refs(ray_start_regular):
     @ray.remote
     def f(y):
         x_id = ray.put("HI")
-        return memstat()
+        info = memstat()
+        del x_id
+        return info
 
     x_id = f.remote(np.zeros(100000))
     info = ray.get(x_id)
@@ -147,8 +148,10 @@ def test_nested_object_refs(ray_start_regular):
     assert num_objects(info) == 3, info
     assert count(info, LOCAL_REF) == 1, info
     assert count(info, CAPTURED_IN_OBJECT) == 2, info
+    del z_id
 
 
 if __name__ == "__main__":
+    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))
