@@ -262,20 +262,31 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
             terminal condition, and other fields as dictated by `policy`.
     """
 
+    # Try to get Env's max_episode_steps prop. If it doesn't exist, catch
+    # error and continue.
+    max_episode_steps = None
     try:
-        # If Trainer's horizon is provided, force-set the env's
-        # `max_episode_steps` spec to that value (otherwise, Trainer's horizon
-        # setting will be violated).
-        print("base_env={}".format(base_env))
-        if horizon:
-            base_env.get_unwrapped()[0].spec.max_episode_steps = horizon
-        # Otherwise, limit Trainer's horizon to env's max-steps.
-        else:
-            horizon = (base_env.get_unwrapped()[0].spec.max_episode_steps)
+        max_episode_steps = base_env.get_unwrapped()[0].spec.max_episode_steps
     except Exception:
         pass
 
-    if not horizon:
+    # Trainer has a given `horizon` setting.
+    if horizon:
+        # `horizon` is larger than env's limit -> Error and explain how
+        # to increase Env's own episode limit.
+        if max_episode_steps and horizon > max_episode_steps:
+            raise ValueError(
+                "Your `horizon` setting ({}) is larger than the Env's own "
+                "timestep limit ({})! Try to increase the Env's limit via "
+                "setting its `spec.max_episode_steps` property.".
+                    format(horizon, max_episode_steps))
+    # Otherwise, set Trainer's horizon to env's max-steps.
+    elif max_episode_steps:
+        horizon = max_episode_steps
+        logger.debug(
+            "No episode horizon specified, setting it to Env's limit ({}).".
+                format(max_episode_steps))
+    else:
         horizon = float("inf")
         logger.debug("No episode horizon specified, assuming inf.")
 

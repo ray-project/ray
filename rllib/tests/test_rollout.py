@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import os
+import sys
 import unittest
 
 
@@ -47,5 +48,4 @@ class TestRollout(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
