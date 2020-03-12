@@ -176,6 +176,15 @@ class TrainingOperator:
             batch_info.update(info)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
+            if self.world_rank == 0:
+                pbar_metrics = self.make_progress_bar_metrics(metrics)
+                self._send_batch_logs({
+                    "packet_type": "batch_logs",
+                    "batch_idx": batch_info["batch_idx"],
+                    "pbar_metrics": pbar_metrics
+                })
+
+
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
                 self.scheduler.step()
@@ -250,17 +259,7 @@ class TrainingOperator:
         with self.timers.record("apply"):
             self.optimizer.step()
 
-        logs = {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
-
-        if self.world_rank == 0:
-            pbar_metrics = self.make_progress_bar_metrics(logs)
-            self._send_batch_logs({
-                "packet_type": "batch_logs",
-                "batch_idx": batch_info["batch_idx"],
-                "pbar_metrics": pbar_metrics
-            })
-
-        return logs
+        return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.

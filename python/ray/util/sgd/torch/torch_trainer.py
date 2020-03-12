@@ -376,7 +376,7 @@ class TorchTrainer:
                     n = packet["loader_len"]
 
                 desc = ""
-                if "epoch_idx" in info:
+                if info is not None and "epoch_idx" in info:
                     if "total_epochs" in info:
                         "{}/{}e".format(info["epoch_idx"]+1, info["num_epochs"])
                     else:
