@@ -248,8 +248,8 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
     pbar = trange(5, unit="epoch")
     for itr in pbar:
         stats = trainer.train(info=dict(epoch_idx=itr, num_epochs=5))
-        pbar.set_postfix(dict(
-            loss_g=stats["mean_loss_g"], loss_d=stats["mean_loss_d"]))
+        pbar.set_postfix(
+            dict(loss_g=stats["mean_loss_g"], loss_d=stats["mean_loss_d"]))
 
         formatted = tabulate([stats], headers="keys")
         if itr > 0:  # Get the last line of the stats.

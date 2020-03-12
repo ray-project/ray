@@ -49,6 +49,7 @@ class TrainingOperator:
             You are expected to subclass this class if you wish
             to train over multiple models/optimizers/schedulers.
     """
+
     def __init__(self,
                  config,
                  models,
@@ -183,7 +184,6 @@ class TrainingOperator:
                     "batch_idx": batch_info["batch_idx"],
                     "pbar_metrics": pbar_metrics
                 })
-
 
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:

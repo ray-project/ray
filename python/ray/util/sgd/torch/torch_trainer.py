@@ -15,11 +15,10 @@ from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
-from ray.util.sgd import utils
 from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import (
-    VALID_SCHEDULER_STEP, BATCH_LOGS_RATE_LIMIT)
+from ray.util.sgd.torch.constants import (VALID_SCHEDULER_STEP,
+                                          BATCH_LOGS_RATE_LIMIT)
 from ray.util.sgd.torch.batch_logs_reporter import BatchLogsReporter
 
 logger = logging.getLogger(__name__)
@@ -226,7 +225,6 @@ class TorchTrainer:
 
         self._start_workers(self.max_replicas)
 
-
     def _configure_and_split_batch(self, num_workers):
         """If sgd.utils.BATCH_SIZE is provided, split among workers."""
         if BATCH_SIZE not in self.config:
@@ -307,7 +305,8 @@ class TorchTrainer:
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(address, i, len(self.workers), self.batch_reporter)
+                worker.setup.remote(address, i, len(self.workers),
+                                    self.batch_reporter)
                 for i, worker in enumerate(self.workers)
             ])
 
@@ -367,6 +366,7 @@ class TorchTrainer:
             self._resize_workers(checkpoint=checkpoint)
 
         batch_pbar = None
+
         def batch_logs_handler(packet):
             nonlocal batch_pbar
 
@@ -378,24 +378,23 @@ class TorchTrainer:
                 desc = ""
                 if info is not None and "epoch_idx" in info:
                     if "total_epochs" in info:
-                        "{}/{}e".format(info["epoch_idx"]+1, info["num_epochs"])
+                        "{}/{}e".format(info["epoch_idx"] + 1,
+                                        info["num_epochs"])
                     else:
-                        "{}e".format(info["epoch_idx"]+1)
+                        "{}e".format(info["epoch_idx"] + 1)
 
                 batch_pbar = tqdm(
-                    total=n,
-                    desc=desc,
-                    unit="batch",
-                    leave=False
-                )
+                    total=n, desc=desc, unit="batch", leave=False)
                 return
 
             if packet["packet_type"] == "batch_logs":
-                batch_pbar.n = packet["batch_idx"]+1
+                batch_pbar.n = packet["batch_idx"] + 1
                 batch_pbar.set_postfix(packet["pbar_metrics"])
 
         success, worker_stats = self._train_epoch(
-            num_steps=num_steps, profile=profile, info=info,
+            num_steps=num_steps,
+            profile=profile,
+            info=info,
             batch_logs_handler=batch_logs_handler)
         # Fault handling
         for i in range(max_retries):
@@ -407,7 +406,9 @@ class TorchTrainer:
             logger.info(
                 "Retrying training step with %d workers." % len(self.workers))
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps, profile=profile, info=info,
+                num_steps=num_steps,
+                profile=profile,
+                info=info,
                 batch_logs_handler=batch_logs_handler)
         if not success:
             raise RuntimeError("Training run failed.")
@@ -432,7 +433,10 @@ class TorchTrainer:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
 
-    def _train_epoch(self, num_steps=None, profile=False, info=None,
+    def _train_epoch(self,
+                     num_steps=None,
+                     profile=False,
+                     info=None,
                      batch_logs_handler=None):
         worker_trains = [
             w.train_epoch.remote(
@@ -443,8 +447,8 @@ class TorchTrainer:
         unfinished = worker_trains
         try:
             while len(unfinished) > 0:
-                finished, unfinished = ray.wait(unfinished,
-                    timeout=BATCH_LOGS_RATE_LIMIT)
+                finished, unfinished = ray.wait(
+                    unfinished, timeout=BATCH_LOGS_RATE_LIMIT)
 
                 # throw errors on agent failure
                 finished = ray.get(finished)
