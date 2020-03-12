@@ -113,19 +113,17 @@ def test_global_gc_when_full(shutdown_only):
         # Remote workers.
         actors = [GarbageHolder.remote() for _ in range(2)]
 
-        def check_refs_gced():
-            return (local_ref() is None and
-                    not any(ray.get([a.has_garbage.remote() for a in actors])))
-
-        assert wait_for_condition(check_refs_gced)
-
         # GC should be triggered for all workers, including the local driver,
         # when a remote task tries to put a return value that doesn't fit in
         # the object store. This should cause the captured ObjectIDs' numpy
         # arrays to be evicted.
         ray.get(actors[0].return_large_array.remote())
-        assert local_ref() is None
-        assert not any(ray.get([a.has_garbage.remote() for a in actors]))
+
+        def check_refs_gced():
+            return (local_ref() is None and
+                    not any(ray.get([a.has_garbage.remote() for a in actors])))
+
+        assert wait_for_condition(check_refs_gced)
     finally:
         gc.enable()
 
