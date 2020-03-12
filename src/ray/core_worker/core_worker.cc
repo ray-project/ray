@@ -929,7 +929,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                 bool is_owner_handle) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddLocalReference(actor_creation_return_id);
+  reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
 
   bool inserted;
   {
