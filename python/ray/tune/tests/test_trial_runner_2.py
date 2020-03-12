@@ -324,7 +324,6 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.trial_executor.pause_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.PAUSED)
-        self.assertEqual(trials[0].checkpoint.storage, trials[0].checkpoint.MEMORY)
 
         runner.trial_executor.resume_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.RUNNING)
