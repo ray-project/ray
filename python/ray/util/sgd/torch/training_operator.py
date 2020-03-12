@@ -186,7 +186,7 @@ class TrainingOperator:
 
     def forward(self, features, target):
         output = self.model(features)
-        loss = self.criterion(output, target)
+        return self.criterion(output, target)
 
     def make_progress_bar_metrics(self, logs):
         return {}
@@ -245,12 +245,13 @@ class TrainingOperator:
 
         logs = {"loss": loss.item(), "num_samples": features.size(0)}
 
-        pbar_metrics = self.make_progress_bar_metrics(logs)
-        self._send_batch_logs({
-            "packet_type": "batch_logs",
-            "batch_idx": batch_info["batch_idx"],
-            "pbar_metrics": pbar_metrics
-        })
+        if self.world_rank == 0:
+            pbar_metrics = self.make_progress_bar_metrics(logs)
+            self._send_batch_logs({
+                "packet_type": "batch_logs",
+                "batch_idx": batch_info["batch_idx"],
+                "pbar_metrics": pbar_metrics
+            })
 
         return logs
 

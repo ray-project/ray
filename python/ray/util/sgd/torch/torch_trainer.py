@@ -329,7 +329,7 @@ class TorchTrainer:
                         "{}e".format(info["epoch_idx"]+1)
 
                 batch_pbar = tqdm(
-                    total=num_steps,
+                    total=n,
                     desc=desc,
                     unit="batch",
                     leave=False
