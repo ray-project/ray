@@ -85,6 +85,7 @@ class WorkerSet:
             num_workers (int): The number of remote Workers to add to this
                 WorkerSet.
         """
+        self._num_workers = num_workers
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],

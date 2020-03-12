@@ -82,6 +82,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 
+# APEXTrainer
+py_test(
+    name = "test_apex",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_apex.py"]
+)
+
 # IMPALA
 py_test(
     name = "test_vtrace",
@@ -545,7 +553,6 @@ py_test(
         ]
 )
 
-# From test_rollout.sh (deprecated test file).
 py_test(
     name = "test_impala_rollout",
     main = "tests/test_rollout.py",
@@ -847,7 +854,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Optimizers
+# Optimizers and Memories
 # rllib/optimizers/
 #
 # Tag: optimizers
@@ -896,11 +903,10 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_framework_agnostic_components",
+    name = "test_explorations",
     tags = ["utils"],
-    size = "small",
-    data = glob(["utils/tests/**"]),
-    srcs = ["utils/tests/test_framework_agnostic_components.py"]
+    size = "large",
+    srcs = ["utils/exploration/tests/test_explorations.py"]
 )
 
 # Schedules
@@ -909,6 +915,14 @@ py_test(
     tags = ["utils"],
     size = "small",
     srcs = ["utils/schedules/tests/test_schedules.py"]
+)
+
+py_test(
+    name = "test_framework_agnostic_components",
+    tags = ["utils"],
+    size = "small",
+    data = glob(["utils/tests/**"]),
+    srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
 # TaskPool
@@ -977,13 +991,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_evaluators.py"]
-)
-
-py_test(
-    name = "tests/test_explorations",
-    tags = ["tests_dir", "tests_dir_E", "explorations"],
-    size = "large",
-    srcs = ["tests/test_explorations.py"]
 )
 
 py_test(
