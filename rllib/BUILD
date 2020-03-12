@@ -1064,10 +1064,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_pipeline",
-    tags = ["tests_dir", "tests_dir_P"],
+    name = "tests/test_exec_api",
+    tags = ["tests_dir", "tests_dir_E"],
     size = "small",
-    srcs = ["tests/test_pipeline.py"]
+    srcs = ["tests/test_exec_api.py"]
 )
 
 py_test(
