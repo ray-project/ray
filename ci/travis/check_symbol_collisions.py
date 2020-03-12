@@ -11,7 +11,7 @@ TESTED_LIBRARIES = ["pyarrow"]
 def test_imports():
     def try_imports(library1, library2):
         return_info = subprocess.run([
-            "python3", "-c", "import {}; import {}".format(library1, library2)
+            "python", "-c", "import {}; import {}".format(library1, library2)
         ])
         if return_info.returncode != 0:
             print("Importing {} before {} caused an error".format(
