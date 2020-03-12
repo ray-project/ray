@@ -48,8 +48,6 @@ class DynamicTFPolicy(TFPolicy):
                  before_loss_init=None,
                  make_model=None,
                  forward_fn=None,
-                 #action_sampler_fn=None,
-                 #log_likelihood_fn=None,
                  existing_inputs=None,
                  existing_model=None,
                  get_batch_divisibility_req=None,
@@ -133,7 +131,6 @@ class DynamicTFPolicy(TFPolicy):
         self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
-        #if action_sampler_fn:
         if forward_fn:
             if not make_model:
                 raise ValueError(
@@ -182,18 +179,11 @@ class DynamicTFPolicy(TFPolicy):
         else:
             # Do forward pass (through the exploration object).
             dist_inputs, self._state_out = self.exploration.forward(
-                self.model, self._input_dict, self._state_in, self._seq_lens,
+                self.model,
+                self._input_dict,
+                self._state_in,
+                self._seq_lens,
                 explore=explore)
-
-        # Setup custom action sampler.
-        #if action_sampler_fn:
-        #if dist_inputs_and_class_fn:
-        #
-        #    #sampled_action, sampled_action_logp = action_sampler_fn(
-        #    #    self, self.model, self._input_dict, obs_space, action_space,
-        #    #    explore, config, timestep)
-        ## Create a default action sampler.
-        #else:
 
         # Using an exploration setup.
         sampled_action, sampled_action_logp = \
@@ -213,15 +203,10 @@ class DynamicTFPolicy(TFPolicy):
 
         # Generate the log-likelihood op.
         log_likelihood = None
-        # From a given function.
-        #if log_likelihood_fn:
-        #    log_likelihood = log_likelihood_fn(
-        #        self, self.model, action_input, self._input_dict,
-        #        obs_space, action_space, config)
-        # Create default, iff we have a distribution class.
+        # Create log_likelihood, iff we have a distribution class.
         if self.dist_class is not None:
-            log_likelihood = self.dist_class(
-                (dist_inputs or model_out), self.model).logp(action_input)
+            log_likelihood = self.dist_class(dist_inputs,
+                                             self.model).logp(action_input)
 
         super().__init__(
             obs_space,
@@ -277,9 +262,8 @@ class DynamicTFPolicy(TFPolicy):
                                existing_inputs[len(self._loss_inputs) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
-        input_dict = OrderedDict(
-            [(k, existing_inputs[i])
-             for i, (k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
+        input_dict = OrderedDict([(k, existing_inputs[i]) for i, (
+            k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
         instance = self.__class__(
             self.observation_space,
             self.action_space,

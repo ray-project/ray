@@ -84,8 +84,11 @@ class TorchPolicy(Policy):
 
             # Forward pass through our exploration object.
             model_out, state_out = self.exploration.forward(
-                self.model, input_dict, state_batches,
-                self._convert_to_tensor([1]), explore=explore)
+                self.model,
+                input_dict,
+                state_batches,
+                self._convert_to_tensor([1]),
+                explore=explore)
 
             action_dist = None
             actions, logp = \
@@ -103,8 +106,8 @@ class TorchPolicy(Policy):
                     ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
-            return convert_to_non_torch_type(
-                (actions, state_out, extra_action_out))
+            return convert_to_non_torch_type((actions, state_out,
+                                              extra_action_out))
 
     @override(Policy)
     def compute_log_likelihoods(self,

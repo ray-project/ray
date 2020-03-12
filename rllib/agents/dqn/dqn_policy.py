@@ -1,11 +1,9 @@
 from gym.spaces import Discrete
 import numpy as np
-#from scipy.stats import entropy
 
 import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin
-    #ParameterNoiseMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -124,32 +122,6 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-#def postprocess_trajectory(policy,
-#                           sample_batch,
-#                           other_agent_batches=None,
-#                           episode=None):
-#    if policy.config["parameter_noise"]:
-#        # adjust the sigma of parameter space noise
-#        states = [list(x) for x in sample_batch.columns(["obs"])][0]
-#        noisy_action_distribution = policy.get_session().run(
-#            policy.action_probs, feed_dict={policy.cur_observations: states})
-#        policy.get_session().run(policy.remove_noise_op)
-#        clean_action_distribution = policy.get_session().run(
-#            policy.action_probs, feed_dict={policy.cur_observations: states})
-#        distance_in_action_space = np.mean(
-#            entropy(clean_action_distribution.T, noisy_action_distribution.T))
-#        policy.pi_distance = distance_in_action_space
-#        if (distance_in_action_space <
-#                -np.log(1 - policy.cur_epsilon_value +
-#                        policy.cur_epsilon_value / policy.num_actions)):
-#            policy.parameter_noise_sigma_val *= 1.01
-#        else:
-#            policy.parameter_noise_sigma_val /= 1.01
-#        policy.parameter_noise_sigma.load(
-#            policy.parameter_noise_sigma_val, session=policy.get_session())
-#    return postprocess_nstep_and_prio(policy, sample_batch)
-
-
 def build_q_model(policy, obs_space, action_space, config):
 
     if not isinstance(action_space, Discrete):
@@ -178,7 +150,6 @@ def build_q_model(policy, obs_space, action_space, config):
         v_min=config["v_min"],
         v_max=config["v_max"],
         sigma0=config["sigma0"])
-        #parameter_noise=config["parameter_noise"])
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -195,13 +166,16 @@ def build_q_model(policy, obs_space, action_space, config):
         v_min=config["v_min"],
         v_max=config["v_max"],
         sigma0=config["sigma0"])
-        #parameter_noise=config["parameter_noise"])
 
     return policy.q_model
 
 
-def get_distribution_inputs_and_class(
-        policy, q_model, obs_batch, *, explore=True, **kwargs):
+def get_distribution_inputs_and_class(policy,
+                                      q_model,
+                                      obs_batch,
+                                      *,
+                                      explore=True,
+                                      **kwargs):
     q_vals = _compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
@@ -210,91 +184,20 @@ def get_distribution_inputs_and_class(
     return policy.q_values, Categorical, []  # state-out
 
 
-#def get_log_likelihood(policy, q_model, actions, input_dict, obs_space,
-#                       action_space, config):
-#    q_vals, dist_class = get_distribution_inputs_and_class(
-#        policy, q_model, input_dict, obs_space, action_space, explore)
-#    ## Action Q network.
-#    #q_vals = _compute_q_values(policy, q_model,
-#    #                           input_dict[SampleBatch.CUR_OBS], obs_space,
-#    #                           action_space, explore=False)
-#    #q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-#    action_dist = dist_class(q_vals, q_model)
-#    return action_dist.logp(actions)
-
-
-#def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-#                                 action_space, explore, config, timestep):
-#    # Action Q network.
-#    #q_vals = _compute_q_values(policy, q_model,
-#    #                           input_dict[SampleBatch.CUR_OBS], obs_space,
-#    #                           action_space, explore=explore)
-#    #policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
-
-#    q_vals, dist_class = get_distribution_inputs_and_class(
-#        policy, q_model, input_dict, obs_space, action_space, explore)
-
-#    policy.output_actions, policy.sampled_action_logp = \
-#        policy.exploration.get_exploration_action(
-#            policy.q_values, Categorical, q_model, timestep, explore)
-
-#    ## Noise vars for Q network except for layer normalization vars.
-#    #if config["parameter_noise"]:
-#    #    _build_parameter_noise(
-#    #        policy,
-#    #        [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
-#    #    policy.action_probs = tf.nn.softmax(policy.q_values)
-
-#    return policy.output_actions, policy.sampled_action_logp
-
-
-#def _build_parameter_noise(policy, pnet_params):
-#    policy.parameter_noise_sigma_val = 1.0
-#    policy.parameter_noise_sigma = tf.get_variable(
-#        initializer=tf.constant_initializer(policy.parameter_noise_sigma_val),
-#        name="parameter_noise_sigma",
-#        shape=(),
-#        trainable=False,
-#        dtype=tf.float32)
-#    policy.parameter_noise = list()
-#    # No need to add any noise on LayerNorm parameters
-#    for var in pnet_params:
-#        noise_var = tf.get_variable(
-#            name=var.name.split(":")[0] + "_noise",
-#            shape=var.shape,
-#            initializer=tf.constant_initializer(.0),
-#            trainable=False)
-#        policy.parameter_noise.append(noise_var)
-#    remove_noise_ops = list()
-#    for var, var_noise in zip(pnet_params, policy.parameter_noise):
-#        remove_noise_ops.append(tf.assign_add(var, -var_noise))
-#    policy.remove_noise_op = tf.group(*tuple(remove_noise_ops))
-#    generate_noise_ops = list()
-#    for var_noise in policy.parameter_noise:
-#        generate_noise_ops.append(
-#            tf.assign(
-#                var_noise,
-#                tf.random_normal(
-#                    shape=var_noise.shape,
-#                    stddev=policy.parameter_noise_sigma)))
-#    with tf.control_dependencies(generate_noise_ops):
-#        add_noise_ops = list()
-#        for var, var_noise in zip(pnet_params, policy.parameter_noise):
-#            add_noise_ops.append(tf.assign_add(var, var_noise))
-#        policy.add_noise_op = tf.group(*tuple(add_noise_ops))
-#    policy.pi_distance = None
-
-
 def build_q_losses(policy, model, _, train_batch):
     config = policy.config
     # q network evaluation
     q_t, q_logits_t, q_dist_t = _compute_q_values(
-        policy, policy.q_model, train_batch[SampleBatch.CUR_OBS],
+        policy,
+        policy.q_model,
+        train_batch[SampleBatch.CUR_OBS],
         explore=False)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1 = _compute_q_values(
-        policy, policy.target_q_model, train_batch[SampleBatch.NEXT_OBS],
+        policy,
+        policy.target_q_model,
+        train_batch[SampleBatch.NEXT_OBS],
         explore=False)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
@@ -363,7 +266,6 @@ def build_q_stats(policy, batch):
 
 def setup_early_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    #ParameterNoiseMixin.__init__(policy, obs_space, action_space, config)
 
 
 def setup_mid_mixins(policy, obs_space, action_space, config):
@@ -376,11 +278,9 @@ def setup_late_mixins(policy, obs_space, action_space, config):
 
 def _compute_q_values(policy, model, obs, explore):
     config = policy.config
-    input_dict = {
-        "obs": obs,
-        "is_training": policy._get_is_training_placeholder(),
-    }
     model_out, state = policy.exploration.forward(model, obs, explore=explore)
+    # TODO(sven): why is this needed? Noisy layers?
+    #  is_training=policy._get_is_training_placeholder()
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
@@ -470,8 +370,6 @@ DQNTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_model,
     forward_fn=get_distribution_inputs_and_class,
-    #action_sampler_fn=sample_action_from_q_network,
-    #log_likelihood_fn=get_log_likelihood,
     loss_fn=build_q_losses,
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,
@@ -484,7 +382,6 @@ DQNTFPolicy = build_tf_policy(
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
     mixins=[
-        #ParameterNoiseMixin,
         TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,

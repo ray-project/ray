@@ -55,8 +55,9 @@ class Exploration:
             **kwargs: Forward compatibility kwargs.
         """
         # Default behavior: Call the model with the given params.
-        return model(
-            {SampleBatch.CUR_OBS: obs_batch}, state_batches or [], seq_lens)
+        return model({
+            SampleBatch.CUR_OBS: obs_batch
+        }, state_batches or [], seq_lens)
 
     def get_exploration_action(self,
                                distribution_inputs: TensorType,
@@ -90,9 +91,7 @@ class Exploration:
         """
         pass
 
-    def on_episode_start(self,
-                         environment: BaseEnv,
-                         episode: int,
+    def on_episode_start(self, environment: BaseEnv, episode: int,
                          model: ModelV2):
         """Handles necessary exploration logic at the beginning of an episode.
 
@@ -103,9 +102,7 @@ class Exploration:
         """
         pass
 
-    def on_episode_end(self,
-                       environment: BaseEnv,
-                       episode: int,
+    def on_episode_end(self, environment: BaseEnv, episode: int,
                        model: ModelV2):
         """Handles necessary exploration logic at the end of an episode.
 
@@ -116,14 +113,15 @@ class Exploration:
         """
         pass
 
-    def postprocess_trajectory(self, policy, sample_batch):
+    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place.
-        
+
         Args:
             policy (Policy): The owning policy object.
             sample_batch (SampleBatch): The SampleBatch object to post-process.
+            tf_sess (Optional[tf.Session]): An optional tf.Session object.
         """
         return sample_batch
 

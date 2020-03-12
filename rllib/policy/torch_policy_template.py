@@ -86,10 +86,8 @@ def build_torch_policy(name,
                     self.config["model"],
                     framework="torch")
 
-            TorchPolicy.__init__(
-                self, obs_space, action_space, config, self.model,
-                loss_fn, self.dist_class
-            )
+            TorchPolicy.__init__(self, obs_space, action_space, config,
+                                 self.model, loss_fn, self.dist_class)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
@@ -105,23 +103,12 @@ def build_torch_policy(name,
                 # Call super's postprocess_trajectory first.
                 sample_batch = super().postprocess_trajectory(
                     convert_to_non_torch_type(sample_batch),
-                    convert_to_non_torch_type(other_agent_batches),
-                    episode)
+                    convert_to_non_torch_type(other_agent_batches), episode)
                 if postprocess_fn:
-                    return postprocess_fn(
-                        self, sample_batch, other_agent_batches, episode)
+                    return postprocess_fn(self, sample_batch,
+                                          other_agent_batches, episode)
 
                 return sample_batch
-
-            #if not postprocess_fn:
-            #    return sample_batch
-
-            # Do all post-processing always with no_grad().
-            # Not using this here will introduce a memory leak (issue #6962).
-            #with torch.no_grad():
-            #    return postprocess_fn(
-            #        self, convert_to_non_torch_type(sample_batch),
-            #        convert_to_non_torch_type(other_agent_batches), episode)
 
         @override(TorchPolicy)
         def extra_grad_process(self):
@@ -131,17 +118,18 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, input_dict, state_batches, model,
+        def extra_action_out(self,
+                             input_dict,
+                             state_batches,
+                             model,
                              action_dist=None):
             with torch.no_grad():
                 if extra_action_out_fn:
                     stats_dict = extra_action_out_fn(
-                        self, input_dict, state_batches, model, action_dist
-                    )
+                        self, input_dict, state_batches, model, action_dist)
                 else:
                     stats_dict = TorchPolicy.extra_action_out(
-                        self, input_dict, state_batches, model, action_dist
-                    )
+                        self, input_dict, state_batches, model, action_dist)
                 return convert_to_non_torch_type(stats_dict)
 
         @override(TorchPolicy)
