@@ -18,12 +18,12 @@ class TestPG(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_pg_pipeline(ray_start_regular):
+    def test_pg_exec_impl(ray_start_regular):
         trainer = PGTrainer(
             env="CartPole-v0",
             config={
                 "min_iter_time_s": 0,
-                "use_pipeline_impl": True
+                "use_exec_api": True
             })
         assert isinstance(trainer.train(), dict)
 

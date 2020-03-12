@@ -114,7 +114,13 @@ class MultiServing(ExternalEnv):
 
 
 class TestExternalEnv(unittest.TestCase):
-    def testExternalEnvCompleteEpisodes(self):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_external_env_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
@@ -124,7 +130,7 @@ class TestExternalEnv(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
 
-    def testExternalEnvTruncateEpisodes(self):
+    def test_external_env_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
@@ -134,7 +140,7 @@ class TestExternalEnv(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
 
-    def testExternalEnvOffPolicy(self):
+    def test_external_env_off_policy(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy=MockPolicy,
@@ -146,7 +152,7 @@ class TestExternalEnv(unittest.TestCase):
             self.assertEqual(batch["actions"][0], 42)
             self.assertEqual(batch["actions"][-1], 42)
 
-    def testExternalEnvBadActions(self):
+    def test_external_env_bad_actions(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=BadPolicy,
@@ -155,7 +161,7 @@ class TestExternalEnv(unittest.TestCase):
             batch_mode="truncate_episodes")
         self.assertRaises(Exception, lambda: ev.sample())
 
-    def testTrainCartpoleOffPolicy(self):
+    def test_train_cartpole_off_policy(self):
         register_env(
             "test3", lambda _: PartOffPolicyServing(
                 gym.make("CartPole-v0"), off_pol_frac=0.2))
@@ -172,7 +178,7 @@ class TestExternalEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testTrainCartpole(self):
+    def test_train_cartpole(self):
         register_env("test", lambda _: SimpleServing(gym.make("CartPole-v0")))
         pg = PGTrainer(env="test", config={"num_workers": 0})
         for i in range(100):
@@ -183,7 +189,7 @@ class TestExternalEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testTrainCartpoleMulti(self):
+    def test_train_cartpole_multi(self):
         register_env("test2",
                      lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
         pg = PGTrainer(env="test2", config={"num_workers": 0})
@@ -195,7 +201,7 @@ class TestExternalEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testExternalEnvHorizonNotSupported(self):
+    def test_external_env_horizon_not_supported(self):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
@@ -206,5 +212,6 @@ class TestExternalEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init()
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

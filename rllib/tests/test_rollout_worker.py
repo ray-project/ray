@@ -1,9 +1,9 @@
+from collections import Counter
 import gym
 import numpy as np
 import random
 import time
 import unittest
-from collections import Counter
 
 import ray
 from ray.rllib.agents.pg import PGTrainer
@@ -124,6 +124,14 @@ class MockVectorEnv(VectorEnv):
 
 
 class TestRolloutWorker(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_basic(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"), policy=MockPolicy)
@@ -452,5 +460,6 @@ class TestRolloutWorker(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=5)
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
