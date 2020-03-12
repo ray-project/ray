@@ -1376,7 +1376,6 @@ def build_java_worker_command(
     if java_worker_options is None:
         options = []
     else:
-        java_worker_options = json.loads(java_worker_options)
         assert isinstance(java_worker_options, (tuple, list))
         options = list(java_worker_options)
     cp_index = -1
