@@ -124,10 +124,9 @@ def build_trainer(name,
 
             if use_exec_api:
                 logger.warning(
-                    "Using experimental distributed execution API instead of "
-                    "policy optimizers. Disable this by setting "
-                    "'use_exec_api': False"
-                )
+                    "The experimental distributed execution is enabled for "
+                    "this algorithm. Disable this by setting "
+                    "'use_exec_api': False")
                 self.train_exec_impl = execution_plan(self.workers, config)
             elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
