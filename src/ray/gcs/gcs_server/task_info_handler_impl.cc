@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "task_info_handler_impl.h"
 
 namespace ray {
@@ -11,12 +25,12 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
   RAY_LOG(DEBUG) << "Adding task, task id = " << task_id << ", job id = " << job_id;
   auto task_table_data = std::make_shared<TaskTableData>();
   task_table_data->CopyFrom(request.task_data());
-  auto on_done = [job_id, task_id, request, send_reply_callback](Status status) {
+  auto on_done = [job_id, task_id, request, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task, task id = " << task_id
                      << ", job id = " << job_id;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncAdd(task_table_data, on_done);
@@ -40,7 +54,7 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
     } else {
       RAY_LOG(ERROR) << "Failed to get task, task id = " << task_id;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncGet(task_id, on_done);
@@ -55,11 +69,11 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
                                                SendReplyCallback send_reply_callback) {
   std::vector<TaskID> task_ids = IdVectorFromProtobuf<TaskID>(request.task_id_list());
   RAY_LOG(DEBUG) << "Deleting tasks, task id list size = " << task_ids.size();
-  auto on_done = [task_ids, request, send_reply_callback](Status status) {
+  auto on_done = [task_ids, request, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to delete tasks, task id list size = " << task_ids.size();
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncDelete(task_ids, on_done);
@@ -78,12 +92,12 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
                  << ", node id = " << node_id;
   auto task_lease_data = std::make_shared<TaskLeaseData>();
   task_lease_data->CopyFrom(request.task_lease_data());
-  auto on_done = [task_id, node_id, request, send_reply_callback](Status status) {
+  auto on_done = [task_id, node_id, request, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task lease, task id = " << task_id
                      << ", node id = " << node_id;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncAddTaskLease(task_lease_data, on_done);
@@ -104,13 +118,13 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
                  << ", node id = " << node_id;
   auto task_reconstruction_data = std::make_shared<TaskReconstructionData>();
   task_reconstruction_data->CopyFrom(request.task_reconstruction());
-  auto on_done = [node_id, request, send_reply_callback](Status status) {
+  auto on_done = [node_id, request, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to reconstruct task, reconstructions num = "
                      << request.task_reconstruction().num_reconstructions()
                      << ", node id = " << node_id;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status =

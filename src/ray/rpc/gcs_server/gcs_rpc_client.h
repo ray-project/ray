@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_GCS_RPC_CLIENT_H
 #define RAY_RPC_GCS_RPC_CLIENT_H
 
@@ -32,25 +46,30 @@ class Executor {
 };
 
 // Define a void GCS RPC client method.
-#define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, SPECS)               \
-  void METHOD(const METHOD##Request &request,                                         \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {                  \
-    auto executor = new Executor(this);                                               \
-    auto operation_callback = [this, request, callback, executor](                    \
-                                  const Status &status, const METHOD##Reply &reply) { \
-      if (!status.IsIOError()) {                                                      \
-        callback(status, reply);                                                      \
-        delete executor;                                                              \
-      } else {                                                                        \
-        Reconnect();                                                                  \
-        executor->Retry();                                                            \
-      }                                                                               \
-    };                                                                                \
-    auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {    \
-      RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,        \
-                                 gcs_rpc_client->grpc_client));                       \
-    };                                                                                \
-    executor->Execute(operation);                                                     \
+#define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, SPECS)                \
+  void METHOD(const METHOD##Request &request,                                          \
+              const ClientCallback<METHOD##Reply> &callback) SPECS {                   \
+    auto executor = new Executor(this);                                                \
+    auto operation_callback = [this, request, callback, executor](                     \
+                                  const ray::Status &status,                           \
+                                  const METHOD##Reply &reply) {                        \
+      if (!status.IsIOError()) {                                                       \
+        auto status =                                                                  \
+            reply.status().code() == (int)StatusCode::OK                               \
+                ? Status()                                                             \
+                : Status(StatusCode(reply.status().code()), reply.status().message()); \
+        callback(status, reply);                                                       \
+        delete executor;                                                               \
+      } else {                                                                         \
+        Reconnect();                                                                   \
+        executor->Retry();                                                             \
+      }                                                                                \
+    };                                                                                 \
+    auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {     \
+      RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,         \
+                                 gcs_rpc_client->grpc_client));                        \
+    };                                                                                 \
+    executor->Execute(operation);                                                      \
   }
 
 /// Client used for communicating with gcs server.
@@ -111,10 +130,6 @@ class GcsRpcClient {
 
   /// Report heartbeat of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat,
-                             node_info_grpc_client_, )
-
-  /// Report batch heartbeat to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat,
                              node_info_grpc_client_, )
 
   /// Get node's resources from GCS Service.

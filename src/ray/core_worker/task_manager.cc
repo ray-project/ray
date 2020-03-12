@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/task_manager.h"
 
 #include "ray/util/util.h"
@@ -35,11 +49,16 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    task_deps.push_back(actor_creation_return_id);
+  }
   reference_counter_->UpdateSubmittedTaskReferences(task_deps);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  if (spec.IsActorTask()) {
     num_returns--;
   }
   for (size_t i = 0; i < num_returns; i++) {
@@ -213,6 +232,11 @@ void TaskManager::RemoveFinishedTaskReferences(
       plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
                                  inlined_ids.end());
     }
+  }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    plasma_dependencies.push_back(actor_creation_return_id);
   }
 
   std::vector<ObjectID> deleted;

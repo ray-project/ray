@@ -1,4 +1,5 @@
 import time
+import collections
 from collections import Counter
 import pytest
 
@@ -32,6 +33,16 @@ def test_metrics(ray_start_regular_shared):
         LocalIterator.get_metrics()
 
 
+def test_zip_with_source_actor(ray_start_regular_shared):
+    it = from_items([1, 2, 3, 4], num_shards=2)
+    counts = collections.defaultdict(int)
+    for actor, value in it.gather_async().zip_with_source_actor():
+        counts[actor] += 1
+    assert len(counts) == 2
+    for a, count in counts.items():
+        assert count == 2
+
+
 def test_metrics_union(ray_start_regular_shared):
     it1 = from_items([1, 2, 3, 4], num_shards=1)
     it2 = from_items([1, 2, 3, 4], num_shards=1)
@@ -49,7 +60,8 @@ def test_metrics_union(ray_start_regular_shared):
     def verify_metrics(x):
         metrics = LocalIterator.get_metrics()
         metrics.counters["n"] += 1
-        if metrics.counters["n"] > 2:
+        # Check the metrics context is shared.
+        if metrics.counters["n"] >= 2:
             assert "foo" in metrics.counters
             assert "bar" in metrics.counters
         return x
@@ -236,6 +248,12 @@ def test_gather_async(ray_start_regular_shared):
         repr(it) == "LocalIterator[ParallelIterator[from_range[4, shards=2]]"
         ".gather_async()]")
     assert sorted(it) == [0, 1, 2, 3]
+
+
+def test_gather_async_queue(ray_start_regular_shared):
+    it = from_range(100)
+    it = it.gather_async(async_queue_depth=4)
+    assert sorted(it) == list(range(100))
 
 
 def test_batch_across_shards(ray_start_regular_shared):

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
@@ -208,14 +222,6 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
         heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool ReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> batch_heartbeat) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportBatchHeartbeat(
-        batch_heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -549,14 +555,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
-  int heartbeat_count = 0;
-  auto heartbeat_subscribe = [&heartbeat_count](const ClientID &id,
-                                                const gcs::HeartbeatTableData &result) {
-    ++heartbeat_count;
-  };
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_subscribe, nullptr));
-
   int heartbeat_batch_count = 0;
   auto heartbeat_batch_subscribe =
       [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
@@ -570,12 +568,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitPendingDone(heartbeat_count, 1);
-
-  // Report batch heartbeat
-  auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
-  batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
-  ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
   WaitPendingDone(heartbeat_batch_count, 1);
 }
 
