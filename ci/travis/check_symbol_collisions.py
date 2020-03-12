@@ -14,10 +14,10 @@ def test_imports():
             "python", "-c", "import {}; import {}".format(library1, library2)
         ])
         if return_info.returncode != 0:
-            print("Importing {} before {} caused an error".format(
-                library1, library2))
-        return return_info.returncode
+            return "Importing {} before {} caused an error".format(
+                library1, library2)
+        return ""
 
     for library in TESTED_LIBRARIES:
-        assert try_imports("ray", library) == 0
-        assert try_imports(library, "ray") == 0
+        assert try_imports("ray", library) == ""
+        assert try_imports(library, "ray") == ""
