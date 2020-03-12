@@ -2,7 +2,6 @@ import gym
 from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
-import sys
 import unittest
 import traceback
 
@@ -17,6 +16,7 @@ from ray.rllib.tests.test_multi_agent_env import MultiCartpole, \
     MultiMountainCar
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
+
 tf = try_import_tf()
 
 ACTION_SPACES_TO_TEST = {
@@ -97,18 +97,18 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                     if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                         if o_name in ["atari", "image"]:
                             if torch:
-                                assert isinstance(
-                                    a.get_policy().model, TorchVisionNetV2)
+                                assert isinstance(a.get_policy().model,
+                                                  TorchVisionNetV2)
                             else:
-                                assert isinstance(
-                                    a.get_policy().model, VisionNetV2)
+                                assert isinstance(a.get_policy().model,
+                                                  VisionNetV2)
                         elif o_name in ["vector", "vector2"]:
                             if torch:
-                                assert isinstance(
-                                    a.get_policy().model, TorchFCNetV2)
+                                assert isinstance(a.get_policy().model,
+                                                  TorchFCNetV2)
                             else:
-                                assert isinstance(
-                                    a.get_policy().model, FCNetV2)
+                                assert isinstance(a.get_policy().model,
+                                                  FCNetV2)
                     a.train()
                     covered_a.add(a_name)
                     covered_o.add(o_name)
@@ -159,12 +159,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         ray.shutdown()
 
     def test_a3c(self):
-        config = {
-            "num_workers": 1,
-            "optimizer": {
-                "grads_per_step": 1
-            }
-        }
+        config = {"num_workers": 1, "optimizer": {"grads_per_step": 1}}
         check_support("A3C", config, self.stats, check_bounds=True)
         config["use_pytorch"] = True
         check_support("A3C", config, self.stats, check_bounds=True)
@@ -228,10 +223,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         check_support("PPO", config, self.stats, check_bounds=True)
 
     def test_pg(self):
-        config = {
-            "num_workers": 1,
-            "optimizer": {}
-        }
+        config = {"num_workers": 1, "optimizer": {}}
         check_support("PG", config, self.stats, check_bounds=True)
         config["use_pytorch"] = True
         check_support("PG", config, self.stats, check_bounds=True)
@@ -297,6 +289,9 @@ class ModelSupportedSpaces(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import pytest
+    import sys
+
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         ACTION_SPACES_TO_TEST = {
             "discrete": Discrete(5),
@@ -305,4 +300,5 @@ if __name__ == "__main__":
             "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
             "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
         }
-    unittest.main(verbosity=2)
+
+    sys.exit(pytest.main(["-v", __file__]))

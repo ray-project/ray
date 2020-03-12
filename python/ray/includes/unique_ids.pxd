@@ -152,6 +152,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         CObjectID WithPlasmaTransportType()
 
+        CObjectID WithDirectTransportType()
+
         int64_t ObjectIndex() const
 
         CTaskID TaskId() const

@@ -1,10 +1,11 @@
-import numpy as np
+from typing import Union
 
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.exploration.exploration import Exploration, TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -26,7 +27,7 @@ class EpsilonGreedy(Exploration):
                  epsilon_schedule=None,
                  framework="tf",
                  **kwargs):
-        """
+        """Create an EpsilonGreedy exploration class.
 
         Args:
             action_space (Space): The gym action space used by the environment.
@@ -54,11 +55,11 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class=None,
-                               model=None,
-                               explore=True,
-                               timestep=None):
+                               distribution_inputs: TensorType,
+                               action_dist_class: type,
+                               model: ModelV2,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
 
         if self.framework == "tf":
             return self._get_tf_exploration_action_op(distribution_inputs,
@@ -68,7 +69,7 @@ class EpsilonGreedy(Exploration):
                                                       explore, timestep)
 
     def _get_tf_exploration_action_op(self, q_values, explore, timestep):
-        """Tf method to produce the tf op for an epsilon exploration action.
+        """TF method to produce the tf op for an epsilon exploration action.
 
         Args:
             q_values (Tensor): The Q-values coming from some q-model.
@@ -93,7 +94,7 @@ class EpsilonGreedy(Exploration):
 
         chose_random = tf.random_uniform(
             tf.stack([batch_size]),
-            minval=0, maxval=1, dtype=epsilon.dtype) \
+            minval=0, maxval=1, dtype=tf.float32) \
             < epsilon
 
         action = tf.cond(
@@ -104,10 +105,7 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        # Increment `last_timestep` by 1 (or set to `timestep`).
-        assign_op = \
-            tf.assign_add(self.last_timestep, 1) if timestep is None else \
-            tf.assign(self.last_timestep, timestep)
+        assign_op = tf.assign(self.last_timestep, timestep)
         with tf.control_dependencies([assign_op]):
             return action, tf.zeros_like(action, dtype=tf.float32)
 
@@ -120,10 +118,7 @@ class EpsilonGreedy(Exploration):
         Returns:
             torch.Tensor: The exploration-action.
         """
-        # Set last timestep or (if not given) increase by one.
-        self.last_timestep = timestep if timestep is not None else \
-            self.last_timestep + 1
-
+        self.last_timestep = timestep
         _, exploit_action = torch.max(q_values, 1)
         action_logp = torch.zeros_like(exploit_action)
 
@@ -153,33 +148,5 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_info(self):
-        """Returns the current epsilon value.
-
-        Returns:
-            Union[float,tf.Tensor[float]]: The current epsilon value.
-        """
-        return self.epsilon_schedule(self.last_timestep)
-
-    @override(Exploration)
-    def get_state(self):
-        return [self.last_timestep]
-
-    @override(Exploration)
-    def set_state(self, state):
-        if self.framework == "tf" and tf.executing_eagerly() is False:
-            update_op = tf.assign(self.last_timestep, state)
-            with tf.control_dependencies([update_op]):
-                return tf.no_op()
-        self.last_timestep = state
-
-    @override(Exploration)
-    def reset_state(self):
-        return self.set_state(0)
-
-    @classmethod
-    @override(Exploration)
-    def merge_states(cls, exploration_objects):
-        timesteps = [e.get_state() for e in exploration_objects]
-        if exploration_objects[0].framework == "tf":
-            return tf.reduce_sum(timesteps)
-        return np.sum(timesteps)
+        eps = self.epsilon_schedule(self.last_timestep)
+        return {"cur_epsilon": eps}

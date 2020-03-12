@@ -2,6 +2,7 @@ try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
+import click
 import hashlib
 import logging
 import os
@@ -48,7 +49,8 @@ class KubernetesCommandRunner:
             timeout=120,
             allocate_tty=False,
             exit_on_fail=False,
-            port_forward=None):
+            port_forward=None,
+            with_output=False):
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -82,7 +84,12 @@ class KubernetesCommandRunner:
                 "--",
             ] + with_interactive(cmd)
             try:
-                self.process_runner.check_call(" ".join(final_cmd), shell=True)
+                if with_output:
+                    return self.process_runner.check_output(
+                        " ".join(final_cmd), shell=True)
+                else:
+                    self.process_runner.check_call(
+                        " ".join(final_cmd), shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
                     quoted_cmd = " ".join(final_cmd[:-1] +
@@ -232,7 +239,8 @@ class SSHCommandRunner:
             timeout=120,
             allocate_tty=False,
             exit_on_fail=False,
-            port_forward=None):
+            port_forward=None,
+            with_output=False):
 
         self.set_ssh_ip_if_required()
 
@@ -260,11 +268,14 @@ class SSHCommandRunner:
             # still create an interactive shell in some ssh versions.
             final_cmd.append("while true; do sleep 86400; done")
         try:
-            self.process_runner.check_call(final_cmd)
+            if with_output:
+                return self.process_runner.check_output(final_cmd)
+            else:
+                self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                raise Exception(
+                raise click.ClickException(
                     "Command failed: \n\n  {}\n".format(quoted_cmd))
             else:
                 raise
@@ -402,7 +413,6 @@ class NodeUpdater:
     def do_update(self):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
-
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
 

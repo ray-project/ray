@@ -18,7 +18,13 @@ SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
 
 
 class TestExternalMultiAgentEnv(unittest.TestCase):
-    def testExternalMultiAgentEnvCompleteEpisodes(self):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_external_multi_agent_env_complete_episodes(self):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
@@ -30,7 +36,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             self.assertEqual(batch.count, 40)
             self.assertEqual(len(np.unique(batch["agent_index"])), agents)
 
-    def testExternalMultiAgentEnvTruncateEpisodes(self):
+    def test_external_multi_agent_env_truncate_episodes(self):
         agents = 4
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
@@ -42,7 +48,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             self.assertEqual(batch.count, 160)
             self.assertEqual(len(np.unique(batch["agent_index"])), agents)
 
-    def testExternalMultiAgentEnvSample(self):
+    def test_external_multi_agent_env_sample(self):
         agents = 2
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
@@ -57,7 +63,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
 
-    def testTrainExternalMultiCartpoleManyPolicies(self):
+    def test_train_external_multi_cartpole_many_policies(self):
         n = 20
         single_env = gym.make("CartPole-v0")
         act_space = single_env.action_space
@@ -85,5 +91,6 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init()
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

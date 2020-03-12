@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/raylet/node_manager.h"
 
 #include <cctype>
@@ -138,6 +152,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.Run();
+
+  RAY_CHECK_OK(SetupPlasmaSubscription());
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -1006,6 +1022,9 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
+  } break;
+  case protocol::MessageType::SubscribePlasmaReady: {
+    ProcessSubscribePlasmaReady(client, message_data);
   } break;
 
   default:
@@ -3054,6 +3073,61 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
   }
 }
 
+void NodeManager::ProcessSubscribePlasmaReady(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  std::shared_ptr<Worker> associated_worker = worker_pool_.GetRegisteredWorker(client);
+  if (associated_worker == nullptr) {
+    associated_worker = worker_pool_.GetRegisteredDriver(client);
+  }
+  RAY_CHECK(associated_worker != nullptr)
+      << "No worker exists for CoreWorker with client: " << client->DebugString();
+
+  auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
+  ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
+  {
+    absl::MutexLock guard(&plasma_object_notification_lock_);
+    if (!async_plasma_objects_notification_.contains(id)) {
+      async_plasma_objects_notification_.emplace(
+          id, absl::flat_hash_set<std::shared_ptr<Worker>>());
+    }
+
+    // Only insert a worker once
+    if (!async_plasma_objects_notification_[id].contains(associated_worker)) {
+      async_plasma_objects_notification_[id].insert(associated_worker);
+    }
+  }
+}
+
+ray::Status NodeManager::SetupPlasmaSubscription() {
+  return object_manager_.SubscribeObjAdded(
+      [this](const object_manager::protocol::ObjectInfoT &object_info) {
+        ObjectID object_id = ObjectID::FromPlasmaIdBinary(object_info.object_id);
+        auto waiting_workers = absl::flat_hash_set<std::shared_ptr<Worker>>();
+        {
+          absl::MutexLock guard(&plasma_object_notification_lock_);
+          auto waiting = this->async_plasma_objects_notification_.extract(object_id);
+          if (!waiting.empty()) {
+            waiting_workers.swap(waiting.mapped());
+          }
+        }
+        rpc::PlasmaObjectReadyRequest request;
+        request.set_object_id(object_id.Binary());
+        request.set_metadata_size(object_info.metadata_size);
+        request.set_data_size(object_info.data_size);
+
+        for (auto worker : waiting_workers) {
+          RAY_CHECK_OK(worker->rpc_client()->PlasmaObjectReady(
+              request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
+                if (!status.ok()) {
+                  RAY_LOG(INFO)
+                      << "Problem with telling worker that plasma object is ready"
+                      << status.ToString();
+                }
+              }));
+        }
+      });
+}
+
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
   fs.open(initial_config_.session_dir + "/debug_state.txt",
@@ -3080,6 +3154,11 @@ std::string NodeManager::DebugString() const {
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
   result << "\n" << lineage_cache_.DebugString();
+  {
+    absl::MutexLock guard(&plasma_object_notification_lock_);
+    result << "\nnum async plasma notifications: "
+           << async_plasma_objects_notification_.size();
+  }
   result << "\nActorRegistry:";
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
@@ -3141,6 +3220,11 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     plasma_ids.push_back(plasma::ObjectID::from_binary(object_id_binary));
   }
   std::vector<plasma::ObjectBuffer> plasma_results;
+  // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
+  // block when serving the request. However, if the plasma store is under
+  // heavy load, then this request can still block the NodeManager event loop
+  // since we must wait for the plasma store's reply. We should consider using
+  // an `AsyncGet` instead.
   if (!store_client_.Get(plasma_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
     RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
     send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);

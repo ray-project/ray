@@ -1,9 +1,12 @@
+from typing import Union
+
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    get_variable
+    get_variable, TensorType
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
+from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -54,7 +57,7 @@ class GaussianNoise(Exploration):
 
         self.random_timesteps = random_timesteps
         self.random_exploration = Random(
-            action_space, framework=self.framework)
+            action_space, framework=self.framework, **kwargs)
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
@@ -69,11 +72,11 @@ class GaussianNoise(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
+                               distribution_inputs: TensorType,
+                               action_dist_class: type,
+                               model: ModelV2,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
         # Adds IID Gaussian noise for exploration, TD3-style.
         action_dist = action_dist_class(distribution_inputs, model)
 
