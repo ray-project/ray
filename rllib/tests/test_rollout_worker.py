@@ -8,12 +8,13 @@ import unittest
 import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
@@ -261,17 +262,41 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_hard_horizon(self):
         ev = RolloutWorker(
-            env_creator=lambda _: MockEnv(episode_length=10),
+            env_creator=lambda _: MockEnv2(episode_length=10),
             policy=MockPolicy,
             batch_mode="complete_episodes",
             batch_steps=10,
             episode_horizon=4,
             soft_horizon=False)
         samples = ev.sample()
-        # three logical episodes
+        # Three logical episodes and correct episode resets (always after 4
+        # steps).
         self.assertEqual(len(set(samples["eps_id"])), 3)
-        # 3 done values
+        for i in range(4):
+            self.assertEqual(np.argmax(samples["obs"][i]), i)
+        self.assertEqual(np.argmax(samples["obs"][4]), 0)
+        # 3 done values.
         self.assertEqual(sum(samples["dones"]), 3)
+
+        # A gym env's max_episode_steps is smaller than Trainer's horizon.
+        ev = RolloutWorker(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy=MockPolicy,
+            batch_mode="complete_episodes",
+            batch_steps=10,
+            episode_horizon=6,
+            soft_horizon=False)
+        samples = ev.sample()
+        # 12 steps due to `complete_episodes` batch_mode.
+        self.assertEqual(len(samples["eps_id"]), 12)
+        # Two logical episodes and correct episode resets (always after 6(!)
+        # steps).
+        self.assertEqual(len(set(samples["eps_id"])), 2)
+        # 2 done values after 6 and 12 steps.
+        check(samples["dones"], [
+            False, False, False, False, False, True, False, False, False,
+            False, False, True
+        ])
 
     def test_soft_horizon(self):
         ev = RolloutWorker(
