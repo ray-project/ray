@@ -174,8 +174,7 @@ def _compute_q_values(policy, model, obs, explore):
     #}
 
     model_out, _ = policy.exploration.forward(
-        model, obs,
-        states=[], prev_actions=None, prev_rewards=None,
+        model, obs, states=[],
         explore=explore, is_training=policy._get_is_training_placeholder())
 
     return model.get_q_values(model_out)
