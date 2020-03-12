@@ -183,7 +183,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     if (token == option_placeholder) {
       if (!dynamic_options.empty()) {
         RAY_CHECK(dynamic_option_index < dynamic_options.size());
-        auto options = SplitStrByWhitespaces(dynamic_options[dynamic_option_index]);
+        auto options = ParseCommandLine(dynamic_options[dynamic_option_index]);
         worker_command_args.insert(worker_command_args.end(), options.begin(),
                                    options.end());
         ++dynamic_option_index;

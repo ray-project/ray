@@ -628,6 +628,16 @@ cc_test(
 )
 
 cc_test(
+    name = "util_test",
+    srcs = ["src/ray/util/util_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "sample_test",
     srcs = ["src/ray/util/sample_test.cc"],
     copts = COPTS,
