@@ -96,9 +96,9 @@ def extract_signature(func, ignore_first=False):
 
     if ignore_first:
         if len(signature_parameters) == 0:
-            raise Exception("Methods must take a 'self' argument, but the "
-                            "method '{}' does not have one.".format(
-                                func.__name__))
+            raise ValueError("Methods must take a 'self' argument, but the "
+                             "method '{}' does not have one.".format(
+                                 func.__name__))
         signature_parameters = signature_parameters[1:]
 
     return _scrub_parameters(signature_parameters)

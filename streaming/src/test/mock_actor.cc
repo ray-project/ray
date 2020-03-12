@@ -405,7 +405,7 @@ class StreamingWorker {
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();
     std::string actor_handle_serialized = message->ActorHandleSerialized();
-    worker_->DeserializeAndRegisterActorHandle(actor_handle_serialized);
+    worker_->DeserializeAndRegisterActorHandle(actor_handle_serialized, ObjectID::Nil());
     std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
     STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();

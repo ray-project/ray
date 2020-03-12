@@ -3,6 +3,7 @@ package org.ray.api.test;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.gson.Gson;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
@@ -77,8 +78,7 @@ public abstract class BaseMultiLanguageTest {
     String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
         .filter(s -> !s.contains(" ") && s.contains("test"))
         .collect(Collectors.joining(":"));
-    String workerOptions =
-        " -classpath " + classpath;
+    String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",

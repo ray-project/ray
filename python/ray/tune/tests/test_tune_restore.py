@@ -144,7 +144,7 @@ class AbstractWarmStartTest:
     def run_exp_1(self):
         np.random.seed(162)
         search_alg, cost = self.set_basic_conf()
-        results_exp_1 = tune.run(cost, num_samples=15, search_alg=search_alg)
+        results_exp_1 = tune.run(cost, num_samples=5, search_alg=search_alg)
         self.log_dir = os.path.join(self.tmpdir, "warmStartTest.pkl")
         search_alg.save(self.log_dir)
         return results_exp_1
@@ -152,12 +152,12 @@ class AbstractWarmStartTest:
     def run_exp_2(self):
         search_alg2, cost = self.set_basic_conf()
         search_alg2.restore(self.log_dir)
-        return tune.run(cost, num_samples=15, search_alg=search_alg2)
+        return tune.run(cost, num_samples=5, search_alg=search_alg2)
 
     def run_exp_3(self):
         np.random.seed(162)
         search_alg3, cost = self.set_basic_conf()
-        return tune.run(cost, num_samples=30, search_alg=search_alg3)
+        return tune.run(cost, num_samples=10, search_alg=search_alg3)
 
     def testWarmStart(self):
         results_exp_1 = self.run_exp_1()
