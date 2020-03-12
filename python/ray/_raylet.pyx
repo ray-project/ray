@@ -567,9 +567,6 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                     msg = "(put object) "
             elif filename.endswith("ray/workers/default_worker.py"):
                 pass
-            elif filename.endswith("ray/serialization.py"):
-                if frame.f_code.co_name == "id_deserializer":
-                    msg = "(deserialize task arg) "
             elif filename.endswith("ray/remote_function.py"):
                 # TODO(ekl) distinguish between task return objects and
                 # argmuents. This can only be done in the core worker.
@@ -578,8 +575,11 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 # TODO(ekl) distinguish between actor return objects and
                 # argmuents. This can only be done in the core worker.
                 msg = "(actor call) "
+            elif filename.endswith("ray/serialization.py"):
+                if frame.f_code.co_name == "id_deserializer":
+                    msg = "(deserialize task arg) "
             else:
-                msg += "{}:{}:{}".format(
+                msg = "{}:{}:{}".format(
                     frame.f_code.co_filename, frame.f_code.co_name,
                     frame.f_lineno)
                 break
