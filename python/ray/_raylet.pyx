@@ -555,7 +555,6 @@ cdef void gc_collect() nogil:
                     num_freed, end - start))
 
 
-
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
 cdef void get_py_stack(c_string* stack_out) nogil:
