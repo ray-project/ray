@@ -20,7 +20,7 @@ class Namespace(dict):
 
     def __getattr__(self, attr):
         if attr not in self:
-            raise AttributeError()
+            raise AttributeError(attr)
 
         return self[attr]
 
@@ -266,7 +266,8 @@ class System():
             logs = self.trainer.train(*args, **kwargs)
 
             if self.args.debug_batch:
-                logger.info("--debug-batch is set. Quitting after one batch.")
+                # todo: should we log this?
+                batch_pbar.write("--debug-batch is set. Quitting after one batch.")
 
 
             # todo: make this customizable
@@ -310,8 +311,8 @@ class System():
             run_intervals("backup", lambda: print("Debug mock executed"))
 
             if self.args.debug_epoch:
-                logger.info("--debug-epoch is set. Quitting after one epoch.")
-                break
+                # todo: should we log this?
+                iterator.write("--debug-epoch is set. Quitting after one epoch.")
 
         # todo: should we always checkpoint after training?
         self.trainer.save("checkpoint_last.pth")
@@ -362,10 +363,12 @@ class System():
         self._ray_params["address"] = self.args.ray_address
 
         if self.args.mode == "train":
-            # we want to log when --debug-batch is set, so we use this
+            # we want to log when --debug-x is set, so we use this
             # instead of setting store_const and dest
             if self.args.debug_batch:
                 self.args.debug_num_batches = 1
+            if self.args.debug_epoch:
+                self.args.num_epochs = 1
 
             if not self.args._log_interval:
                 self.args._log_interval = ["60s"]

@@ -4,7 +4,13 @@
 # todo: add a flag that does this
 import logging
 logging.getLogger("ray.util.sgd.torch.torch_runner").setLevel(logging.DEBUG)
-logging.getLogger("rqtorch").setLevel(logging.DEBUG)
+
+import sys
+log = logging.getLogger("rqtorch")
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+log.addHandler(handler)
+log.setLevel(logging.DEBUG)
 
 from ray.util.sgd.torch import TrainingOperator
 
