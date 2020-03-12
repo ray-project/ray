@@ -21,3 +21,9 @@ def test_imports():
     for library in TESTED_LIBRARIES:
         assert try_imports("ray", library) == ""
         assert try_imports(library, "ray") == ""
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))
