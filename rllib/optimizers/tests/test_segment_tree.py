@@ -15,6 +15,7 @@ def test_tree_set():
     assert np.isclose(tree.sum(2, 3), 1.0)
     assert np.isclose(tree.sum(2, -1), 1.0)
     assert np.isclose(tree.sum(2, 4), 4.0)
+    assert np.isclose(tree.sum(2), 4.0)
 
 
 def test_tree_set_overlap():
@@ -27,6 +28,7 @@ def test_tree_set_overlap():
     assert np.isclose(tree.sum(2, 3), 3.0)
     assert np.isclose(tree.sum(2, -1), 3.0)
     assert np.isclose(tree.sum(2, 4), 3.0)
+    assert np.isclose(tree.sum(2), 3.0)
     assert np.isclose(tree.sum(1, 2), 0.0)
 
 

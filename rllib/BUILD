@@ -856,7 +856,7 @@ py_test(
 py_test(
     name = "test_optimizers",
     tags = ["optimizers"],
-    size = "large",
+    size = "medium",
     srcs = ["optimizers/tests/test_optimizers.py"]
 )
 
