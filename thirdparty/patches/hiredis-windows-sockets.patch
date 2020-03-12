@@ -16,19 +16,10 @@ diff --git deps/hiredis/net.h deps/hiredis/net.h
 diff --git deps/hiredis/net.c deps/hiredis/net.c
 --- deps/hiredis/net.c
 +++ deps/hiredis/net.c
-@@ -60,6 +60,10 @@
+@@ -60,1 +60,1 @@
 -static void redisContextCloseFd(redisContext *c) {
 +void redisContextCloseFd(redisContext *c) {
-     if (c && c->fd >= 0) {
-+#ifdef _WINSOCKAPI_
-+        closesocket(_get_osfhandle(c->fd)) == 0 || (WSAGetLastError() == WSAENOTSOCK && _close(c->fd) == 0);
-+#else
-         close(c->fd);
-+#endif
-         c->fd = -1;
-     }
- }
-@@ -102,24 +106,33 @@
+@@ -102,24 +102,33 @@
  static int redisSetBlocking(redisContext *c, int blocking) {
      int flags;
  

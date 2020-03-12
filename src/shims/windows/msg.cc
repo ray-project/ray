@@ -8,14 +8,14 @@
 
 #pragma comment(lib, "IPHlpAPI.lib")
 
-int socketpair(int domain, int type, int protocol, int sv[2]) {
+int socketpair(int domain, int type, int protocol, SOCKET sv[2]) {
   if ((domain != AF_UNIX && domain != AF_INET) || type != SOCK_STREAM) {
     return (int)INVALID_SOCKET;
   }
   SOCKET sockets[2];
   int r = dumb_socketpair(sockets);
-  sv[0] = (int)sockets[0];
-  sv[1] = (int)sockets[1];
+  sv[0] = sockets[0];
+  sv[1] = sockets[1];
   return r;
 }
 
@@ -63,7 +63,7 @@ static DWORD getsockpid(SOCKET client) {
   return pid;
 }
 
-ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
+ssize_t sendmsg(SOCKET sock, struct msghdr *msg, int flags) {
   ssize_t result = -1;
   struct cmsghdr *header = CMSG_FIRSTHDR(msg);
   if (header->cmsg_level == SOL_SOCKET && header->cmsg_type == SCM_RIGHTS) {
@@ -77,13 +77,13 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
      * to another existing process.
      */
     struct msghdr const old_msg = *msg;
-    int *const pfd = (int *)CMSG_DATA(header);
+    SOCKET *const pfd = (SOCKET *)CMSG_DATA(header);
     msg->msg_control = NULL;
     msg->msg_controllen = 0;
     WSAPROTOCOL_INFO protocol_info = {0};
     /* assume socket if it's a pipe, until proven otherwise */
     BOOL is_socket = GetFileType((HANDLE)(SOCKET)(*pfd)) == FILE_TYPE_PIPE;
-    DWORD const target_pid = getsockpid(sockfd);
+    DWORD const target_pid = getsockpid(sock);
     HANDLE target_process = NULL;
     if (target_pid) {
       if (is_socket) {
@@ -119,11 +119,11 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
           LPWSAOVERLAPPED lpOverlapped,
           LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
       WSASendMsg_t *WSASendMsg = NULL;
-      result = WSAIoctl(sockfd, SIO_GET_EXTENSION_FUNCTION_POINTER, &wsaid_WSASendMsg,
+      result = WSAIoctl(sock, SIO_GET_EXTENSION_FUNCTION_POINTER, &wsaid_WSASendMsg,
                         sizeof(wsaid_WSASendMsg), &WSASendMsg, sizeof(WSASendMsg), &nb,
                         NULL, 0);
       if (result == 0) {
-        result = (*WSASendMsg)(sockfd, msg, flags, &nb, NULL, NULL) == 0
+        result = (*WSASendMsg)(sock, msg, flags, &nb, NULL, NULL) == 0
                      ? (ssize_t)(nb - sizeof(protocol_info))
                      : 0;
       }
@@ -144,7 +144,7 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
   return result;
 }
 
-ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
+ssize_t recvmsg(SOCKET sock, struct msghdr *msg, int flags) {
   int result = -1;
   struct cmsghdr *header = CMSG_FIRSTHDR(msg);
   if (msg->msg_controllen && flags == 0 /* We can't send flags on Windows... */) {
@@ -166,17 +166,17 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
     GUID wsaid_WSARecvMsg = {
         0xf689d7c8, 0x6f1f, 0x436b, {0x8a, 0x53, 0xe5, 0x4f, 0xe3, 0x51, 0xc3, 0x22}};
     result =
-        WSAIoctl(sockfd, SIO_GET_EXTENSION_FUNCTION_POINTER, &wsaid_WSARecvMsg,
+        WSAIoctl(sock, SIO_GET_EXTENSION_FUNCTION_POINTER, &wsaid_WSARecvMsg,
                  sizeof(wsaid_WSARecvMsg), &WSARecvMsg, sizeof(WSARecvMsg), &nb, NULL, 0);
     if (result == 0) {
-      result = (*WSARecvMsg)(sockfd, msg, &nb, NULL, NULL) == 0
+      result = (*WSARecvMsg)(sock, msg, &nb, NULL, NULL) == 0
                    ? (ssize_t)(nb - sizeof(protocol_info))
                    : 0;
     }
     if (result == 0) {
-      int *const pfd = (int *)CMSG_DATA(header);
+      SOCKET *const pfd = (SOCKET *)CMSG_DATA(header);
       if (protocol_info.iSocketType == 0 && protocol_info.iProtocol == 0) {
-        *pfd = *(int *)&protocol_info;
+        *pfd = *(SOCKET *)&protocol_info;
       } else {
         *pfd = WSASocket(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO,
                          &protocol_info, 0, 0);
