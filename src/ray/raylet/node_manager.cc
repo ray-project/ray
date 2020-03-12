@@ -3400,11 +3400,11 @@ std::string FormatMemoryInfo(
   }
 
   std::ostringstream builder;
-  builder << "---------------------------------------------------------------------------"
+  builder << "----------------------------------------------------------------------------"
              "-------------------------\n";
-  builder << " Object ID                                Reference Type      Object Size  "
+  builder << " Object ID                                Reference Type       Object Size  "
              " Reference Creation Site\n";
-  builder << "==========================================================================="
+  builder << "============================================================================"
              "=========================\n";
 
   // Second pass builds the summary string for each node.
@@ -3428,11 +3428,11 @@ std::string FormatMemoryInfo(
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         builder << obj_id.Hex() << "  ";
         if (object_ref.submitted_task_ref_count() > 0) {
-          builder << "USED_BY_TASK        ";
+          builder << "USED_BY_PENDING_TASK ";
         } else if (object_ref.local_ref_count() > 0) {
-          builder << "LOCAL_REFERENCE     ";
+          builder << "LOCAL_REFERENCE      ";
         } else {
-          builder << "CAPTURED_IN_OBJECT  ";
+          builder << "CAPTURED_IN_OBJECT   ";
         }
         builder << std::right << std::setfill(' ') << std::setw(11);
         if (object_sizes.contains(obj_id)) {
@@ -3445,7 +3445,7 @@ std::string FormatMemoryInfo(
       }
     }
   }
-  builder << "---------------------------------------------------------------------------"
+  builder << "----------------------------------------------------------------------------"
              "-------------------------\n";
 
   return builder.str();

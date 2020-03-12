@@ -278,14 +278,14 @@ std::string TaskSpecification::DebugString() const {
 std::string TaskSpecification::CallSiteString() const {
   std::ostringstream stream;
   auto desc = FunctionDescriptor();
-  stream << FunctionDescriptor()->CallSiteString();
   if (IsActorCreationTask()) {
-    stream << " (actor creation task)";
+    stream << "(deserialize actor creation task arg) ";
   } else if (IsActorTask()) {
-    stream << " (actor task)";
+    stream << "(deserialize actor task arg) ";
   } else {
-    stream << " (remote task)";
+    stream << "(deserialize task arg) ";
   }
+  stream << FunctionDescriptor()->CallSiteString();
   return stream.str();
 }
 

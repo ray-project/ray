@@ -558,14 +558,24 @@ cdef void gc_collect() nogil:
 cdef void get_py_stack(c_string* stack_out) nogil:
     with gil:
         frame = inspect.currentframe()
-        msg = "<unknown>"
+        msg = ""
         while frame:
             filename = frame.f_code.co_filename
-            # Walk upwards until we are no longer in a Ray internal frame.
-            if (not filename.endswith("python/ray/worker.py") and
-                    not filename.endswith("python/ray/remote_function.py") and
-                    not filename.endswith("python/ray/actor.py")):
-                msg = "{}:{}:{}".format(
+            # Decode Ray internal frames to add annotations.
+            if filename.endswith("ray/worker.py"):
+                if frame.f_code.co_name == "put":
+                    msg = "(put object) "
+            elif filename.endswith("ray/workers/default_worker.py"):
+                pass
+            elif filename.endswith("ray/serialization.py"):
+                if frame.f_code.co_name == "id_deserializer":
+                    msg = "(deserialize task arg) "
+            elif filename.endswith("ray/remote_function.py"):
+                msg = "(task return) "
+            elif filename.endswith("ray/actor.py"):
+                msg = "(actor task return) "
+            else:
+                msg += "{}:{}:{}".format(
                     frame.f_code.co_filename, frame.f_code.co_name,
                     frame.f_lineno)
                 break

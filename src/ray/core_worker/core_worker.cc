@@ -433,8 +433,6 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                                 static_cast<uint8_t>(TaskTransportType::DIRECT));
   auto status = plasma_store_provider_->Create(metadata, data_size, *object_id, data);
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Dumping local reference table (TODO should be for all workers)";
-    reference_counter_->DebugDump();
   }
   RAY_RETURN_NOT_OK(status);
   // Only add the object to the reference counter if it didn't already exist.
