@@ -4,6 +4,15 @@ package ray.rpc;
 
 import "src/ray/protobuf/gcs.proto";
 
+message GcsServiceInfo {
+  // GCS Server address and port.
+  string gcs_server_address;
+  int32 gcs_server_port;
+  // Pubsub server address and port.
+  string pubsub_server_address;
+  int pubsub_server_port;
+}
+
 message AddJobRequest {
   JobTableData data = 1;
 }
