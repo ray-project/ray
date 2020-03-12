@@ -238,7 +238,7 @@ class WorkerSet:
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator
                                 if config["tf_session_args"] else None),
-            rollout_length=config["rollout_length"],
+            rollout_fragment_length=config["rollout_fragment_length"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
             preprocessor_pref=config["preprocessor_pref"],

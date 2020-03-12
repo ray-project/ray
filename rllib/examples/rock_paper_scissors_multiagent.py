@@ -166,7 +166,7 @@ def run_heuristic_vs_learned(use_lstm=False, trainer="PG"):
             "gamma": 0.9,
             "num_workers": 0,
             "num_envs_per_worker": 4,
-            "rollout_length": 10,
+            "rollout_fragment_length": 10,
             "train_batch_size": 200,
             "multiagent": {
                 "policies_to_train": ["learned"],

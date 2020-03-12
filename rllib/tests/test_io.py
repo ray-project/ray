@@ -44,7 +44,7 @@ class AgentIOTest(unittest.TestCase):
             env="CartPole-v0",
             config={
                 "output": output,
-                "rollout_length": 250,
+                "rollout_fragment_length": 250,
             })
         agent.train()
         return agent
@@ -127,7 +127,7 @@ class AgentIOTest(unittest.TestCase):
             config={
                 "input": glob.glob(self.test_dir + "/*.json"),
                 "input_evaluation": [],
-                "rollout_length": 99,
+                "rollout_fragment_length": 99,
             })
         result = agent.train()
         self.assertEqual(result["timesteps_total"], 250)  # read from input

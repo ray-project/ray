@@ -23,7 +23,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
             policy=MockPolicy,
-            rollout_length=40,
+            rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
@@ -35,7 +35,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
             policy=MockPolicy,
-            rollout_length=40,
+            rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         for _ in range(3):
             batch = ev.sample()
@@ -53,7 +53,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
-            rollout_length=50)
+            rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
 
@@ -71,7 +71,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: MultiCartpole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
-            rollout_length=100)
+            rollout_fragment_length=100)
         optimizer = SyncSamplesOptimizer(WorkerSet._from_existing(ev))
         for i in range(100):
             optimizer.step()

@@ -31,7 +31,7 @@ class TreeAggregator(Aggregator):
                  replay_proportion=0.0,
                  replay_buffer_num_slots=0,
                  train_batch_size=500,
-                 rollout_length=50,
+                 rollout_fragment_length=50,
                  broadcast_interval=5):
         """Initialize a tree aggregator.
 
@@ -45,7 +45,7 @@ class TreeAggregator(Aggregator):
             replay_buffer_num_slots (int): max number of sample batches to
                 store in the replay buffer
             train_batch_size (int): size of batches to learn on
-            rollout_length (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from workers
             broadcast_interval (int): max number of workers to send the
                 same set of weights to
         """
@@ -55,7 +55,7 @@ class TreeAggregator(Aggregator):
             max_sample_requests_in_flight_per_worker
         self.replay_proportion = replay_proportion
         self.replay_buffer_num_slots = replay_buffer_num_slots
-        self.rollout_length = rollout_length
+        self.rollout_fragment_length = rollout_fragment_length
         self.train_batch_size = train_batch_size
         self.broadcast_interval = broadcast_interval
         self.broadcasted_weights = ray.put(
@@ -86,7 +86,7 @@ class TreeAggregator(Aggregator):
                             self.max_sample_requests_in_flight_per_worker,
                             self.replay_proportion,
                             self.replay_buffer_num_slots,
-                            self.train_batch_size, self.rollout_length)
+                            self.train_batch_size, self.rollout_fragment_length)
 
         self.agg_tasks = TaskPool()
         for agg in self.aggregators:
@@ -140,7 +140,7 @@ class AggregationWorker(AggregationWorkerBase):
 
     def init(self, initial_weights_obj_id, remote_workers,
              max_sample_requests_in_flight_per_worker, replay_proportion,
-             replay_buffer_num_slots, train_batch_size, rollout_length):
+             replay_buffer_num_slots, train_batch_size, rollout_fragment_length):
         """Deferred init that assigns sub-workers to this aggregator."""
 
         logger.info("Assigned workers {} to aggregation worker {}".format(
@@ -149,7 +149,7 @@ class AggregationWorker(AggregationWorkerBase):
         AggregationWorkerBase.__init__(
             self, initial_weights_obj_id, remote_workers,
             max_sample_requests_in_flight_per_worker, replay_proportion,
-            replay_buffer_num_slots, train_batch_size, rollout_length)
+            replay_buffer_num_slots, train_batch_size, rollout_fragment_length)
         self.initialized = True
 
     def set_weights(self, weights):

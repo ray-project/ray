@@ -59,7 +59,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "rollout_length": 4,
+    "rollout_fragment_length": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.

@@ -119,7 +119,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  policy_mapping_fn=None,
                  policies_to_train=None,
                  tf_session_creator=None,
-                 rollout_length=100,
+                 rollout_fragment_length=100,
                  batch_mode="truncate_episodes",
                  episode_horizon=None,
                  preprocessor_pref="deepmind",
@@ -165,16 +165,16 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicy.
-            rollout_length (int): The target number of env transitions to
+            rollout_fragment_length (int): The target number of env transitions to
                 include in each sample batch returned from this worker.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of at most `rollout_length * num_envs` in size. The batch
-                    will be exactly `rollout_length * num_envs` in size if
+                    of at most `rollout_fragment_length * num_envs` in size. The batch
+                    will be exactly `rollout_fragment_length * num_envs` in size if
                     postprocessing does not change batch sizes. Episodes may be
                     truncated in order to meet this size requirement.
                 "complete_episodes": Each call to sample() will return a batch
-                    of at least `rollout_length * num_envs` in size. Episodes
+                    of at least `rollout_fragment_length * num_envs` in size. Episodes
                     will not be truncated, but multiple episodes may be packed
                     within one batch to meet the batch size. Note that when
                     `num_envs > 1`, episode steps will be buffered until the
@@ -273,7 +273,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         if not callable(policy_mapping_fn):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator = env_creator
-        self.rollout_length = rollout_length * num_envs
+        self.rollout_fragment_length = rollout_fragment_length * num_envs
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
@@ -401,7 +401,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         if self.batch_mode == "truncate_episodes":
             pack_episodes = True
         elif self.batch_mode == "complete_episodes":
-            rollout_length = float("inf")  # never cut episodes
+            rollout_fragment_length = float("inf")  # never cut episodes
             pack_episodes = False  # sampler will return 1 episode per poll
         else:
             raise ValueError("Unsupported batch mode: {}".format(
@@ -434,7 +434,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 self.preprocessors,
                 self.filters,
                 clip_rewards,
-                rollout_length,
+                rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
@@ -452,7 +452,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 self.preprocessors,
                 self.filters,
                 clip_rewards,
-                rollout_length,
+                rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
@@ -483,7 +483,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         if log_once("sample_start"):
             logger.info("Generating sample batch of size {}".format(
-                self.rollout_length))
+                self.rollout_fragment_length))
 
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
@@ -495,7 +495,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         else:
             max_batches = float("inf")
 
-        while (steps_so_far < self.rollout_length
+        while (steps_so_far < self.rollout_fragment_length
                and len(batches) < max_batches):
             batch = self.input_reader.next()
             steps_so_far += batch.count

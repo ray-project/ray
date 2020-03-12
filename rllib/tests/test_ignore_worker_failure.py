@@ -91,7 +91,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
             "PPO", {
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
-                "rollout_length": 10,
+                "rollout_fragment_length": 10,
                 "sgd_minibatch_size": 1,
             })
 

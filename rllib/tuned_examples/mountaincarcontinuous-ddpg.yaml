@@ -43,7 +43,7 @@ mountaincarcontinuous-ddpg:
         huber_threshold: 1.0
         l2_reg: 0.00001
         learning_starts: 1000
-        rollout_length: 1
+        rollout_fragment_length: 1
         train_batch_size: 64
 
         # === Parallelism ===

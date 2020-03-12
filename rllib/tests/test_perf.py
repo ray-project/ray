@@ -16,7 +16,7 @@ class TestPerf(unittest.TestCase):
             ev = RolloutWorker(
                 env_creator=lambda _: gym.make("CartPole-v0"),
                 policy=MockPolicy,
-                rollout_length=100)
+                rollout_fragment_length=100)
             start = time.time()
             count = 0
             while time.time() - start < 1:

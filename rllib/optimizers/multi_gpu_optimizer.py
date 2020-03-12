@@ -41,7 +41,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                  workers,
                  sgd_batch_size=128,
                  num_sgd_iter=10,
-                 rollout_length=200,
+                 rollout_fragment_length=200,
                  num_envs_per_worker=1,
                  train_batch_size=1024,
                  num_gpus=0,
@@ -53,7 +53,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             workers (WorkerSet): all workers
             sgd_batch_size (int): SGD minibatch size within train batch size
             num_sgd_iter (int): number of passes to learn on per train batch
-            rollout_length (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from workers
             num_envs_per_worker (int): num envs in each rollout worker
             train_batch_size (int): size of batches to learn on
             num_gpus (int): number of GPUs to use for data-parallel SGD
@@ -67,7 +67,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.batch_size = sgd_batch_size
         self.num_sgd_iter = num_sgd_iter
         self.num_envs_per_worker = num_envs_per_worker
-        self.rollout_length = rollout_length
+        self.rollout_fragment_length = rollout_fragment_length
         self.train_batch_size = train_batch_size
         self.shuffle_sequences = shuffle_sequences
         if not num_gpus:
@@ -133,7 +133,7 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.sample_timer:
             if self.workers.remote_workers():
                 samples = collect_samples(
-                    self.workers.remote_workers(), self.rollout_length,
+                    self.workers.remote_workers(), self.rollout_fragment_length,
                     self.num_envs_per_worker, self.train_batch_size)
                 if samples.count > self.train_batch_size * 2:
                     logger.info(

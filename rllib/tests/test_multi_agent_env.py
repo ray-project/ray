@@ -330,7 +330,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
-            rollout_length=50)
+            rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
         self.assertEqual(batch.policy_batches["p0"].count, 150)
@@ -350,7 +350,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
-            rollout_length=50,
+            rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True,
             remote_env_batch_wait_ms=99999999)
@@ -369,7 +369,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
-            rollout_length=50,
+            rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True)
         batch = ev.sample()
@@ -386,7 +386,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             episode_horizon=10,  # test with episode horizon set
-            rollout_length=50)
+            rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
 
@@ -401,7 +401,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             },
             policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
             batch_mode="complete_episodes",
-            rollout_length=1)
+            rollout_fragment_length=1)
         self.assertRaisesRegexp(ValueError,
                                 ".*don't have a last observation.*",
                                 lambda: ev.sample())
@@ -415,7 +415,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p0",
-            rollout_length=50)
+            rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
         # since we round robin introduce agents into the env, some of the env
@@ -463,7 +463,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy=StatefulPolicy,
-            rollout_length=5)
+            rollout_fragment_length=5)
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch["state_in_0"][0], {})
@@ -512,7 +512,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p0",
-            rollout_length=5)
+            rollout_fragment_length=5)
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
         self.assertEqual(batch.policy_batches["p0"].count, 10)
@@ -593,7 +593,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: MultiCartpole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
-            rollout_length=50)
+            rollout_fragment_length=50)
         if optimizer_cls == AsyncGradientsOptimizer:
 
             def policy_mapper(agent_id):
@@ -604,7 +604,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                     env_creator=lambda _: MultiCartpole(n),
                     policy=policies,
                     policy_mapping_fn=policy_mapper,
-                    rollout_length=50)
+                    rollout_fragment_length=50)
             ]
         else:
             remote_workers = []
@@ -653,7 +653,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: MultiCartpole(n),
             policy=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
-            rollout_length=100)
+            rollout_fragment_length=100)
         workers = WorkerSet._from_existing(worker, [])
         optimizer = SyncSamplesOptimizer(workers)
         for i in range(100):

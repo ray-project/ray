@@ -101,7 +101,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "rollout_length": 4,
+    "rollout_fragment_length": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -157,7 +157,7 @@ def make_policy_optimizer(workers, config):
 def validate_config_and_setup_param_noise(config):
     """Checks and updates the config based on settings.
 
-    Rewrites rollout_length to take into account n_step truncation.
+    Rewrites rollout_fragment_length to take into account n_step truncation.
     """
     # PyTorch check.
     if config["use_pytorch"]:
@@ -223,9 +223,9 @@ def validate_config_and_setup_param_noise(config):
         }
 
     # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["rollout_length"], config.get(
+    adjusted_batch_size = max(config["rollout_fragment_length"], config.get(
         "n_step", 1))
-    config["rollout_length"] = adjusted_batch_size
+    config["rollout_fragment_length"] = adjusted_batch_size
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):

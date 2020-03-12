@@ -182,7 +182,7 @@ if __name__ == "__main__":
         group = False
     elif args.run == "QMIX":
         config = {
-            "rollout_length": 4,
+            "rollout_fragment_length": 4,
             "train_batch_size": 32,
             "exploration_fraction": .4,
             "exploration_final_eps": 0.0,
@@ -205,7 +205,7 @@ if __name__ == "__main__":
             "buffer_size": 1000,
             "learning_starts": 1000,
             "train_batch_size": 128,
-            "rollout_length": 32,
+            "rollout_fragment_length": 32,
             "target_network_update_freq": 500,
             "timesteps_per_iteration": 1000,
             "env_config": {

@@ -21,7 +21,7 @@ APEX_QMIX_DEFAULT_CONFIG = merge_dicts(
         "buffer_size": 2000000,
         "learning_starts": 50000,
         "train_batch_size": 512,
-        "rollout_length": 50,
+        "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "per_worker_exploration": True,

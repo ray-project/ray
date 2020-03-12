@@ -11,7 +11,7 @@ pong-deterministic-rainbow:
         hiddens: [512]
         learning_starts: 10000
         buffer_size: 50000
-        rollout_length: 4
+        rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:
           epsilon_timesteps: 2

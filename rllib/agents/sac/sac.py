@@ -4,7 +4,7 @@ from ray.rllib.agents.sac.sac_policy import SACTFPolicy
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "rollout_length",
+    "prioritized_replay_beta", "prioritized_replay_eps", "rollout_fragment_length",
     "train_batch_size", "learning_starts"
 ]
 
@@ -71,7 +71,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
-    "rollout_length": 1,
+    "rollout_fragment_length": 1,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.

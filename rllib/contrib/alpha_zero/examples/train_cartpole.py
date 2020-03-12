@@ -25,7 +25,7 @@ if __name__ == "__main__":
         config={
             "env": CartPole,
             "num_workers": args.num_workers,
-            "rollout_length": 50,
+            "rollout_fragment_length": 50,
             "train_batch_size": 500,
             "sgd_minibatch_size": 64,
             "lr": 1e-4,

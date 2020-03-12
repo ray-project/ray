@@ -21,7 +21,7 @@ atari-basic-dqn:
         hiddens: [512]
         learning_starts: 20000
         buffer_size: 1000000
-        rollout_length: 4
+        rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:
           epsilon_timesteps: 200000

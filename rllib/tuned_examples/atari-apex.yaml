@@ -29,7 +29,7 @@ apex:
         # APEX
         num_workers: 8
         num_envs_per_worker: 8
-        rollout_length: 20
+        rollout_fragment_length: 20
         train_batch_size: 512
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
