@@ -4,7 +4,7 @@ from typing import Union
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    tf_function, TensorType
+    TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
 from ray.rllib.models.modelv2 import ModelV2
 
