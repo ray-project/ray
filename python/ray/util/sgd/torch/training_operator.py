@@ -2,20 +2,14 @@ import collections
 
 import torch
 
-<<<<<<< HEAD
 import time
 import ray
 
-from ray.util.sgd.utils import TimerStat, AverageMeter
-from ray.util.sgd.torch.constants import (
-    SCHEDULER_STEP_EPOCH, SCHEDULER_STEP_BATCH, SCHEDULER_STEP, BATCH_COUNT,
-    BATCH_LOGS_RATE_LIMIT)
-=======
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,
-                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
->>>>>>> 768d0b3b3f53119bf6c2936538d642f45bbc3a02
+                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP,
+                                          BATCH_LOGS_RATE_LIMIT)
 
 amp = None
 
