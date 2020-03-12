@@ -93,7 +93,7 @@ class SegmentTree:
         self.value[idx] = val
 
         # Reclculate all affected reduction values (in "first half" of tree).
-        idx = idx >> 1  # Divide by 2 (fater than division).
+        idx = idx >> 1  # Divide by 2 (faster than division).
         while idx >= 1:
             update_idx = 2 * idx  # calculate only once
             # Update the reduction value at the correct "first half" idx.
