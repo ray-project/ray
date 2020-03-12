@@ -112,8 +112,6 @@ class RAY_EXPORT Status {
 
   Status(StatusCode code, const std::string &msg);
 
-  static Status FromString(const std::string &value);
-
   // Copy the specified status.
   Status(const Status &s);
   void operator=(const Status &s);

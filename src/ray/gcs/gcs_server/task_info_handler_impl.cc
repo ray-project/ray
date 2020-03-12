@@ -30,8 +30,7 @@ void DefaultTaskInfoHandler::HandleAddTask(const AddTaskRequest &request,
       RAY_LOG(ERROR) << "Failed to add task, task id = " << task_id
                      << ", job id = " << job_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncAdd(task_table_data, on_done);
@@ -55,8 +54,7 @@ void DefaultTaskInfoHandler::HandleGetTask(const GetTaskRequest &request,
     } else {
       RAY_LOG(ERROR) << "Failed to get task, task id = " << task_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncGet(task_id, on_done);
@@ -75,8 +73,7 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to delete tasks, task id list size = " << task_ids.size();
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncDelete(task_ids, on_done);
@@ -100,8 +97,7 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
       RAY_LOG(ERROR) << "Failed to add task lease, task id = " << task_id
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Tasks().AsyncAddTaskLease(task_lease_data, on_done);
@@ -128,8 +124,7 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
                      << request.task_reconstruction().num_reconstructions()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status =

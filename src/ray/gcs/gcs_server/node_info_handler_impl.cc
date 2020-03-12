@@ -29,8 +29,7 @@ void DefaultNodeInfoHandler::HandleRegisterNode(
       RAY_LOG(ERROR) << "Failed to register node info: " << status.ToString()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Nodes().AsyncRegister(request.node_info(), on_done);
@@ -51,8 +50,7 @@ void DefaultNodeInfoHandler::HandleUnregisterNode(
       RAY_LOG(ERROR) << "Failed to unregister node info: " << status.ToString()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Nodes().AsyncUnregister(node_id, on_done);
@@ -75,8 +73,7 @@ void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
     } else {
       RAY_LOG(ERROR) << "Failed to get all nodes info: " << status.ToString();
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Nodes().AsyncGetAll(on_done);
@@ -97,8 +94,7 @@ void DefaultNodeInfoHandler::HandleReportHeartbeat(
       RAY_LOG(ERROR) << "Failed to report heartbeat: " << status.ToString()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
@@ -121,8 +117,7 @@ void DefaultNodeInfoHandler::HandleReportBatchHeartbeat(
       RAY_LOG(ERROR) << "Failed to report batch heartbeat: " << status.ToString()
                      << ", batch size = " << request.heartbeat_batch().batch_size();
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   auto heartbeat_batch_data = std::make_shared<rpc::HeartbeatBatchTableData>();
@@ -156,8 +151,7 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
       RAY_LOG(ERROR) << "Failed to get node resources: " << status.ToString()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Nodes().AsyncGetResources(node_id, on_done);
@@ -184,8 +178,7 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
       RAY_LOG(ERROR) << "Failed to update node resources: " << status.ToString()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Nodes().AsyncUpdateResources(node_id, resources, on_done);
@@ -208,8 +201,7 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
       RAY_LOG(ERROR) << "Failed to delete node resources: " << status.ToString()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status =

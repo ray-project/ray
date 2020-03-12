@@ -34,8 +34,7 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
       RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
                      << ", actor id = " << actor_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Actors().AsyncGet(actor_id, on_done);
@@ -57,8 +56,7 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
       RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
                      << ", actor id = " << actor_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Actors().AsyncRegister(actor_table_data, on_done);
@@ -80,8 +78,7 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
       RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
                      << ", actor id = " << actor_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Actors().AsyncUpdate(actor_id, actor_table_data, on_done);
@@ -107,8 +104,7 @@ void DefaultActorInfoHandler::HandleAddActorCheckpoint(
                      << ", actor id = " << actor_id
                      << ", checkpoint id = " << checkpoint_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Actors().AsyncAddCheckpoint(actor_checkpoint_data, on_done);
@@ -134,8 +130,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
       RAY_LOG(ERROR) << "Failed to get actor checkpoint: " << status.ToString()
                      << ", checkpoint id = " << checkpoint_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Actors().AsyncGetCheckpoint(checkpoint_id, on_done);
@@ -161,8 +156,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
       RAY_LOG(ERROR) << "Failed to get actor checkpoint id: " << status.ToString()
                      << ", actor id = " << actor_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Actors().AsyncGetCheckpointID(actor_id, on_done);

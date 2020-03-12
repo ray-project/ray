@@ -31,8 +31,7 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
                      << request.profile_data().component_type()
                      << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Stats().AsyncAddProfileData(profile_table_data, on_done);

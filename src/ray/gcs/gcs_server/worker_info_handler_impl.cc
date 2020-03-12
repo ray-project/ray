@@ -29,8 +29,7 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
       RAY_LOG(ERROR) << "Failed to report worker failure, "
                      << worker_address.DebugString();
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status =

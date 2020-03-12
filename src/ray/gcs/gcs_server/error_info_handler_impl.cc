@@ -30,8 +30,7 @@ void DefaultErrorInfoHandler::HandleReportJobError(
       RAY_LOG(ERROR) << "Failed to report job error, job id = " << job_id
                      << ", type = " << type;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Errors().AsyncReportJobError(error_table_data, on_done);

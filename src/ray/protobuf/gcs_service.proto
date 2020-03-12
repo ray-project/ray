@@ -18,12 +18,17 @@ package ray.rpc;
 
 import "src/ray/protobuf/gcs.proto";
 
+message GcsStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
 message AddJobRequest {
   JobTableData data = 1;
 }
 
 message AddJobReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message MarkJobFinishedRequest {
@@ -31,7 +36,7 @@ message MarkJobFinishedRequest {
 }
 
 message MarkJobFinishedReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 // Service for job info access.
@@ -48,7 +53,7 @@ message GetActorInfoRequest {
 }
 
 message GetActorInfoReply {
-  string status = 1;
+  GcsStatus status = 1;
   // Data of actor.
   ActorTableData actor_table_data = 2;
 }
@@ -59,7 +64,7 @@ message RegisterActorInfoRequest {
 }
 
 message RegisterActorInfoReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message UpdateActorInfoRequest {
@@ -70,7 +75,7 @@ message UpdateActorInfoRequest {
 }
 
 message UpdateActorInfoReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message AddActorCheckpointRequest {
@@ -78,7 +83,7 @@ message AddActorCheckpointRequest {
 }
 
 message AddActorCheckpointReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message GetActorCheckpointRequest {
@@ -86,7 +91,7 @@ message GetActorCheckpointRequest {
 }
 
 message GetActorCheckpointReply {
-  string status = 1;
+  GcsStatus status = 1;
   ActorCheckpointData checkpoint_data = 2;
 }
 
@@ -95,7 +100,7 @@ message GetActorCheckpointIDRequest {
 }
 
 message GetActorCheckpointIDReply {
-  string status = 1;
+  GcsStatus status = 1;
   ActorCheckpointIdData checkpoint_id_data = 2;
 }
 
@@ -122,7 +127,7 @@ message RegisterNodeRequest {
 }
 
 message RegisterNodeReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message UnregisterNodeRequest {
@@ -131,14 +136,14 @@ message UnregisterNodeRequest {
 }
 
 message UnregisterNodeReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message GetAllNodeInfoRequest {
 }
 
 message GetAllNodeInfoReply {
-  string status = 1;
+  GcsStatus status = 1;
   repeated GcsNodeInfo node_info_list = 2;
 }
 
@@ -147,7 +152,7 @@ message ReportHeartbeatRequest {
 }
 
 message ReportHeartbeatReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message ReportBatchHeartbeatRequest {
@@ -155,7 +160,7 @@ message ReportBatchHeartbeatRequest {
 }
 
 message ReportBatchHeartbeatReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message GetResourcesRequest {
@@ -163,7 +168,7 @@ message GetResourcesRequest {
 }
 
 message GetResourcesReply {
-  string status = 1;
+  GcsStatus status = 1;
   map<string, ResourceTableData> resources = 2;
 }
 
@@ -173,7 +178,7 @@ message UpdateResourcesRequest {
 }
 
 message UpdateResourcesReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message DeleteResourcesRequest {
@@ -182,7 +187,7 @@ message DeleteResourcesRequest {
 }
 
 message DeleteResourcesReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 // Service for node info access.
@@ -212,7 +217,7 @@ message GetObjectLocationsRequest {
 }
 
 message GetObjectLocationsReply {
-  string status = 1;
+  GcsStatus status = 1;
   // Data of object
   repeated ObjectTableData object_table_data_list = 2;
 }
@@ -225,7 +230,7 @@ message AddObjectLocationRequest {
 }
 
 message AddObjectLocationReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message RemoveObjectLocationRequest {
@@ -236,7 +241,7 @@ message RemoveObjectLocationRequest {
 }
 
 message RemoveObjectLocationReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 // Service for object info access.
@@ -255,7 +260,7 @@ message AddTaskRequest {
 }
 
 message AddTaskReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message GetTaskRequest {
@@ -263,7 +268,7 @@ message GetTaskRequest {
 }
 
 message GetTaskReply {
-  string status = 1;
+  GcsStatus status = 1;
   TaskTableData task_data = 2;
 }
 
@@ -272,7 +277,7 @@ message DeleteTasksRequest {
 }
 
 message DeleteTasksReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message AddTaskLeaseRequest {
@@ -280,7 +285,7 @@ message AddTaskLeaseRequest {
 }
 
 message AddTaskLeaseReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 message AttemptTaskReconstructionRequest {
@@ -288,7 +293,7 @@ message AttemptTaskReconstructionRequest {
 }
 
 message AttemptTaskReconstructionReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 // Service for task info access.
@@ -311,7 +316,7 @@ message AddProfileDataRequest {
 }
 
 message AddProfileDataReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 // Service for stats access.
@@ -325,7 +330,7 @@ message ReportJobErrorRequest {
 }
 
 message ReportJobErrorReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 // Service for error info access.
@@ -339,7 +344,7 @@ message ReportWorkerFailureRequest {
 }
 
 message ReportWorkerFailureReply {
-  string status = 1;
+  GcsStatus status = 1;
 }
 
 // Service for worker info access.

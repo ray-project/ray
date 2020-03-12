@@ -49,7 +49,6 @@ namespace ray {
 #define STATUS_CODE_INTENTIONAL_SYSTEM_EXIT "IntentionalSystemExit"
 #define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
 #define STATUS_CODE_UNKNOWN "Unknown"
-#define STATUS_SEPARATOR ": "
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -100,39 +99,9 @@ std::string Status::ToString() const {
   if (state_ == NULL) {
     return result;
   }
-  result += STATUS_SEPARATOR;
+  result += ": ";
   result += state_->msg;
   return result;
-}
-
-Status Status::FromString(const std::string &value) {
-  static std::map<std::string, StatusCode> str_to_code = {
-      {STATUS_CODE_OK, StatusCode::OK},
-      {STATUS_CODE_OUT_OF_MEMORY, StatusCode::OutOfMemory},
-      {STATUS_CODE_KEY_ERROR, StatusCode::KeyError},
-      {STATUS_CODE_TYPE_ERROR, StatusCode::TypeError},
-      {STATUS_CODE_INVALID, StatusCode::Invalid},
-      {STATUS_CODE_IO_ERROR, StatusCode::IOError},
-      {STATUS_CODE_OBJECT_EXISTS, StatusCode::ObjectExists},
-      {STATUS_CODE_OBJECT_STORE_FULL, StatusCode::ObjectStoreFull},
-      {STATUS_CODE_UNKNOWN_ERROR, StatusCode::UnknownError},
-      {STATUS_CODE_NOT_IMPLEMENTED, StatusCode::NotImplemented},
-      {STATUS_CODE_REDIS_ERROR, StatusCode::RedisError},
-      {STATUS_CODE_TIMED_OUT, StatusCode::TimedOut},
-      {STATUS_CODE_INTERRUPTED, StatusCode::Interrupted},
-      {STATUS_CODE_INTENTIONAL_SYSTEM_EXIT, StatusCode::IntentionalSystemExit},
-      {STATUS_CODE_UNEXPECTED_SYSTEM_EXIT, StatusCode::UnexpectedSystemExit}};
-
-  size_t pos = value.find(STATUS_SEPARATOR);
-  if (pos != std::string::npos) {
-    std::string code_str = value.substr(0, pos);
-    RAY_CHECK(str_to_code.count(code_str));
-    StatusCode code = str_to_code[code_str];
-    return Status(code, value.substr(pos + strlen(STATUS_SEPARATOR)));
-  } else {
-    // Status ok does not include ":".
-    return Status();
-  }
 }
 
 }  // namespace ray

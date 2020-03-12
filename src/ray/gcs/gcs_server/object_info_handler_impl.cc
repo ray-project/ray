@@ -34,8 +34,7 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
       RAY_LOG(ERROR) << "Failed to get object locations: " << status.ToString()
                      << ", object id = " << object_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Objects().AsyncGetLocations(object_id, on_done);
@@ -59,8 +58,7 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Objects().AsyncAddLocation(object_id, node_id, on_done);
@@ -85,8 +83,7 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
       RAY_LOG(ERROR) << "Failed to remove object location: " << status.ToString()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
-    reply->set_status(status.ToString());
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Objects().AsyncRemoveLocation(object_id, node_id, on_done);
