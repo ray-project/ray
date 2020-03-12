@@ -13,6 +13,7 @@ import time
 
 import ray
 from ray.exceptions import RayError
+from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -283,7 +284,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
 
 @ray.remote(num_cpus=0)
-class ReplayActor:
+class ReplayActor(ParallelIteratorWorker):
     """A replay buffer shard.
 
     Ray actors are single-threaded, so for scalability multiple replay actors
@@ -297,6 +298,12 @@ class ReplayActor:
         self.train_batch_size = train_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
+
+        def gen_replay():
+            while True:
+                yield self.replay()
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)
 
         def new_buffer():
             return PrioritizedReplayBuffer(
@@ -435,6 +442,7 @@ class LearnerThread(threading.Thread):
         self.outqueue = queue.Queue()
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
+        self.overall_timer = TimerStat()
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
@@ -445,17 +453,20 @@ class LearnerThread(threading.Thread):
             self.step()
 
     def step(self):
-        with self.queue_timer:
-            ra, replay = self.inqueue.get()
-        if replay is not None:
-            prio_dict = {}
-            with self.grad_timer:
-                grad_out = self.local_worker.learn_on_batch(replay)
-                for pid, info in grad_out.items():
-                    prio_dict[pid] = (
-                        replay.policy_batches[pid].data.get("batch_indexes"),
-                        info.get("td_error"))
-                    self.stats[pid] = get_learner_stats(info)
-            self.outqueue.put((ra, prio_dict, replay.count))
-        self.learner_queue_size.push(self.inqueue.qsize())
-        self.weights_updated = True
+        with self.overall_timer:
+            with self.queue_timer:
+                ra, replay = self.inqueue.get()
+            if replay is not None:
+                prio_dict = {}
+                with self.grad_timer:
+                    grad_out = self.local_worker.learn_on_batch(replay)
+                    for pid, info in grad_out.items():
+                        prio_dict[pid] = (replay.policy_batches[pid].data.get(
+                            "batch_indexes"), info.get("td_error"))
+                        self.stats[pid] = get_learner_stats(info)
+                    self.grad_timer.push_units_processed(replay.count)
+                self.outqueue.put((ra, prio_dict, replay.count))
+            self.learner_queue_size.push(self.inqueue.qsize())
+            self.weights_updated = True
+            self.overall_timer.push_units_processed(replay and replay.count
+                                                    or 0)
