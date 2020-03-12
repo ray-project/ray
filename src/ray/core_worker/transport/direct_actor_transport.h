@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
@@ -54,8 +68,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Tell this actor to exit immediately.
   ///
   /// \param[in] actor_id The actor_id of the actor to kill.
-  /// \return Status::Invalid if the actor could not be killed.
-  Status KillActor(const ActorID &actor_id);
+  /// \param[in] force_kill Whether to force kill the actor, or let the actor
+  /// try a clean exit.
+  void KillActor(const ActorID &actor_id, bool force_kill);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -120,7 +135,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
 
   /// Set of actor ids that should be force killed once a client is available.
-  absl::flat_hash_set<ActorID> pending_force_kills_ GUARDED_BY(mu_);
+  absl::flat_hash_map<ActorID, bool> pending_force_kills_ GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
@@ -393,12 +408,10 @@ class CoreWorkerDirectTaskReceiver {
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                std::shared_ptr<raylet::RayletClient> &local_raylet_client,
                                boost::asio::io_service &main_io_service,
-                               const TaskHandler &task_handler,
-                               const std::function<void(bool)> &exit_handler)
+                               const TaskHandler &task_handler)
       : worker_context_(worker_context),
         local_raylet_client_(local_raylet_client),
         task_handler_(task_handler),
-        exit_handler_(exit_handler),
         task_main_io_service_(main_io_service) {}
 
   /// Initialize this receiver. This must be called prior to use.
@@ -427,8 +440,6 @@ class CoreWorkerDirectTaskReceiver {
   WorkerContext &worker_context_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
-  /// The callback function to exit the worker.
-  std::function<void(bool)> exit_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
   /// Factory for producing new core worker clients.
@@ -443,8 +454,6 @@ class CoreWorkerDirectTaskReceiver {
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
-  /// Whether we are shutting down and not running further tasks.
-  bool exiting_ = false;
 };
 
 }  // namespace ray

@@ -37,8 +37,8 @@ def choose_policy_optimizer(workers, config):
             workers, train_batch_size=config["train_batch_size"])
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["microbatch_size"]:
@@ -72,4 +72,4 @@ A2CTrainer = build_trainer(
     get_policy_class=get_policy_class,
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
-    training_pipeline=training_pipeline)
+    execution_plan=execution_plan)

@@ -16,8 +16,8 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
-class LSTMUtilsTest(unittest.TestCase):
-    def testBasic(self):
+class TestLSTMUtils(unittest.TestCase):
+    def test_basic(self):
         eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
         agent_ids = [1, 1, 1, 1, 1, 1, 1, 1]
         f = [[101, 102, 103, 201, 202, 203, 204, 205],
@@ -34,7 +34,7 @@ class LSTMUtilsTest(unittest.TestCase):
         self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
         self.assertEqual(seq_lens.tolist(), [3, 4, 1])
 
-    def testMultiDim(self):
+    def test_multi_dim(self):
         eps_ids = [1, 1, 1]
         agent_ids = [1, 1, 1]
         obs = np.ones((84, 84, 4))
@@ -49,7 +49,7 @@ class LSTMUtilsTest(unittest.TestCase):
         self.assertEqual([s.tolist() for s in s_init], [[209]])
         self.assertEqual(seq_lens.tolist(), [3])
 
-    def testBatchId(self):
+    def test_batch_id(self):
         eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
         batch_ids = [1, 1, 2, 2, 3, 3, 4, 4]
         agent_ids = [1, 1, 1, 1, 1, 1, 1, 1]
@@ -60,7 +60,7 @@ class LSTMUtilsTest(unittest.TestCase):
                                              s, 4)
         self.assertEqual(seq_lens.tolist(), [2, 1, 1, 2, 2])
 
-    def testMultiAgent(self):
+    def test_multi_agent(self):
         eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
         agent_ids = [1, 1, 2, 1, 1, 2, 2, 3]
         f = [[101, 102, 103, 201, 202, 203, 204, 205],
@@ -78,7 +78,7 @@ class LSTMUtilsTest(unittest.TestCase):
         self.assertEqual(len(f_pad[0]), 20)
         self.assertEqual(len(s_init[0]), 5)
 
-    def testDynamicMaxLen(self):
+    def test_dynamic_max_len(self):
         eps_ids = [5, 2, 2]
         agent_ids = [2, 2, 2]
         f = [[1, 1, 1]]
@@ -184,8 +184,14 @@ class DebugCounterEnv(gym.Env):
         return [self.i], self.i % 3, self.i >= 15, {}
 
 
-class RNNSequencing(unittest.TestCase):
-    def testSimpleOptimizerSequencing(self):
+class TestRNNSequencing(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.init(num_cpus=4)
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_simple_optimizer_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
         ppo = PPOTrainer(
@@ -242,7 +248,7 @@ class RNNSequencing(unittest.TestCase):
         self.assertGreater(abs(np.sum(batch1["state_in"][0][3])), 0)
         self.assertGreater(abs(np.sum(batch1["state_in"][1][3])), 0)
 
-    def testMinibatchSequencing(self):
+    def test_minibatch_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
         ppo = PPOTrainer(
@@ -305,5 +311,6 @@ class RNNSequencing(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=4)
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

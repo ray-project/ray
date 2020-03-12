@@ -1,18 +1,18 @@
+from collections import defaultdict
 import copy
 import hashlib
 import json
+import jsonschema
 import logging
 import math
+import numpy as np
 import os
 import subprocess
 import threading
 import time
-from collections import defaultdict
-
-import numpy as np
-import ray.services as services
 import yaml
-from ray.worker import global_worker
+
+import ray
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
@@ -25,131 +25,15 @@ from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S, \
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, MEMORY_RESOURCE_UNIT_BYTES
-from six import string_types
+import ray.services as services
+from ray.worker import global_worker
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
 REQUIRED, OPTIONAL = True, False
-
-# For (a, b), if a is a dictionary object, then
-# no extra fields can be introduced.
-
-CLUSTER_CONFIG_SCHEMA = {
-    # An unique identifier for the head node and workers of this cluster.
-    "cluster_name": (str, REQUIRED),
-
-    # The minimum number of workers nodes to launch in addition to the head
-    # node. This number should be >= 0.
-    "min_workers": (int, OPTIONAL),
-
-    # The maximum number of workers nodes to launch in addition to the head
-    # node. This takes precedence over min_workers.
-    "max_workers": (int, REQUIRED),
-
-    # The number of workers to launch initially, in addition to the head node.
-    "initial_workers": (int, OPTIONAL),
-
-    # The mode of the autoscaler e.g. default, aggressive
-    "autoscaling_mode": (str, OPTIONAL),
-
-    # The autoscaler will scale up the cluster to this target fraction of
-    # resources usage. For example, if a cluster of 8 nodes is 100% busy
-    # and target_utilization was 0.8, it would resize the cluster to 10.
-    "target_utilization_fraction": (float, OPTIONAL),
-
-    # If a node is idle for this many minutes, it will be removed.
-    "idle_timeout_minutes": (int, OPTIONAL),
-
-    # Cloud-provider specific configuration.
-    "provider": (
-        {
-            "type": (str, REQUIRED),  # e.g. aws
-            "region": (str, OPTIONAL),  # e.g. us-east-1
-            "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
-            "module": (str,
-                       OPTIONAL),  # module, if using external node provider
-            "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
-            "head_ip": (str, OPTIONAL),  # local cluster head node
-            "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
-            "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
-            "namespace": (str, OPTIONAL),  # k8s namespace, if using k8s
-
-            # k8s autoscaler permissions, if using k8s
-            "autoscaler_service_account": (dict, OPTIONAL),
-            "autoscaler_role": (dict, OPTIONAL),
-            "autoscaler_role_binding": (dict, OPTIONAL),
-            "extra_config": (dict, OPTIONAL),  # provider-specific config
-
-            # Whether to try to reuse previously stopped nodes instead of
-            # launching nodes. This will also cause the autoscaler to stop
-            # nodes instead of terminating them. Only implemented for AWS.
-            "cache_stopped_nodes": (bool, OPTIONAL),
-        },
-        REQUIRED),
-
-    # How Ray will authenticate with newly launched nodes.
-    "auth": (
-        {
-            "ssh_user": (str, OPTIONAL),  # e.g. ubuntu
-            "ssh_private_key": (str, OPTIONAL),
-        },
-        OPTIONAL),
-
-    # Docker configuration. If this is specified, all setup and start commands
-    # will be executed in the container.
-    "docker": (
-        {
-            "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
-            "container_name": (str, OPTIONAL),  # e.g., ray_docker
-            "pull_before_run": (bool, OPTIONAL),  # run `docker pull` first
-            # shared options for starting head/worker docker
-            "run_options": (list, OPTIONAL),
-
-            # image for head node, takes precedence over "image" if specified
-            "head_image": (str, OPTIONAL),
-            # head specific run options, appended to run_options
-            "head_run_options": (list, OPTIONAL),
-            # analogous to head_image
-            "worker_image": (str, OPTIONAL),
-            # analogous to head_run_options
-            "worker_run_options": (list, OPTIONAL),
-        },
-        OPTIONAL),
-
-    # Provider-specific config for the head node, e.g. instance type.
-    "head_node": (dict, OPTIONAL),
-
-    # Provider-specific config for worker nodes. e.g. instance type.
-    "worker_nodes": (dict, OPTIONAL),
-
-    # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
-    "file_mounts": (dict, OPTIONAL),
-
-    # List of commands that will be run before `setup_commands`. If docker is
-    # enabled, these commands will run outside the container and before docker
-    # is setup.
-    "initialization_commands": (list, OPTIONAL),
-
-    # List of common shell commands to run to setup nodes.
-    "setup_commands": (list, OPTIONAL),
-
-    # Commands that will be run on the head node after common setup.
-    "head_setup_commands": (list, OPTIONAL),
-
-    # Commands that will be run on worker nodes after common setup.
-    "worker_setup_commands": (list, OPTIONAL),
-
-    # Command to start ray on the head node. You shouldn't need to modify this.
-    "head_start_ray_commands": (list, OPTIONAL),
-
-    # Command to start ray on worker nodes. You shouldn't need to modify this.
-    "worker_start_ray_commands": (list, OPTIONAL),
-
-    # Whether to avoid restarting the cluster during updates. This field is
-    # controlled by the ray --no-restart flag and cannot be set by the user.
-    "no_restart": (None, OPTIONAL),
-}
+RAY_SCHEMA_PATH = os.path.join(
+    os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
 
 
 class LoadMetrics:
@@ -764,61 +648,17 @@ class StandardAutoscaler:
             len(nodes)))
 
 
-def typename(v):
-    if isinstance(v, type):
-        return v.__name__
-    else:
-        return type(v).__name__
-
-
-def check_required(config, schema):
-    # Check required schema entries
-    if not isinstance(config, dict):
-        raise ValueError("Config is not a dictionary")
-
-    for k, (v, kreq) in schema.items():
-        if v is None:
-            continue  # None means we don't validate the field
-        if kreq is REQUIRED:
-            if k not in config:
-                type_str = typename(v)
-                raise ValueError(
-                    "Missing required config key `{}` of type {}".format(
-                        k, type_str))
-            if not isinstance(v, type):
-                check_required(config[k], v)
-
-
-def check_extraneous(config, schema):
-    """Make sure all items of config are in schema"""
-    if not isinstance(config, dict):
-        raise ValueError("Config {} is not a dictionary".format(config))
-    for k in config:
-        if k not in schema:
-            raise ValueError("Unexpected config key `{}` not in {}".format(
-                k, list(schema.keys())))
-        v, kreq = schema[k]
-        if v is None:
-            continue
-        elif isinstance(v, type):
-            if not isinstance(config[k], v):
-                if v is str and isinstance(config[k], string_types):
-                    continue
-                raise ValueError(
-                    "Config key `{}` has wrong type {}, expected {}".format(
-                        k,
-                        type(config[k]).__name__, v.__name__))
-        else:
-            check_extraneous(config[k], v)
-
-
-def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
+def validate_config(config):
     """Required Dicts indicate that no extra fields can be introduced."""
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    check_required(config, schema)
-    check_extraneous(config, schema)
+    with open(RAY_SCHEMA_PATH) as f:
+        schema = json.load(f)
+    try:
+        jsonschema.validate(config, schema)
+    except jsonschema.ValidationError as e:
+        raise jsonschema.ValidationError(message=e.message) from None
 
 
 def fillout_defaults(config):

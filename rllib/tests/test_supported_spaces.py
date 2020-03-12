@@ -2,7 +2,6 @@ import gym
 from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
-import sys
 import unittest
 import traceback
 
@@ -290,6 +289,9 @@ class ModelSupportedSpaces(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import pytest
+    import sys
+
     if len(sys.argv) > 1 and sys.argv[1] == "--smoke":
         ACTION_SPACES_TO_TEST = {
             "discrete": Discrete(5),
@@ -298,4 +300,5 @@ if __name__ == "__main__":
             "vector": Box(0.0, 1.0, (5, ), dtype=np.float32),
             "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
         }
-    unittest.main(verbosity=2)
+
+    sys.exit(pytest.main(["-v", __file__]))
