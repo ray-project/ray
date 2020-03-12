@@ -31,15 +31,6 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeIsDirectCallActor
- * Signature: (J[B)Z
- */
-JNIEXPORT jboolean JNICALL
-Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(JNIEnv *, jclass, jlong,
-                                                                  jbyteArray);
-
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeGetActorCreationTaskFunctionDescriptor
  * Signature: (J[B)Ljava/util/List;
  */
