@@ -3,7 +3,6 @@ This script ensures that various libraries do not conflict with ray by
 trying to import both libraries in both orders.
 A specific example is that importing ray after pyarrow causes a Segfault.
 """
-import pytest
 import subprocess
 
 TESTED_LIBRARIES = ["pyarrow"]
@@ -19,7 +18,6 @@ def test_imports():
                 library1, library2))
         return return_info.returncode
 
-    final_exit_code = 0
     for library in TESTED_LIBRARIES:
         assert try_imports("ray", library) == 0
         assert try_imports(library, "ray") == 0
