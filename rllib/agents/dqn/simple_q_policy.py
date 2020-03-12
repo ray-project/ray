@@ -100,11 +100,9 @@ def build_q_models(policy, obs_space, action_space, config):
 
 
 def get_distribution_inputs_and_class(
-        policy, q_model, input_dict, states, seq_lens,
-        obs_space, action_space, explore):
-    q_vals = _compute_q_values(policy, q_model,
-                               input_dict[SampleBatch.CUR_OBS], obs_space,
-                               action_space, explore=explore)
+        policy, q_model, obs_batch, *, states, prev_actions, prev_rewards,
+        explore, is_training):
+    q_vals = _compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -133,13 +131,11 @@ def build_q_losses(policy, model, dist_class, train_batch):
     # q network evaluation
     q_t = _compute_q_values(policy, policy.q_model,
                             train_batch[SampleBatch.CUR_OBS],
-                            policy.observation_space, policy.action_space,
                             explore=False)
 
     # target q network evalution
     q_tp1 = _compute_q_values(policy, policy.target_q_model,
                               train_batch[SampleBatch.NEXT_OBS],
-                              policy.observation_space, policy.action_space,
                               explore=False)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
@@ -170,14 +166,17 @@ def build_q_losses(policy, model, dist_class, train_batch):
     return loss
 
 
-def _compute_q_values(policy, model, obs, obs_space, action_space, explore):
-    input_dict = {
-        "obs": obs,
-        "is_training": policy._get_is_training_placeholder(),
-    }
+def _compute_q_values(policy, model, obs, explore):
+    #input_dict = {
+    #    "obs": obs,
+    #    "is_training": policy._get_is_training_placeholder(),
+    #}
+
     model_out, _ = policy.exploration.forward(
-        model, input_dict, [], None, explore=explore)
-    #model(input_dict, [], None)
+        model, obs,
+        states=[], prev_actions=None, prev_rewards=None,
+        explore=explore, is_training=policy._get_is_training_placeholder())
+
     return model.get_q_values(model_out)
 
 

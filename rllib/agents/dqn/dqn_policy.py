@@ -201,11 +201,9 @@ def build_q_model(policy, obs_space, action_space, config):
 
 
 def get_distribution_inputs_and_class(
-        policy, q_model, input_dict, states, seq_lens,
-        obs_space, action_space, explore):
-    q_vals = _compute_q_values(policy, q_model,
-                               input_dict[SampleBatch.CUR_OBS], obs_space,
-                               action_space, explore=explore)
+        policy, q_model, obs_batch, *, states, prev_actions, prev_rewards,
+        explore, is_training):
+    q_vals = _compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -293,12 +291,12 @@ def build_q_losses(policy, model, _, train_batch):
     # q network evaluation
     q_t, q_logits_t, q_dist_t = _compute_q_values(
         policy, policy.q_model, train_batch[SampleBatch.CUR_OBS],
-        policy.observation_space, policy.action_space, explore=False)
+        explore=False)
 
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1 = _compute_q_values(
         policy, policy.target_q_model, train_batch[SampleBatch.NEXT_OBS],
-        policy.observation_space, policy.action_space, explore=False)
+        explore=False)
     policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
@@ -315,7 +313,7 @@ def build_q_losses(policy, model, _, train_batch):
             q_dist_tp1_using_online_net = _compute_q_values(
                 policy, policy.q_model,
                 train_batch[SampleBatch.NEXT_OBS],
-                policy.observation_space, policy.action_space, explore=False)
+                explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = tf.one_hot(q_tp1_best_using_online_net,
                                                   policy.action_space.n)
@@ -377,7 +375,7 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def _compute_q_values(policy, model, obs, obs_space, action_space, explore):
+def _compute_q_values(policy, model, obs, explore):
     config = policy.config
     input_dict = {
         "obs": obs,

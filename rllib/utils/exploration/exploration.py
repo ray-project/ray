@@ -19,8 +19,8 @@ class Exploration:
 
     def __init__(self,
                  action_space: Space,
-                 num_workers: int,
-                 worker_index: int,
+                 num_workers: int = 0,
+                 worker_index: int = 0,
                  framework: str = "tf"):
         """
         Args:

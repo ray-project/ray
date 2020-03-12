@@ -327,17 +327,12 @@ def build_eager_tf_policy(name,
                 n = obs_batch.shape[0]
             seq_lens = tf.ones(n, dtype=tf.int32)
 
-            input_dict = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.constant(False),
-            }
+            prev_batches = {}
             if obs_include_prev_action_reward:
-                input_dict.update({
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        prev_action_batch),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        prev_reward_batch),
-                })
+                prev_batches["prev_action_batch"] = \
+                    tf.convert_to_tensor(prev_action_batch)
+                prev_batches["prev_reward_batch"] = \
+                    tf.convert_to_tensor(prev_reward_batch)
 
             # Custom sampler fn given (which may handle self.exploration).
             #if action_sampler_fn is not None:
@@ -355,7 +350,12 @@ def build_eager_tf_policy(name,
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 dist_inputs, dist_class, state_outs = \
-                    self.compute_distribution_inputs()
+                    self.compute_distribution_inputs(
+                        obs_batch=tf.convert_to_tensor(obs_batch),
+                        state_batches=state_batches,
+                        explore=explore,
+                        is_training=False,
+                        **prev_batches)
                 # Get the exploration action from the forward results.
                 action, logp = self.exploration.get_exploration_action(
                     dist_inputs,
@@ -384,20 +384,29 @@ def build_eager_tf_policy(name,
                                         obs_batch,
                                         state_batches=None,
                                         prev_action_batch=None,
-                                        prev_reward_batch=None):
+                                        prev_reward_batch=None,
+                                        explore=True,
+                                        is_training=True):
             # Custom forward pass to get the action dist inputs.
             if forward_fn:
                 dist_inputs, dist_class, state_out = forward_fn(
-                    self, self.model,
-                    input_dict, state_batches, seq_lens,
-                    self.observation_space, self.action_space,
-                    explore=explore)
+                    self, self.model, obs_batch,
+                    state_batches=state_batches,
+                    prev_action_batch=prev_action_batch,
+                    prev_reward_batch=prev_reward_batch,
+                    explore=explore,
+                    is_training=is_training)
             # Forward pass through our exploration object.
             else:
                 dist_class = self.dist_class
                 dist_inputs, state_out = self.exploration.forward(
-                    self.model, input_dict, state_batches, seq_lens,
-                    explore=explore)
+                    self.model,
+                    obs_batch=obs_batch,
+                    state_batches=state_batches,
+                    prev_action_batch=prev_action_batch,
+                    prev_reward_batch=prev_reward_batch,
+                    explore=explore,
+                    is_training=is_training)
             return dist_inputs, dist_class, state_out
 
         @override(Policy)
