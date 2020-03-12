@@ -52,16 +52,23 @@ class Random(Exploration):
         else:
             return self.get_torch_exploration_action(action_dist, explore)
 
-    @tf_function(tf)
     def get_tf_exploration_action_op(self, action_dist, explore):
-        if explore:
+
+        def true_fn():
             action = tf.py_function(self.action_space.sample, [],
                                     self.dtype_sample)
             # Will be unnecessary, once we support batch/time-aware Spaces.
-            action = tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
-        else:
-            action = tf.cast(
+            return tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
+
+        def false_fn():
+            return tf.cast(
                 action_dist.deterministic_sample(), dtype=self.dtype)
+
+        action = tf.cond(
+            pred=tf.constant(explore, dtype=tf.bool)
+            if isinstance(explore, bool) else explore,
+            true_fn=true_fn,
+            false_fn=false_fn)
 
         # TODO(sven): Move into (deterministic_)sample(logp=True|False)
         if isinstance(action, TupleActions):

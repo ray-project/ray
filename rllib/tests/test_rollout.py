@@ -68,22 +68,13 @@ class TestRollout(unittest.TestCase):
     def test_impala(self):
         rollout_test("IMPALA", env="Pong-ram-v4")
 
-    def test_pg_discr(self):
+    def test_pg(self):
         rollout_test("PG")
 
-    def test_pg_cont(self):
-        rollout_test("PG", env="Pendulum-v0")
-
-    def test_ppo_discr(self):
-        rollout_test("PPO")
-
-    def test_ppo_cont(self):
+    def test_ppo(self):
         rollout_test("PPO", env="Pendulum-v0")
 
-    def test_sac_discr(self):
-        rollout_test("SAC")
-
-    def test_sac_cont(self):
+    def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")
 
     def test_td3(self):
