@@ -92,10 +92,8 @@ public class LocalModeObjectStore extends ObjectStore {
 
   @Override
   public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    // Note(qwang): Do not remove the object from pool to consist with the cluster mode.
-    // Please refer to `PlasmaFreeTest#testDeleteObjects` for more details.
-    // for (ObjectId objectId : objectIds) {
-    //   pool.remove(objectId);
-    // }
+    for (ObjectId objectId : objectIds) {
+       pool.remove(objectId);
+     }
   }
 }

@@ -19,8 +19,12 @@ public class TestUtils {
 
   private static final int WAIT_INTERVAL_MS = 5;
 
+  public static boolean isSingleProcessMode() {
+    return getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS;
+  }
+
   public static void skipTestUnderSingleProcess() {
-    if (getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
+    if (isSingleProcessMode()) {
       throw new SkipException("This test doesn't work under single-process mode.");
     }
   }
