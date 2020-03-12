@@ -34,7 +34,7 @@ def py_func_call_java_actor(value):
 @ray.remote
 def py_func_call_java_actor_from_handle(value):
     assert isinstance(value, bytes)
-    actor_handle = ray.actor.ActorHandle._deserialization_helper(value, False)
+    actor_handle = ray.actor.ActorHandle._deserialization_helper(value)
     r = actor_handle.concat.remote(b"2")
     return ray.get(r)
 
@@ -42,7 +42,7 @@ def py_func_call_java_actor_from_handle(value):
 @ray.remote
 def py_func_call_python_actor_from_handle(value):
     assert isinstance(value, bytes)
-    actor_handle = ray.actor.ActorHandle._deserialization_helper(value, False)
+    actor_handle = ray.actor.ActorHandle._deserialization_helper(value)
     r = actor_handle.increase.remote(2)
     return ray.get(r)
 
@@ -52,7 +52,7 @@ def py_func_pass_python_actor_handle():
     counter = Counter.remote(2)
     f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
                           "callPythonActorHandle")
-    r = f.remote(counter._serialization_helper(False))
+    r = f.remote(counter._serialization_helper()[0])
     return ray.get(r)
 
 
