@@ -377,11 +377,11 @@ class TorchTrainer:
 
                 desc = ""
                 if info is not None and "epoch_idx" in info:
-                    if "total_epochs" in info:
-                        "{}/{}e".format(info["epoch_idx"] + 1,
-                                        info["num_epochs"])
+                    if "num_epochs" in info:
+                        desc = "{}/{}e".format(info["epoch_idx"] + 1,
+                                               info["num_epochs"])
                     else:
-                        "{}e".format(info["epoch_idx"] + 1)
+                        desc = "{}e".format(info["epoch_idx"] + 1)
 
                 batch_pbar = tqdm(
                     total=n, desc=desc, unit="batch", leave=False)
