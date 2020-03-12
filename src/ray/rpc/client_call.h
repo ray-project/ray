@@ -36,9 +36,7 @@ class ClientCall {
   /// received.
   virtual void OnReplyReceived() = 0;
   /// Return status.
-  virtual ray::Status GetStatus() = 0;
-  /// Set return status.
-  virtual void SetReturnStatus() = 0;
+  virtual grpc::Status GetStatus() = 0;
 
   virtual ~ClientCall() = default;
 };
@@ -63,24 +61,11 @@ class ClientCallImpl : public ClientCall {
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
 
-  Status GetStatus() override {
-    absl::MutexLock lock(&mutex_);
-    return return_status_;
-  }
-
-  void SetReturnStatus() override {
-    absl::MutexLock lock(&mutex_);
-    return_status_ = GrpcStatusToRayStatus(status_);
-  }
+  grpc::Status GetStatus() override { return status_; }
 
   void OnReplyReceived() override {
-    ray::Status status;
-    {
-      absl::MutexLock lock(&mutex_);
-      status = return_status_;
-    }
     if (callback_ != nullptr) {
-      callback_(status, reply_);
+      callback_(GrpcStatusToRayStatus(status_), reply_);
     }
   }
 
@@ -96,16 +81,6 @@ class ClientCallImpl : public ClientCall {
 
   /// gRPC status of this request.
   grpc::Status status_;
-
-  /// Mutex to protect the return_status_ field.
-  absl::Mutex mutex_;
-
-  /// This is the status to be returned from GetStatus(). It is safe
-  /// to read from other threads while they hold mutex_. We have
-  /// return_status_ = GrpcStatusToRayStatus(status_) but need
-  /// a separate variable because status_ is set internally by
-  /// GRPC and we cannot control it holding the lock.
-  ray::Status return_status_ GUARDED_BY(mutex_);
 
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.
@@ -245,7 +220,6 @@ class ClientCallManager {
         break;
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-        tag->GetCall()->SetReturnStatus();
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post([tag]() {

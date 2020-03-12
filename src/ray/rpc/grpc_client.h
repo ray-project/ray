@@ -96,9 +96,24 @@ class GrpcClient {
   ray::Status CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {
-    auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_, prepare_async_function, request, callback);
-    return call->GetStatus();
+    uint8_t retries = 0;
+    grpc::Status status;
+    for (uint8_t retries = 0; retries < 5; ++retries) {
+      status = client_call_manager_
+                   .CreateCall<GrpcService, Request, Reply>(
+                       *stub_, prepare_async_function, request, callback)
+                   ->GetStatus();
+      if (status.error_code() == 14) {
+        // Exponential backoff.
+        uint64_t delay = 2 ^ retries * 100;
+        RAY_LOG(WARNING) << "RPC got status UNAVAILABLE, retrying after " << delay
+                         << "ms...";
+        usleep(delay * 1000);
+      } else {
+        break;
+      }
+    }
+    return GrpcStatusToRayStatus(status);
   }
 
  private:
