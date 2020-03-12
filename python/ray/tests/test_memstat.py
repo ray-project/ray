@@ -4,7 +4,6 @@ import time
 from ray.internal.internal_api import memstat
 from ray.test_utils import SignalActor
 
-
 # Unique strings.
 DRIVER_PID = "driver pid"
 WORKER_PID = "worker pid"
@@ -25,7 +24,8 @@ DESER_ACTOR_TASK_ARG = "(deserialize actor task arg)"
 
 def data_lines(memstat_str):
     for line in memstat_str.split("\n"):
-        if (not line or "---" in line or "===" in line or "Object ID" in line or "pid=" in line):
+        if (not line or "---" in line or "===" in line or "Object ID" in line
+                or "pid=" in line):
             continue
         yield line
 
@@ -64,7 +64,7 @@ def test_worker_task_refs(ray_start_regular):
     def f(y):
         x_id = ray.put("HI")
         return memstat()
-    
+
     x_id = f.remote(np.zeros(100000))
     info = ray.get(x_id)
     print(info)

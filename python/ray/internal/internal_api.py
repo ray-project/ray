@@ -10,6 +10,7 @@ def global_gc():
     worker = ray.worker.get_global_worker()
     worker.core_worker.global_gc()
 
+
 def memstat():
     """Returns a formatted string describing memory usage in the cluster."""
 
