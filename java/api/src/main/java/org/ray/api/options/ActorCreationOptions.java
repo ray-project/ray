@@ -52,9 +52,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     // The max number of concurrent calls to allow for this actor.
     //
-    // This only works with direct actor calls. The max concurrency defaults to 1
-    // for threaded execution. Note that the execution order is not guaranteed
-    // when max_concurrency > 1.
+    // The max concurrency defaults to 1 for threaded execution.
+    // Note that the execution order is not guaranteed when max_concurrency > 1.
     public Builder setMaxConcurrency(int maxConcurrency) {
       if (maxConcurrency <= 0) {
         throw new IllegalArgumentException("maxConcurrency must be greater than 0.");
