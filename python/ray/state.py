@@ -105,8 +105,8 @@ def _parse_resource_table(redis_client, client_id):
     gcs_entry = gcs_utils.GcsEntry.FromString(message)
     entries_len = len(gcs_entry.entries)
     if entries_len % 2 != 0:
-        raise Exception("Invalid entry size for resource lookup: " +
-                        str(entries_len))
+        raise ValueError("Invalid entry size for resource lookup: " +
+                         str(entries_len))
 
     for i in range(0, entries_len, 2):
         resource_table_data = gcs_utils.ResourceTableData.FromString(
@@ -139,16 +139,16 @@ class GlobalState:
         """Check that the object has been initialized before it is used.
 
         Raises:
-            Exception: An exception is raised if ray.init() has not been called
-                yet.
+            RuntimeError: An exception is raised if ray.init() has not been
+                called yet.
         """
         if self.redis_client is None:
-            raise Exception("The ray global state API cannot be used before "
-                            "ray.init has been called.")
+            raise RuntimeError("The ray global state API cannot be used "
+                               "before ray.init has been called.")
 
         if self.redis_clients is None:
-            raise Exception("The ray global state API cannot be used before "
-                            "ray.init has been called.")
+            raise RuntimeError("The ray global state API cannot be used "
+                               "before ray.init has been called.")
 
     def disconnect(self):
         """Disconnect global state from GCS."""
@@ -184,9 +184,9 @@ class GlobalState:
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
-            if num_redis_shards < 1:
-                raise Exception("Expected at least one Redis shard, found "
-                                "{}.".format(num_redis_shards))
+            assert num_redis_shards >= 1, (
+                "Expected at least one Redis "
+                "shard, found {}.".format(num_redis_shards))
 
             # Attempt to get all of the Redis shards.
             redis_shard_addresses = self.redis_client.lrange(
@@ -201,10 +201,10 @@ class GlobalState:
 
         # Check to see if we timed out.
         if time.time() - start_time >= timeout:
-            raise Exception("Timed out while attempting to initialize the "
-                            "global state. num_redis_shards = {}, "
-                            "redis_shard_addresses = {}".format(
-                                num_redis_shards, redis_shard_addresses))
+            raise TimeoutError("Timed out while attempting to initialize the "
+                               "global state. num_redis_shards = {}, "
+                               "redis_shard_addresses = {}".format(
+                                   num_redis_shards, redis_shard_addresses))
 
         # Get the rest of the information.
         self.redis_clients = []
@@ -318,9 +318,9 @@ class GlobalState:
             return {}
         gcs_entries = gcs_utils.GcsEntry.FromString(message)
 
-        assert len(gcs_entries.entries) == 1
+        assert len(gcs_entries.entries) > 0
         actor_table_data = gcs_utils.ActorTableData.FromString(
-            gcs_entries.entries[0])
+            gcs_entries.entries[-1])
 
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),

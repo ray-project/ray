@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import argparse
 from ray import tune
-import torch.utils.data
+from torch.utils.data import DataLoader, Subset
 import torchvision
 import torchvision.transforms as transforms
 
@@ -12,6 +12,7 @@ from tqdm import trange
 import ray
 from ray.util.sgd.torch import (TorchTrainer, TorchTrainable)
 from ray.util.sgd.torch.resnet import ResNet18
+from ray.util.sgd.utils import BATCH_SIZE
 
 
 def initialization_hook():
@@ -42,11 +43,14 @@ def cifar_creator(config):
         root="~/data", train=False, download=False, transform=transform_test)
 
     if config.get("test_mode"):
-        train_dataset = torch.utils.data.Subset(train_dataset, list(range(64)))
-        validation_dataset = torch.utils.data.Subset(validation_dataset,
-                                                     list(range(64)))
+        train_dataset = Subset(train_dataset, list(range(64)))
+        validation_dataset = Subset(validation_dataset, list(range(64)))
 
-    return train_dataset, validation_dataset
+    train_loader = DataLoader(
+        train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+    validation_loader = DataLoader(
+        validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+    return train_loader, validation_loader
 
 
 def optimizer_creator(model, config):
@@ -59,25 +63,25 @@ def scheduler_creator(optimizer, config):
         optimizer, milestones=[150, 250, 350], gamma=0.1)
 
 
-def train_example(num_replicas=1,
+def train_example(num_workers=1,
                   num_epochs=5,
                   use_gpu=False,
                   use_fp16=False,
                   test_mode=False):
     trainer1 = TorchTrainer(
-        ResNet18,
-        cifar_creator,
-        optimizer_creator,
-        nn.CrossEntropyLoss,
+        model_creator=ResNet18,
+        data_creator=cifar_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.CrossEntropyLoss,
         scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
-        num_replicas=num_replicas,
+        num_workers=num_workers,
         config={
             "lr": 0.01,
-            "test_mode": test_mode
+            "test_mode": test_mode,
+            BATCH_SIZE: 128,
         },
         use_gpu=use_gpu,
-        batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo",
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
@@ -95,18 +99,18 @@ def train_example(num_replicas=1,
     print("success!")
 
 
-def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
+def tune_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "model_creator": ResNet18,
         "data_creator": cifar_creator,
         "optimizer_creator": optimizer_creator,
         "loss_creator": nn.CrossEntropyLoss,
-        "num_replicas": num_replicas,
+        "num_workers": num_workers,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
-        "batch_size": 16 if test_mode else 512,
         "config": {
             "lr": tune.choice([1e-4, 1e-3]),
+            BATCH_SIZE: 128,
             "test_mode": test_mode
         },
         "backend": "nccl" if use_gpu else "gloo"
@@ -130,11 +134,11 @@ if __name__ == "__main__":
         type=str,
         help="the address to use for Redis")
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=1,
-        help="Sets number of replicas for training.")
+        help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
     parser.add_argument(
@@ -161,12 +165,12 @@ if __name__ == "__main__":
 
     if args.tune:
         tune_example(
-            num_replicas=args.num_replicas,
+            num_workers=args.num_workers,
             use_gpu=args.use_gpu,
             test_mode=args.smoke_test)
     else:
         train_example(
-            num_replicas=args.num_replicas,
+            num_workers=args.num_workers,
             num_epochs=args.num_epochs,
             use_gpu=args.use_gpu,
             use_fp16=args.fp16,

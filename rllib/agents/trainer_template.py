@@ -27,7 +27,7 @@ def build_trainer(name,
                   collect_metrics_fn=None,
                   before_evaluate_fn=None,
                   mixins=None,
-                  training_pipeline=None):
+                  execution_plan=None):
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -74,8 +74,8 @@ def build_trainer(name,
         mixins (Optional[List[class]]): Optional list of mixin class(es) for
             the returned trainer class. These mixins will be applied in order
             and will have higher precedence than the Trainer class.
-        training_pipeline (Optional[callable]): Experimental support for custom
-            training pipelines. This overrides `make_policy_optimizer`.
+        execution_plan (Optional[callable]): Experimental distributed execution
+            API. This overrides `make_policy_optimizer`.
 
     Returns:
         a Trainer instance that uses the specified args.
@@ -107,22 +107,24 @@ def build_trainer(name,
 
             if before_init:
                 before_init(self)
+            use_exec_api = (execution_plan
+                            and (self.config["use_exec_api"]
+                                 or "RLLIB_EXEC_API" in os.environ))
 
             # Creating all workers (excluding evaluation workers).
-            if make_workers:
+            if make_workers and not use_exec_api:
                 self.workers = make_workers(self, env_creator, self._policy,
                                             config)
             else:
                 self.workers = self._make_workers(env_creator, self._policy,
                                                   config,
                                                   self.config["num_workers"])
-            self.train_pipeline = None
+            self.train_exec_impl = None
             self.optimizer = None
 
-            if training_pipeline and (self.config["use_pipeline_impl"] or
-                                      "RLLIB_USE_PIPELINE_IMPL" in os.environ):
-                logger.warning("Using experimental pipeline based impl.")
-                self.train_pipeline = training_pipeline(self.workers, config)
+            if use_exec_api:
+                logger.warning("Using experimental execution plan impl.")
+                self.train_exec_impl = execution_plan(self.workers, config)
             elif make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:
@@ -136,8 +138,8 @@ def build_trainer(name,
 
         @override(Trainer)
         def _train(self):
-            if self.train_pipeline:
-                return self._train_pipeline()
+            if self.train_exec_impl:
+                return self._train_exec_impl()
 
             if before_train_step:
                 before_train_step(self)
@@ -166,12 +168,12 @@ def build_trainer(name,
                 after_train_result(self, res)
             return res
 
-        def _train_pipeline(self):
+        def _train_exec_impl(self):
             if before_train_step:
-                before_train_step(self)
-            res = next(self.train_pipeline)
+                logger.warning("Ignoring before_train_step callback")
+            res = next(self.train_exec_impl)
             if after_train_result:
-                after_train_result(self, res)
+                logger.warning("Ignoring after_train_result callback")
             return res
 
         @override(Trainer)
@@ -182,15 +184,15 @@ def build_trainer(name,
         def __getstate__(self):
             state = Trainer.__getstate__(self)
             state["trainer_state"] = self.state.copy()
-            if self.train_pipeline:
-                state["train_pipeline"] = self.train_pipeline.metrics.save()
+            if self.train_exec_impl:
+                state["train_exec_impl"] = self.train_exec_impl.metrics.save()
             return state
 
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
             self.state = state["trainer_state"].copy()
-            if self.train_pipeline:
-                self.train_pipeline.metrics.restore(state["train_pipeline"])
+            if self.train_exec_impl:
+                self.train_exec_impl.metrics.restore(state["train_exec_impl"])
 
     def with_updates(**overrides):
         """Build a copy of this trainer with the specified overrides.

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
@@ -13,10 +27,28 @@
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
 #include "ray/common/status.h"
+#include <map>
 
 #include <assert.h>
 
 namespace ray {
+
+#define STATUS_CODE_OK "OK"
+#define STATUS_CODE_OUT_OF_MEMORY "Out of memory"
+#define STATUS_CODE_KEY_ERROR "Key error"
+#define STATUS_CODE_TYPE_ERROR "Type error"
+#define STATUS_CODE_INVALID "Invalid"
+#define STATUS_CODE_IO_ERROR "IOError"
+#define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
+#define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
+#define STATUS_CODE_UNKNOWN_ERROR "Unknown error"
+#define STATUS_CODE_NOT_IMPLEMENTED "NotImplemented"
+#define STATUS_CODE_REDIS_ERROR "RedisError"
+#define STATUS_CODE_TIMED_OUT "TimedOut"
+#define STATUS_CODE_INTERRUPTED "Interrupted"
+#define STATUS_CODE_INTENTIONAL_SYSTEM_EXIT "IntentionalSystemExit"
+#define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
+#define STATUS_CODE_UNKNOWN "Unknown"
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -36,55 +68,30 @@ void Status::CopyFrom(const State *state) {
 
 std::string Status::CodeAsString() const {
   if (state_ == NULL) {
-    return "OK";
+    return STATUS_CODE_OK;
   }
 
-  const char *type;
-  switch (code()) {
-  case StatusCode::OK:
-    type = "OK";
-    break;
-  case StatusCode::OutOfMemory:
-    type = "Out of memory";
-    break;
-  case StatusCode::KeyError:
-    type = "Key error";
-    break;
-  case StatusCode::TypeError:
-    type = "Type error";
-    break;
-  case StatusCode::Invalid:
-    type = "Invalid";
-    break;
-  case StatusCode::IOError:
-    type = "IOError";
-    break;
-  case StatusCode::ObjectExists:
-    type = "ObjectExists";
-    break;
-  case StatusCode::ObjectStoreFull:
-    type = "ObjectStoreFull";
-    break;
-  case StatusCode::UnknownError:
-    type = "Unknown error";
-    break;
-  case StatusCode::NotImplemented:
-    type = "NotImplemented";
-    break;
-  case StatusCode::RedisError:
-    type = "RedisError";
-    break;
-  case StatusCode::TimedOut:
-    type = "TimedOut";
-    break;
-  case StatusCode::Interrupted:
-    type = "Interrupted";
-    break;
-  default:
-    type = "Unknown";
-    break;
+  static std::map<StatusCode, std::string> code_to_str = {
+      {StatusCode::OK, STATUS_CODE_OK},
+      {StatusCode::OutOfMemory, STATUS_CODE_OUT_OF_MEMORY},
+      {StatusCode::KeyError, STATUS_CODE_KEY_ERROR},
+      {StatusCode::TypeError, STATUS_CODE_TYPE_ERROR},
+      {StatusCode::Invalid, STATUS_CODE_INVALID},
+      {StatusCode::IOError, STATUS_CODE_IO_ERROR},
+      {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
+      {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
+      {StatusCode::UnknownError, STATUS_CODE_UNKNOWN_ERROR},
+      {StatusCode::NotImplemented, STATUS_CODE_NOT_IMPLEMENTED},
+      {StatusCode::RedisError, STATUS_CODE_REDIS_ERROR},
+      {StatusCode::TimedOut, STATUS_CODE_TIMED_OUT},
+      {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
+      {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
+      {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT}};
+
+  if (!code_to_str.count(code())) {
+    return STATUS_CODE_UNKNOWN;
   }
-  return std::string(type);
+  return code_to_str[code()];
 }
 
 std::string Status::ToString() const {

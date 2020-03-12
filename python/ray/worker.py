@@ -146,11 +146,6 @@ class Worker:
         return self.node.load_code_from_local
 
     @property
-    def use_pickle(self):
-        self.check_connected()
-        return self.node.use_pickle
-
-    @property
     def current_job_id(self):
         if hasattr(self, "core_worker"):
             return self.core_worker.get_current_job_id()
@@ -444,8 +439,8 @@ def get_gpu_ids():
         A list of GPU IDs.
     """
     if _mode() == LOCAL_MODE:
-        raise Exception("ray.get_gpu_ids() currently does not work in LOCAL "
-                        "MODE.")
+        raise RuntimeError("ray.get_gpu_ids() currently does not work in "
+                           "local_mode.")
 
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
@@ -471,9 +466,8 @@ def get_resource_ids():
         resource reserved for this worker.
     """
     if _mode() == LOCAL_MODE:
-        raise Exception(
-            "ray.get_resource_ids() currently does not work in LOCAL "
-            "MODE.")
+        raise RuntimeError("ray.get_resource_ids() currently does not work in "
+                           "local_mode.")
 
     return global_worker.core_worker.resource_ids()
 
@@ -487,7 +481,7 @@ def get_webui_url():
         The URL of the web UI as a string.
     """
     if _global_node is None:
-        raise Exception("Ray has not been initialized/connected.")
+        raise RuntimeError("Ray has not been initialized/connected.")
     return _global_node.webui_url
 
 
@@ -555,7 +549,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
-         use_pickle=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
+         use_pickle=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -649,7 +643,7 @@ def init(address=None,
             directory for the Ray process.
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
-        use_pickle: Whether data objects should be serialized with cloudpickle.
+        use_pickle: Deprecated.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -660,6 +654,9 @@ def init(address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if not use_pickle:
+        raise DeprecationWarning("The use_pickle argument is deprecated.")
 
     if redis_address is not None:
         raise DeprecationWarning("The redis_address argument is deprecated. "
@@ -689,10 +686,10 @@ def init(address=None,
                          "called.")
             return
         else:
-            raise Exception("Perhaps you called ray.init twice by accident? "
-                            "This error can be suppressed by passing in "
-                            "'ignore_reinit_error=True' or by calling "
-                            "'ray.shutdown()' prior to 'ray.init()'.")
+            raise RuntimeError("Maybe you called ray.init twice by accident? "
+                               "This error can be suppressed by passing in "
+                               "'ignore_reinit_error=True' or by calling "
+                               "'ray.shutdown()' prior to 'ray.init()'.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -731,7 +728,6 @@ def init(address=None,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            use_pickle=use_pickle,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -746,44 +742,45 @@ def init(address=None,
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
-            raise Exception("When connecting to an existing cluster, num_cpus "
-                            "and num_gpus must not be provided.")
+            raise ValueError(
+                "When connecting to an existing cluster, num_cpus "
+                "and num_gpus must not be provided.")
         if resources is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "resources must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "resources must not be provided.")
         if num_redis_shards is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "num_redis_shards must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "num_redis_shards must not be provided.")
         if redis_max_clients is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "redis_max_clients must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "redis_max_clients must not be provided.")
         if memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "memory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "memory must not be provided.")
         if object_store_memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "object_store_memory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "object_store_memory must not be provided.")
         if redis_max_memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "redis_max_memory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "redis_max_memory must not be provided.")
         if plasma_directory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "plasma_directory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "plasma_directory must not be provided.")
         if huge_pages:
-            raise Exception("When connecting to an existing cluster, "
-                            "huge_pages must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "huge_pages must not be provided.")
         if temp_dir is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "temp_dir must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "temp_dir must not be provided.")
         if plasma_store_socket_name is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "plasma_store_socket_name must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "plasma_store_socket_name must not be provided.")
         if raylet_socket_name is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "raylet_socket_name must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "raylet_socket_name must not be provided.")
         if _internal_config is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "_internal_config must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "_internal_config must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -792,8 +789,7 @@ def init(address=None,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
-            use_pickle=use_pickle)
+            load_code_from_local=load_code_from_local)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -1364,27 +1360,16 @@ def _changeproctitle(title, next_title):
 
 
 def register_custom_serializer(cls,
-                               serializer=None,
-                               deserializer=None,
+                               serializer,
+                               deserializer,
                                use_pickle=False,
                                use_dict=False,
-                               local=None,
-                               job_id=None,
                                class_id=None):
     """Registers custom functions for efficient object serialization.
 
     The serializer and deserializer are used when transferring objects of
     `cls` across processes and nodes. This can be significantly faster than
     the Ray default fallbacks. Wraps `register_custom_serializer` underneath.
-
-    `use_pickle` tells Ray to automatically use cloudpickle for serialization,
-    and `use_dict` automatically uses `cls.__dict__`.
-
-    When calling this function, you can only provide one of the following:
-
-        1. serializer and deserializer
-        2. `use_pickle`
-        3. `use_dict`
 
     Args:
         cls (type): The class that ray should use this custom serializer for.
@@ -1394,34 +1379,24 @@ def register_custom_serializer(cls,
         deserializer: The custom deserializer that takes in a serialized
             representation of the cls and outputs a cls instance. use_pickle
             and use_dict must be False if provided.
-        use_pickle (bool): If true, objects of this class will be
-            serialized using pickle. Must be False if
-            use_dict is true.
-        use_dict (bool): If true, objects of this class be serialized turning
-            their __dict__ fields into a dictionary. Must be False if
-            use_pickle is true.
-        local: Deprecated.
-        job_id: Deprecated.
+        use_pickle: Deprecated.
+        use_dict: Deprecated.
         class_id (str): Unique ID of the class. Autogenerated if None.
     """
-    if job_id:
+    if use_pickle:
         raise DeprecationWarning(
-            "`job_id` is no longer a valid parameter and will be removed in "
-            "future versions of Ray. If this breaks your application, "
+            "`use_pickle` is no longer a valid parameter and will be removed "
+            "in future versions of Ray. If this breaks your application, "
             "see `SerializationContext.register_custom_serializer`.")
-    if local:
+    if use_dict:
         raise DeprecationWarning(
-            "`local` is no longer a valid parameter and will be removed in "
-            "future versions of Ray. If this breaks your application, "
+            "`use_pickle` is no longer a valid parameter and will be removed "
+            "in future versions of Ray. If this breaks your application, "
             "see `SerializationContext.register_custom_serializer`.")
+    assert serializer is not None and deserializer is not None
     context = global_worker.get_serialization_context()
     context.register_custom_serializer(
-        cls,
-        use_pickle=use_pickle,
-        use_dict=use_dict,
-        serializer=serializer,
-        deserializer=deserializer,
-        class_id=class_id)
+        cls, serializer, deserializer, class_id=class_id)
 
 
 def show_in_webui(message, key="", dtype="text"):
@@ -1629,13 +1604,13 @@ def wait(object_ids, num_returns=1, timeout=None):
             return [], []
 
         if len(object_ids) != len(set(object_ids)):
-            raise Exception("Wait requires a list of unique object IDs.")
+            raise ValueError("Wait requires a list of unique object IDs.")
         if num_returns <= 0:
-            raise Exception(
+            raise ValueError(
                 "Invalid number of objects to return %d." % num_returns)
         if num_returns > len(object_ids):
-            raise Exception("num_returns cannot be greater than the number "
-                            "of objects provided to ray.wait.")
+            raise ValueError("num_returns cannot be greater than the number "
+                             "of objects provided to ray.wait.")
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
@@ -1701,8 +1676,8 @@ def make_decorator(num_return_vals=None,
                 or is_cython(function_or_class)):
             # Set the remote function default resources.
             if max_reconstructions is not None:
-                raise Exception("The keyword 'max_reconstructions' is not "
-                                "allowed for remote functions.")
+                raise ValueError("The keyword 'max_reconstructions' is not "
+                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
@@ -1711,17 +1686,17 @@ def make_decorator(num_return_vals=None,
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
-                raise Exception("The keyword 'num_return_vals' is not allowed "
-                                "for actors.")
+                raise TypeError("The keyword 'num_return_vals' is not "
+                                "allowed for actors.")
             if max_calls is not None:
-                raise Exception("The keyword 'max_calls' is not allowed for "
-                                "actors.")
+                raise TypeError("The keyword 'max_calls' is not "
+                                "allowed for actors.")
 
             return worker.make_actor(function_or_class, num_cpus, num_gpus,
                                      memory, object_store_memory, resources,
                                      max_reconstructions)
 
-        raise Exception("The @ray.remote decorator must be applied to "
+        raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
 
     return decorator
@@ -1840,7 +1815,7 @@ def remote(*args, **kwargs):
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
-        raise Exception("The 'resources' keyword argument must be a "
+        raise TypeError("The 'resources' keyword argument must be a "
                         "dictionary, but received type {}.".format(
                             type(resources)))
     if resources is not None:

@@ -1,11 +1,11 @@
 import collections
-from filelock import FileLock
 import logging
-import os
+import torch
 import torch.nn as nn
 import torch.distributed as dist
-import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel
+from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from ray.util.sgd.torch.torch_runner import TorchRunner
 
@@ -18,13 +18,15 @@ class DistributedTorchRunner(TorchRunner):
 
     Args:
         args: Arguments for TorchRunner.
-        backend (string): backend used by distributed PyTorch.
+        backend (string): Backend used by distributed PyTorch.
         kwargs: Keyword arguments for TorchRunner.
 
     """
 
     def __init__(self, *args, backend="gloo", **kwargs):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
+        if backend not in ("gloo", "nccl"):
+            raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
         self.backend = backend
 
     def setup(self, url, world_rank, world_size, batch_logs_reporter):
@@ -39,17 +41,15 @@ class DistributedTorchRunner(TorchRunner):
         self._setup_training(batch_logs_reporter)
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
-        with self._timers["setup_proc"]:
-            self.world_rank = world_rank
-            logger.debug(
-                "Connecting to {} world_rank: {} world_size: {}".format(
-                    url, world_rank, world_size))
-            logger.debug("using {}".format(self.backend))
-            dist.init_process_group(
-                backend=self.backend,
-                init_method=url,
-                rank=world_rank,
-                world_size=world_size)
+        self.world_rank = world_rank
+        logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
+            url, world_rank, world_size))
+        logger.debug("using {}".format(self.backend))
+        dist.init_process_group(
+            backend=self.backend,
+            init_method=url,
+            rank=world_rank,
+            world_size=world_size)
 
     def _setup_training(self, batch_logs_reporter):
         logger.debug("Creating model")
@@ -68,32 +68,12 @@ class DistributedTorchRunner(TorchRunner):
             self.optimizers = [self.optimizers]
 
         self._create_schedulers_if_available()
-
         self._try_setup_apex()
-
         # This needs to happen after apex
         self.models = [DistributedDataParallel(model) for model in self.models]
 
-        logger.debug("Creating loss.")
         self._create_loss()
-
-        logger.debug("Creating dataset.")
-        with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            datasets = self.data_creator(self.config)
-            train_set, val_set = self._validate_datasets(datasets)
-
-        train_loader_config = self.dataloader_config.copy()
-        train_loader_config.update(
-            sampler=torch.utils.data.distributed.DistributedSampler(train_set),
-            shuffle=False)
-
-        self.train_loader = torch.utils.data.DataLoader(
-            train_set, batch_size=self.batch_size, **train_loader_config)
-
-        self.validation_loader = None
-        if val_set:
-            self.validation_loader = torch.utils.data.DataLoader(
-                val_set, batch_size=self.batch_size, **self.dataloader_config)
+        self._initialize_dataloaders()
 
         self.training_operator = self.training_operator_cls(
             self.config,
@@ -107,12 +87,39 @@ class DistributedTorchRunner(TorchRunner):
             use_fp16=self.use_fp16)
         self.training_operator._set_batch_logs_reporter(batch_logs_reporter)
 
+    def _initialize_dataloaders(self):
+        super(DistributedTorchRunner, self)._initialize_dataloaders()
+
+        def with_sampler(loader):
+            # Automatically set the DistributedSampler
+            data_loader_args = {
+                "dataset": loader.dataset,
+                "batch_size": loader.batch_size,
+                "shuffle": False,
+                "num_workers": loader.num_workers,
+                "collate_fn": loader.collate_fn,
+                "pin_memory": loader.pin_memory,
+                "drop_last": loader.drop_last,
+                "timeout": loader.timeout,
+                "worker_init_fn": loader.worker_init_fn,
+                "sampler": DistributedSampler(loader.dataset)
+            }
+            return DataLoader(**data_loader_args)
+
+        if isinstance(self.train_loader, DataLoader):
+            self.train_loader = with_sampler(self.train_loader)
+
+        if self.validation_loader and isinstance(self.validation_loader,
+                                                 DataLoader):
+            self.validation_loader = with_sampler(self.validation_loader)
+
     def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        if hasattr(self.train_loader.sampler, "set_epoch"):
+        if hasattr(self.train_loader, "sampler") and hasattr(
+                self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
