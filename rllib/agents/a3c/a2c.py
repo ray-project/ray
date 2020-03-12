@@ -23,8 +23,6 @@ A2C_DEFAULT_CONFIG = merge_dicts(
         # To enable, set this to a value less than the train batch size.
         "microbatch_size": None,
     },
-    # Use the execution plan API instead of policy optimizers.
-    "use_exec_api": True,
 )
 
 
