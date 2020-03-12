@@ -620,9 +620,11 @@ class Node:
 
         if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
             self.start_gcs_server()
+        else:
+            self.start_raylet_monitor()
 
         self.start_monitor()
-        self.start_raylet_monitor()
+
         if self._ray_params.include_webui:
             self.start_dashboard(require_webui=True)
         elif self._ray_params.include_webui is None:
