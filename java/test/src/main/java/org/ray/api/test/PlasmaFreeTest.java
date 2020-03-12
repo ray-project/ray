@@ -6,7 +6,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.id.TaskId;
-import org.ray.runtime.AbstractRayRuntime;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

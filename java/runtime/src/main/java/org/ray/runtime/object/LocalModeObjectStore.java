@@ -93,7 +93,7 @@ public class LocalModeObjectStore extends ObjectStore {
   @Override
   public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
     for (ObjectId objectId : objectIds) {
-       pool.remove(objectId);
-     }
+      pool.remove(objectId);
+    }
   }
 }
