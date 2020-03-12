@@ -4,21 +4,26 @@ import ray
 
 @ray.remote(num_cpus=0)
 class BatchLogsReporter:
-    def __init__(self, world_rank):
-        self.world_rank = world_rank
-
+    def __init__(self):
+        # we need the new_data field to allow sending back None as the legs
         self._logs = {
-            "done": False,
             "new_data": False,
-            "world_rank": self.world_rank,
+            "data": None
+        }
+        self._setup = {
+            "new_data": False,
             "data": None
         }
 
-    def _send(self, data, done=False):
-        self._logs = {
-            "done": done,
+    def _send_setup(self, data):
+        self._setup = {
             "new_data": True,
-            "world_rank": self.world_rank,
+            "data": data
+        }
+
+    def _send(self, data):
+        self._logs = {
+            "new_data": True,
             "data": data
         }
 
@@ -26,9 +31,17 @@ class BatchLogsReporter:
         res = self._logs
 
         self._logs = {
-            "done": res["done"],
             "new_data": False,
-            "world_rank": self.world_rank,
+            "data": None
+        }
+
+        return res
+
+    def _read_setup(self):
+        res = self._setup
+
+        self._setup = {
+            "new_data": False,
             "data": None
         }
 

@@ -1,13 +1,10 @@
-
 # fixme: tf_trainer will run a gpu runner even if no
 # gpus are available
-
-# todo: no logging available
-# todo: impossible to get dataset size from within the training operator
 
 # todo: add a flag that does this
 import logging
 logging.getLogger("ray.util.sgd.torch.torch_runner").setLevel(logging.DEBUG)
+logging.getLogger("rqtorch").setLevel(logging.DEBUG)
 
 from ray.util.sgd.torch import TrainingOperator
 
@@ -102,4 +99,4 @@ sys.create_trainer(
     training_operator_cls=NICTrainingOperator)
 # todo: use torch.utils.data.Subset or equivalent instead of num_steps? that would
 # allow us to use its len() property
-sys.train(num_steps=20)
+sys.train()

@@ -5,6 +5,7 @@ import logging
 
 from tqdm import tqdm, trange
 
+import torch.cuda as cuda
 from torch.utils.data import Subset
 
 import ray
@@ -69,8 +70,7 @@ def _get_training_operator_cls(super_cls):
                 tqdm_setup.loader_len = len(self.train_loader)
 
                 # todo: we need a proper way to wait here for the pbar to finish initing
-                self.send_batch_logs(tqdm_setup)
-                time.sleep(.4)
+                self.send_setup_info(tqdm_setup)
 
             return super().train_epoch(iterator, info)
 
@@ -85,6 +85,10 @@ def _get_training_operator_cls(super_cls):
                     for interval in self.sysinfo.intervals[intervals_key]:
                         unit, duration = interval
 
+                        # WARNING: if this has to handle time-based logging,
+                        # we must handle new minute and hour intervals
+                        # being inserted during runtime
+                        # todo: handle time based intervals mid-epoch
                         if unit != "b":
                             continue
                         if batch_idx - self.sysinfo.last_action_batches[intervals_key] < duration:
@@ -135,7 +139,7 @@ class System():
             title="Mode",
             dest="mode",
             metavar="MODE",
-            description="Action to execute.")
+            description="Name of task to run.")
         self._add_train_subparser()
         self._add_eval_subparser()
         # self._add_infer_subparser()
@@ -152,14 +156,16 @@ class System():
                 self.trainer.restore("checkpoint_last.pth")
             except FileNotFoundError:
                 # todo: check checkpoint_best.pth
-                logger.warning("Last checkpoint not found, restarting training.")
+                logger.warning("Last checkpoint not found. Restarting training.")
                 pass
             # todo: load interval states
 
         # todo: add a debug flag for debugging backups too?
         # or debug when debugging checkpoints?
         if self.args.debug_checkpoint:
-            logger.info("--debug-checkpoint is set, saving a checkpoint then quitting.")
+            logger.info((
+                "--debug-checkpoint is set. "
+                "Saving a checkpoint then quitting."))
             self.trainer.save("checkpoint_last.pth")
             return
 
@@ -177,6 +183,26 @@ class System():
         iterator = trange(
             self.args.num_epochs,
             unit="epoch")
+
+
+        if self.args.debug_num_batches is not None:
+            kwargs["num_steps"] = self.args.debug_num_batches
+
+        if self.args.debug_num_samples is not None:
+            # todo: all of our total_batch_size stuff is incompatible with
+            # user-set batch size in custom dataloaders
+            total_samples = self.args.debug_num_samples * self.args.num_workers
+            if total_samples < self.args.total_batch_size:
+                self._arg_parser.error((
+                    "argument --debug-num-samples: invalid value: {val}. "
+                    "Requested number of samples is less than the "
+                    "batch size per worker {worker_batch_size}").format(
+                       val=self.args.debug_num_samples,
+                       worker_batch_size=(
+                        self.args.total_batch_size // self.args.num_workers)
+                    ))
+            kwargs["num_steps"] = total_samples // self.args.total_batch_size
+
 
         for epoch_idx in iterator:
             # todo: load checkpoints from mid-epoch properly
@@ -218,7 +244,8 @@ class System():
                     batch_pbar = tqdm(
                         total=num_steps,
                         desc="{}/{}e".format(epoch_idx+1, self.args.num_epochs),
-                        unit=unit
+                        unit=unit,
+                        leave=False
                     )
                     return
 
@@ -226,7 +253,10 @@ class System():
                     if self.args.progress_bar_units == "batches":
                         batch_pbar.n = packet.batch_idx+1
                     elif self.args.progress_bar_units == "samples":
+                        # todo: all of our total_batch_size stuff is incompatible with
+                        # user-set batch size in custom dataloaders
                         batch_pbar.n = packet.batch_idx * self.args.total_batch_size + 1
+
                     # batch_pbar.refresh() # will be needed if set_postfix
                                            # is ever removed
                     batch_pbar.set_postfix(packet.pbar_logs)
@@ -234,6 +264,9 @@ class System():
 
             kwargs["batch_logs_handler"] = handle_head_packet
             logs = self.trainer.train(*args, **kwargs)
+
+            if self.args.debug_batch:
+                logger.info("--debug-batch is set. Quitting after one batch.")
 
 
             # todo: make this customizable
@@ -248,7 +281,17 @@ class System():
 
             # todo: maybe do not recreate this function every time? is this expensive?
             def run_intervals(intervals_key, f):
-                for (unit, duration) in self.intervals[intervals_key]:
+                for i, (unit, duration) in enumerate(self.intervals[intervals_key]):
+                    # handle intervals that may have been inserted between epochs
+                    if unit == "m":
+                        unit = "s"
+                        duration *= 60
+                        self.intervals[intervals_key][i] = (unit, duration)
+                    elif unit == "h":
+                        unit = "s"
+                        duration *= 60 * 60
+                        self.intervals[intervals_key][i] = (unit, duration)
+
                     if unit == "s" and epoch_end - last_action_times[intervals_key] >= duration:
                         f()
                         last_action_times[intervals_key] = epoch_end
@@ -267,7 +310,7 @@ class System():
             run_intervals("backup", lambda: print("Debug mock executed"))
 
             if self.args.debug_epoch:
-                logger.info("--debug-epoch is set, quitting after one epoch.")
+                logger.info("--debug-epoch is set. Quitting after one epoch.")
                 break
 
         # todo: should we always checkpoint after training?
@@ -302,22 +345,9 @@ class System():
         params.update(kwargs)
         params["training_operator_cls"] = _get_training_operator_cls(kwargs.get("training_operator_cls", TrainingOperator))
 
-        # todo: call this on dataset creation?
-        if self.args.debug_batch:
-            logger.info("--debug-batch is set, will subset the dataset to the first element only.")
-
-        # todo: use subset in runner too?
-        def possibly_truncated_data_creator(config):
-            res = data_creator(config)
-            # todo: some modes might not even have this option. will they even create a datset then though?
-            #       watch use cases
-            if self.args.debug_batch:
-                res = Subset(res, [0])
-            return res
-
         self.trainer = TorchTrainer(
             lambda c: model_creator(c.user_config),
-            lambda c: possibly_truncated_data_creator(c.user_config),
+            lambda c: data_creator(c.user_config),
             lambda model, c: optimizer_creator(model, c.user_config),
             lambda c: loss_creator(c.user_config), # fixme: this is not correct if user passes in a torch.nn loss class!!!! # see runner for details
             **params)
@@ -332,10 +362,33 @@ class System():
         self._ray_params["address"] = self.args.ray_address
 
         if self.args.mode == "train":
-            self._trainer_params["num_replicas"] = self.args.number_of_workers
-            # todo: we cannot require GPU for now, that would require changing
-            # TorchTrainer (there is a todo)
-            self._trainer_params["use_gpu"] = not self.args.no_gpu
+            # we want to log when --debug-batch is set, so we use this
+            # instead of setting store_const and dest
+            if self.args.debug_batch:
+                self.args.debug_num_batches = 1
+
+            if not self.args._log_interval:
+                self.args._log_interval = ["60s"]
+            if not self.args._checkpoint_interval:
+                self.args._checkpoint_interval = ["5m"]
+            if not self.args._backup_interval:
+                self.args._backup_interval = ["30m"]
+
+            self._trainer_params["num_replicas"] = self.args.num_workers
+
+            if self.args.gpu_usage == "auto":
+                if cuda.is_available():
+                    logger.info("--gpu-usage auto: detected a GPU on the head node, CUDA enabled. If you do not want CUDA (e.g. some workers do not have GPUs), set --no-gpu")
+                else:
+                    logger.info("--gpu-usage auto: did not find a GPU on the head node, CUDA NOT enabled. If you need CUDA and only workers have GPUs, set --require-gpu")
+                self._trainer_params["use_gpu"] = cuda.is_available()
+            elif self.args.gpu_usage == "require":
+                self._trainer_params["use_gpu"] = True
+            elif self.args.gpu_usage == "forbid":
+                self._trainer_params["use_gpu"]
+            else:
+                self._arg_parser.error("argument gpu-usage: invalid value: '{}'. Valid values are 'auto', 'forbid', 'require'".format(self.args.gpu_usage))
+
             # will be divided by num of workers in trainer
             self._trainer_params["batch_size"] = self.args.total_batch_size
             self._trainer_params["use_fp16"] = self.args.mixed_precision
@@ -343,14 +396,27 @@ class System():
             def populate_intervals(interval_strs, intervals_key):
                 intervals = self.intervals[intervals_key]
                 for i_str in interval_strs:
+                    unit = i_str[-1:]
+                    if unit not in ["s", "m", "h", "e", "b"]:
+                        self._arg_parser.error("argument --{}-interval: invalid interval unit value: '{}'".format(intervals_key, unit))
+
                     try:
                         duration = float(i_str[:-1])
                     except ValueError:
-                        raise ValueError("Interval value is not a valid number: {}".format(i_str[:-1]))
-                    unit = i_str[-1:]
+                        if unit == "e" or unit == "b":
+                            self._arg_parser.error("argument --{}-interval: invalid positive integer interval value: {}. Not a number".format(intervals_key, i_str[:-1]))
+                        else:
+                            self._arg_parser.error("argument --{}-interval: invalid floating point interval value: {}".format(intervals_key, i_str[:-1]))
 
-                    if unit not in ["s", "m", "h", "e", "b"]:
-                        raise ValueError("Unknown interval {} unit: \"{}\"".format(intervals_key, unit))
+                    if unit == "e" or unit == "b":
+                        # todo: support mid-batch or mid-epoch logging?
+                        # todo: should this be a warning instead?
+                        if not duration.is_integer():
+                            self._arg_parser.error("argument --{}-interval: invalid positive integer interval value: {}. Not an integer".format(intervals_key, i_str[:-1]))
+
+                        if duration <= 0:
+                            self._arg_parser.error("argument --{}-interval: invalid positive integer interval value: {}. Must be >= 0".format(intervals_key, duration))
+
 
                     if unit == "m":
                         unit = "s"
@@ -360,19 +426,13 @@ class System():
                         duration *= 60 * 60
 
                     if unit == "e" or unit == "b":
-                        # todo: support mid-batch or mid-epoch logging?
-                        # todo: should this be a warning instead?
-                        if not duration.is_integer():
-                            raise ValueError("Batch and epoch intervals must be integer")
                         duration = int(duration)
-                        if duration <= 0:
-                            raise ValueError("Batch and epoch inrevals must be at least 1")
 
                     intervals.append((unit, duration))
 
-            populate_intervals(self.args.log_interval, "log")
-            populate_intervals(self.args.checkpoint_interval, "checkpoint")
-            populate_intervals(self.args.backup_interval, "backup")
+            populate_intervals(self.args._log_interval, "log")
+            populate_intervals(self.args._checkpoint_interval, "checkpoint")
+            populate_intervals(self.args._backup_interval, "backup")
 
         return self.args
 
@@ -386,21 +446,34 @@ class System():
             help="Address of the Ray head node [default=auto].")
         p.add_argument(
             "-n",
-            "--number-of-workers",
+            "--num-workers",
             type=int,
             default=1,
-            help="Number of workers to run in parallel.")
+            help="Number of workers to run in parallel [default=1].")
 
-        gpu_params = p.add_mutually_exclusive_group()
-        gpu_params.add_argument(
+        p.add_argument(
+            "--gpu-usage",
+            default="auto",
+            help="Configure GPU usage. Valid values are \"auto\", \"forbid\" \"require\". \"auto\" detects whether the head node has a GPU [default=auto].")
+        p.add_argument(
             "--no-gpu",
-            action="store_true",
-            default=False,
+            "--forbid-gpu",
+            action="store_const",
+            const="forbid",
+            dest="gpu_usage",
             help="Do not use the GPU even if avaiable.")
-        gpu_params.add_argument(
+        p.add_argument(
+            "-g",
+            "--gpu-auto",
+            action="store_const",
+            const="auto",
+            dest="gpu_usage",
+            help="Do not use the GPU even if avaiable. This is the default, but can be useful to override other settings.")
+        p.add_argument(
             "--require-gpu",
-            action="store_true",
-            default=False,
+            action="store_const",
+            const="require",
+            dest="gpu_usage",
             help="Print an error if the GPU is not available.")
 
         # todo: implement somehow. we don't get a config though to pass
@@ -438,13 +511,26 @@ class System():
             default=False,
             help="Quit after a single epoch for debugging purposes.")
 
+        p.add_argument(
+            "--debug-num-batches",
+            metavar='NUM_BATCHES',
+            type=int,
+            default=None,
+            help="Limit each epoch to NUM_BATCHES batches for debugging purposes.")
+        p.add_argument(
+            "--debug-num-samples",
+            metavar='NUM_SAMPLES',
+            type=int,
+            default=None,
+            help="Limit each epoch to NUM_SAMPLES samples for debugging purposes.")
+
         # todo: support batch size per worker? maybe, but as an advanced options
         p.add_argument(
             "-b",
             "--total-batch-size",
             type=int,
             default=32,
-            help="Total batch size (divided evenly between each worker).")
+            help="Total batch size (divided evenly between all workers).")
 
         p.add_argument(
             "-e",
@@ -470,32 +556,35 @@ class System():
             "--progress-bar-units",
             "--pbar-units",
             default="batches",
+            metavar="PBAR_UNITS",
             help="What to measure the progress in for the progress bar (\"batches\" or \"samples\") [default=batches].")
 
+        # these are hidden (dest starts with _) so the user
+        # isn't confused why changing e.g. sys.args.log_interval
+        # doesn't update the intervals (we read these to self.intervals)
         p.add_argument(
             "--log-interval",
-            metavar='INTERVAL',
             type=str,
-            default=["60s"],
             action="append",
-            help="Time to wait between logging to console. Can be specified multiple times. Format: <number><unit>, where unit is \"h\" for hours, \"m\" for minutes, \"s\" for seconds, \"e\" for epochs, and \"b\" for minibatches.")
+            metavar="INTERVAL",
+            dest="_log_interval",
+            help="Time to wait between logging to console. Can be specified multiple times. Format: <number><unit>, where unit is \"h\" for hours, \"m\" for minutes, \"s\" for seconds, \"e\" for epochs, and \"b\" for minibatches [default=60s].")
         # todo: fix the help message
         p.add_argument(
             "--checkpoint-interval",
-            metavar='INTERVAL',
             type=str,
-            default=["5m"], # we only keep latest and best so who cares
             action="append",
-            help="Time to wait between saving checkpoints. Can be specified multiple times.")
+            metavar="INTERVAL",
+            dest="_checkpoint_interval",
+            help="Time to wait between saving checkpoints. Can be specified multiple times [default=5m].")
         # todo: default too low for real training?
         p.add_argument(
             "--backup-interval",
-            metavar='INTERVAL',
             type=str,
-            default=["30m"],
             action="append",
-            help="Time to wait between backing up the latest and best checkpoint. Can be specified multiple times.")
-
+            metavar="INTERVAL",
+            dest="_backup_interval",
+            help="Time to wait between backing up the latest and best checkpoint. Can be specified multiple times [default=30m].")
 
         p.add_argument(
             "--debug-checkpoint",

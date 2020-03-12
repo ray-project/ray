@@ -215,13 +215,11 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq,
                 )
             ]
-            self.batch_reporters = [
-                BatchLogsReporter.remote(0)
-            ]
+            self.batch_reporter = BatchLogsReporter.remote()
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
             # Get setup tasks in order to throw errors on failure
-            ray.get(self.workers[0].setup.remote(self.batch_reporters[0]))
+            ray.get(self.workers[0].setup.remote(self.batch_reporter))
         else:
             # Generate actor class
             Runner = ray.remote(
@@ -255,10 +253,7 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq)
                 for i in range(num_replicas)
             ]
-            self.batch_reporters = [
-                BatchLogsReporter.remote(i)
-                for i in range(num_replicas)
-            ]
+            self.batch_reporter = BatchLogsReporter.remote()
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
 
@@ -268,7 +263,7 @@ class TorchTrainer:
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(address, i, len(self.workers), self.batch_reporters[i])
+                worker.setup.remote(address, i, len(self.workers), self.batch_reporter)
                 for i, worker in enumerate(self.workers)
             ])
 
@@ -349,9 +344,6 @@ class TorchTrainer:
             w.train_epoch.remote(num_steps=num_steps, info=info)
             for w in self.workers
         ]
-        unfinished_worker_idxs = [
-            i for i in range(len(self.workers))
-        ]
 
         unfinished = worker_trains
         try:
@@ -361,23 +353,14 @@ class TorchTrainer:
                 # throw errors on agent failure
                 finished = ray.get(finished)
 
-                log_reads = ray.get([
-                    self.batch_reporters[i]._read.remote()
-                    for i in unfinished_worker_idxs
-                ])
-                unfinished_worker_idxs = []
+                if batch_logs_handler is not None:
+                    setup_read = ray.get(self.batch_reporter._read_setup.remote())
+                    if setup_read["new_data"]:
+                        batch_logs_handler(setup_read["data"])
 
-                for log_read in log_reads:
-                    r = self.batch_reporters[log_read["world_rank"]]
-
-                    if log_read["done"]:
-                        continue
-
-                    if batch_logs_handler is not None and log_read["new_data"]:
+                    log_read = ray.get(self.batch_reporter._read.remote())
+                    if log_read["new_data"]:
                         batch_logs_handler(log_read["data"])
-
-                    unfinished_worker_idxs.append(log_read["world_rank"])
-            assert len(unfinished_worker_idxs) == 0
 
             return True, worker_trains
         except RayActorError as exc:

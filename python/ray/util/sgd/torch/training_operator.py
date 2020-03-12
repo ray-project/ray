@@ -97,16 +97,16 @@ class TrainingOperator:
     def _set_batch_logs_reporter(self, r):
         self._batch_logs_reporter = r
 
-    def send_batch_logs(self, data):
-        return self._send_batch_logs(data)
+    def send_setup_info(self, data):
+        return ray.get(self._batch_logs_reporter._send_setup.remote(data))
 
-    def _send_batch_logs(self, data, done=False):
+    def send_batch_logs(self, data):
         cur_time = time.monotonic()
-        if not done and cur_time - self._last_batch_logs_send < .2:
+        if cur_time - self._last_batch_logs_send < .2:
             return
 
         self._last_batch_logs_send = cur_time
-        return ray.get(self._batch_logs_reporter._send.remote(data, done))
+        return ray.get(self._batch_logs_reporter._send.remote(data))
 
     def setup(self, config):
         """Override this method to implement custom operator setup.
@@ -174,8 +174,6 @@ class TrainingOperator:
             for timer_tag, timer in self.timers.items()
         })
 
-        # todo: should we block here?
-        self._send_batch_logs(None, done=True)
         return stats
 
     def forward(self, features, target):

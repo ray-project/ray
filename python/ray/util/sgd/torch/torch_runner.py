@@ -90,6 +90,9 @@ class TorchRunner:
                 "https://www.github.com/nvidia/apex to use fp16 training.")
         self.scheduler_step_freq = scheduler_step_freq
 
+        import warnings
+        warnings.filterwarnings('ignore')
+
     def _validate_datasets(self, dataset):
         assert dataset, "Datasets need to be returned in data_creator."
         if issubclass(type(dataset), Dataset):
