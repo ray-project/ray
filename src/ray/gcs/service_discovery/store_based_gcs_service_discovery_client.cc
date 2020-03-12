@@ -15,7 +15,7 @@ StoreBasedGcsServiceDiscoveryClient::StoreBasedGcsServiceDiscoveryClient(
 StoreBasedGcsServiceDiscoveryClient::~StoreBasedGcsServiceDiscoveryClient() {}
 
 Status StoreBasedGcsServiceDiscoveryClient::Init(boost::asio::io_service &io_service) {
-  query_store_timer_.reset(new boost::asio::deadline_timer(io_service_));
+  query_store_timer_.reset(new boost::asio::deadline_timer(io_service));
 }
 
 Status StoreBasedGcsServiceDiscoveryClient::RegisterService(

@@ -70,9 +70,6 @@ class GcsServiceDiscoveryClient {
   /// Options of this client.
   GcsServiceDiscoveryOptions options_;
 
-  /// The event loop for this client.
-  boost::asio::io_service *io_service_{nullptr};
-
   /// The callback that registered to watch gcs service information.
   ServiceWatcherCallback service_watcher_callback_{nullptr};
 
