@@ -34,8 +34,7 @@ public class ArgumentsBuilder {
       ObjectId id = null;
       NativeRayObject value = null;
       if (arg instanceof RayObject) {
-        throw new IllegalArgumentException(
-          "Passing RayObject to a direct call actor is not supported.");
+        id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
