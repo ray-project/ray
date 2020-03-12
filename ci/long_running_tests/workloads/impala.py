@@ -41,7 +41,7 @@ run_experiments({
             "num_envs_per_worker": 5,
             "remote_worker_envs": True,
             "remote_env_batch_wait_ms": 99999999,
-            "rollout_length": 50,
+            "rollout_fragment_length": 50,
             "train_batch_size": 100,
         },
     },
