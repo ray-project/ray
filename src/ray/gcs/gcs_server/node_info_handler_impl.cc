@@ -125,6 +125,10 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
   RAY_LOG(DEBUG) << "Finished getting node resources, node id = " << node_id;
 }
 
+void DefaultNodeInfoHandler::HandleGetAllResources(
+    const GetAllResourcesRequest &request, GetAllResourcesReply *reply,
+    SendReplyCallback send_reply_callback) {}
+
 void DefaultNodeInfoHandler::HandleUpdateResources(
     const UpdateResourcesRequest &request, UpdateResourcesReply *reply,
     SendReplyCallback send_reply_callback) {

@@ -179,6 +179,10 @@ class NodeInfoGcsServiceHandler {
                                   GetResourcesReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllResources(const GetAllResourcesRequest &request,
+                                     GetAllResourcesReply *reply,
+                                     SendReplyCallback send_reply_callback);
+
   virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
                                      UpdateResourcesReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;

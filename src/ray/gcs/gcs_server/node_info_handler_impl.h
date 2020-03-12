@@ -48,6 +48,10 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
   void HandleGetResources(const GetResourcesRequest &request, GetResourcesReply *reply,
                           SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllResources(const GetAllResourcesRequest &request,
+                             GetAllResourcesReply *reply,
+                             SendReplyCallback send_reply_callback) override;
+
   void HandleUpdateResources(const UpdateResourcesRequest &request,
                              UpdateResourcesReply *reply,
                              SendReplyCallback send_reply_callback) override;

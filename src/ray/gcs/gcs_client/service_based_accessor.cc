@@ -160,16 +160,20 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
   RAY_CHECK(subscribe != nullptr);
 
   // Subscribe from Redis.
-  auto actor_data_subscribe = [this, subscribe](const ActorID &id, const ActorTableData &actor_data) {
+  auto actor_data_subscribe = [this, subscribe](const ActorID &id,
+                                                const ActorTableData &actor_data) {
     FilterSubscribedData(actor_data, subscribe);
   };
-  RAY_CHECK_OK(actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), actor_data_subscribe, done));
+  RAY_CHECK_OK(
+      actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), actor_data_subscribe, done));
 
   // Get actors from GCS Service.
   rpc::GetAllActorInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
-      request, [this, subscribe](const Status &status, const rpc::GetAllActorInfoReply &reply) {
-        std::vector<ActorTableData> actor_data_list = VectorFromProtobuf(reply.actor_data_list());
+      request,
+      [this, subscribe](const Status &status, const rpc::GetAllActorInfoReply &reply) {
+        std::vector<ActorTableData> actor_data_list =
+            VectorFromProtobuf(reply.actor_data_list());
         for (auto &actor_data : actor_data_list) {
           FilterSubscribedData(actor_data, subscribe);
         }
@@ -186,15 +190,19 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
 
-  auto actor_data_subscribe = [this, subscribe](const ActorID &id, const ActorTableData &actor_data) {
+  // Subscribe from Redis.
+  auto actor_data_subscribe = [this, subscribe](const ActorID &id,
+                                                const ActorTableData &actor_data) {
     FilterSubscribedData(actor_data, subscribe);
   };
-  RAY_CHECK_OK(actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, actor_data_subscribe, done));
+  RAY_CHECK_OK(actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id,
+                                                  actor_data_subscribe, done));
 
   // Get actor from GCS Service.
   rpc::GetActorInfoRequest request;
   client_impl_->GetGcsRpcClient().GetActorInfo(
-      request, [this, subscribe](const Status &status, const rpc::GetActorInfoReply &reply) {
+      request,
+      [this, subscribe](const Status &status, const rpc::GetActorInfoReply &reply) {
         FilterSubscribedData(reply.actor_table_data(), subscribe);
       });
 
@@ -286,19 +294,22 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 }
 
 // TODO(ffbin): this funtion must be thread safe.
-void ServiceBasedActorInfoAccessor::FilterSubscribedData(const rpc::ActorTableData &actor_table_data,
-                                 const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+void ServiceBasedActorInfoAccessor::FilterSubscribedData(
+    const rpc::ActorTableData &actor_table_data,
+    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
   ActorID actor_id = ActorID::FromBinary(actor_table_data.actor_id());
   auto it = actor_map_.find(actor_id);
   if (it != actor_map_.end()) {
     // Filter out repeated data.
-    if (it->second->remaining_reconstructions() == actor_table_data.remaining_reconstructions() &&
+    if (it->second->remaining_reconstructions() ==
+            actor_table_data.remaining_reconstructions() &&
         it->second->state() == actor_table_data.state()) {
       return;
     }
 
     // Filter out old data.
-    if (it->second->remaining_reconstructions() < actor_table_data.remaining_reconstructions() ||
+    if (it->second->remaining_reconstructions() <
+            actor_table_data.remaining_reconstructions() ||
         it->second->state() < actor_table_data.state()) {
       return;
     }
@@ -421,13 +432,15 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_LOG(DEBUG) << "Subscribing node change.";
   RAY_CHECK(subscribe != nullptr);
   ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
-  auto node_change_subscribe = [this, subscribe](const ClientID &id, const GcsNodeInfo &node_info) {
+  auto node_change_subscribe = [this, subscribe](const ClientID &id,
+                                                 const GcsNodeInfo &node_info) {
     FilterSubscribedData(node_info, subscribe);
   };
   RAY_CHECK_OK(client_table.SubscribeToNodeChange(node_change_subscribe, done));
 
   // Get nodes from GCS Service.
-  auto callback = [this, subscribe](Status status, const std::vector<GcsNodeInfo> &node_info_list) {
+  auto callback = [this, subscribe](Status status,
+                                    const std::vector<GcsNodeInfo> &node_info_list) {
     for (auto &node_info : node_info_list) {
       FilterSubscribedData(node_info, subscribe);
     }
@@ -548,7 +561,15 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
       resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done));
 
   // Get resources from GCS Service.
-
+  rpc::GetAllResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllResources(
+      request, [subscribe](const Status &status, const rpc::GetAllResourcesReply &reply) {
+        std::vector<rpc::NodeResources> node_resources_list =
+            VectorFromProtobuf(reply.resources_list());
+        for (auto &node_resources : node_resources_list) {
+          subscribe(ClientID::FromBinary(node_resources.node_id()), );
+        }
+      });
 
   RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
   return Status::OK();
@@ -606,8 +627,9 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
   return status;
 }
 
-void ServiceBasedNodeInfoAccessor::FilterSubscribedData(const rpc::GcsNodeInfo &node_info,
-                          const SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe) {
+void ServiceBasedNodeInfoAccessor::FilterSubscribedData(
+    const rpc::GcsNodeInfo &node_info,
+    const SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe) {
   ClientID node_id = ClientID::FromBinary(node_info.node_id());
   auto it = node_map_.find(node_id);
   if (it != node_map_.end()) {

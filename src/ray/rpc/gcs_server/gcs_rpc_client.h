@@ -138,6 +138,9 @@ class GcsRpcClient {
   /// Get node's resources from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, node_info_grpc_client_, )
 
+  /// Get all node's resources from GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResources, node_info_grpc_client_, )
+
   /// Update resources of a node in GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, UpdateResources,
                              node_info_grpc_client_, )
