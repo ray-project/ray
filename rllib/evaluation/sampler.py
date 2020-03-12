@@ -237,8 +237,9 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         policy_mapping_fn (func): Function that maps agent ids to policy ids.
             This is called when an agent first enters the environment. The
             agent is then "bound" to the returned policy for the episode.
-        rollout_fragment_length (int): Number of episode steps before `SampleBatch` is
-            yielded. Set to infinity to yield complete episodes.
+        rollout_fragment_length (int): Number of episode steps before
+            `SampleBatch` is yielded. Set to infinity to yield complete
+            episodes.
         horizon (int): Horizon of the episode.
         preprocessors (dict): Map of policy id to preprocessor for the
             observations prior to filtering.
@@ -246,7 +247,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
             observations for the policy.
         clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack (bool): Whether to pack multiple episodes into each batch. This
-            guarantees batches will be exactly `rollout_fragment_length` in size.
+            guarantees batches will be exactly `rollout_fragment_length` in
+            size.
         clip_actions (bool): Whether to clip actions to the space range.
         callbacks (dict): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
@@ -375,8 +377,9 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 "the sampler. If this is more than you expected, check that "
                 "that you set a horizon on your environment correctly and that"
                 " it terminates at some point. "
-                "Note: In multi-agent environments, `rollout_fragment_length` sets "
-                "the batch size based on environment steps, not the steps of "
+                "Note: In multi-agent environments, `rollout_fragment_length` "
+                "sets the batch size based on environment steps, not the "
+                "steps of "
                 "individual agents, which can result in unexpectedly large "
                 "batches. Also, you may be in evaluation waiting for your Env "
                 "to terminate (batch_mode=`complete_episodes`). Make sure it "

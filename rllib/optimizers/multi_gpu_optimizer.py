@@ -53,7 +53,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
             workers (WorkerSet): all workers
             sgd_batch_size (int): SGD minibatch size within train batch size
             num_sgd_iter (int): number of passes to learn on per train batch
-            rollout_fragment_length (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from
+                workers.
             num_envs_per_worker (int): num envs in each rollout worker
             train_batch_size (int): size of batches to learn on
             num_gpus (int): number of GPUs to use for data-parallel SGD

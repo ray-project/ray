@@ -165,20 +165,21 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicy.
-            rollout_fragment_length (int): The target number of env transitions to
-                include in each sample batch returned from this worker.
+            rollout_fragment_length (int): The target number of env transitions
+                to include in each sample batch returned from this worker.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of at most `rollout_fragment_length * num_envs` in size. The batch
-                    will be exactly `rollout_fragment_length * num_envs` in size if
+                    of at most `rollout_fragment_length * num_envs` in size.
+                    The batch will be exactly
+                    `rollout_fragment_length * num_envs` in size if
                     postprocessing does not change batch sizes. Episodes may be
                     truncated in order to meet this size requirement.
                 "complete_episodes": Each call to sample() will return a batch
-                    of at least `rollout_fragment_length * num_envs` in size. Episodes
-                    will not be truncated, but multiple episodes may be packed
-                    within one batch to meet the batch size. Note that when
-                    `num_envs > 1`, episode steps will be buffered until the
-                    episode completes, and hence batches may contain
+                    of at least `rollout_fragment_length * num_envs` in size.
+                    Episodes will not be truncated, but multiple episodes may
+                    be packed within one batch to meet the batch size. Note
+                    that when `num_envs > 1`, episode steps will be buffered
+                    until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors

@@ -66,7 +66,8 @@ class AggregationWorkerBase:
             replay_buffer_num_slots (int): max number of sample batches to
                 store in the replay buffer
             train_batch_size (int): size of batches to learn on
-            rollout_fragment_length (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from
+                workers.
         """
 
         self.broadcasted_weights = initial_weights_obj_id
@@ -75,7 +76,8 @@ class AggregationWorkerBase:
         self.train_batch_size = train_batch_size
 
         if replay_proportion:
-            if replay_buffer_num_slots * rollout_fragment_length <= train_batch_size:
+            if (replay_buffer_num_slots * rollout_fragment_length <=
+                    train_batch_size):
                 raise ValueError(
                     "Replay buffer size is too small to produce train, "
                     "please increase replay_buffer_num_slots.",

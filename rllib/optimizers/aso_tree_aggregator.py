@@ -45,7 +45,8 @@ class TreeAggregator(Aggregator):
             replay_buffer_num_slots (int): max number of sample batches to
                 store in the replay buffer
             train_batch_size (int): size of batches to learn on
-            rollout_fragment_length (int): size of batches to sample from workers
+            rollout_fragment_length (int): size of batches to sample from
+                workers.
             broadcast_interval (int): max number of workers to send the
                 same set of weights to
         """

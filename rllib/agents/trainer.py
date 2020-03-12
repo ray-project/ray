@@ -66,7 +66,7 @@ COMMON_CONFIG = {
     # Deprecated; renamed to `rollout_fragment_length` in 0.8.4.
     "sample_batch_size": DEPRECATED_VALUE,
     # Whether to rollout "complete_episodes" or "truncate_episodes" to
-    # `rollout_fragment_length` length unrolls. Episode truncation guarantees more
+    # `rollout_fragment_length` length unrolls. Episode truncation guarantees
     # evenly sized batches, but increases variance as the reward-to-go will
     # need to be estimated at truncation boundaries.
     "batch_mode": "truncate_episodes",
