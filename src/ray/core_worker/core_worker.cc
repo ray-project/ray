@@ -462,10 +462,8 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::DIRECT));
-  auto status = plasma_store_provider_->Create(metadata, data_size, *object_id, data);
-  if (!status.ok()) {
-  }
-  RAY_RETURN_NOT_OK(status);
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
@@ -477,12 +475,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                           const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
-  auto status = plasma_store_provider_->Create(metadata, data_size, object_id, data);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Dumping local reference table (TODO should be for all workers)";
-    reference_counter_->DebugDump();
-  }
-  return status;
+  return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
 Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,

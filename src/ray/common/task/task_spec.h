@@ -171,6 +171,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string DebugString() const;
 
+  // A one-word summary of the task func as a call site (e.g., __main__.foo).
   std::string CallSiteString() const;
 
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);

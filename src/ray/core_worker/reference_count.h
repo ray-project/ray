@@ -234,13 +234,9 @@ class ReferenceCounter {
   /// \return Whether we have a reference to the object ID.
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
-  void DebugDump() {
-    for (const auto &ref : object_id_refs_) {
-      RAY_LOG(ERROR) << ref.second.object_size << " byte object at "
-                     << ref.second.call_site;
-    }
-  }
-
+  /// Write the current reference table to the given proto.
+  ///
+  /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(rpc::CoreWorkerStats *stats) {
     for (const auto &ref : object_id_refs_) {
       auto ref_proto = stats->add_object_refs();

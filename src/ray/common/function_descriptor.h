@@ -44,6 +44,7 @@ class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescripto
 
   virtual std::string ToString() const = 0;
 
+  // A one-word summary of the function call site (e.g., __main__.foo).
   virtual std::string CallSiteString() const { return ToString(); }
 
   template <typename Subtype>
