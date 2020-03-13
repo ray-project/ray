@@ -297,31 +297,28 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         # KL(self || other) is just the KL of the two unsquashed distributions.
         assert isinstance(other, GaussianSquashedGaussian)
 
-        mean = self.distr.mean()
-        std = self.distr.std()
+        mean = self.distr.loc
+        std = self.distr.scale
 
-        other_mean = other.distr.mean()
-        other_std = other.distr.std()
+        other_mean = other.distr.loc
+        other_std = other.distr.scale
 
-        return tf.reduce_sum(
-            other.log_std - self.log_std +
-            (tf.square(std) + tf.square(mean - other_mean)) /
-            (2.0 * tf.square(other_std)) - 0.5,
-            axis=1)
+        return (other.log_std - self.log_std +
+                (tf.square(std) + tf.square(mean - other_mean)) /
+                (2.0 * tf.square(other_std)) - 0.5)
 
     def entropy(self):
         # Entropy is:
         #   -KL(self.distr || N(0, _SCALE)) + log(high - low)
         # where the latter distribution's CDF is used to do the squashing.
 
-        mean = self.distr.mean()
-        std = self.distr.std()
+        mean = self.distr.loc
+        std = self.distr.scale
 
-        return tf.reduce_sum(
-            log(self.high - self.low) -
-            (tf.log(self._SCALE) - self.log_std +
-             (tf.square(std) + tf.square(mean)) /
-             (2.0 * tf.square(self._SCALE)) - 0.5))
+        return (tf.log(self.high - self.low) -
+                (tf.log(self._SCALE) - self.log_std +
+                (tf.square(std) + tf.square(mean)) /
+                (2.0 * tf.square(self._SCALE)) - 0.5))
 
     def _squash(self, raw_values):
         # Make sure raw_values are not too high/low (such that tanh would
