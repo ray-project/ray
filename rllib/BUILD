@@ -852,15 +852,26 @@ py_test(
 # Tag: optimizers
 # --------------------------------------------------------------------
 
-# This has bugs: See PR https://github.com/ray-project/ray/pull/7534
-# which fixes these and re-adds this test.
+py_test(
+    name = "test_optimizers",
+    tags = ["optimizers"],
+    size = "large",
+    srcs = ["optimizers/tests/test_optimizers.py"]
+)
 
-# py_test(
-#     name = "test_segment_tree",
-#     tags = ["optimizers"],
-#     size = "small",
-#    srcs = ["optimizers/tests/test_segment_tree.py"]
-# )
+py_test(
+    name = "test_segment_tree",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_segment_tree.py"]
+)
+
+py_test(
+    name = "test_prioritized_replay_buffer",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+)
 
 # --------------------------------------------------------------------
 # Policies
@@ -1042,13 +1053,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_N"],
     size = "large",
     srcs = ["tests/test_nested_spaces.py"]
-)
-
-py_test(
-    name = "tests/test_optimizers",
-    tags = ["tests_dir", "tests_dir_O"],
-    size = "large",
-    srcs = ["tests/test_optimizers.py"]
 )
 
 py_test(
