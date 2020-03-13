@@ -553,14 +553,6 @@ py_test(
         ]
 )
 
-py_test(
-    name = "test_impala_rollout",
-    main = "tests/test_rollout.py",
-    data = ["train.py", "rollout.py"],
-    tags = ["quick_train"],
-    srcs = ["tests/test_rollout.py"]
-)
-
 # MARWIL
 
 py_test(
@@ -860,15 +852,26 @@ py_test(
 # Tag: optimizers
 # --------------------------------------------------------------------
 
-# This has bugs: See PR https://github.com/ray-project/ray/pull/7534
-# which fixes these and re-adds this test.
+py_test(
+    name = "test_optimizers",
+    tags = ["optimizers"],
+    size = "large",
+    srcs = ["optimizers/tests/test_optimizers.py"]
+)
 
-# py_test(
-#     name = "test_segment_tree",
-#     tags = ["optimizers"],
-#     size = "small",
-#    srcs = ["optimizers/tests/test_segment_tree.py"]
-# )
+py_test(
+    name = "test_segment_tree",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_segment_tree.py"]
+)
+
+py_test(
+    name = "test_prioritized_replay_buffer",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+)
 
 # --------------------------------------------------------------------
 # Policies
@@ -1053,13 +1056,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_optimizers",
-    tags = ["tests_dir", "tests_dir_O"],
-    size = "large",
-    srcs = ["tests/test_optimizers.py"]
-)
-
-py_test(
     name = "tests/test_exec_api",
     tags = ["tests_dir", "tests_dir_E"],
     size = "small",
@@ -1071,6 +1067,15 @@ py_test(
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_reproducibility.py"]
+)
+
+py_test(
+    name = "test_rollout",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"]
 )
 
 py_test(
