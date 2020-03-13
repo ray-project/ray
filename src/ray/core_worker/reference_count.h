@@ -114,7 +114,8 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The ID of the object.
   /// \param[in] size The known size of the object.
-  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size) LOCKS_EXCLUDED(mutex_);
+  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
   ///

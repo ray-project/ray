@@ -186,7 +186,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
             });
         {
           absl::MutexLock lock(&active_buffers_mutex_);
-          active_buffers_[std::make_pair(object_id, data.get())] = get_current_call_site_();
+          active_buffers_[std::make_pair(object_id, data.get())] =
+              get_current_call_site_();
         }
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
