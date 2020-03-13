@@ -142,7 +142,7 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids_to_add, size_t num_plasma_returns,
+    const std::vector<ObjectID> &argument_ids_to_add, bool pin_lineage,
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids_to_add) {
@@ -153,13 +153,18 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
       it = object_id_refs_.emplace(argument_id, Reference()).first;
     }
     it->second.submitted_task_ref_count++;
-    it->second.lineage_ref_count += num_plasma_returns;
+    if (pin_lineage) {
+      it->second.lineage_ref_count++;
+    }
   }
-  RemoveSubmittedTaskReferences(argument_ids_to_remove, num_plasma_returns, deleted);
+  // If we are pinning the lineage for this task, then we should also release
+  // the lineage ref count for any argument IDs whose values were inlined.
+  RemoveSubmittedTaskReferences(argument_ids_to_remove, /*release_lineage=*/pin_lineage,
+                                deleted);
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, size_t num_plasma_returns,
+    const std::vector<ObjectID> &argument_ids, bool release_lineage,
     const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
@@ -178,7 +183,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
     RAY_CHECK(it != object_id_refs_.end());
   }
 
-  RemoveSubmittedTaskReferences(argument_ids, num_plasma_returns, deleted);
+  RemoveSubmittedTaskReferences(argument_ids, release_lineage, deleted);
 }
 
 void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_ids,
@@ -234,7 +239,7 @@ void ReferenceCounter::ReleaseLineageReferencesInternal(
 }
 
 void ReferenceCounter::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, size_t decrement_lineage_by,
+    const std::vector<ObjectID> &argument_ids, bool release_lineage,
     std::vector<ObjectID> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
@@ -245,8 +250,10 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     }
     RAY_CHECK(it->second.submitted_task_ref_count > 0);
     it->second.submitted_task_ref_count--;
-    RAY_CHECK(it->second.lineage_ref_count >= decrement_lineage_by);
-    it->second.lineage_ref_count -= decrement_lineage_by;
+    if (release_lineage) {
+      RAY_CHECK(it->second.lineage_ref_count > 0);
+      it->second.lineage_ref_count--;
+    }
     if (it->second.RefCount() == 0) {
       DeleteReferenceInternal(it, deleted);
     }
