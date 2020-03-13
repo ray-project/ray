@@ -131,7 +131,8 @@ class ObjectStoreFullError(RayError):
     """
 
     def __str__(self):
-        return (
+        return super(ObjectStoreFullError, self).__str__() + (
+            "\n"
             "The local object store is full of objects that are still in scope"
             " and cannot be evicted. Try increasing the object store memory "
             "available with ray.init(object_store_memory=<bytes>). "
