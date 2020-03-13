@@ -885,7 +885,9 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
 }
 
 bool ClusterResourceScheduler::AllocateTaskResourceInstances(
-    const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
+    const TaskRequest &task_req, 
+    std::shared_ptr<TaskResourceInstances> task_allocation /* return */) {
+  RAY_CHECK(task_allocation != nullptr);  
   if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
   }
@@ -899,7 +901,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
                                      &task_allocation->predefined_resources[i])) {
         // Allocation failed. Restore node's local resources by freeing the resources
         // of the failed allocation.
-        FreeTaskResourceInstances(*task_allocation);
+        FreeTaskResourceInstances(task_allocation);
         return false;
       }
     }
@@ -919,7 +921,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         if (!success) {
           // Allocation failed. Restore node's local resources by freeing the resources
           // of the failed allocation.
-          FreeTaskResourceInstances(*task_allocation);
+          FreeTaskResourceInstances(task_allocation);
           return false;
         }
       }
@@ -954,13 +956,14 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
 }
 
 void ClusterResourceScheduler::FreeTaskResourceInstances(
-    TaskResourceInstances &task_allocation) {
+    std::shared_ptr<TaskResourceInstances> task_allocation) {
+  RAY_CHECK(task_allocation != nullptr);    
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    AddAvailableResourceInstances(task_allocation.predefined_resources[i],
+    AddAvailableResourceInstances(task_allocation->predefined_resources[i],
                                   &local_resources_.predefined_resources[i]);
   }
 
-  for (const auto task_allocation_custom_resource : task_allocation.custom_resources) {
+  for (const auto task_allocation_custom_resource : task_allocation->custom_resources) {
     auto it = local_resources_.custom_resources.find(task_allocation_custom_resource.first);
     if (it != local_resources_.custom_resources.end()) {
       AddAvailableResourceInstances(task_allocation_custom_resource.second, &it->second);
@@ -996,27 +999,28 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
   return underflow; 
 }
 
-bool ClusterResourceScheduler::AllocateTaskResources(int64_t node_id, 
-    const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
+bool ClusterResourceScheduler::AllocateTaskResources(
+    int64_t node_id, const TaskRequest &task_req, 
+    std::shared_ptr<TaskResourceInstances> task_allocation /* return */) {
 
   if (node_id == local_node_id_) {
+    RAY_CHECK(task_allocation != nullptr);
     if (AllocateTaskResourceInstances(task_req, task_allocation)) {
       UpdateLocalAvailableResourcesFromResourceInstances();
       return true;
-    } else {
-      return false;
-    }
+    } 
   } else {
-    if (!SubtractNodeAvailableResources(node_id, task_req)) {
-      return false;
+    if (SubtractNodeAvailableResources(node_id, task_req)) {
+      return true;
     }
   }
-  return true;
+  return false;
 }
 
 bool ClusterResourceScheduler::AllocateLocalTaskResources(
     const std::unordered_map<std::string, double> &task_resources, 
-    TaskResourceInstances *task_allocation /* return */) {
+    std::shared_ptr<TaskResourceInstances> task_allocation /* return */) {
+  RAY_CHECK(task_allocation != nullptr);    
   TaskRequest task_request = 
       ResourceMapToTaskRequest(string_to_int_map_, task_resources);
   return AllocateTaskResources(local_node_id_, task_request, task_allocation);    
@@ -1043,13 +1047,16 @@ void ClusterResourceScheduler::AllocateRemoteTaskResources(
       ResourceMapToTaskRequest(string_to_int_map_, task_resources);
   auto node_id = string_to_int_map_.Insert(node_string);
   RAY_CHECK(node_id != local_node_id_);
-  TaskResourceInstances nothing; // This is a remote node, so no local instance allocation.
-  AllocateTaskResources(node_id, task_request, &nothing);    
+  AllocateTaskResources(node_id, task_request, nullptr);    
 }
 
-void ClusterResourceScheduler::FreeLocalTaskResources(TaskResourceInstances &task_allocation) {
-  if (!task_allocation.IsEmpty()) {
-    FreeTaskResourceInstances(task_allocation);
-    UpdateLocalAvailableResourcesFromResourceInstances();
+void ClusterResourceScheduler::FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation) {
+  if (task_allocation == nullptr) {
+    return;
   }
+  if (task_allocation->IsEmpty()) {
+    return;
+  }
+  FreeTaskResourceInstances(task_allocation);
+  UpdateLocalAvailableResourcesFromResourceInstances();
 }

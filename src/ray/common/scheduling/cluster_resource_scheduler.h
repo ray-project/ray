@@ -158,7 +158,7 @@ class ClusterResourceScheduler {
   /// \return True if the node has enough resources to satisfy the task request. 
   /// False otherwise. 
   bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req, 
-                            TaskResourceInstances *task_allocation);
+                            std::shared_ptr<TaskResourceInstances> task_allocation);
 
  public:
   ClusterResourceScheduler(void){};
@@ -357,13 +357,13 @@ class ClusterResourceScheduler {
   /// \return true, if allocation successful. If false, the caller needs to free the
   /// allocated resources, i.e., task_allocation.
   bool AllocateTaskResourceInstances(const TaskRequest &task_req,
-                                     TaskResourceInstances *task_allocation);
+                                     std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Free resources which were allocated with a task. The freed resources are
   /// added back to the node's local available resources.
   ///
   /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(TaskResourceInstances &task_allocation);
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Increase the available capacities of the instances of a given resource.
   ///
@@ -414,7 +414,7 @@ class ClusterResourceScheduler {
   /// \return True if local node has enough resources to satisfy the task request. 
   /// False otherwise. 
   bool AllocateLocalTaskResources(const std::unordered_map<std::string, double> &task_resources, 
-                                  TaskResourceInstances *task_allocation);  
+                                  std::shared_ptr<TaskResourceInstances> task_allocation);  
 
   /// Subtract the resources required by a given task request (task_req) from a given
   /// remote node. 
@@ -425,7 +425,7 @@ class ClusterResourceScheduler {
                                   const std::unordered_map<std::string, double> &task_resources);
 
 
-  void FreeLocalTaskResources(TaskResourceInstances& task_allocation);
+  void FreeLocalTaskResources(std::shared_ptr <TaskResourceInstances> task_allocation);
 
   /// Update the available resources of the local node given 
   /// the available instances of each resource of the local node.

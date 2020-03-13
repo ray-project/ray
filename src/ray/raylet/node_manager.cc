@@ -1542,18 +1542,19 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 
     std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
     if (worker == nullptr) {
-      // No worker to schedule task. Put it back in the dispatch queue.
+      // No worker available to schedule this task. 
+      // Put the task back in the dispatch queue.
       tasks_to_dispatch_.push_front(task); 
       return; 
     }
 
-    TaskResourceInstances allocated_instances;
+    std::shared_ptr<TaskResourceInstances> allocated_instances (new TaskResourceInstances());
     bool schedulable = 
         new_resource_scheduler_->AllocateLocalTaskResources(
-            spec.GetRequiredResources().GetResourceMap(), &allocated_instances);
+            spec.GetRequiredResources().GetResourceMap(), allocated_instances);
     if (!schedulable) {
-      // Not enough resources to schedule this task. Put it back at the end
-      // of the dispatch queue.
+      // Not enough resources to schedule this task. 
+      // Put it back at the end of the dispatch queue.
       tasks_to_dispatch_.push_back(task); 
       worker_pool_.PushWorker(worker);
       // Try next task in the dispatch queue.
@@ -1662,13 +1663,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
             leased_workers_[worker->WorkerId()] = worker;
 // TODO (Ion): Fix handling floating point errors, maybe by moving to integers.               
 #define ZERO_CAPACITY 1.0e-5
-            TaskResourceInstances allocated_resources;
+            std::shared_ptr<TaskResourceInstances> allocated_resources;
             if (task_specs.IsActorCreationTask()) {
               allocated_resources = worker->GetLifetimeAllocatedInstances();                                                   
             } else {
               allocated_resources = worker->GetAllocatedInstances();                                                   
             }
-            auto predefined_resources = allocated_resources.predefined_resources;
+            auto predefined_resources = allocated_resources->predefined_resources;
             ::ray::rpc::ResourceMapEntry *resource;
             for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
               bool first = true; // Set resource name only if at least one of its instances has available capacity.
@@ -1685,7 +1686,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                 }
               }
             }
-            auto custom_resources = allocated_resources.custom_resources;
+            auto custom_resources = allocated_resources->custom_resources;
             for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
               bool first = true; // Set resource name only if at least one of its instances has available capacity.
 	            for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
@@ -2175,7 +2176,10 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
     if (!worker) {
       return;
     }
-    std::vector<double> cpu_instances = worker->GetAllocatedInstances().GetCPUInstances();
+    std::vector<double> cpu_instances;
+    if (worker->GetAllocatedInstances() != nullptr) {
+      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstances();
+    } 
     if (cpu_instances.size() > 0) {
       std::vector<double> borrowed_cpu_instances = 
           new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
@@ -2201,7 +2205,10 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     if (!worker) {
       return;
     }
-    std::vector<double> cpu_instances = worker->GetAllocatedInstances().GetCPUInstances();
+    std::vector<double> cpu_instances;
+    if (worker->GetAllocatedInstances() != nullptr) { 
+      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstances();
+    }
     if (cpu_instances.size() > 0) {
       new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances); 
       new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());   
@@ -2468,7 +2475,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   if (new_scheduler_enabled_) {
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ???
-    if (worker.GetAllocatedInstances().predefined_resources.size() > 0) {
+    if (worker.GetAllocatedInstances() != nullptr) {
       new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       new_resource_scheduler_->SubtractCPUResourceInstances(worker.GetBorrowedCPUInstances());
       worker.ClearAllocatedInstances();
