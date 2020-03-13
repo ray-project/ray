@@ -1532,7 +1532,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 
 void NodeManager::DispatchScheduledTasksToWorkers() {
   RAY_CHECK(new_scheduler_enabled_);
-  size_t queue_size = tasks_to_dispatch_.size(); // XXX
+  size_t queue_size = tasks_to_dispatch_.size(); 
   while (queue_size > 0) { //
     auto task = tasks_to_dispatch_.front(); 
     auto reply = task.first;
