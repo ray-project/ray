@@ -95,7 +95,7 @@ class Ray {
 }  }// namespace ray::api
 
 // --------- inline implementation ------------
-#include <ray/api/execute.h>
+#include <ray/api/generated/execute.h>
 #include <ray/api/arguments.h>
 #include <ray/api/ray_actor.h>
 #include <ray/api/ray_object.h>
