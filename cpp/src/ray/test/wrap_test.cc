@@ -4,7 +4,7 @@
 #include <ray/api/arguments.h>
 #include <iostream>
 
-using namespace ray;
+using namespace ray::api;
 
 TEST(ray_marshall, type_bool) {
   bool in_arg1 = true, out_arg1;
@@ -505,14 +505,10 @@ TEST(ray_marshall, type_hybrid) {
 }
 
 TEST(ray_marshall, type_ray_object) {
-  UniqueId uid1;
-  uid1.random();
-  RayObject<uint32_t> in_arg1(uid1);
+  RayObject<uint32_t> in_arg1(ObjectID::FromRandom());
   RayObject<uint32_t> out_arg1;
 
-  UniqueId uid2;
-  uid2.random();
-  RayObject<std::string> in_arg2(uid2);
+  RayObject<std::string> in_arg2(ObjectID::FromRandom());
   RayObject<std::string> out_arg2;
 
   // 0 args

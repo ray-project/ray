@@ -3,10 +3,10 @@
 
 #include "task_executer.h"
 
-namespace ray {
+namespace ray { namespace api {
 
-std::unique_ptr<UniqueId> TaskExcuter::execute(const InvocationSpec &invocation) {
-  std::unique_ptr<UniqueId> dummy(new UniqueId());
+std::unique_ptr<ObjectID> TaskExcuter::execute(const InvocationSpec &invocation) {
+  std::unique_ptr<ObjectID> dummy(new ObjectID());
   return dummy;
 };
-}  // namespace ray
+}  }// namespace ray::api

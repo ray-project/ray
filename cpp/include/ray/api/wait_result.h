@@ -2,20 +2,19 @@
 #pragma once
 
 #include <vector>
+#include <ray/core.h>
 
-namespace ray {
+namespace ray { namespace api {
 template <typename T>
 class RayObject;
 
-class UniqueId;
-
 class WaitResultInternal {
  public:
-  std::vector<UniqueId> readys;
-  std::vector<UniqueId> remains;
+  std::vector<ObjectID> readys;
+  std::vector<ObjectID> remains;
   WaitResultInternal(){};
-  WaitResultInternal(std::vector<UniqueId> &&objectReadys,
-                     std::vector<UniqueId> &&objectRemains)
+  WaitResultInternal(std::vector<ObjectID> &&objectReadys,
+                     std::vector<ObjectID> &&objectRemains)
       : readys(std::move(objectReadys)), remains(std::move(objectRemains)){};
 };
 
@@ -29,4 +28,4 @@ class WaitResult {
              std::vector<RayObject<T>> &&objectRemains)
       : readys(std::move(objectReadys)), remains(std::move(objectRemains)){};
 };
-}  // namespace ray
+}  }// namespace ray::api

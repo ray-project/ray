@@ -1,8 +1,10 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
+#include <future>
+#include <thread>
 
-using namespace ray;
+using namespace ray::api;
 
 int foo0() { return 1; }
 int foo(int x) { return x + 1; }
@@ -106,6 +108,7 @@ TEST(ray_api_test_case, call_with_object_test) {
 }
 
 TEST(ray_api_test_case, actor) {
+  Ray::init();
   RayActor<Foo> actor = Ray::createActor(Foo::create);
   auto rt1 = actor.call(&Foo::foo, 3);
   auto rt2 = actor.call(&Foo::bar, 3, rt1);
@@ -127,4 +130,27 @@ TEST(ray_api_test_case, actor) {
   EXPECT_EQ(return4, 3);
   EXPECT_EQ(return5, 6);
   EXPECT_EQ(return6, 12);
+}
+
+TEST(ray_api_test_case, compare_with_future) {
+
+  // future from a packaged_task
+  std::packaged_task<int(int)> task(foo); 
+  std::future<int> f1 = task.get_future();
+  std::thread t(std::move(task), 1);
+  int rt1 = f1.get();
+
+  // future from an async()
+  std::future<int> f2 = std::async(std::launch::async, foo, 1);
+  int rt2 = f2.get();
+
+  // Ray API
+  Ray::init();
+  RayObject<int> f3 = Ray::call(foo, 1);
+  int rt3 = *f3.get();
+
+  EXPECT_EQ(rt1, 2);
+  EXPECT_EQ(rt2, 2);
+  EXPECT_EQ(rt3, 2);
+  t.join();
 }

@@ -1,28 +1,26 @@
 
 #pragma once
 
-#include <iostream>
 #include <memory>
 
 #include <ray/api/ray_runtime.h>
-#include <ray/api/task_type.h>
+#include <ray/core.h>
 #include <ray/api/generated/funcs.generated.h>
 #include <ray/api/generated/create_funcs.generated.h>
 #include <ray/api/generated/actor_funcs.generated.h>
 #include <msgpack.hpp>
+#include <ray/core.h>
 
 /**
  * ray api definition
  *
  */
-namespace ray {
+namespace ray { namespace api {
 
 template <typename T>
 class RayObject;
 template <typename T>
 class RayActor;
-template <typename F>
-class RayFunction;
 template <typename T>
 class WaitResult;
 
@@ -58,23 +56,22 @@ class Ray {
 #include "api/generated/call_actors.generated.h"
 };
 
-}  // namespace ray
+}  }// namespace ray::api
 
 // --------- inline implementation ------------
 #include <ray/api/execute.h>
 #include <ray/api/arguments.h>
 #include <ray/api/ray_actor.h>
-#include <ray/api/ray_function.h>
 #include <ray/api/ray_object.h>
 #include <ray/api/wait_result.h>
 
-namespace ray {
+namespace ray { namespace api {
 class Arguments;
 
 template <typename T>
-inline static std::vector<UniqueId> rayObject2UniqueId(
+inline static std::vector<ObjectID> rayObject2ObjectID(
     const std::vector<RayObject<T>> &rayObjects) {
-  std::vector<UniqueId> unqueIds;
+  std::vector<ObjectID> unqueIds;
   for (auto it = rayObjects.begin(); it != rayObjects.end(); it++) {
     unqueIds.push_back(it->id());
   }
@@ -82,10 +79,10 @@ inline static std::vector<UniqueId> rayObject2UniqueId(
 }
 
 template <typename T>
-inline static std::vector<RayObject<T>> uniqueId2RayObject(
-    const std::vector<UniqueId> &uniqueIds) {
+inline static std::vector<RayObject<T>> ObjectID2RayObject(
+    const std::vector<ObjectID> &objectIDs) {
   std::vector<RayObject<T>> objects;
-  for (auto it = uniqueIds.begin(); it != uniqueIds.end(); it++) {
+  for (auto it = objectIDs.begin(); it != objectIDs.end(); it++) {
     objects.push_back(RayObject<T>(*it));
   }
   return objects;
@@ -93,8 +90,8 @@ inline static std::vector<RayObject<T>> uniqueId2RayObject(
 
 template <typename T>
 static WaitResult<T> waitResultFromInernal(const WaitResultInternal &internal) {
-  return WaitResult<T>(std::move(uniqueId2RayObject<T>(internal.readys)),
-                       std::move(uniqueId2RayObject<T>(internal.remains)));
+  return WaitResult<T>(std::move(ObjectID2RayObject<T>(internal.readys)),
+                       std::move(ObjectID2RayObject<T>(internal.remains)));
 }
 
 template <typename T>
@@ -121,7 +118,7 @@ inline std::shared_ptr<T> Ray::get(const RayObject<T> &object) {
 template <typename T>
 inline std::vector<std::shared_ptr<T>> Ray::get(
     const std::vector<RayObject<T>> &objects) {
-  auto uniqueVector = rayObject2UniqueId<T>(objects);
+  auto uniqueVector = rayObject2ObjectID<T>(objects);
   auto result = _impl->get(uniqueVector);
   std::vector<std::shared_ptr<T>> rt;
   for (auto it = result.begin(); it != result.end(); it++) {
@@ -139,7 +136,7 @@ inline std::vector<std::shared_ptr<T>> Ray::get(
 template <typename T>
 inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num_objects,
                                int64_t timeout_ms) {
-  auto uniqueVector = rayObject2UniqueId<T>(objects);
+  auto uniqueVector = rayObject2ObjectID<T>(objects);
   auto result = _impl->wait(uniqueVector, num_objects, timeout_ms);
   return waitResultFromInernal<T>(result);
 }
@@ -150,4 +147,4 @@ inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num
 
 #include <ray/api/generated/call_actors_impl.generated.h>
 
-}  // namespace ray
+}  }// namespace ray::api

@@ -4,7 +4,7 @@
 #include <chrono>
 #include <thread>
 
-using namespace ray;
+using namespace ray::api;
 
 int slow_function(int i) {
   std::this_thread::sleep_for(std::chrono::seconds(i));
@@ -32,5 +32,5 @@ TEST(ray_slow_function_case, base_test) {
   EXPECT_EQ(result2, 3);
   EXPECT_EQ(result3, 4);
 
-  EXPECT_LT(time2.count() - time1.count(), 4100);
+  EXPECT_LT(time2.count() - time1.count(), 4200);
 }

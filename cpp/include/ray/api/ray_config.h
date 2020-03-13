@@ -3,7 +3,7 @@
 
 #include <ray/api/ray_mode.h>
 
-namespace ray {
+namespace ray { namespace api {
 
 class RayConfig {
  public:
@@ -12,4 +12,4 @@ class RayConfig {
   RunMode runMode = RunMode::SINGLE_PROCESS;
 };
 
-}  // namespace ray
+}  }// namespace ray::api

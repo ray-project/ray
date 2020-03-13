@@ -1,7 +1,7 @@
 #include <dlfcn.h>
 #include <stdint.h>
 
-namespace ray {
+namespace ray { namespace api {
 
 /* tmp impl, mast define in cc source file of dylib */
 uintptr_t dylib_base_addr;
@@ -12,4 +12,4 @@ extern "C" void Ray_agent_init() {
   dylib_base_addr = (uintptr_t)info.dli_fbase;
   return;
 }
-}  // namespace ray
+}  }// namespace ray::api

@@ -6,12 +6,13 @@
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime.h>
 #include <msgpack.hpp>
-#include "./context/worker_context.h"
+#include <ray/core.h>
 #include "./object/object_store.h"
 #include "./task/task_executer.h"
 #include "./task/task_submitter.h"
+#include "./task/task_spec.h"
 
-namespace ray {
+namespace ray { namespace api {
 
 class AbstractRayRuntime : public RayRuntime {
   friend class Ray;
@@ -22,7 +23,7 @@ class AbstractRayRuntime : public RayRuntime {
   static std::once_flag isInited;
 
   std::shared_ptr<RayConfig> _config;
-  std::unique_ptr<Worker> _worker;
+  std::unique_ptr<WorkerContext> _worker;
   std::unique_ptr<TaskSubmitter> _taskSubmitter;
   std::unique_ptr<TaskExcuter> _taskExcuter;
   std::unique_ptr<ObjectStore> _objectStore;
@@ -32,44 +33,38 @@ class AbstractRayRuntime : public RayRuntime {
 
   static AbstractRayRuntime &getInstance();
 
-  void put(std::shared_ptr<msgpack::sbuffer> data, const UniqueId &objectId,
-           const UniqueId &taskId);
+  void put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &objectId,
+           const TaskID &taskId);
 
-  UniqueId put(std::shared_ptr<msgpack::sbuffer> data);
+  ObjectID put(std::shared_ptr<msgpack::sbuffer> data);
 
-  std::shared_ptr<msgpack::sbuffer> get(const UniqueId &id);
+  std::shared_ptr<msgpack::sbuffer> get(const ObjectID &id);
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> get(
-      const std::vector<UniqueId> &objects);
+      const std::vector<ObjectID> &objects);
 
-  WaitResultInternal wait(const std::vector<UniqueId> &objects, int num_objects,
+  WaitResultInternal wait(const std::vector<ObjectID> &objects, int num_objects,
                           int64_t timeout_ms);
 
-  std::unique_ptr<UniqueId> call(remote_function_ptr_holder &fptr,
+  ObjectID call(remote_function_ptr_holder &fptr,
                                  std::shared_ptr<msgpack::sbuffer> args);
 
-  std::unique_ptr<UniqueId> create(remote_function_ptr_holder &fptr,
+  ActorID create(remote_function_ptr_holder &fptr,
                                    std::shared_ptr<msgpack::sbuffer> args);
 
-  std::unique_ptr<UniqueId> call(const remote_function_ptr_holder &fptr,
-                                 const UniqueId &actor,
+  ObjectID call(const remote_function_ptr_holder &fptr,
+                                 const ActorID &actor,
                                  std::shared_ptr<msgpack::sbuffer> args);
 
-  TaskSpec *getCurrentTask();
+  ActorID getNextActorID();
 
-  void setCurrentTask(TaskSpec &task);
-
-  int getNextPutIndex();
-
-  const UniqueId &getCurrentTaskId();
+  const TaskID &getCurrentTaskId();
 
   virtual ~AbstractRayRuntime(){};
 
  private:
   static AbstractRayRuntime &doInit(std::shared_ptr<RayConfig> config);
 
-  virtual char *get_actor_ptr(const UniqueId &id);
-
-  void execute(const TaskSpec &taskSpec);
+  void execute(const LocalTaskSpec &taskSpec);
 };
-}  // namespace ray
+}  }// namespace ray::api

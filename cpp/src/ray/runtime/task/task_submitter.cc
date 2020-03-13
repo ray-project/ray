@@ -3,7 +3,7 @@
 
 #include "task_submitter.h"
 
-namespace ray {
+namespace ray { namespace api {
 
 TaskSubmitter::TaskSubmitter(){};
-}  // namespace ray
+}  }// namespace ray::api

@@ -9,7 +9,7 @@
 #include <iostream>
 #include <thread>
 
-using namespace ray;
+using namespace ray::api;
 
 void handler(int sig) {
   void *array[10];

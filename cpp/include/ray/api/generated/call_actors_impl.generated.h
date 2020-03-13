@@ -11,7 +11,7 @@ RayObject<R> Ray::call(ActorFunc0<O, R> actorFunc, RayActor<O> &actor) {
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O>);
   auto id = _impl->call(ptr, actor.id(), buffer);
-  return RayObject<R>(std::move(*id));
+  return RayObject<R>(std::move(id));
 }
 
 // 1 args
@@ -25,7 +25,7 @@ RayObject<R> Ray::call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor, T1 ar
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1>);
   auto id = _impl->call(ptr, actor.id(), buffer);
-  return RayObject<R>(std::move(*id));
+  return RayObject<R>(std::move(id));
 }
 
 template <typename R, typename O, typename T1>
@@ -38,7 +38,7 @@ RayObject<R> Ray::call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor, RayOb
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1>);
   auto id = _impl->call(ptr, actor.id(), buffer);
-  return RayObject<R>(std::move(*id));
+  return RayObject<R>(std::move(id));
 }
 
 // 2 args
@@ -52,7 +52,7 @@ RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
   auto id = _impl->call(ptr, actor.id(), buffer);
-  return RayObject<R>(std::move(*id));
+  return RayObject<R>(std::move(id));
 }
 
 template <typename R, typename O, typename T1, typename T2>
@@ -66,7 +66,7 @@ RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, R
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
   auto id = _impl->call(ptr, actor.id(), buffer);
-  return RayObject<R>(std::move(*id));
+  return RayObject<R>(std::move(id));
 }
 
 template <typename R, typename O, typename T1, typename T2>
@@ -80,7 +80,7 @@ RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
   auto id = _impl->call(ptr, actor.id(), buffer);
-  return RayObject<R>(std::move(*id));
+  return RayObject<R>(std::move(id));
 }
 
 template <typename R, typename O, typename T1, typename T2>
@@ -94,5 +94,5 @@ RayObject<R> Ray::call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, R
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
   auto id = _impl->call(ptr, actor.id(), buffer);
-  return RayObject<R>(std::move(*id));
+  return RayObject<R>(std::move(id));
 }

@@ -10,7 +10,7 @@
 #include "ray_native_runtime.h"
 #include "task/invocation_executor.h"
 
-namespace ray {
+namespace ray { namespace api {
 
 std::unique_ptr<AbstractRayRuntime> AbstractRayRuntime::_ins;
 std::once_flag AbstractRayRuntime::isInited;
@@ -43,56 +43,54 @@ AbstractRayRuntime &AbstractRayRuntime::getInstance() {
 }
 
 void AbstractRayRuntime::put(std::shared_ptr<msgpack::sbuffer> data,
-                             const UniqueId &objectId, const UniqueId &taskId) {
+                             const ObjectID &objectId, const TaskID &taskId) {
   _objectStore->put(objectId, data);
 }
 
-UniqueId AbstractRayRuntime::put(std::shared_ptr<msgpack::sbuffer> data) {
-  const UniqueId &taskId = _worker->getCurrentTaskId();
-  std::unique_ptr<UniqueId> objectId = _worker->getCurrentTaskNextPutId();
-  put(data, *objectId, taskId);
-  return *objectId;
+ObjectID AbstractRayRuntime::put(std::shared_ptr<msgpack::sbuffer> data) {
+  const TaskID &taskId = _worker->GetCurrentTaskID();
+  ObjectID objectId = ObjectID::ForPut(_worker->GetCurrentTaskID(),
+                                _worker->GetNextPutIndex(),
+                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  put(data, objectId, taskId);
+  return objectId;
 }
 
-std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::get(const UniqueId &objectId) {
+std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::get(const ObjectID &objectId) {
   return _objectStore->get(objectId, -1);
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::get(
-    const std::vector<UniqueId> &objects) {
+    const std::vector<ObjectID> &objects) {
   return _objectStore->get(objects, -1);
 }
 
-WaitResultInternal AbstractRayRuntime::wait(const std::vector<UniqueId> &objects,
+WaitResultInternal AbstractRayRuntime::wait(const std::vector<ObjectID> &objects,
                                             int num_objects, int64_t timeout_ms) {
   return _objectStore->wait(objects, num_objects, timeout_ms);
 }
 
-std::unique_ptr<UniqueId> AbstractRayRuntime::call(
+ObjectID AbstractRayRuntime::call(
     remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
-  UniqueId uid;
-  uid.random();
-  invocationSpec.taskId = uid;  // TODO: make it deterministic
-  invocationSpec.actorId = nilUniqueId;
+  invocationSpec.taskId = TaskID::ForFakeTask();  // TODO: make it from different task
+  invocationSpec.actorId = ActorID::Nil();
   invocationSpec.args = args;
   invocationSpec.func_offset = (int32_t)(fptr.value[0] - dylib_base_addr);
   invocationSpec.exec_func_offset = (int32_t)(fptr.value[1] - dylib_base_addr);
   return _taskSubmitter->submitTask(invocationSpec);
 }
 
-std::unique_ptr<UniqueId> AbstractRayRuntime::create(
+ActorID AbstractRayRuntime::create(
     remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
   return _ins->create(fptr, args);
 }
 
-std::unique_ptr<UniqueId> AbstractRayRuntime::call(
-    const remote_function_ptr_holder &fptr, const UniqueId &actor,
+ObjectID AbstractRayRuntime::call(
+    const remote_function_ptr_holder &fptr, const ActorID &actor,
     std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
-  UniqueId uid;
-  uid.random();
-  invocationSpec.taskId = uid;  // TODO: make it deterministic
+  invocationSpec.taskId = TaskID::ForFakeTask();  // TODO: make it from different task
   invocationSpec.actorId = actor;
   invocationSpec.args = args;
   invocationSpec.func_offset = (int32_t)(fptr.value[0] - dylib_base_addr);
@@ -100,18 +98,16 @@ std::unique_ptr<UniqueId> AbstractRayRuntime::call(
   return _taskSubmitter->submitActorTask(invocationSpec);
 }
 
-char *AbstractRayRuntime::get_actor_ptr(const UniqueId &id) {
-  return _ins->get_actor_ptr(id);
+const TaskID &AbstractRayRuntime::getCurrentTaskId() {
+  return _worker->GetCurrentTaskID();
 }
 
-TaskSpec *AbstractRayRuntime::getCurrentTask() { return _worker->getCurrentTask(); }
-
-void AbstractRayRuntime::setCurrentTask(TaskSpec &task) { _worker->setCurrentTask(task); }
-
-int AbstractRayRuntime::getNextPutIndex() { return _worker->getNextPutIndex(); }
-
-const UniqueId &AbstractRayRuntime::getCurrentTaskId() {
-  return _worker->getCurrentTaskId();
+ActorID AbstractRayRuntime::getNextActorID() {
+  const int next_task_index = _worker->GetNextTaskIndex();
+  const ActorID actor_id =
+      ActorID::Of(_worker->GetCurrentJobID(), _worker->GetCurrentTaskID(),
+      next_task_index);
+  return actor_id;
 }
 
-}  // namespace ray
+}  }// namespace ray::api

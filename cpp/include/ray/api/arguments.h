@@ -3,7 +3,7 @@
 
 #include <msgpack.hpp>
 
-namespace ray {
+namespace ray { namespace api {
 
 class Arguments {
  public:
@@ -25,9 +25,9 @@ class Arguments {
   static void unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
                      OtherArgTypes &... args);
 };
-}  // namespace ray
+}  }// namespace ray::api
 
-namespace ray {
+namespace ray { namespace api {
 
 using namespace ::ray;
 
@@ -69,4 +69,4 @@ inline void Arguments::unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
   return;
 }
 
-}  // namespace ray
+}  }// namespace ray::api

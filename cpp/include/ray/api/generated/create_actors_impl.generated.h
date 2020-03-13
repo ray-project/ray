@@ -10,7 +10,7 @@ RayActor<R> Ray::createActor(CreateFunc0<R> createFunc) {
   ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
   ptr.value[1] = reinterpret_cast<uintptr_t>(create_actor_exec_function<R *>);
   auto id = _impl->create(ptr, buffer);
-  return RayActor<R>(std::move(*id));
+  return RayActor<R>(id);
 }
 
 // 1 args
@@ -23,7 +23,7 @@ RayActor<R> Ray::createActor(CreateFunc1<R, T1> createFunc, T1 arg1) {
   ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
   ptr.value[1] = reinterpret_cast<uintptr_t>(create_actor_exec_function<R *, T1>);
   auto id = _impl->create(ptr, buffer);
-  return RayActor<R>(std::move(*id));
+  return RayActor<R>(id);
 }
 
 template <typename R, typename T1>
@@ -35,7 +35,7 @@ RayActor<R> Ray::createActor(CreateFunc1<R, T1> createFunc, RayObject<T1> &arg1)
   ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
   ptr.value[1] = reinterpret_cast<uintptr_t>(create_actor_exec_function<R *, T1>);
   auto id = _impl->create(ptr, buffer);
-  return RayActor<R>(std::move(*id));
+  return RayActor<R>(id);
 }
 
 // 2 args
@@ -48,7 +48,7 @@ RayActor<R> Ray::createActor(CreateFunc2<R, T1, T2> createFunc, T1 arg1, T2 arg2
   ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
   ptr.value[1] = reinterpret_cast<uintptr_t>(create_actor_exec_function<R *, T1, T2>);
   auto id = _impl->create(ptr, buffer);
-  return RayActor<R>(std::move(*id));
+  return RayActor<R>(id);
 }
 
 template <typename R, typename T1, typename T2>
@@ -60,7 +60,7 @@ RayActor<R> Ray::createActor(CreateFunc2<R, T1, T2> createFunc, RayObject<T1> &a
   ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
   ptr.value[1] = reinterpret_cast<uintptr_t>(create_actor_exec_function<R *, T1, T2>);
   auto id = _impl->create(ptr, buffer);
-  return RayActor<R>(std::move(*id));
+  return RayActor<R>(id);
 }
 
 template <typename R, typename T1, typename T2>
@@ -72,7 +72,7 @@ RayActor<R> Ray::createActor(CreateFunc2<R, T1, T2> createFunc, T1 arg1, RayObje
   ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
   ptr.value[1] = reinterpret_cast<uintptr_t>(create_actor_exec_function<R *, T1, T2>);
   auto id = _impl->create(ptr, buffer);
-  return RayActor<R>(std::move(*id));
+  return RayActor<R>(id);
 }
 
 template <typename R, typename T1, typename T2>
@@ -85,5 +85,5 @@ RayActor<R> Ray::createActor(CreateFunc2<R, T1, T2> createFunc, RayObject<T1> &a
   ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
   ptr.value[1] = reinterpret_cast<uintptr_t>(create_actor_exec_function<R *, T1, T2>);
   auto id = _impl->create(ptr, buffer);
-  return RayActor<R>(std::move(*id));
+  return RayActor<R>(id);
 }

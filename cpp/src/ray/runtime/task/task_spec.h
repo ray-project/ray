@@ -1,28 +1,28 @@
 
 #pragma once
 
-#include <ray/api/task_type.h>
-#include <ray/api/uniqueId.h>
-#include <list>
+#include <ray/core.h>
 #include <msgpack.hpp>
 #include <vector>
+#include <ray/core.h>
 
-namespace ray {
+namespace ray { namespace api {
 
-class TaskSpec {
+class LocalTaskSpec {
  public:
   TaskType type;
-  UniqueId driverId;
-  UniqueId taskId;
-  UniqueId parentTaskId;
+  JobID driverId;
+  TaskID taskId;
+  TaskID parentTaskId;
   int parentCounter;
-  UniqueId actorId;
+  ActorID actorId;
   int actorCounter;
-  UniqueId functionId;
+  int32_t func_offset;
+  int32_t exec_func_offset;
   std::shared_ptr<msgpack::sbuffer> args;
-  std::list<std::unique_ptr<UniqueId> > returnIds;
+  ObjectID returnId;
 
-  TaskSpec();
+  LocalTaskSpec();
 
   int32_t get_func_offset() const;
   int32_t get_exec_func_offset() const;
@@ -30,4 +30,4 @@ class TaskSpec {
   void set_exec_func_offset(int32_t offset);
 };
 
-}  // namespace ray
+}  }// namespace ray::api

@@ -1,35 +1,31 @@
 #include "task_spec.h"
 
-namespace ray {
+namespace ray { namespace api {
 
-TaskSpec::TaskSpec() {
-  driverId = nilUniqueId;
-  taskId = nilUniqueId;
-  parentTaskId = nilUniqueId;
+LocalTaskSpec::LocalTaskSpec() {
+  driverId = JobID::Nil();
+  taskId = TaskID::Nil();
+  parentTaskId = TaskID::Nil();
   parentCounter = 0;
-  actorId = nilUniqueId;
+  actorId = ActorID::Nil();
   actorCounter = 0;
 }
 
-int32_t TaskSpec::get_func_offset() const {
-  int32_t func_offset;
-  memcpy(&func_offset, functionId.data(), sizeof(int32_t));
+int32_t LocalTaskSpec::get_func_offset() const {
   return func_offset;
 }
 
-int32_t TaskSpec::get_exec_func_offset() const {
-  int32_t exec_func_offset;
-  memcpy(&exec_func_offset, functionId.data() + sizeof(int32_t), sizeof(int32_t));
+int32_t LocalTaskSpec::get_exec_func_offset() const {
   return exec_func_offset;
 }
 
-void TaskSpec::set_func_offset(int32_t offset) {
-  memcpy((void *)functionId.data(), (void *)&offset, sizeof(int32_t));
+void LocalTaskSpec::set_func_offset(int32_t offset) {
+  func_offset = offset;
   return;
 }
 
-void TaskSpec::set_exec_func_offset(int32_t offset) {
-  memcpy((void *)(functionId.data() + sizeof(int32_t)), (void *)&offset, sizeof(int32_t));
+void LocalTaskSpec::set_exec_func_offset(int32_t offset) {
+  exec_func_offset = offset;
   return;
 }
-}  // namespace ray
+}  }// namespace ray::api

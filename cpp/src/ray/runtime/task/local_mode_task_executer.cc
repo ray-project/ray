@@ -3,11 +3,11 @@
 
 #include "local_mode_task_executer.h"
 
-namespace ray {
+namespace ray { namespace api {
 
-std::unique_ptr<UniqueId> LocalModeTaskExcuter::execute(
+std::unique_ptr<ObjectID> LocalModeTaskExcuter::execute(
     const InvocationSpec &invocation) {
-  std::unique_ptr<UniqueId> dummy(new UniqueId());
+  std::unique_ptr<ObjectID> dummy(new ObjectID());
   return dummy;
 };
-}  // namespace ray
+}  }// namespace ray::api

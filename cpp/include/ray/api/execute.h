@@ -1,9 +1,9 @@
 #pragma once
 #include <ray/api/arguments.h>
 #include <ray/api/ray_object.h>
-#include <ray/api/task_type.h>
+#include <ray/core.h>
 
-namespace ray {
+namespace ray { namespace api {
 
 // class Arguments;
 
@@ -298,4 +298,4 @@ std::shared_ptr<msgpack::sbuffer> actor_exec_function(
   Arguments::wrap(packer, rt);
   return buffer;
 }
-}  // namespace ray
+}  }// namespace ray::api

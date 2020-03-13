@@ -1,15 +1,14 @@
 
 #include <algorithm>
 #include <chrono>
-#include <iostream>
 #include <list>
 #include <thread>
 
 #include "local_mode_object_store.h"
 
-namespace ray {
+namespace ray { namespace api {
 
-void LocalModeObjectStore::putRaw(const UniqueId &objectId,
+void LocalModeObjectStore::putRaw(const ObjectID &objectId,
                                   std::shared_ptr<msgpack::sbuffer> data) {
   _dataMutex.lock();
   if (_data.find(objectId) != _data.end()) {
@@ -19,11 +18,11 @@ void LocalModeObjectStore::putRaw(const UniqueId &objectId,
   _dataMutex.unlock();
 }
 
-void LocalModeObjectStore::del(const UniqueId &objectId) {}
+void LocalModeObjectStore::del(const ObjectID &objectId) {}
 
-std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::getRaw(const UniqueId &objectId,
+std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::getRaw(const ObjectID &objectId,
                                                                int timeoutMs) {
-  const std::vector<UniqueId> objects = {objectId};
+  const std::vector<ObjectID> objects = {objectId};
   waitInternal(objects, 1, -1);
 
   std::shared_ptr<msgpack::sbuffer> ret;
@@ -40,7 +39,7 @@ std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::getRaw(const UniqueId &o
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::getRaw(
-    const std::vector<UniqueId> &objects, int timeoutMs) {
+    const std::vector<ObjectID> &objects, int timeoutMs) {
   WaitResultInternal waitResult = waitInternal(objects, objects.size(), timeoutMs);
   if (waitResult.remains.size() != 0) {
     throw "Objects are not all ready";
@@ -49,7 +48,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::getRaw(
   std::vector<std::shared_ptr<msgpack::sbuffer>> result;
   _dataMutex.lock();
 
-  for (auto it = waitResult.readys.begin(); it != waitResult.readys.end(); it++) {
+  for (auto it = objects.begin(); it != objects.end(); it++) {
     if (_data.find(*it) != _data.end()) {
       result.push_back(_data.at(*it));
     } else {
@@ -62,10 +61,10 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::getRaw(
 }
 
 WaitResultInternal LocalModeObjectStore::waitInternal(
-    const std::vector<UniqueId> &objects, int num_objects, int64_t timeout_ms) {
+    const std::vector<ObjectID> &objects, int num_objects, int64_t timeout_ms) {
   static const int GET_CHECK_INTERVAL_MS = 100;
-  std::list<UniqueId> readys;
-  std::list<UniqueId> remains(objects.begin(), objects.end());
+  std::list<ObjectID> readys;
+  std::list<ObjectID> remains(objects.begin(), objects.end());
   int ready = 0;
   int remainingTime = timeout_ms;
   bool firstCheck = true;
@@ -81,7 +80,7 @@ WaitResultInternal LocalModeObjectStore::waitInternal(
       if (_data.find(*it) != _data.end()) {
         ready += 1;
         readys.push_back(*it);
-        remains.erase(it);
+        it = remains.erase(it);
       } else {
       }
       _dataMutex.unlock();
@@ -89,14 +88,14 @@ WaitResultInternal LocalModeObjectStore::waitInternal(
     firstCheck = false;
   }
 
-  std::vector<UniqueId> readysVector{std::begin(readys), std::end(readys)};
-  std::vector<UniqueId> readysRemains{std::begin(remains), std::end(remains)};
+  std::vector<ObjectID> readysVector{std::begin(readys), std::end(readys)};
+  std::vector<ObjectID> readysRemains{std::begin(remains), std::end(remains)};
   WaitResultInternal result(std::move(readysVector), std::move(readysVector));
   return result;
 }
 
-WaitResultInternal LocalModeObjectStore::wait(const std::vector<UniqueId> &objects,
+WaitResultInternal LocalModeObjectStore::wait(const std::vector<ObjectID> &objects,
                                               int num_objects, int64_t timeout_ms) {
   return waitInternal(objects, num_objects, timeout_ms);
 }
-}  // namespace ray
+}  }// namespace ray::api

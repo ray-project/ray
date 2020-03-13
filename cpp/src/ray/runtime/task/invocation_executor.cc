@@ -2,11 +2,11 @@
 #include "../../agent.h"
 #include "../abstract_ray_runtime.h"
 
-namespace ray {
+namespace ray { namespace api {
 
-void InvocationExecutor::execute(const TaskSpec &taskSpec,
+void InvocationExecutor::execute(const LocalTaskSpec &taskSpec,
                                  std::shared_ptr<msgpack::sbuffer> actor) {
-  if (actor != NULL) {
+  if (actor) {
     typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
         uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
         std::shared_ptr<msgpack::sbuffer> object);
@@ -15,7 +15,7 @@ void InvocationExecutor::execute(const TaskSpec &taskSpec,
     auto data = (*exec_function)(dylib_base_addr, taskSpec.get_func_offset(),
                                  taskSpec.args, actor);
     AbstractRayRuntime &rayRuntime = AbstractRayRuntime::getInstance();
-    rayRuntime.put(std::move(data), *taskSpec.returnIds.front(), taskSpec.taskId);
+    rayRuntime.put(std::move(data), taskSpec.returnId, taskSpec.taskId);
   } else {
     typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
         uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
@@ -24,7 +24,7 @@ void InvocationExecutor::execute(const TaskSpec &taskSpec,
     auto data =
         (*exec_function)(dylib_base_addr, taskSpec.get_func_offset(), taskSpec.args);
     AbstractRayRuntime &rayRuntime = AbstractRayRuntime::getInstance();
-    rayRuntime.put(std::move(data), *taskSpec.returnIds.front(), taskSpec.taskId);
+    rayRuntime.put(std::move(data), taskSpec.returnId, taskSpec.taskId);
   }
 }
-}  // namespace ray
+}  }// namespace ray::api

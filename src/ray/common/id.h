@@ -23,6 +23,7 @@
 #include <mutex>
 #include <random>
 #include <string>
+#include <msgpack.hpp>
 
 #include "plasma/common.h"
 #include "ray/common/constants.h"
@@ -106,6 +107,8 @@ class UniqueID : public BaseID<UniqueID> {
 
   UniqueID() : BaseID() {}
 
+  MSGPACK_DEFINE(id_);
+
  protected:
   UniqueID(const std::string &binary);
 
@@ -125,6 +128,8 @@ class JobID : public BaseID<JobID> {
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -170,6 +175,8 @@ class ActorID : public BaseID<ActorID> {
   ///
   /// \return The job id to which this actor belongs.
   JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -237,6 +244,8 @@ class TaskID : public BaseID<TaskID> {
   ///
   /// \return The `JobID` of the job which creates this task.
   JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -363,6 +372,7 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return A random object id.
   static ObjectID FromRandom();
 
+
   /// Compute the object ID that is used to track an actor's lifetime. This
   /// object does not actually have a value; it is just used for counting
   /// references (handles) to the actor.
@@ -370,6 +380,8 @@ class ObjectID : public BaseID<ObjectID> {
   /// \param actor_id The ID of the actor to track.
   /// \return The computed object ID.
   static ObjectID ForActorHandle(const ActorID &actor_id);
+
+  MSGPACK_DEFINE(id_);
 
  private:
   /// A helper method to generate an ObjectID.

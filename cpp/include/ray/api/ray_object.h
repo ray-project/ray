@@ -4,25 +4,26 @@
 #include <memory>
 #include <utility>
 
-#include <ray/api/uniqueId.h>
 #include <msgpack.hpp>
 
-namespace ray {
+#include <ray/core.h>
+
+namespace ray { namespace api {
 
 template <typename T>
 class RayObject {
  public:
   RayObject();
 
-  RayObject(const UniqueId &id);
+  RayObject(const ObjectID &id);
 
-  RayObject(const UniqueId &&id);
+  RayObject(const ObjectID &&id);
 
-  void assign(const UniqueId &id);
+  void assign(const ObjectID &id);
 
-  void assign(UniqueId &&id);
+  void assign(ObjectID &&id);
 
-  const UniqueId &id() const;
+  const ObjectID &id() const;
 
   std::shared_ptr<T> get() const;
 
@@ -31,44 +32,44 @@ class RayObject {
   MSGPACK_DEFINE(_id);
 
  private:
-  UniqueId _id;
+  ObjectID _id;
 
   template <typename TO>
   std::shared_ptr<TO> doGet() const;
 };
 
-}  // namespace ray
+}  }// namespace ray::api
 
 // ---------- implementation ----------
 #include <ray/api.h>
 
-namespace ray {
+namespace ray { namespace api {
 
 template <typename T>
 RayObject<T>::RayObject() {}
 
 template <typename T>
-RayObject<T>::RayObject(const UniqueId &id) {
+RayObject<T>::RayObject(const ObjectID &id) {
   _id = id;
 }
 
 template <typename T>
-RayObject<T>::RayObject(const UniqueId &&id) {
+RayObject<T>::RayObject(const ObjectID &&id) {
   _id = std::move(id);
 }
 
 template <typename T>
-void RayObject<T>::assign(const UniqueId &id) {
+void RayObject<T>::assign(const ObjectID &id) {
   _id = id;
 }
 
 template <typename T>
-void RayObject<T>::assign(UniqueId &&id) {
+void RayObject<T>::assign(ObjectID &&id) {
   _id = std::move(id);
 }
 
 template <typename T>
-const UniqueId &RayObject<T>::id() const {
+const ObjectID &RayObject<T>::id() const {
   return _id;
 }
 
@@ -92,4 +93,4 @@ inline bool RayObject<T>::operator==(const RayObject<T> &object) const {
   }
 }
 
-}  // namespace ray
+}  }// namespace ray::api

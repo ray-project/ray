@@ -2,21 +2,26 @@
 
 #include <memory>
 
+#include <ray/core.h>
 #include "invocation_spec.h"
 
-namespace ray {
+namespace ray { namespace api {
 
 class ActorContext {
  public:
-  std::shared_ptr<msgpack::sbuffer> currentActor = NULL;
+  std::shared_ptr<msgpack::sbuffer> currentActor = nullptr;
 
-  ActorContext() {}
+  std::shared_ptr<std::mutex> actorMutex;
+
+  ActorContext() {
+    actorMutex = std::shared_ptr<std::mutex>(new std::mutex);
+  }
 };
 
 class TaskExcuter {
  public:
   /// TODO: support multiple tasks execution
-  std::unique_ptr<UniqueId> execute(const InvocationSpec &invocation);
+  std::unique_ptr<ObjectID> execute(const InvocationSpec &invocation);
 
   virtual void maybeSaveCheckpoint() = 0;
 
@@ -24,4 +29,4 @@ class TaskExcuter {
 
   virtual ~TaskExcuter(){};
 };
-}  // namespace ray
+}  }// namespace ray::api

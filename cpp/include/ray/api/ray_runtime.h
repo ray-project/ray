@@ -7,10 +7,10 @@
 #include <typeinfo>
 #include <vector>
 
-#include <ray/api/uniqueId.h>
 #include <ray/api/wait_result.h>
+#include <ray/core.h>
 
-namespace ray {
+namespace ray { namespace api {
 
 struct member_function_ptr_holder {
   uintptr_t value[2];
@@ -22,21 +22,21 @@ struct remote_function_ptr_holder {
 
 class RayRuntime {
  public:
-  virtual UniqueId put(std::shared_ptr<msgpack::sbuffer> data) = 0;
-  virtual std::shared_ptr<msgpack::sbuffer> get(const UniqueId &id) = 0;
+  virtual ObjectID put(std::shared_ptr<msgpack::sbuffer> data) = 0;
+  virtual std::shared_ptr<msgpack::sbuffer> get(const ObjectID &id) = 0;
 
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> get(
-      const std::vector<UniqueId> &objects) = 0;
+      const std::vector<ObjectID> &objects) = 0;
 
-  virtual WaitResultInternal wait(const std::vector<UniqueId> &objects, int num_objects,
+  virtual WaitResultInternal wait(const std::vector<ObjectID> &objects, int num_objects,
                                   int64_t timeout_ms) = 0;
 
-  virtual std::unique_ptr<UniqueId> call(remote_function_ptr_holder &fptr,
+  virtual ObjectID call(remote_function_ptr_holder &fptr,
                                          std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual std::unique_ptr<UniqueId> create(remote_function_ptr_holder &fptr,
+  virtual ActorID create(remote_function_ptr_holder &fptr,
                                            std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual std::unique_ptr<UniqueId> call(const remote_function_ptr_holder &fptr,
-                                         const UniqueId &actor,
+  virtual ObjectID call(const remote_function_ptr_holder &fptr,
+                                         const ActorID &actor,
                                          std::shared_ptr<msgpack::sbuffer> args) = 0;
 };
-}  // namespace ray
+}  }// namespace ray::api

@@ -1,8 +1,11 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("//bazel:ray.bzl", "COPTS")
+
 cc_library(
     name = "libray_api_hdr",
+    copts = COPTS,
     hdrs = glob([
         "include/ray/*.h",
         "include/ray/**/*.h",
@@ -12,11 +15,14 @@ cc_library(
     deps = [
         "@plasma//:plasma_client",
         "@msgpack//:msgpack",
+        "//:ray_common",
+        "//:core_worker_lib",
     ],
 )
 
 cc_binary(
-    name = "libray_api.dylib",
+    name = "libray_api.so",
+    copts = COPTS,
     srcs = glob([
         "src/ray/api.cc",
         "src/ray/api/*.cc",
@@ -39,6 +45,8 @@ cc_binary(
         "@boost//:asio",
         "@boost//:thread",
         "@msgpack//:msgpack",
+        "//:ray_common",
+        "//:core_worker_lib",
     ],
     linkshared = 1,
     linkstatic = 1,
@@ -46,11 +54,12 @@ cc_binary(
 
 cc_import(
     name = "ray_api",
-    shared_library = "libray_api.dylib",
+    shared_library = "libray_api.so",
 )
 
 cc_binary(
     name = "example",
+    copts = COPTS,
     testonly = 1,
     srcs = [
         "src/example/example.cc",
@@ -64,6 +73,7 @@ cc_binary(
 
 cc_binary(
     name = "api_test",
+    copts = COPTS,
     testonly = 1,
     srcs = [
         "src/ray/test/api_test.cc"
@@ -77,6 +87,7 @@ cc_binary(
 
 cc_binary(
     name = "wrap_test",
+    copts = COPTS,
     testonly = 1,
     srcs = [
         "src/ray/test/wrap_test.cc"
@@ -90,6 +101,7 @@ cc_binary(
 
 cc_binary(
     name = "slow_function_test",
+    copts = COPTS,
     testonly = 1,
     srcs = [
         "src/ray/test/slow_function_test.cc"

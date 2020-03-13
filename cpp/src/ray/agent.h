@@ -2,10 +2,10 @@
 #include <dlfcn.h>
 #include <stdint.h>
 
-namespace ray {
+namespace ray { namespace api {
 
 /* tmp impl, mast define in cc source file of dylib */
 extern uintptr_t dylib_base_addr;
 
 extern "C" void Ray_agent_init();
-}  // namespace ray
+}  }// namespace ray::api

@@ -1,19 +1,19 @@
 
 #pragma once
 
-#include <ray/api/uniqueId.h>
 #include <msgpack.hpp>
+#include <ray/core.h>
 
-namespace ray {
+namespace ray { namespace api {
 
 class InvocationSpec {
  public:
-  UniqueId taskId;
-  UniqueId actorId;
+  TaskID taskId;
+  ActorID actorId;
   int actorCounter;
   int32_t func_offset;
   int32_t exec_func_offset;
   std::shared_ptr<msgpack::sbuffer> args;
   int returnCount;
 };
-}  // namespace ray
+}  }// namespace ray::api
