@@ -40,7 +40,7 @@ class CoreWorkerPlasmaStoreProvider
                                 const std::shared_ptr<raylet::RayletClient> raylet_client,
                                 std::function<Status()> check_signals,
                                 std::function<void()> on_store_full = nullptr,
-                                std::function<std::string()> current_call_site = nullptr);
+                                std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -144,13 +144,15 @@ class CoreWorkerPlasmaStoreProvider
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
   std::function<void()> on_store_full_;
-  std::function<std::string()> current_call_site_;
+  std::function<std::string()> get_current_call_site_;
 
   // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
   // destruction.
   absl::Mutex active_buffers_mutex_;
   // Mapping of live object buffers to their creation call site. Destroyed buffers are
-  // automatically removed from this list via destructor callback.
+  // automatically removed from this list via destructor callback. The map key uniquely
+  // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
+  // alive forever (i.e., this is a weak ref map).
   absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
       GUARDED_BY(active_buffers_mutex_);
 };

@@ -114,7 +114,7 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The ID of the object.
   /// \param[in] size The known size of the object.
-  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size);
+  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size) LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
   ///
@@ -238,13 +238,13 @@ class ReferenceCounter {
   ///
   /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(
-      absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+      const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
-    Reference() : call_site("<unknown>"), object_size(-1) {}
+    Reference() {}
     Reference(std::string call_site, const int64_t object_size)
         : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
@@ -286,7 +286,7 @@ class ReferenceCounter {
     }
 
     /// Description of the call site where the reference was created.
-    std::string call_site = "";
+    std::string call_site = "<unknown>";
     /// Object size if known, otherwise -1;
     int64_t object_size = -1;
 

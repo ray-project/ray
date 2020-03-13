@@ -87,7 +87,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::AddObjectRefStats(
-    absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+    const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
     rpc::CoreWorkerStats *stats) const {
   absl::MutexLock lock(&mutex_);
   for (const auto &ref : object_id_refs_) {
@@ -97,14 +97,15 @@ void ReferenceCounter::AddObjectRefStats(
     ref_proto->set_object_size(ref.second.object_size);
     ref_proto->set_local_ref_count(ref.second.local_ref_count);
     ref_proto->set_submitted_task_ref_count(ref.second.submitted_task_ref_count);
-    if (pinned_objects.find(ref.first) != pinned_objects.end()) {
+    auto it = pinned_objects.find(ref.first);
+    if (it != pinned_objects.end()) {
       ref_proto->set_pinned_in_memory(true);
       // If some info isn't available, fallback to getting it from the pinned info.
       if (ref.second.object_size <= 0) {
-        ref_proto->set_object_size(pinned_objects[ref.first].first);
+        ref_proto->set_object_size(it->second.first);
       }
       if (ref.second.call_site.empty()) {
-        ref_proto->set_call_site(pinned_objects[ref.first].second);
+        ref_proto->set_call_site(it->second.second);
       }
     }
     for (const auto &obj_id : ref.second.contained_in_owned) {
@@ -146,6 +147,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
+  absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     it->second.object_size = object_size;

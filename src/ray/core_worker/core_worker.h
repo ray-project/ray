@@ -125,12 +125,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
-    reference_counter_->AddLocalReference(object_id, call_site);
-  }
-
   void AddLocalReference(const ObjectID &object_id) {
-    reference_counter_->AddLocalReference(object_id, CurrentCallSite());
+    AddLocalReference(object_id, CurrentCallSite());
   }
 
   /// Decrease the reference count for this object ID. Should be called
@@ -583,6 +579,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Private methods related to task submission.
   ///
+
+  /// Increase the reference count for this object ID.
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
+  ///
+  /// \param[in] object_id The object ID to increase the reference count for.
+  /// \param[in] call_site The call site from the language frontend.
+  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
+    reference_counter_->AddLocalReference(object_id, call_site);
+  }
 
   /// Give this worker a handle to an actor.
   ///

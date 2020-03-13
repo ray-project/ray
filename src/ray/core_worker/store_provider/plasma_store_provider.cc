@@ -25,14 +25,14 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals, std::function<void()> on_store_full,
-    std::function<std::string()> current_call_site)
+    std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
   on_store_full_ = on_store_full;
-  if (current_call_site != nullptr) {
-    current_call_site_ = current_call_site;
+  if (get_current_call_site != nullptr) {
+    get_current_call_site_ = get_current_call_site;
   } else {
-    current_call_site_ = []() { return "Error: no callsite callback"; };
+    get_current_call_site_ = []() { return "Error: no callsite callback"; };
   }
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
@@ -186,7 +186,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
             });
         {
           absl::MutexLock lock(&active_buffers_mutex_);
-          active_buffers_[std::make_pair(object_id, data.get())] = current_call_site_();
+          active_buffers_[std::make_pair(object_id, data.get())] = get_current_call_site_();
         }
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {

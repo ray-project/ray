@@ -558,6 +558,12 @@ cdef void gc_collect() nogil:
 # This function introduces ~2-7us of overhead per call (i.e., it can be called
 # up to hundreds of thousands of times per second).
 cdef void get_py_stack(c_string* stack_out) nogil:
+    """Get the Python call site.
+
+    This can be called from within C++ code to retrieve the file name and line
+    number of the Python code that is calling into the core worker.
+    """
+
     with gil:
         frame = inspect.currentframe()
         msg = ""
