@@ -51,7 +51,9 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
 
   {
     absl::MutexLock lock(&mu_);
-    RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries)).second);
+    RAY_CHECK(
+        pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries, num_returns))
+            .second);
   }
 }
 
