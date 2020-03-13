@@ -57,7 +57,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         # TODO(simon): change to ray.io address
-        default="127.0.0.1:8080",
+        default="127.0.0.1:9081",
         help="Specify the address where user dashboard will be hosted.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)

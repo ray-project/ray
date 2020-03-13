@@ -172,10 +172,10 @@ class DashboardController(BaseDashboardController):
                 data["extraInfo"] += "\n" + "\n".join(to_print)
         return {"nodes": D, "actors": actor_tree}
 
-    def get_node_info(self):
+    def get_node_info(self, **kwargs):
         return self.node_stats.get_node_stats()
 
-    def get_raylet_info(self):
+    def get_raylet_info(self, **kwargs):
         return self._construct_raylet_info()
 
     def launch_profiling(self, node_id, pid, duration):
@@ -189,13 +189,13 @@ class DashboardController(BaseDashboardController):
     def get_profiling_info(self, profiling_id):
         return self.raylet_stats.get_profiling_info(profiling_id)
 
-    def kill_actor(self, actor_id, ip_address, port):
+    def kill_actor(self, actor_id, ip_address, port, **kwargs):
         return self.raylet_stats.kill_actor(actor_id, ip_address, port)
 
-    def get_logs(self, hostname, pid):
+    def get_logs(self, hostname, pid, **kwargs):
         return self.node_stats.get_logs(hostname, pid)
 
-    def get_errors(self, hostname, pid):
+    def get_errors(self, hostname, pid, **kwargs):
         self.node_stats.get_errors(hostname, pid)
 
     def start_collecting_metrics(self):
