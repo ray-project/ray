@@ -49,8 +49,10 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
                                        /*inner_ids=*/{}, caller_id, caller_address);
   }
 
-  absl::MutexLock lock(&mu_);
-  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries)).second);
+  {
+    absl::MutexLock lock(&mu_);
+    RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries)).second);
+  }
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -118,7 +120,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
 
-    // Release the lineage for any non-plasma return IDs.
+    // Release the lineage for any non-plasma return objects.
     for (const auto &direct_return_id : direct_return_ids) {
       RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
                      << direct_return_id << ", now has "
@@ -131,15 +133,20 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.pending = false;
 
-    if (!lineage_pinning_enabled_ || it->second.num_retries_left == 0 ||
-        it->second.plasma_returns_in_scope.empty()) {
+    // A finished task can be only be re-executed if it has some number of
+    // retries left and returned at least one object that is still in use and
+    // stored in plasma.
+    bool task_retryable =
+        it->second.num_retries_left > 0 && !it->second.plasma_returns_in_scope.empty();
+    if (!lineage_pinning_enabled_ || !task_retryable) {
+      // A task spec can be erased if lineage pinning is disabled or if it
+      // cannot be tried again.
       pending_tasks_.erase(it);
     } else {
       release_lineage = false;
     }
   }
 
-  // TODO: Move this inside the lock? I don't think this is correct otherwise.
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
 
   ShutdownIfNeeded();
@@ -271,7 +278,8 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
                  << " plasma returns in scope";
 
   if (it->second.plasma_returns_in_scope.empty() && !it->second.pending) {
-    // Decrement the lineage ref count for each of the task's args.
+    // If the task can no longer be retried, decrement the lineage ref count
+    // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
       if (it->second.spec.ArgByRef(i)) {
         for (size_t j = 0; j < it->second.spec.ArgIdCount(i); j++) {

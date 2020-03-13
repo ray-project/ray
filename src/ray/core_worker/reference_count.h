@@ -71,6 +71,8 @@ class ReferenceCounter {
   /// when the task finishes for plasma dependencies.
   ///
   /// \param[in] object_ids The object IDs to remove references for.
+  /// \param[in] release_lineage Whether to decrement the arguments' lineage
+  /// ref count.
   /// \param[in] worker_addr The address of the worker that executed the task.
   /// \param[in] borrowed_refs The references that the worker borrowed during
   /// the task. This table includes all task arguments that were passed by
@@ -164,6 +166,13 @@ class ReferenceCounter {
                              const ReferenceRemovedCallback &ref_removed_callback)
       LOCKS_EXCLUDED(mutex_);
 
+  /// Set a callback to call whenever a Reference that we own is deleted. A
+  /// Reference can only be deleted if:
+  /// 1. The ObjectID's ref count is 0 on all workers.
+  /// 2. There are no tasks that depend on the object that may be retried in
+  /// the future.
+  ///
+  /// \param[in] callback The callback to call.
   void SetReleaseLineageCallback(const LineageReleasedCallback &callback);
 
   /// Respond to the object's owner once we are no longer borrowing it.  The
@@ -273,6 +282,11 @@ class ReferenceCounter {
                was_stored_in_objects);
     }
 
+    /// Whether the Reference can be deleted. A Reference can only be deleted
+    /// if:
+    /// 1. The ObjectID's ref count is 0 on all workers.
+    /// 2. There are no tasks that depend on the object that may be retried in
+    /// the future.
     bool CanDelete() const {
       bool lineage_needed = lineage_ref_count > 0;
       return OutOfScope() && !lineage_needed;
@@ -454,6 +468,7 @@ class ReferenceCounter {
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Helper method to decrement the lineage ref count for a list of objects.
   void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
