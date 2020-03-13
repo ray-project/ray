@@ -83,24 +83,26 @@ class Worker {
     allocated_instances_ = nothing; // Clear allocated instances.
   };    
 
- // Setter, geter, and clear methods  for lifetime_allocated_instances_.
-   void SetLifetimeAllocatedInstances(TaskResourceInstances &allocated_instances) { 
-      lifetime_allocated_instances_ = allocated_instances;
+  void SetLifetimeAllocatedInstances(TaskResourceInstances &allocated_instances) { 
+    lifetime_allocated_instances_ = allocated_instances;
   };                                                   
+  
   TaskResourceInstances &GetLifetimeAllocatedInstances() {return lifetime_allocated_instances_; };    
+  
   void ClearLifetimeAllocatedInstances() {
     TaskResourceInstances nothing;  
     lifetime_allocated_instances_ = nothing; // Clear allocated instances.
   };    
 
- // Setter, geter, and clear methods  for borrowed_cpu_instances_.
   void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) { 
     borrowed_cpu_instances_ = cpu_instances; 
   };
+  
   std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }; 
   void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };   
 
   Task &GetAssignedTask() { return assigned_task_; };
+  
   void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
 
   rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
