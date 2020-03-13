@@ -1,4 +1,5 @@
 import numpy as np
+import timeit
 import unittest
 
 from ray.rllib.optimizers.segment_tree import SumSegmentTree, MinSegmentTree
@@ -17,6 +18,7 @@ class TestSegmentTree(unittest.TestCase):
         assert np.isclose(tree.sum(2, 3), 1.0)
         assert np.isclose(tree.sum(2, -1), 1.0)
         assert np.isclose(tree.sum(2, 4), 4.0)
+        assert np.isclose(tree.sum(2), 4.0)
 
     def test_tree_set_overlap(self):
         tree = SumSegmentTree(4)
@@ -28,6 +30,7 @@ class TestSegmentTree(unittest.TestCase):
         assert np.isclose(tree.sum(2, 3), 3.0)
         assert np.isclose(tree.sum(2, -1), 3.0)
         assert np.isclose(tree.sum(2, 4), 3.0)
+        assert np.isclose(tree.sum(2), 3.0)
         assert np.isclose(tree.sum(1, 2), 0.0)
 
     def test_prefixsum_idx(self):
@@ -91,6 +94,37 @@ class TestSegmentTree(unittest.TestCase):
         assert np.isclose(tree.min(2, 3), 4.0)
         assert np.isclose(tree.min(2, -1), 4.0)
         assert np.isclose(tree.min(3, 4), 3.0)
+
+    def test_microbenchmark_vs_old_version(self):
+        """
+        Results from March 2020 (capacity=1048576):
+
+        New tree:
+        0.049599366000000256s
+        results = timeit.timeit("tree.sum(5, 60000)",
+            setup="from ray.rllib.optimizers.segment_tree import
+            SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
+            number=10000)
+
+        Old tree:
+        0.13390400999999974s
+        results = timeit.timeit("tree.sum(5, 60000)",
+            setup="from ray.rllib.optimizers.tests.old_segment_tree import
+            OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
+            number=10000)
+        """
+        capacity = 2**20
+        new = timeit.timeit(
+            "tree.sum(5, 60000)",
+            setup="from ray.rllib.optimizers.segment_tree import "
+            "SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
+            number=10000)
+        old = timeit.timeit(
+            "tree.sum(5, 60000)",
+            setup="from ray.rllib.optimizers.tests.old_segment_tree import "
+            "OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
+            number=10000)
+        self.assertGreater(old, new)
 
 
 if __name__ == "__main__":

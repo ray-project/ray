@@ -61,9 +61,8 @@ public class ActorReconstructionTest extends BaseTest {
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
 
-    // Try calling increase on this actor again and check the value is now 4.
     int value = actor.call(Counter::increase).get();
-    Assert.assertEquals(value, options.useDirectCall ? 1 : 4);
+    Assert.assertEquals(value, 1);
 
     Assert.assertTrue(actor.call(Counter::wasCurrentActorReconstructed).get());
 

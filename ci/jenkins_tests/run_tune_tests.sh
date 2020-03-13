@@ -83,8 +83,6 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/util/sgd/tf/examples/cifar_tf_example.py --num-replicas 2 --smoke-test --augment-data
 
 
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
-    pytest /ray/python/ray/tune/tests/test_cluster.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     pytest /ray/python/ray/tune/tests/test_actor_reuse.py
@@ -195,3 +193,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 # $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
 #     python /ray/python/ray/tune/examples/bohb_example.py \
 #     --smoke-test
+
+# Moved to bottom because flaky
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
+    pytest /ray/python/ray/tune/tests/test_cluster.py
