@@ -24,7 +24,7 @@ class RedisClientOptions {
         password_(password),
         is_test_client_(is_test_client) {}
 
-    // Redis server address
+  // Redis server address
   std::string server_ip_;
   int server_port_;
 
@@ -36,7 +36,7 @@ class RedisClientOptions {
 };
 
 /// \class RedisClient
-/// Implementation of 
+/// Implementation of
 class RedisClient {
  public:
   RedisClient(const RedisClientOptions &options);
@@ -54,7 +54,9 @@ class RedisClient {
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
 
-  std::vector<std::shared_ptr<RedisContext>> GetShardContexts() { return shard_contexts_; }
+  std::vector<std::shared_ptr<RedisContext>> GetShardContexts() {
+    return shard_contexts_;
+  }
 
   std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
 

@@ -28,7 +28,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   }
 
   std::shared_ptr<RedisContext> primary_context = redis_client_->GetPrimaryContext();
-  std::vector<std::shared_ptr<RedisContext>> shard_contexts = redis_client_->GetShardContexts();
+  std::vector<std::shared_ptr<RedisContext>> shard_contexts =
+      redis_client_->GetShardContexts();
 
   actor_table_.reset(new ActorTable({primary_context}, this));
 
@@ -72,7 +73,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 void RedisGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
-  redis_client_->Disconnect();  
+  redis_client_->Disconnect();
   RAY_LOG(INFO) << "RedisGcsClient Disconnected.";
 }
 

@@ -54,6 +54,10 @@ class RedisStoreClient : public StoreClient {
                             const StatusCallback &callback) override;
 
  private:
+  Status DoPut(const std::string &table_name, const std::string &key,
+               const std::string &value, const std::string &shard_key,
+               const StatusCallback &callback);
+
   std::shared_ptr<RedisContext> GetRedisContext(const std::string &key);
 
   std::unique_ptr<RedisClient> redis_client_;

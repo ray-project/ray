@@ -71,8 +71,7 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
   freeReplyObject(reply);
 }
 
-RedisClient::RedisClient(const RedisClientOptions &options)
-    : options_(options) {}
+RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {}
 
 Status RedisClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
