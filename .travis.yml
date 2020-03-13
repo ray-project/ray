@@ -16,7 +16,6 @@ matrix:
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
-        - RAY_GCS_SERVICE_ENABLED=true
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
@@ -34,7 +33,6 @@ matrix:
         - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
-        - RAY_GCS_SERVICE_ENABLED=true
       install:
         - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -55,6 +53,7 @@ matrix:
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_SERVICE_ENABLED=false
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - ./ci/travis/install-bazel.sh
@@ -74,6 +73,7 @@ matrix:
         - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_SERVICE_ENABLED=false
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - ./ci/travis/install-bazel.sh
@@ -87,7 +87,7 @@ matrix:
         - ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...
 
     - os: linux
-      env: LINT=1 PYTHONWARNINGS=ignore RAY_GCS_SERVICE_ENABLED=true
+      env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
       install: []
@@ -129,7 +129,7 @@ matrix:
 
     # Build Linux wheels.
     - os: linux
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1 RAY_GCS_SERVICE_ENABLED=true
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
@@ -155,7 +155,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1 RAY_GCS_SERVICE_ENABLED=true
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
@@ -310,7 +310,6 @@ install:
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - export RAY_GCS_SERVICE_ENABLED=true
 
   # raylet integration tests
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh

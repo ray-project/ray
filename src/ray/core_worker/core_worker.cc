@@ -117,7 +117,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
-  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+  if (getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
+      strcmp(getenv("RAY_GCS_SERVICE_ENABLED"), "true") == 0) {
     gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
   } else {
     gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(gcs_options);
