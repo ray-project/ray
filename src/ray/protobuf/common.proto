@@ -238,6 +238,8 @@ message ObjectRefInfo {
   int64 submitted_task_ref_count = 5;
   // Object ids that contain this object.
   repeated bytes contained_in_owned = 6;
+  // True if this object is pinned in memory by the current process.
+  bool pinned_in_memory = 7;
 }
 
 // Debug info returned from the core worker.

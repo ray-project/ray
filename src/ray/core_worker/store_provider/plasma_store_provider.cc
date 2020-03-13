@@ -164,7 +164,19 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       std::shared_ptr<PlasmaBuffer> data = nullptr;
       std::shared_ptr<PlasmaBuffer> metadata = nullptr;
       if (plasma_results[i].data && plasma_results[i].data->size()) {
-        data = std::make_shared<PlasmaBuffer>(plasma_results[i].data);
+        // We track the set of active data buffers in active_buffers_. On destruction,
+        // the buffer entry will be removed from the set via callback.
+        data = std::make_shared<PlasmaBuffer>(
+            plasma_results[i].data, [this, object_id](PlasmaBuffer *this_buffer) {
+              absl::MutexLock lock(&active_buffers_mutex_);
+              auto key = std::make_pair(object_id, this_buffer);
+              RAY_CHECK(active_buffers_.contains(key));
+              active_buffers_.erase(key);
+            });
+        {
+          absl::MutexLock lock(&active_buffers_mutex_);
+          active_buffers_.insert(std::make_pair(object_id, data.get()));
+        }
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
         metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
@@ -343,6 +355,15 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
   return store_client_.DebugString();
+}
+
+absl::flat_hash_map<ObjectID, int64_t> CoreWorkerPlasmaStoreProvider::UsedObjectsList() {
+  absl::flat_hash_map<ObjectID, int64_t> used;
+  absl::MutexLock lock(&active_buffers_mutex_);
+  for (const auto &entry : active_buffers_) {
+    used[entry.first] = entry.second->Size();
+  }
+  return used;
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(

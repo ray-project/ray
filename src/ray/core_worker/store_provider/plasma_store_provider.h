@@ -95,6 +95,11 @@ class CoreWorkerPlasmaStoreProvider {
   Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
 
+  /// Lists objects in used (pinned) by the current client.
+  ///
+  /// \return Output mapping of used object ids to their sizes.
+  absl::flat_hash_map<ObjectID, int64_t> UsedObjectsList();
+
   std::string MemoryUsageString();
 
  private:
@@ -135,6 +140,14 @@ class CoreWorkerPlasmaStoreProvider {
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
   std::function<void()> on_store_full_;
+
+  // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
+  // destruction.
+  absl::Mutex active_buffers_mutex_;
+  // The set of live object data buffers. Destroyed buffers are automatically removed from
+  // this list via destructor callback.
+  absl::flat_hash_set<std::pair<ObjectID, PlasmaBuffer *>> active_buffers_
+      GUARDED_BY(active_buffers_mutex_);
 };
 
 }  // namespace ray

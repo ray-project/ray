@@ -9,6 +9,7 @@ WORKER_PID = "worker pid"
 UNKNOWN_SIZE = " ? "
 
 # Reference status.
+PINNED_IN_MEMORY = "PINNED_IN_MEMORY"
 LOCAL_REF = "LOCAL_REFERENCE"
 USED_BY_PENDING_TASK = "USED_BY_PENDING_TASK"
 CAPTURED_IN_OBJECT = "CAPTURED_IN_OBJECT"
@@ -74,7 +75,8 @@ def test_worker_task_refs(ray_start_regular):
     assert count(info, TASK_CALL_OBJ) == 2, info
     assert count(info, DRIVER_PID) == 1, info
     assert count(info, WORKER_PID) == 1, info
-    assert count(info, LOCAL_REF) == 3, info
+    assert count(info, LOCAL_REF) == 2, info
+    assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, PUT_OBJ) == 1, info
     assert count(info, DESER_TASK_ARG) == 1, info
     assert count(info, UNKNOWN_SIZE) == 1, info
@@ -116,7 +118,8 @@ def test_actor_task_refs(ray_start_regular):
     assert count(info, ACTOR_TASK_CALL_OBJ) == 3, info
     assert count(info, DRIVER_PID) == 1, info
     assert count(info, WORKER_PID) == 1, info
-    assert count(info, LOCAL_REF) == 2, info
+    assert count(info, LOCAL_REF) == 1, info
+    assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, USED_BY_PENDING_TASK) == 2, info
     assert count(info, DESER_ACTOR_TASK_ARG) == 1, info
     assert count(info, "test_memstat.py:test_actor_task_refs") == 2, info

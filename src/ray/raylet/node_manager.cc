@@ -3429,7 +3429,8 @@ std::string FormatMemoryInfo(
     for (const auto &worker_stats : reply->workers_stats()) {
       bool pid_printed = false;
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
-        if (object_ref.local_ref_count() == 0 &&
+        if (!object_ref.pinned_in_memory() &&
+            object_ref.local_ref_count() == 0 &&
             object_ref.submitted_task_ref_count() == 0 &&
             object_ref.contained_in_owned_size() == 0) {
           continue;
@@ -3444,12 +3445,16 @@ std::string FormatMemoryInfo(
         }
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         builder << obj_id.Hex() << "  ";
-        if (object_ref.submitted_task_ref_count() > 0) {
+        if (object_ref.pinned_in_memory()) {
+          builder << "PINNED_IN_MEMORY     ";
+        } else if (object_ref.submitted_task_ref_count() > 0) {
           builder << "USED_BY_PENDING_TASK ";
         } else if (object_ref.local_ref_count() > 0) {
           builder << "LOCAL_REFERENCE      ";
-        } else {
+        } else if (object_ref.contained_in_owned_size() > 0) {
           builder << "CAPTURED_IN_OBJECT   ";
+        } else {
+          builder << "UNKNOWN_STATUS       ";
         }
         builder << std::right << std::setfill(' ') << std::setw(11);
         if (object_sizes.contains(obj_id)) {

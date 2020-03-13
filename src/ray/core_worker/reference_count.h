@@ -237,19 +237,8 @@ class ReferenceCounter {
   /// Write the current reference table to the given proto.
   ///
   /// \param[out] stats The proto to write references to.
-  void AddObjectRefStats(rpc::CoreWorkerStats *stats) {
-    for (const auto &ref : object_id_refs_) {
-      auto ref_proto = stats->add_object_refs();
-      ref_proto->set_object_id(ref.first.Binary());
-      ref_proto->set_call_site(ref.second.call_site);
-      ref_proto->set_object_size(ref.second.object_size);
-      ref_proto->set_local_ref_count(ref.second.local_ref_count);
-      ref_proto->set_submitted_task_ref_count(ref.second.submitted_task_ref_count);
-      for (const auto &obj_id : ref.second.contained_in_owned) {
-        ref_proto->add_contained_in_owned(obj_id.Binary());
-      }
-    }
-  }
+  void AddObjectRefStats(absl::flat_hash_map<ObjectID, int64_t> used_objects,
+                         rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
  private:
   struct Reference {

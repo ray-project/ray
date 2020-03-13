@@ -1444,7 +1444,8 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
 
   if (request.include_memory_info()) {
-    reference_counter_->AddObjectRefStats(stats);
+    reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
+                                          stats);
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

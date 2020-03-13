@@ -581,7 +581,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 if frame.f_code.co_name == "id_deserializer":
                     msg = "(deserialize task arg) "
             else:
-                msg = "{}:{}:{}".format(
+                msg += "{}:{}:{}".format(
                     frame.f_code.co_filename, frame.f_code.co_name,
                     frame.f_lineno)
                 break

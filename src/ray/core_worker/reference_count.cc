@@ -86,6 +86,36 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
   return true;
 }
 
+void ReferenceCounter::AddObjectRefStats(
+    absl::flat_hash_map<ObjectID, int64_t> used_objects,
+    rpc::CoreWorkerStats *stats) const {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &ref : object_id_refs_) {
+    auto ref_proto = stats->add_object_refs();
+    ref_proto->set_object_id(ref.first.Binary());
+    ref_proto->set_call_site(ref.second.call_site);
+    ref_proto->set_object_size(ref.second.object_size);
+    ref_proto->set_local_ref_count(ref.second.local_ref_count);
+    ref_proto->set_submitted_task_ref_count(ref.second.submitted_task_ref_count);
+    if (used_objects.find(ref.first) != used_objects.end()) {
+      ref_proto->set_pinned_in_memory(true);
+    }
+    for (const auto &obj_id : ref.second.contained_in_owned) {
+      ref_proto->add_contained_in_owned(obj_id.Binary());
+    }
+  }
+  // Also include any unreferenced objects that are pinned in memory.
+  for (const auto &entry : used_objects) {
+    if (object_id_refs_.find(entry.first) == object_id_refs_.end()) {
+      auto ref_proto = stats->add_object_refs();
+      ref_proto->set_object_id(entry.first.Binary());
+      ref_proto->set_call_site("<no local refs>");
+      ref_proto->set_object_size(entry.second);
+      ref_proto->set_pinned_in_memory(true);
+    }
+  }
+}
+
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const std::vector<ObjectID> &inner_ids,
                                       const TaskID &owner_id,
