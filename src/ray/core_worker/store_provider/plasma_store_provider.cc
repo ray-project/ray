@@ -175,8 +175,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].data && plasma_results[i].data->size()) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
+        std::shared_ptr<CoreWorkerPlasmaStoreProvider> this_ptr = shared_from_this();
         data = std::make_shared<PlasmaBuffer>(
-            plasma_results[i].data, [this, object_id](PlasmaBuffer *this_buffer) {
+            plasma_results[i].data,
+            [this, this_ptr, object_id](PlasmaBuffer *this_buffer) {
               absl::MutexLock lock(&active_buffers_mutex_);
               auto key = std::make_pair(object_id, this_buffer);
               RAY_CHECK(active_buffers_.contains(key));

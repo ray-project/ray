@@ -15,6 +15,8 @@
 #ifndef RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 #define RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 
+#include <boost/enable_shared_from_this.hpp>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "plasma/client.h"
@@ -31,7 +33,8 @@ namespace ray {
 /// local and remote stores. Local access goes is done via a
 /// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
 /// See `CoreWorkerStoreProvider` for the semantics of public methods.
-class CoreWorkerPlasmaStoreProvider {
+class CoreWorkerPlasmaStoreProvider
+    : public std::enable_shared_from_this<CoreWorkerPlasmaStoreProvider> {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 const std::shared_ptr<raylet::RayletClient> raylet_client,
