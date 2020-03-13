@@ -286,12 +286,12 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         unsquashed_values = self._unsquash(x)
         log_prob = tf.reduce_sum(
             self.distr.log_prob(value=unsquashed_values), axis=-1)
-        u = (unsquashed_values - self.low) / (self.high - self.low)
-        dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
-        log_prob -= tf.math.reduce_sum(dist.log_prob(value=u), axis=-1)
-        log_prob += tf.log(self.high - self.low)
+        squash_dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
+        log_prob -= tf.reduce_sum(
+            squash_dist.log_prob(value=unsquashed_values), axis=-1)
+        log_prob -= tf.log(self.high - self.low)
         return log_prob
-
+        
     @override(ActionDistribution)
     def kl(self, other):
         # KL(self || other) is just the KL of the two unsquashed distributions.
