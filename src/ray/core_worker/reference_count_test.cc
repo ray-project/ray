@@ -98,18 +98,18 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
   // a ray.put().
   void Put(const ObjectID &object_id) {
-    rc_.AddOwnedObject(object_id, {}, task_id_, address_);
-    rc_.AddLocalReference(object_id);
+    rc_.AddOwnedObject(object_id, {}, task_id_, address_, "", 0);
+    rc_.AddLocalReference(object_id, "");
   }
 
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
-    rc_.AddOwnedObject(outer_id, {inner_id}, task_id_, address_);
-    rc_.AddLocalReference(outer_id);
+    rc_.AddOwnedObject(outer_id, {inner_id}, task_id_, address_, "", 0);
+    rc_.AddLocalReference(outer_id, "");
   }
 
   void GetSerializedObjectId(const ObjectID outer_id, const ObjectID &inner_id,
                              const TaskID &owner_id, const rpc::Address &owner_address) {
-    rc_.AddLocalReference(inner_id);
+    rc_.AddLocalReference(inner_id, "");
     rc_.AddBorrowedObject(inner_id, outer_id, owner_id, owner_address);
   }
 
@@ -117,16 +117,16 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
                           const TaskID &owner_id, const rpc::Address &owner_address) {
     // Add a sentinel reference to keep the argument ID in scope even though
     // the frontend won't have a reference.
-    rc_.AddLocalReference(arg_id);
+    rc_.AddLocalReference(arg_id, "");
     GetSerializedObjectId(arg_id, inner_id, owner_id, owner_address);
   }
 
   ObjectID SubmitTaskWithArg(const ObjectID &arg_id) {
     rc_.UpdateSubmittedTaskReferences({arg_id});
     ObjectID return_id = ObjectID::FromRandom();
-    rc_.AddOwnedObject(return_id, {}, task_id_, address_);
+    rc_.AddOwnedObject(return_id, {}, task_id_, address_, "", 0);
     // Add a sentinel reference to keep all nested object IDs in scope.
-    rc_.AddLocalReference(return_id);
+    rc_.AddLocalReference(return_id, "");
     return return_id;
   }
 
@@ -183,9 +183,9 @@ TEST_F(ReferenceCountTest, TestBasic) {
   ObjectID id2 = ObjectID::FromRandom();
 
   // Local references.
-  rc->AddLocalReference(id1);
-  rc->AddLocalReference(id1);
-  rc->AddLocalReference(id2);
+  rc->AddLocalReference(id1, "");
+  rc->AddLocalReference(id1, "");
+  rc->AddLocalReference(id2, "");
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
@@ -214,9 +214,9 @@ TEST_F(ReferenceCountTest, TestBasic) {
   out.clear();
 
   // Local & submitted task references.
-  rc->AddLocalReference(id1);
+  rc->AddLocalReference(id1, "");
   rc->UpdateSubmittedTaskReferences({id1, id2});
-  rc->AddLocalReference(id2);
+  rc->AddLocalReference(id2, "");
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
@@ -241,7 +241,7 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   TaskID task_id = TaskID::ForFakeTask();
   rpc::Address address;
   address.set_ip_address("1234");
-  rc->AddOwnedObject(object_id, {}, task_id, address);
+  rc->AddOwnedObject(object_id, {}, task_id, address, "", 0);
 
   TaskID added_id;
   rpc::Address added_address;
@@ -252,14 +252,14 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   auto object_id2 = ObjectID::FromRandom();
   task_id = TaskID::ForFakeTask();
   address.set_ip_address("5678");
-  rc->AddOwnedObject(object_id2, {}, task_id, address);
+  rc->AddOwnedObject(object_id2, {}, task_id, address, "", 0);
   ASSERT_TRUE(rc->GetOwner(object_id2, &added_id, &added_address));
   ASSERT_EQ(task_id, added_id);
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
 
   auto object_id3 = ObjectID::FromRandom();
   ASSERT_FALSE(rc->GetOwner(object_id3, &added_id, &added_address));
-  rc->AddLocalReference(object_id3);
+  rc->AddLocalReference(object_id3, "");
   ASSERT_FALSE(rc->GetOwner(object_id3, &added_id, &added_address));
 }
 
@@ -280,7 +280,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   ASSERT_EQ(store.Size(), 0);
 
   // Tests ref counting overrides remove after get option.
-  rc->AddLocalReference(id1);
+  rc->AddLocalReference(id1, "");
   RAY_CHECK_OK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
