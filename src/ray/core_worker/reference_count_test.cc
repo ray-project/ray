@@ -233,6 +233,36 @@ TEST_F(ReferenceCountTest, TestBasic) {
   out.clear();
 }
 
+// Tests call site tracking and ability to update object size.
+TEST_F(ReferenceCountTest, TestReferenceStats) {
+  ObjectID id1 = ObjectID::FromRandom();
+  ObjectID id2 = ObjectID::FromRandom();
+  TaskID task_id = TaskID::ForFakeTask();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  rc->AddLocalReference(id1, "file.py:42");
+  rc->UpdateObjectSize(id1, 200);
+
+  rpc::CoreWorkerStats stats;
+  rc->AddObjectRefStats({}, &stats);
+  ASSERT_EQ(stats.object_refs_size(), 1);
+  ASSERT_EQ(stats.object_refs(0).object_id(), id1.Binary());
+  ASSERT_EQ(stats.object_refs(0).local_ref_count(), 1);
+  ASSERT_EQ(stats.object_refs(0).object_size(), 200);
+  ASSERT_EQ(stats.object_refs(0).call_site(), "file.py:42");
+  rc->RemoveLocalReference(id1, nullptr);
+
+  rc->AddOwnedObject(id2, {}, task_id, address, "file2.py:43", 100);
+  rpc::CoreWorkerStats stats2;
+  rc->AddObjectRefStats({}, &stats2);
+  ASSERT_EQ(stats2.object_refs_size(), 1);
+  ASSERT_EQ(stats2.object_refs(0).object_id(), id2.Binary());
+  ASSERT_EQ(stats2.object_refs(0).local_ref_count(), 0);
+  ASSERT_EQ(stats2.object_refs(0).object_size(), 100);
+  ASSERT_EQ(stats2.object_refs(0).call_site(), "file2.py:43");
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.
