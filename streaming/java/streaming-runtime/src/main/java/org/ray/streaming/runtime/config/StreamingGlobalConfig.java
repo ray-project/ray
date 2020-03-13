@@ -22,7 +22,7 @@ public class StreamingGlobalConfig implements Serializable {
 
   public final CommonConfig commonConfig;
 
-  public TransferConfig transferConfig;
+  public final TransferConfig transferConfig;
 
   public final Map<String, String> configMap;
 

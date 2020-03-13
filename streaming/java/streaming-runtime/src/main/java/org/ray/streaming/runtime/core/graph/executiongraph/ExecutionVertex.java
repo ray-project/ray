@@ -11,9 +11,7 @@ import org.ray.api.id.ActorId;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.runtime.config.StreamingWorkerConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.core.resource.Slot;
-import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
@@ -55,14 +53,15 @@ public class ExecutionVertex implements Serializable {
   public ExecutionVertex(int jobVertexId,
                          int index,
                          ExecutionJobVertex executionJobVertex,
-                         StreamingWorkerConfig workerConfig,
                          StreamOperator streamOperator,
+                         StreamingWorkerConfig workerConfig,
+                         ResourceConfig resourceConfig,
                          long buildTime) {
     this.vertexId = generateExecutionVertexId(jobVertexId, index);
     this.vertexIndex = index;
     this.vertexName = executionJobVertex.getJobVertexName() + "-" + vertexIndex;
-    this.resources = generateResources(executionJobVertex.getRuntimeContext());
-    this.workerConfig = workerConfig;
+    this.resources = generateResources(resourceConfig);
+    this.workerConfig =workerConfig;
     this.streamOperator = streamOperator;
     this.parallelism = executionJobVertex.getParallelism();
     this.buildTime = buildTime;
@@ -164,9 +163,8 @@ public class ExecutionVertex implements Serializable {
     return buildTime;
   }
 
-  private Map<String, Double> generateResources(JobRuntimeContext runtimeContext) {
+  private Map<String, Double> generateResources(ResourceConfig resourceConfig) {
     Map<String, Double> resourceMap = new HashMap<>();
-    ResourceConfig resourceConfig = runtimeContext.getConf().masterConfig.resourceConfig;
     if (resourceConfig.isTaskCpuResourceLimit()) {
       resourceMap.put(ResourceConfig.RESOURCE_KEY_CPU, resourceConfig.taskCpuResource());
     }

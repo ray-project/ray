@@ -10,9 +10,4 @@ public interface RuntimeContext {
   int getTaskIndex();
 
   int getParallelism();
-
-  Long getBatchId();
-
-  Long getMaxBatch();
-
 }

@@ -10,8 +10,8 @@ import org.ray.api.RayActor;
 import org.ray.streaming.jobgraph.JobVertex;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.runtime.core.processor.ProcessBuilder;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
+import org.ray.streaming.runtime.config.StreamingWorkerConfig;
+import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.worker.JobWorker;
 
@@ -36,18 +36,17 @@ public class ExecutionJobVertex {
   private int parallelism;
   private List<ExecutionVertex> executionVertices;
 
-  private JobRuntimeContext runtimeContext;
-
   private List<ExecutionJobEdge> inputEdges = new ArrayList<>();
   private List<ExecutionJobEdge> outputEdges = new ArrayList<>();
 
-  public ExecutionJobVertex(JobVertex jobVertex, JobRuntimeContext runtimeContext, long buildTime) {
+  public ExecutionJobVertex(JobVertex jobVertex, StreamingWorkerConfig workerConfig,
+      ResourceConfig resourceConfig, long buildTime) {
     this.jobVertexId = jobVertex.getVertexId();
     this.jobVertexName = generateVertexName(jobVertexId, jobVertex.getStreamOperator());
     this.vertexType = jobVertex.getVertexType();
     this.parallelism = jobVertex.getParallelism();
-    this.runtimeContext = runtimeContext;
-    this.executionVertices = createExecutionVertices(jobVertex.getStreamOperator(), buildTime);
+    this.executionVertices = createExecutionVertices(jobVertex.getStreamOperator(),
+        workerConfig, resourceConfig, buildTime);
   }
 
   private String generateVertexName(int vertexId, StreamOperator streamOperator) {
@@ -55,11 +54,18 @@ public class ExecutionJobVertex {
   }
 
   private List<ExecutionVertex> createExecutionVertices(StreamOperator streamOperator,
+                                                        StreamingWorkerConfig workerConfig,
+                                                        ResourceConfig resourceConfig,
                                                         long buildTime) {
     List<ExecutionVertex> executionVertices = new ArrayList<>();
     for (int index = 1; index <= parallelism; index++) {
-      executionVertices.add(new ExecutionVertex(jobVertexId, index, this,
-          runtimeContext.getConf().workerConfigTemplate, streamOperator, buildTime));
+      executionVertices.add(new ExecutionVertex(jobVertexId,
+          index,
+          this,
+          streamOperator,
+          workerConfig,
+          resourceConfig,
+          buildTime));
     }
     return executionVertices;
   }
@@ -133,10 +139,6 @@ public class ExecutionJobVertex {
 
   public boolean isSinkVertex() {
     return getVertexType() == VertexType.SINK;
-  }
-
-  public JobRuntimeContext getRuntimeContext() {
-    return runtimeContext;
   }
 
   @Override

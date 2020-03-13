@@ -21,7 +21,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Task execution abstract class.
+ * The StreamTask represents one execution of a parallel subtask on a JobWorker. A StreamTask wraps
+ * a operator and runs it.
+ *
+ * <P>StreamTask is an abstract class, which defines the abstract methods of task running life cycle.
+ *
  */
 public abstract class StreamTask implements Runnable {
 
@@ -52,10 +56,13 @@ public abstract class StreamTask implements Runnable {
     this.thread.setDaemon(true);
   }
 
+  /**
+   * Build upstream and downstream data transmission channels according to {@link ExecutionVertex}.
+   */
   private void prepareTask() {
     ExecutionVertex executionVertex = jobWorker.getExecutionVertex();
 
-    // consumer
+    // producer
     List<ExecutionEdge> outputEdges = executionVertex.getOutputEdges();
     Map<String, ActorId> outputActor = new HashMap<>();
     for (ExecutionEdge edge : outputEdges) {
@@ -75,7 +82,7 @@ public abstract class StreamTask implements Runnable {
           executionVertex.getOutputEdges().get(0).getPartition()));
     }
 
-    // producer
+    // consumer
     List<ExecutionEdge> inputEdges = executionVertex.getInputEdges();
     Map<String, ActorId> inputActorIds = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
@@ -99,8 +106,14 @@ public abstract class StreamTask implements Runnable {
     processor.open(collectors, runtimeContext);
   }
 
+  /**
+   * Task initialization related work.
+   */
   protected abstract void init() throws Exception;
 
+  /**
+   * Stop running tasks.
+   */
   protected abstract void cancelTask() throws Exception;
 
   public void start() {
@@ -111,9 +124,10 @@ public abstract class StreamTask implements Runnable {
   public void close() {
     this.running = false;
     if (thread.isAlive() && !Ray.getRuntimeContext().isSingleProcess()) {
+      //Runtime halt is proposed cause System.exist can't kill process absolutely.
       Runtime.getRuntime().halt(0);
-      System.exit(0);
       LOG.warn("runtime halt 0");
+      System.exit(0);
     }
     LOG.info("Stream task close success.");
   }

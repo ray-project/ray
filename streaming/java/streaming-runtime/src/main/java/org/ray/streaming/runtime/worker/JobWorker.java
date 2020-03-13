@@ -25,9 +25,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The streaming worker implementation class, it is ray actor.
+ * The streaming worker implementation class, it is ray actor. JobWorker is created by
+ * {@link org.ray.streaming.runtime.master.JobMaster} through ray api, and JobMaster communicates
+ * with JobWorker through Ray.call().
+ *
+ * <p>The JobWorker is responsible for creating tasks and defines the methods of communication
+ * between workers.
  */
-@RayRemote
 public class JobWorker {
 
   private static final Logger LOG = LoggerFactory.getLogger(JobWorker.class);
@@ -46,13 +50,16 @@ public class JobWorker {
     LOG.info("Job worker init success.");
   }
 
+  /**
+   * Initialize JobWorker and data communication pipeline.
+   */
   public Boolean init(JobWorkerContext workerContext) {
     LOG.info("Init worker context {}. workerId: {}.", workerContext, workerContext.getWorkerId());
     this.workerContext = workerContext;
     this.executionVertex = workerContext.getExecutionVertex();
     this.workerConfig = executionVertex.getWorkerConfig();
 
-    //init transfer
+    //Init transfer
     TransferChannelType channelType = workerConfig.transferConfig.channelType();
     if (TransferChannelType.NATIVE_CHANNEL == channelType) {
       transferHandler = new TransferHandler(
@@ -77,6 +84,9 @@ public class JobWorker {
     return pointer;
   }
 
+  /**
+   * Create tasks based on the processor corresponding of the operator.
+   */
   private StreamTask createStreamTask() {
     StreamTask task;
     StreamProcessor streamProcessor = ProcessBuilder
@@ -85,18 +95,37 @@ public class JobWorker {
       task = new SourceStreamTask(executionVertex.getVertexId(), streamProcessor, this);
     } else if (streamProcessor instanceof OneInputProcessor) {
       task = new OneInputStreamTask(executionVertex.getVertexId(), streamProcessor, this);
-    } else if (streamProcessor instanceof TwoInputProcessor) {
-      List<ExecutionEdge> inputEdges = this.executionVertex.getInputEdges();
-      int leftStream = inputEdges.get(0).getSourceVertex().getVertexId();
-      int rightStream = inputEdges.get(1).getSourceVertex().getVertexId();
-      task = new TwoInputStreamTask(executionVertex.getVertexId(), streamProcessor,
-          this, leftStream, rightStream);
     } else {
       throw new RuntimeException("Unsupported processor type:" + streamProcessor);
     }
     return task;
   }
 
+  /**
+   * Used by upstream streaming queue to send data to this actor
+   */
+  public void onReaderMessage(byte[] buffer) {
+    transferHandler.onReaderMessage(buffer);
+  }
+
+  /**
+   * Used by upstream streaming queue to send data to this actor
+   * and receive result from this actor
+   */
+  public byte[] onReaderMessageSync(byte[] buffer) {
+    return transferHandler.onReaderMessageSync(buffer);
+  }
+
+  /**
+   * Used by downstream streaming queue to send data to this actor
+   */
+  public void onWriterMessage(byte[] buffer) {
+    transferHandler.onWriterMessage(buffer);
+  }
+
+  /**
+   * Start managed tasks.
+   */
   public Boolean start() {
     try {
       task.start();

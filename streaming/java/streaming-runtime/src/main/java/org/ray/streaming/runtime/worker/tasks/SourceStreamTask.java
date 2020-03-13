@@ -6,6 +6,10 @@ import org.ray.streaming.runtime.worker.JobWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * SourceStreamTask for executing a {@link org.ray.streaming.operator.impl.SourceOperator}.
+ * It is responsible for running the corresponding source operator.
+ */
 public class SourceStreamTask extends StreamTask {
 
   private static final Logger LOG = LoggerFactory.getLogger(
