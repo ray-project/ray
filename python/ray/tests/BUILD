@@ -386,7 +386,7 @@ py_test(
 
 py_test(
     name = "test_symbol_collisions",
-    size = "small"
+    size = "small",
     srcs = ["test_symbol_collisions.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
