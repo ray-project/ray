@@ -363,10 +363,18 @@ std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
   return store_client_.DebugString();
 }
 
-absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> CoreWorkerPlasmaStoreProvider::UsedObjectsList() {
+absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
+CoreWorkerPlasmaStoreProvider::UsedObjectsList() {
   absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
   absl::MutexLock lock(&active_buffers_mutex_);
   for (const auto &entry : active_buffers_) {
+    auto it = used.find(entry.first.first);
+    if (it != used.end()) {
+      // Prefer to keep entries that have non-empty callsites.
+      if (!it->second.second.empty()) {
+        continue;
+      }
+    }
     used[entry.first.first] = std::make_pair(entry.first.second->Size(), entry.second);
   }
   return used;

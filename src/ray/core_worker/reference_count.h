@@ -237,8 +237,9 @@ class ReferenceCounter {
   /// Write the current reference table to the given proto.
   ///
   /// \param[out] stats The proto to write references to.
-  void AddObjectRefStats(absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used_objects,
-                         rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
+  void AddObjectRefStats(
+      absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+      rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
  private:
   struct Reference {

@@ -3429,8 +3429,7 @@ std::string FormatMemoryInfo(
     for (const auto &worker_stats : reply->workers_stats()) {
       bool pid_printed = false;
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
-        if (!object_ref.pinned_in_memory() &&
-            object_ref.local_ref_count() == 0 &&
+        if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
             object_ref.submitted_task_ref_count() == 0 &&
             object_ref.contained_in_owned_size() == 0) {
           continue;
