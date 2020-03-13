@@ -83,10 +83,9 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
       std::make_shared<TaskState>(task, std::move(local_dependencies));
   num_pending_ += 1;
 
-  size_t num_plasma_returns = task.NumReturns();
   for (const auto &it : state->local_dependencies) {
     const ObjectID &obj_id = it.first;
-    in_memory_store_->GetAsync(obj_id, [this, state, obj_id, num_plasma_returns,
+    in_memory_store_->GetAsync(obj_id, [this, state, obj_id,
                                         on_complete](std::shared_ptr<RayObject> obj) {
       RAY_CHECK(obj != nullptr);
       bool complete = false;
@@ -103,8 +102,7 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
         }
       }
       if (inlined_dependency_ids.size() > 0) {
-        task_finisher_->OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids,
-                                                  num_plasma_returns);
+        task_finisher_->OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids);
       }
       if (complete) {
         on_complete();

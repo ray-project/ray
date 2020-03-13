@@ -23,7 +23,7 @@ class TaskFinisherInterface {
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
-      const std::vector<ObjectID> &contained_ids, size_t num_plasma_returns) = 0;
+      const std::vector<ObjectID> &contained_ids) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
@@ -99,8 +99,7 @@ class TaskManager : public TaskFinisherInterface {
   /// task spec, because a serialized copy of the ID was contained in one of
   /// the inlined dependencies.
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
-                                 const std::vector<ObjectID> &contained_ids,
-                                 size_t num_plasma_returns) override;
+                                 const std::vector<ObjectID> &contained_ids) override;
 
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;

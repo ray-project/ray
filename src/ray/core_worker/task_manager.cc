@@ -31,7 +31,8 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
-  reference_counter_->UpdateSubmittedTaskReferences(task_deps, lineage_pinning_enabled_);
+  reference_counter_->UpdateSubmittedTaskReferences(
+      task_deps, /*pin_lineage=*/lineage_pinning_enabled_);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
@@ -216,10 +217,11 @@ void TaskManager::ShutdownIfNeeded() {
 
 void TaskManager::OnTaskDependenciesInlined(
     const std::vector<ObjectID> &inlined_dependency_ids,
-    const std::vector<ObjectID> &contained_ids, size_t num_plasma_returns) {
+    const std::vector<ObjectID> &contained_ids) {
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateSubmittedTaskReferences(
-      /*argument_ids_to_add=*/contained_ids, lineage_pinning_enabled_,
+      /*argument_ids_to_add=*/contained_ids,
+      /*pin_lineage=*/lineage_pinning_enabled_,
       /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
   in_memory_store_->Delete(deleted);
 }
