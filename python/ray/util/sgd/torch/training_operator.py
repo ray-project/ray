@@ -197,8 +197,10 @@ class TrainingOperator:
 
         return metric_meters.summary()
 
-    def make_progress_bar_metrics(self, logs):
-        return {}
+    def make_progress_bar_metrics(self, metrics):
+        return {
+            "loss": metrics["train_loss"]
+        }
 
     def train_batch(self, batch, batch_info):
         """Computes loss and updates the model over one batch.
