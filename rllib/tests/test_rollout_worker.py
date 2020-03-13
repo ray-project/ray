@@ -173,20 +173,25 @@ class TestRolloutWorker(unittest.TestCase):
         agent = A2CTrainer(
             env="CartPole-v0",
             config={
-                "lr_schedule": [[0, 0.1], [400, 0.000001]],
+                "num_workers": 1,
+                "lr_schedule": [[0, 0.1], [100000, 0.000001]],
             })
         result = agent.train()
-        self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
-        result2 = agent.train()
-        print("num_steps_sampled={}".format(
-            result["info"]["num_steps_sampled"]))
-        print("num_steps_trained={}".format(
-            result["info"]["num_steps_trained"]))
-        self.assertLess(result2["info"]["learner"]["cur_lr"], 0.09)
-        print("num_steps_sampled={}".format(
-            result["info"]["num_steps_sampled"]))
-        print("num_steps_trained={}".format(
-            result["info"]["num_steps_trained"]))
+        for i in range(10):
+            result = agent.train()
+            print("num_steps_sampled={}".format(
+                result["info"]["num_steps_sampled"]))
+            print("num_steps_trained={}".format(
+                result["info"]["num_steps_trained"]))
+            print("num_steps_sampled={}".format(
+                result["info"]["num_steps_sampled"]))
+            print("num_steps_trained={}".format(
+                result["info"]["num_steps_trained"]))
+            if i == 0:
+                self.assertGreater(result["info"]["learner"]["cur_lr"], 0.01)
+            if result["info"]["learner"]["cur_lr"] < 0.07:
+                break
+        self.assertLess(result["info"]["learner"]["cur_lr"], 0.07)
 
     def test_no_step_on_init(self):
         # Allow for Unittest run.
