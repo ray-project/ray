@@ -955,12 +955,12 @@ def stat(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def memstat(address):
+def memory(address):
     if not address:
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
-    print(ray.internal.internal_api.memstat())
+    print(ray.internal.internal_api.memory())
 
 
 @cli.command()
@@ -995,7 +995,7 @@ cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(stat)
-cli.add_command(memstat)
+cli.add_command(memory)
 cli.add_command(globalgc)
 cli.add_command(timeline)
 cli.add_command(project_cli)

@@ -11,7 +11,7 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memstat():
+def memory():
     """Returns a formatted string describing memory usage in the cluster."""
 
     import grpc

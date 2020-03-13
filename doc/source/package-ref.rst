@@ -97,8 +97,8 @@ The Ray Command Line API
    :prog: ray stat
    :show-nested:
 
-.. click:: ray.scripts.scripts:memstat
-   :prog: ray memstat
+.. click:: ray.scripts.scripts:memory
+   :prog: ray memory
    :show-nested:
 
 .. click:: ray.scripts.scripts:globalgc

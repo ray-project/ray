@@ -54,7 +54,7 @@ class RayOutOfMemoryError(Exception):
                 + "currently being used by the Ray object store. You can set "
                 "the object store size with the `object_store_memory` "
                 "parameter when starting Ray.\n---\n"
-                "--- Tip: Use the `ray memstat` command to list active "
+                "--- Tip: Use the `ray memory` command to list active "
                 "objects in the cluster.\n---\n")
 
 
