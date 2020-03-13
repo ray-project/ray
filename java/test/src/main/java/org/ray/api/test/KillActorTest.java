@@ -57,7 +57,6 @@ public class KillActorTest extends BaseTest {
 
   private void testKillActor(BiConsumer<RayActor<?>, Boolean> kill, boolean noReconstruction) {
     TestUtils.skipTestUnderSingleProcess();
-    TestUtils.skipTestIfDirectActorCallDisabled();
 
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();

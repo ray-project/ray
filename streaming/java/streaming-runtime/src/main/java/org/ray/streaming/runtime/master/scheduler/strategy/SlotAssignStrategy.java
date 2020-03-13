@@ -1,8 +1,7 @@
-package org.ray.streaming.runtime.core.master.scheduler.strategy;
+package org.ray.streaming.runtime.master.scheduler.strategy;
 
 import java.util.List;
 import java.util.Map;
-
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.ContainerID;

@@ -1,8 +1,7 @@
-import pickle
-
-import gym
 from gym import spaces
 from gym.envs.registration import EnvSpec
+import gym
+import pickle
 import unittest
 
 import ray

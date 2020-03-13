@@ -9,7 +9,6 @@ import org.apache.commons.io.FileUtils;
 import org.ray.api.RayActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
 import org.ray.runtime.functionmanager.FunctionManager;
@@ -137,9 +136,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void killActor(RayActor<?> actor, boolean noReconstruction) {
-    if (!((NativeRayActor) actor).isDirectCallActor()) {
-      throw new UnsupportedOperationException("Only direct call actors can be killed.");
-    }
     nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes(), noReconstruction);
   }
 

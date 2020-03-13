@@ -507,30 +507,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing heartbeat.";
-  RAY_CHECK(subscribe != nullptr);
-  auto status =
-      heartbeat_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
-  RAY_LOG(DEBUG) << "Finished subscribing heartbeat.";
-  return status;
+  const std::string error_msg =
+      "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
     const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
     const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Reporting batch heartbeat, batch size = " << data_ptr->batch_size();
-  rpc::ReportBatchHeartbeatRequest request;
-  request.mutable_heartbeat_batch()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportBatchHeartbeat(
-      request, [data_ptr, callback](const Status &status,
-                                    const rpc::ReportBatchHeartbeatReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished reporting batch heartbeat, status = " << status
-                       << ", batch size = " << data_ptr->batch_size();
-      });
-  return Status::OK();
+  const std::string error_msg =
+      "Unsupported method of AsyncReportBatchHeartbeat in ServiceBasedNodeInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
