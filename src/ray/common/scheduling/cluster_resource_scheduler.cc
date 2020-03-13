@@ -886,10 +886,10 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
 
 bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
-  auto it = nodes_.find(local_node_id_);
-  if (it == nodes_.end()) {
+  if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
   }
+
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (task_req.predefined_resources[i].demand > 0) {
@@ -930,6 +930,29 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   return true;
 }
 
+void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstances() {
+  auto it_local_node = nodes_.find(local_node_id_);
+  RAY_CHECK(it_local_node != nodes_.end());
+
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    it_local_node->second.predefined_resources[i].available = 0;
+    for (size_t j = 0; j < local_resources_.predefined_resources[i].available.size(); j++) {
+      it_local_node->second.predefined_resources[i].available += 
+          local_resources_.predefined_resources[i].available[j]; 
+    }
+  }
+
+  for (auto &custom_resource : it_local_node->second.custom_resources) {
+    auto it = local_resources_.custom_resources.find(custom_resource.first); 
+    if (it != local_resources_.custom_resources.end()) {
+      custom_resource.second.available = 0;
+      for (const auto available : it->second.available) {
+        custom_resource.second.available += available;
+      }
+    }
+  }
+}
+
 void ClusterResourceScheduler::FreeTaskResourceInstances(
     TaskResourceInstances &task_allocation) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -948,19 +971,15 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
 std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
     std::vector<double> &cpu_instances) {
   if (cpu_instances.size() == 0) {
-    return cpu_instances; // No overflow.
+    return cpu_instances; // No oveerflow.
   }    
-  auto it = nodes_.find(local_node_id_);
-  RAY_CHECK(it != nodes_.end());
-  double cpus = 0;
-  for (double v : cpu_instances) {
-    cpus += v;
-  } 
-  it->second.predefined_resources[CPU].available = 
-      std::min(it->second.predefined_resources[CPU].available + cpus, 
-               it->second.predefined_resources[CPU].total);
-  return AddAvailableResourceInstances(cpu_instances,
-                                       &local_resources_.predefined_resources[CPU]);
+  RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
+
+  auto overflow = AddAvailableResourceInstances(cpu_instances,
+      &local_resources_.predefined_resources[CPU]);
+  UpdateLocalAvailableResourcesFromResourceInstances();
+
+  return overflow; 
 }
 
 std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
@@ -968,35 +987,31 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
   if (cpu_instances.size() == 0) {
     return cpu_instances; // No underflow.
   }    
-  auto it = nodes_.find(local_node_id_);
-  RAY_CHECK(it != nodes_.end());
-  double cpus = 0;
-  for (double v : cpu_instances) {
-    cpus += v;
-  } 
-  it->second.predefined_resources[CPU].available = 
-      std::max(it->second.predefined_resources[CPU].available - cpus, 0.);
-  return SubtractAvailableResourceInstances(cpu_instances,
-                                            &local_resources_.predefined_resources[CPU]);
-}
+  RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
 
+  auto underflow = SubtractAvailableResourceInstances(cpu_instances,
+      &local_resources_.predefined_resources[CPU]);
+  UpdateLocalAvailableResourcesFromResourceInstances();
+
+  return underflow; 
+}
 
 bool ClusterResourceScheduler::AllocateTaskResources(int64_t node_id, 
     const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
 
-  if (!SubtractNodeAvailableResources(node_id, task_req)) {
-    return false;
-  }
   if (node_id == local_node_id_) {
     if (AllocateTaskResourceInstances(task_req, task_allocation)) {
+      UpdateLocalAvailableResourcesFromResourceInstances();
       return true;
     } else {
-      AddNodeAvailableResources(node_id, task_req);
+      return false;
     }
-    return true;
   } else {
-    return false;
+    if (!SubtractNodeAvailableResources(node_id, task_req)) {
+      return false;
+    }
   }
+  return true;
 }
 
 bool ClusterResourceScheduler::AllocateLocalTaskResources(
@@ -1032,10 +1047,9 @@ void ClusterResourceScheduler::AllocateRemoteTaskResources(
   AllocateTaskResources(node_id, task_request, &nothing);    
 }
 
-
 void ClusterResourceScheduler::FreeLocalTaskResources(TaskResourceInstances &task_allocation) {
   if (!task_allocation.IsEmpty()) {
-    AddNodeAvailableResources(local_node_id_, task_allocation.ToTaskRequest());  
     FreeTaskResourceInstances(task_allocation);
+    UpdateLocalAvailableResourcesFromResourceInstances();
   }
 }

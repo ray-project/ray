@@ -819,6 +819,51 @@ TEST_F(SchedulingTest, TaskCPUResourceInstancesTest) {
   }
 }
 
+TEST_F(SchedulingTest, UpdateLocalAvailableResourcesFromResourceInstancesTest) {
+  {
+    NodeResources node_resources;
+    vector<int64_t> pred_capacities{4 /* CPU */, 1 /* MEM */, 1 /* GPU */};
+    vector<int64_t> cust_ids{1};
+    vector<int64_t> cust_capacities{8};
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
+    ClusterResourceScheduler cluster_resources(0, node_resources);
+
+    {
+      std::vector<double> allocate_cpu_instances {0.5, 0.5, 2, 0.5};    
+      // SubtractCPUResourceInstances() calls UpdateLocalAvailableResourcesFromResourceInstances()
+      // under the hood.
+      cluster_resources.SubtractCPUResourceInstances(allocate_cpu_instances);
+      std::vector<double> available_cpu_instances =
+          cluster_resources.GetLocalResources().GetAvailableResourceInstances().GetCPUInstances();
+      std::vector<double> expected_available_cpu_instances {0.5, 0.5, 0., 0.5};    
+      ASSERT_TRUE(std::equal(available_cpu_instances.begin(), 
+                             available_cpu_instances.end(), 
+                             expected_available_cpu_instances.begin()));
+
+      NodeResources nr;
+      cluster_resources.GetNodeResources(0, &nr);
+      ASSERT_TRUE(nr.predefined_resources[0].available == 1.5);
+    }
+
+    {
+      std::vector<double> allocate_cpu_instances {1.5, 0.5, 2, 0.3};    
+      // SubtractCPUResourceInstances() calls UpdateLocalAvailableResourcesFromResourceInstances()
+      // under the hood.
+      cluster_resources.AddCPUResourceInstances(allocate_cpu_instances);
+      std::vector<double> available_cpu_instances =
+          cluster_resources.GetLocalResources().GetAvailableResourceInstances().GetCPUInstances();
+      std::vector<double> expected_available_cpu_instances {1., 1., 1., 0.8};    
+      ASSERT_TRUE(std::equal(available_cpu_instances.begin(), 
+                             available_cpu_instances.end(), 
+                             expected_available_cpu_instances.begin()));
+
+      NodeResources nr;
+      cluster_resources.GetNodeResources(0, &nr);
+      ASSERT_TRUE(nr.predefined_resources[0].available == 3.8);
+    }
+  }
+}
+
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
   size_t map_len = 1000000;

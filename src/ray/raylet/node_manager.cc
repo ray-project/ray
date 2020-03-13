@@ -1532,23 +1532,32 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 
 void NodeManager::DispatchScheduledTasksToWorkers() {
   RAY_CHECK(new_scheduler_enabled_);
-  while (!tasks_to_dispatch_.empty()) {
-    auto task = tasks_to_dispatch_.front();
+  size_t queue_size = tasks_to_dispatch_.size(); // XXX
+  while (queue_size > 0) { //
+    auto task = tasks_to_dispatch_.front(); 
     auto reply = task.first;
     auto spec = task.second.GetTaskSpecification();
+    tasks_to_dispatch_.pop_front(); 
+    queue_size--; 
 
     std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
     if (worker == nullptr) {
-      return;
+      // No worker to schedule task. Put it back in the dispatch queue.
+      tasks_to_dispatch_.push_front(task); 
+      return; 
     }
 
     TaskResourceInstances allocated_instances;
     bool schedulable = 
-        new_resource_scheduler_->AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(), 
-                                                            &allocated_instances);
+        new_resource_scheduler_->AllocateLocalTaskResources(
+            spec.GetRequiredResources().GetResourceMap(), &allocated_instances);
     if (!schedulable) {
+      // Not enough resources to schedule this task. Put it back at the end
+      // of the dispatch queue.
+      tasks_to_dispatch_.push_back(task); 
       worker_pool_.PushWorker(worker);
-      return;
+      // Try next task in the dispatch queue.
+      continue; 
     }
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
@@ -1561,8 +1570,6 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     worker->SetAssignedTask(task.second);
 
     reply(worker, ClientID::Nil(), "", -1);
-
-    tasks_to_dispatch_.pop_front();    
   }
 }
 

@@ -427,6 +427,17 @@ class ClusterResourceScheduler {
 
   void FreeLocalTaskResources(TaskResourceInstances& task_allocation);
 
+  /// Update the available resources of the local node given 
+  /// the available instances of each resource of the local node.
+  /// Basically, this means computing the available resources
+  /// by adding up the available quantities of each instance of that
+  /// resources.
+  /// 
+  /// Example: Assume the local node has four GPU instances with the 
+  /// following availabilities: 0.2, 0.3, 0.1, 1. Then the total GPU 
+  // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
+  void UpdateLocalAvailableResourcesFromResourceInstances();
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 };
