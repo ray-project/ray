@@ -1,7 +1,8 @@
 #ifndef RAY_GCS_STORE_CLIENT_H
 #define RAY_GCS_STORE_CLIENT_H
 
-#include "ray/gcs/store_client.h"
+#include "ray/gcs/redis_client.h"
+#include "ray/gcs/store_client/store_client.h"
 
 namespace ray {
 
@@ -51,6 +52,11 @@ class RedisStoreClient : public StoreClient {
 
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index,
                             const StatusCallback &callback) override;
+
+ private:
+  std::shared_ptr<RedisContext> GetRedisContext(const std::string &key);
+
+  std::unique_ptr<RedisClient> redis_client_;
 };
 
 }  // namespace gcs
