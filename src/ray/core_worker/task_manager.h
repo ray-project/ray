@@ -144,6 +144,8 @@ class TaskManager : public TaskFinisherInterface {
     absl::flat_hash_set<ObjectID> plasma_returns_in_scope;
   };
 
+  /// Remove a lineage reference to this object ID. This should be called
+  /// whenever a task that depended on this object ID can no longer be retried.
   void RemoveLineageReference(const ObjectID &object_id,
                               std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
 
@@ -157,7 +159,7 @@ class TaskManager : public TaskFinisherInterface {
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
   /// that were inlined in the task spec.
   void RemoveFinishedTaskReferences(
-      TaskSpecification &spec, size_t num_plasma_returns, const rpc::Address &worker_addr,
+      TaskSpecification &spec, bool release_lineage, const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
@@ -177,6 +179,16 @@ class TaskManager : public TaskFinisherInterface {
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
 
+  /// Whether to pin the lineage of object IDs that are in scope. If true, then
+  /// we will continue to cache the TaskSpecification for tasks that have
+  /// already finished if they may be retried in the future. A task may be
+  /// retried if it has retries available and has at least one plasma return ID
+  /// for which one of the following is true:
+  /// 1. The return ID is still in scope.
+  /// 2. Another task depends on the return ID and that task is pending or may
+  /// be tried again.
+  /// If false, then a task's TaskSpecification will be removed as soon as it
+  /// completes execution or fails.
   const bool lineage_pinning_enabled_;
 
   // The number of task failures we have logged total.
@@ -188,7 +200,10 @@ class TaskManager : public TaskFinisherInterface {
   /// Protects below fields.
   mutable absl::Mutex mu_;
 
-  /// This map contains one entry per pending task that we submitted.
+  /// This map contains one entry per pending task that we submitted. If
+  /// lineage_pinning_enabled_ is true, then this map also contains entries for
+  /// tasks that we submitted that have completed execution, but that may be
+  /// retried again in the future.
   /// TODO(swang): The TaskSpec protobuf must be copied into the
   /// PushTaskRequest protobuf when sent to a worker so that we can retry it if
   /// the worker fails. We could avoid this by either not caching the full

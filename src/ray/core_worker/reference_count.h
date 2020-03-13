@@ -51,9 +51,17 @@ class ReferenceCounter {
   /// Add references for the provided object IDs that correspond to them being
   /// dependencies to a submitted task.
   ///
-  /// \param[in] object_ids The object IDs to add references for.
+  /// \param[in] argument_ids_to_add The arguments of the task to add
+  /// references for.
+  /// \param[in] pin_lineage Whether to increment the arguments' lineage ref
+  /// count. If true, then the Reference entry for each new argument will not
+  /// be deleted until the arguments' lineage ref is released.
+  /// \param[out] argument_ids_to_remove The arguments of the task to remove
+  /// references for.
+  /// \param[out] deleted Any objects that are newly out of scope after this
+  /// function call.
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &argument_ids_to_add, size_t increment_lineage_by,
+      const std::vector<ObjectID> &argument_ids_to_add, bool pin_lineage,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
@@ -71,12 +79,19 @@ class ReferenceCounter {
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
   void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                    size_t decrement_lineage_by,
-                                    const rpc::Address &worker_addr,
+                                    bool release_lineage, const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
+  /// Release the lineage ref count for this list of object IDs. An object's
+  /// lineage ref count is the number of tasks that depend on the object that
+  /// may be retried in the future (pending execution or finished but
+  /// retryable). If the object is direct (not stored in plasma), then its
+  /// lineage ref count is 0.
+  ///
+  /// \param[in] argument_ids The list of objects whose lineage ref counts we
+  /// should decrement.
   void ReleaseLineageReferences(const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
@@ -326,6 +341,9 @@ class ReferenceCounter {
     /// task's caller is also a borrower. The key is the task's return ID, and
     /// the value is the task ID and address of the task's caller.
     absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    /// The number of tasks that depend on this object that may be retried in
+    /// the future (pending execution or finished but retryable). If the object
+    /// is direct (not stored in plasma), then its lineage ref count is 0.
     size_t lineage_ref_count = 0;
 
     /// Callback that will be called when this ObjectID no longer has
@@ -350,8 +368,7 @@ class ReferenceCounter {
   /// inlined dependencies are inlined or when the task finishes for plasma
   /// dependencies.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                     size_t num_plasma_returns,
-                                     std::vector<ObjectID> *deleted)
+                                     bool release_lineage, std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to mark that this ObjectID contains another ObjectID(s).
@@ -465,6 +482,9 @@ class ReferenceCounter {
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
 
+  /// The callback to call once an object ID that we own is no longer in scope
+  /// and it has no tasks that depend on it that may be retried in the future.
+  /// The object's Reference will be erased after this callback.
   LineageReleasedCallback on_lineage_released_;
 };
 

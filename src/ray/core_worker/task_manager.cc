@@ -31,8 +31,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
-  reference_counter_->UpdateSubmittedTaskReferences(
-      task_deps, lineage_pinning_enabled_ ? spec.NumReturns() : 0);
+  reference_counter_->UpdateSubmittedTaskReferences(task_deps, lineage_pinning_enabled_);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
@@ -110,7 +109,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   TaskSpecification spec;
-  size_t num_returns_to_release = 0;
+  bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_tasks_.find(task_id);
@@ -124,31 +123,23 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                      << direct_return_id << ", now has "
                      << it->second.plasma_returns_in_scope.size()
                      << " plasma returns in scope";
-      if (it->second.plasma_returns_in_scope.erase(direct_return_id)) {
-        num_returns_to_release++;
-      }
+      it->second.plasma_returns_in_scope.erase(direct_return_id);
     }
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
                    << it->second.plasma_returns_in_scope.size()
                    << " plasma returns in scope";
     it->second.pending = false;
 
-    if (!lineage_pinning_enabled_) {
+    if (!lineage_pinning_enabled_ || it->second.num_retries_left == 0 ||
+        it->second.plasma_returns_in_scope.empty()) {
       pending_tasks_.erase(it);
-      num_returns_to_release = 0;
-    } else if (it->second.num_retries_left == 0) {
-      // Erase the task.
-      num_returns_to_release += it->second.plasma_returns_in_scope.size();
-      pending_tasks_.erase(it);
-    } else if (it->second.plasma_returns_in_scope.empty()) {
-      // Erase the task.
-      pending_tasks_.erase(it);
+    } else {
+      release_lineage = false;
     }
   }
 
   // TODO: Move this inside the lock? I don't think this is correct otherwise.
-  RemoveFinishedTaskReferences(spec, num_returns_to_release, worker_addr,
-                               reply.borrowed_refs());
+  RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
 
   ShutdownIfNeeded();
 }
@@ -161,7 +152,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
                  << rpc::ErrorType_Name(error_type);
   int num_retries_left = 0;
   TaskSpecification spec;
-  size_t num_plasma_returns_in_scope = 0;
+  bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_tasks_.find(task_id);
@@ -170,11 +161,11 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     if (num_retries_left == 0) {
-      num_plasma_returns_in_scope = it->second.plasma_returns_in_scope.size();
       pending_tasks_.erase(it);
     } else {
       RAY_CHECK(it->second.num_retries_left > 0);
       it->second.num_retries_left--;
+      release_lineage = false;
     }
   }
 
@@ -207,7 +198,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     }
     // The worker failed to execute the task, so it cannot be borrowing any
     // objects.
-    RemoveFinishedTaskReferences(spec, num_plasma_returns_in_scope, rpc::Address(),
+    RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     MarkPendingTaskFailed(task_id, spec, error_type);
   }
@@ -228,15 +219,13 @@ void TaskManager::OnTaskDependenciesInlined(
     const std::vector<ObjectID> &contained_ids, size_t num_plasma_returns) {
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateSubmittedTaskReferences(
-      /*argument_ids_to_add=*/contained_ids,
-      lineage_pinning_enabled_ ? num_plasma_returns : 0,
+      /*argument_ids_to_add=*/contained_ids, lineage_pinning_enabled_,
       /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
   in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::RemoveFinishedTaskReferences(
-    TaskSpecification &spec, size_t num_returns_to_release,
-    const rpc::Address &borrower_addr,
+    TaskSpecification &spec, bool release_lineage, const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
@@ -253,7 +242,7 @@ void TaskManager::RemoveFinishedTaskReferences(
 
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateFinishedTaskReferences(
-      plasma_dependencies, lineage_pinning_enabled_ ? num_returns_to_release : 0,
+      plasma_dependencies, lineage_pinning_enabled_ ? release_lineage : false,
       borrower_addr, borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
@@ -274,12 +263,13 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
   for (const auto &plasma_id : it->second.plasma_returns_in_scope) {
     RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
   }
-  if (it->second.plasma_returns_in_scope.erase(object_id)) {
-    RAY_LOG(DEBUG) << "Task " << task_id << " now has "
-                   << it->second.plasma_returns_in_scope.size()
-                   << " plasma returns in scope";
+  it->second.plasma_returns_in_scope.erase(object_id);
+  RAY_LOG(DEBUG) << "Task " << task_id << " now has "
+                 << it->second.plasma_returns_in_scope.size()
+                 << " plasma returns in scope";
 
-    // Decrement the lineage ref count for each of the task's args once.
+  if (it->second.plasma_returns_in_scope.empty() && !it->second.pending) {
+    // Decrement the lineage ref count for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
       if (it->second.spec.ArgByRef(i)) {
         for (size_t j = 0; j < it->second.spec.ArgIdCount(i); j++) {
@@ -291,9 +281,7 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
                                  inlined_ids.end());
       }
     }
-  }
 
-  if (it->second.plasma_returns_in_scope.empty() && !it->second.pending) {
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
     pending_tasks_.erase(it);
