@@ -10,7 +10,8 @@
 #include "ray_native_runtime.h"
 #include "task/invocation_executor.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 std::unique_ptr<AbstractRayRuntime> AbstractRayRuntime::_ins;
 std::once_flag AbstractRayRuntime::isInited;
@@ -49,9 +50,9 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 
 ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
   const TaskID &taskId = _worker->GetCurrentTaskID();
-  ObjectID objectId = ObjectID::ForPut(_worker->GetCurrentTaskID(),
-                                _worker->GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  ObjectID objectId =
+      ObjectID::ForPut(_worker->GetCurrentTaskID(), _worker->GetNextPutIndex(),
+                       static_cast<uint8_t>(TaskTransportType::RAYLET));
   Put(data, objectId, taskId);
   return objectId;
 }
@@ -65,13 +66,13 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
   return _objectStore->Get(objects, -1);
 }
 
-WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &objects,
-                                            int num_objects, int64_t timeout_ms) {
+WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &objects, int num_objects,
+                                    int64_t timeout_ms) {
   return _objectStore->Wait(objects, num_objects, timeout_ms);
 }
 
-ObjectID AbstractRayRuntime::Call(
-    remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
+ObjectID AbstractRayRuntime::Call(remote_function_ptr_holder &fptr,
+                                  std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
   invocationSpec.taskId = TaskID::ForFakeTask();  // TODO: make it from different task
   invocationSpec.actorId = ActorID::Nil();
@@ -81,14 +82,14 @@ ObjectID AbstractRayRuntime::Call(
   return _taskSubmitter->SubmitTask(invocationSpec);
 }
 
-ActorID AbstractRayRuntime::Create(
-    remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
+ActorID AbstractRayRuntime::Create(remote_function_ptr_holder &fptr,
+                                   std::shared_ptr<msgpack::sbuffer> args) {
   return _ins->Create(fptr, args);
 }
 
-ObjectID AbstractRayRuntime::Call(
-    const remote_function_ptr_holder &fptr, const ActorID &actor,
-    std::shared_ptr<msgpack::sbuffer> args) {
+ObjectID AbstractRayRuntime::Call(const remote_function_ptr_holder &fptr,
+                                  const ActorID &actor,
+                                  std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
   invocationSpec.taskId = TaskID::ForFakeTask();  // TODO: make it from different task
   invocationSpec.actorId = actor;
@@ -104,10 +105,10 @@ const TaskID &AbstractRayRuntime::GetCurrentTaskId() {
 
 ActorID AbstractRayRuntime::GetNextActorID() {
   const int next_task_index = _worker->GetNextTaskIndex();
-  const ActorID actor_id =
-      ActorID::Of(_worker->GetCurrentJobID(), _worker->GetCurrentTaskID(),
-      next_task_index);
+  const ActorID actor_id = ActorID::Of(_worker->GetCurrentJobID(),
+                                       _worker->GetCurrentTaskID(), next_task_index);
   return actor_id;
 }
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

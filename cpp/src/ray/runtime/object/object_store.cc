@@ -4,7 +4,8 @@
 #include <memory>
 #include <utility>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 const int getTimeoutMs = 1000;
 
@@ -21,4 +22,5 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> ObjectStore::Get(
     const std::vector<ObjectID> &objects, int timeoutMs) {
   return GetRaw(objects, timeoutMs);
 }
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

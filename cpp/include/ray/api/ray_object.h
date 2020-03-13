@@ -8,7 +8,8 @@
 
 #include <ray/core.h>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 template <typename T>
 class RayObject {
@@ -34,12 +35,14 @@ class RayObject {
   std::shared_ptr<TO> DoGet() const;
 };
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray
 
 // ---------- implementation ----------
 #include <ray/api.h>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 template <typename T>
 RayObject<T>::RayObject() {}
@@ -79,4 +82,5 @@ inline bool RayObject<T>::operator==(const RayObject<T> &object) const {
   }
 }
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

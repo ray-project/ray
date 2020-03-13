@@ -7,7 +7,8 @@
 
 #include "object_store.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 class LocalModeObjectStore : public ObjectStore {
  private:
@@ -16,7 +17,7 @@ class LocalModeObjectStore : public ObjectStore {
   std::mutex _dataMutex;
 
   WaitResult WaitInternal(const std::vector<ObjectID> &objects, int num_objects,
-                                  int64_t timeout_ms);
+                          int64_t timeout_ms);
 
  public:
   void PutRaw(const ObjectID &objectId, std::shared_ptr<msgpack::sbuffer> data);
@@ -29,7 +30,8 @@ class LocalModeObjectStore : public ObjectStore {
       const std::vector<ObjectID> &objects, int timeoutMs);
 
   WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
-                          int64_t timeout_ms);
+                  int64_t timeout_ms);
 };
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

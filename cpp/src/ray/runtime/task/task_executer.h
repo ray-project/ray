@@ -5,7 +5,8 @@
 #include <ray/core.h>
 #include "invocation_spec.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 class ActorContext {
  public:
@@ -13,9 +14,7 @@ class ActorContext {
 
   std::shared_ptr<std::mutex> actorMutex;
 
-  ActorContext() {
-    actorMutex = std::shared_ptr<std::mutex>(new std::mutex);
-  }
+  ActorContext() { actorMutex = std::shared_ptr<std::mutex>(new std::mutex); }
 };
 
 class TaskExcuter {
@@ -25,4 +24,5 @@ class TaskExcuter {
 
   virtual ~TaskExcuter(){};
 };
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

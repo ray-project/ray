@@ -6,7 +6,8 @@
 
 #include "local_mode_object_store.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 void LocalModeObjectStore::PutRaw(const ObjectID &objectId,
                                   std::shared_ptr<msgpack::sbuffer> data) {
@@ -60,8 +61,8 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
   return result;
 }
 
-WaitResult LocalModeObjectStore::WaitInternal(
-    const std::vector<ObjectID> &objects, int num_objects, int64_t timeout_ms) {
+WaitResult LocalModeObjectStore::WaitInternal(const std::vector<ObjectID> &objects,
+                                              int num_objects, int64_t timeout_ms) {
   static const int GET_CHECK_INTERVAL_MS = 100;
   std::list<ObjectID> readys;
   std::list<ObjectID> remains(objects.begin(), objects.end());
@@ -95,7 +96,8 @@ WaitResult LocalModeObjectStore::WaitInternal(
 }
 
 WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &objects,
-                                              int num_objects, int64_t timeout_ms) {
+                                      int num_objects, int64_t timeout_ms) {
   return WaitInternal(objects, num_objects, timeout_ms);
 }
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

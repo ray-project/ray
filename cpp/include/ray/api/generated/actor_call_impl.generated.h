@@ -29,13 +29,15 @@ RayObject<R> RayActor<O>::Call(ActorFunc2<O, R, T1, T2> actorFunc, T1 arg1, T2 a
 
 template <typename O>
 template <typename R, typename T1, typename T2>
-RayObject<R> RayActor<O>::Call(ActorFunc2<O, R, T1, T2> actorFunc, RayObject<T1> &arg1, T2 arg2) {
+RayObject<R> RayActor<O>::Call(ActorFunc2<O, R, T1, T2> actorFunc, RayObject<T1> &arg1,
+                               T2 arg2) {
   return Ray::Call(actorFunc, *this, arg1, arg2);
 }
 
 template <typename O>
 template <typename R, typename T1, typename T2>
-RayObject<R> RayActor<O>::Call(ActorFunc2<O, R, T1, T2> actorFunc, T1 arg1, RayObject<T2> &arg2) {
+RayObject<R> RayActor<O>::Call(ActorFunc2<O, R, T1, T2> actorFunc, T1 arg1,
+                               RayObject<T2> &arg2) {
   return Ray::Call(actorFunc, *this, arg1, arg2);
 }
 

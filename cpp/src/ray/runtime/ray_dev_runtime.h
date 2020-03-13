@@ -5,17 +5,18 @@
 #include <unordered_map>
 #include "abstract_ray_runtime.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 class RayDevRuntime : public AbstractRayRuntime {
   friend class AbstractRayRuntime;
 
  private:
-
   RayDevRuntime(std::shared_ptr<RayConfig> config);
 
   ActorID Create(remote_function_ptr_holder &fptr,
-                                   std::shared_ptr<msgpack::sbuffer> args);
+                 std::shared_ptr<msgpack::sbuffer> args);
 };
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

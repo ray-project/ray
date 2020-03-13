@@ -1,10 +1,11 @@
 
 #pragma once
 
-#include <msgpack.hpp>
 #include <ray/core.h>
+#include <msgpack.hpp>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 class InvocationSpec {
  public:
@@ -16,4 +17,5 @@ class InvocationSpec {
   std::shared_ptr<msgpack::sbuffer> args;
   int returnCount;
 };
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

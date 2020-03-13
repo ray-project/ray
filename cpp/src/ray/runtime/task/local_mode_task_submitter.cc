@@ -7,7 +7,8 @@
 #include "invocation_executor.h"
 #include "local_mode_task_submitter.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 void my_task() {}
 
@@ -15,13 +16,11 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter() {
   _pool.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::BuildReturnId(
-    const TaskID &taskId) {
-return ObjectID::FromRandom();
+ObjectID LocalModeTaskSubmitter::BuildReturnId(const TaskID &taskId) {
+  return ObjectID::FromRandom();
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation,
-                                                         TaskType type) {
+ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskType type) {
   std::unique_ptr<TaskSpec> ts(new TaskSpec());
   ts->type = type;
   ts->taskId = invocation.taskId;
@@ -43,32 +42,31 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation,
     _actorContextsMutex.unlock();
   }
   if (type == TaskType::ACTOR_CREATION_TASK || type == TaskType::ACTOR_TASK) {
-    /// Execute actor task directly in the main thread because we have not support actor handle. 
-    /// We must guarantee the actor task executed by calling order.
+    /// Execute actor task directly in the main thread because we have not support actor
+    /// handle. We must guarantee the actor task executed by calling order.
     InvocationExecutor::Execute(*ts, actor);
   } else {
-      boost::asio::post(*_pool.get(), std::bind(
-                                      [actor, mutex](std::unique_ptr<TaskSpec> &ts) {
-                                        if (mutex) {
-                                          mutex->lock();
-                                        }
-                                        InvocationExecutor::Execute(*ts, actor);
-                                        if (mutex) {
-                                          mutex->unlock();
-                                        }
-                                      },
-                                      std::move(ts)));
+    boost::asio::post(*_pool.get(), std::bind(
+                                        [actor, mutex](std::unique_ptr<TaskSpec> &ts) {
+                                          if (mutex) {
+                                            mutex->lock();
+                                          }
+                                          InvocationExecutor::Execute(*ts, actor);
+                                          if (mutex) {
+                                            mutex->unlock();
+                                          }
+                                        },
+                                        std::move(ts)));
   }
   return rt;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(
-    const InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::SubmitTask(const InvocationSpec &invocation) {
   return Submit(invocation, TaskType::NORMAL_TASK);
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(
-    remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args) {
+ActorID LocalModeTaskSubmitter::CreateActor(remote_function_ptr_holder &fptr,
+                                            std::shared_ptr<msgpack::sbuffer> args) {
   AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
   ActorID id = runtime.GetNextActorID();
   typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
@@ -84,9 +82,9 @@ ActorID LocalModeTaskSubmitter::CreateActor(
   return id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(
-    const InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(const InvocationSpec &invocation) {
   return Submit(invocation, TaskType::ACTOR_TASK);
 }
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

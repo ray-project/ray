@@ -3,19 +3,19 @@
 
 #include <memory>
 
+#include <ray/api/generated/actor_funcs.generated.h>
+#include <ray/api/generated/create_funcs.generated.h>
+#include <ray/api/generated/funcs.generated.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/core.h>
-#include <ray/api/generated/funcs.generated.h>
-#include <ray/api/generated/create_funcs.generated.h>
-#include <ray/api/generated/actor_funcs.generated.h>
 #include <msgpack.hpp>
-#include <ray/core.h>
 
 /**
  * ray api definition
  *
  */
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 template <typename T>
 class RayObject;
@@ -29,7 +29,6 @@ class Ray {
   friend class RayObject;
 
  public:
-  
   /// Initialize Ray runtime with the default runtime implementation.
   static void Init();
 
@@ -62,33 +61,34 @@ class Ray {
   /// \param[in] ids The object id array which should be waited.
   /// \param[in] num_objects The minimum number of objects to wait.
   /// \param[in] timeout_ms The maximum wait time.
-  /// \return Two arrays, one containing locally available objects, one containing the rest.
+  /// \return Two arrays, one containing locally available objects, one containing the
+  /// rest.
   static WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
-                            int64_t timeout_ms);
+                         int64_t timeout_ms);
 
-  /// Include all the Call method which should be auto genrated.
-  /// Call a general remote fucntion.
-  ///
-  /// \param[in] func The function pointer to be remote execution.
-  /// \param[in] arg The function args.
-  /// \return RayObject.
-  #include "api/generated/call_funcs.generated.h"
+/// Include all the Call method which should be auto genrated.
+/// Call a general remote fucntion.
+///
+/// \param[in] func The function pointer to be remote execution.
+/// \param[in] arg The function args.
+/// \return RayObject.
+#include "api/generated/call_funcs.generated.h"
 
-  /// Include all the Call method which should be auto genrated.
-  /// Call a factory method which create an actor and return an actor pointer.
-  ///
-  /// \param[in] func The function pointer to be remote execution.
-  /// \param[in] arg The function args.
-  /// \return RayActor.
-  #include "api/generated/create_actors.generated.h"
+/// Include all the Call method which should be auto genrated.
+/// Call a factory method which create an actor and return an actor pointer.
+///
+/// \param[in] func The function pointer to be remote execution.
+/// \param[in] arg The function args.
+/// \return RayActor.
+#include "api/generated/create_actors.generated.h"
 
-  /// Include all the Call method which should be auto genrated.
-  /// Call a actor remote fucntion.
-  ///
-  /// \param[in] func The function pointer to be remote execution.
-  /// \param[in] arg The function args.
-  /// \return RayObject.
-  #include "api/generated/call_actors.generated.h"
+/// Include all the Call method which should be auto genrated.
+/// Call a actor remote fucntion.
+///
+/// \param[in] func The function pointer to be remote execution.
+/// \param[in] arg The function args.
+/// \return RayObject.
+#include "api/generated/call_actors.generated.h"
 
  private:
   static RayRuntime *_impl;
@@ -98,16 +98,18 @@ class Ray {
   static std::shared_ptr<T> Get(const RayObject<T> &object);
 };
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray
 
 // --------- inline implementation ------------
-#include <ray/api/generated/execute.h>
 #include <ray/api/arguments.h>
+#include <ray/api/generated/execute.h>
 #include <ray/api/ray_actor.h>
 #include <ray/api/ray_object.h>
 #include <ray/api/wait_result.h>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 class Arguments;
 
 template <typename T>
@@ -152,8 +154,7 @@ inline std::shared_ptr<T> Ray::Get(const RayObject<T> &object) {
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::Get(
-    const std::vector<ObjectID> &ids) {
+inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids) {
   auto result = _impl->Get(ids);
   std::vector<std::shared_ptr<T>> rt;
   for (auto it = result.begin(); it != result.end(); it++) {
@@ -176,8 +177,8 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(
 }
 
 inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                               int64_t timeout_ms) {
-  return _impl->Wait(ids, num_objects, timeout_ms); 
+                            int64_t timeout_ms) {
+  return _impl->Wait(ids, num_objects, timeout_ms);
 }
 
 #include <ray/api/generated/call_funcs_impl.generated.h>
@@ -186,4 +187,5 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 #include <ray/api/generated/call_actors_impl.generated.h>
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

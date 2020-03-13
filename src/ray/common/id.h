@@ -20,10 +20,10 @@
 
 #include <chrono>
 #include <cstring>
+#include <msgpack.hpp>
 #include <mutex>
 #include <random>
 #include <string>
-#include <msgpack.hpp>
 
 #include "plasma/common.h"
 #include "ray/common/constants.h"

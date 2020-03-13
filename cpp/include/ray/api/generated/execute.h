@@ -3,7 +3,8 @@
 #include <ray/api/ray_object.h>
 #include <ray/core.h>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 // class Arguments;
 
@@ -298,4 +299,5 @@ std::shared_ptr<msgpack::sbuffer> actor_exec_function(
   Arguments::Wrap(packer, rt);
   return buffer;
 }
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

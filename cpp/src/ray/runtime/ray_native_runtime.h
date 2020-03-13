@@ -3,7 +3,8 @@
 
 #include "abstract_ray_runtime.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 class RayNativeRuntime : public AbstractRayRuntime {
   friend class AbstractRayRuntime;
@@ -12,4 +13,5 @@ class RayNativeRuntime : public AbstractRayRuntime {
   RayNativeRuntime(std::shared_ptr<RayConfig> config);
 };
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

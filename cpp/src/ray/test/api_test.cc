@@ -133,9 +133,8 @@ TEST(ray_api_test_case, actor) {
 }
 
 TEST(ray_api_test_case, compare_with_future) {
-
   // future from a packaged_task
-  std::packaged_task<int(int)> task(foo); 
+  std::packaged_task<int(int)> task(foo);
   std::future<int> f1 = task.get_future();
   std::thread t(std::move(task), 1);
   int rt1 = f1.get();

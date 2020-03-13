@@ -3,14 +3,14 @@
 
 #include <ray/core.h>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 #include <ray/api/generated/actor_funcs.generated.h>
 
 template <typename O>
 class RayActor {
  public:
-
   RayActor();
 
   RayActor(const ActorID &id);
@@ -19,7 +19,7 @@ class RayActor {
 
   const ActorID &ID() const;
 
-  #include <ray/api/generated/actor_call.generated.h>
+#include <ray/api/generated/actor_call.generated.h>
 
   MSGPACK_DEFINE(_id);
 
@@ -46,4 +46,5 @@ const ActorID &RayActor<O>::ID() const {
 }
 
 #include <ray/api/generated/actor_call_impl.generated.h>
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

@@ -1,6 +1,7 @@
 #include "task_spec.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 TaskSpec::TaskSpec() {
   driverId = JobID::Nil();
@@ -11,13 +12,9 @@ TaskSpec::TaskSpec() {
   actorCounter = 0;
 }
 
-int32_t TaskSpec::GetFuncOffset() const {
-  return funcOffset;
-}
+int32_t TaskSpec::GetFuncOffset() const { return funcOffset; }
 
-int32_t TaskSpec::GetexecFuncOffset() const {
-  return execFuncOffset;
-}
+int32_t TaskSpec::GetexecFuncOffset() const { return execFuncOffset; }
 
 void TaskSpec::SetFuncOffset(int32_t offset) {
   funcOffset = offset;
@@ -28,4 +25,5 @@ void TaskSpec::SetexecFuncOffset(int32_t offset) {
   execFuncOffset = offset;
   return;
 }
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

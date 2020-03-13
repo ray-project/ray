@@ -2,7 +2,8 @@
 #include "../../agent.h"
 #include "../abstract_ray_runtime.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 void InvocationExecutor::Execute(const TaskSpec &taskSpec,
                                  std::shared_ptr<msgpack::sbuffer> actor) {
@@ -12,8 +13,8 @@ void InvocationExecutor::Execute(const TaskSpec &taskSpec,
         std::shared_ptr<msgpack::sbuffer> object);
     EXEC_FUNCTION exec_function =
         (EXEC_FUNCTION)(dylib_base_addr + taskSpec.GetexecFuncOffset());
-    auto data = (*exec_function)(dylib_base_addr, taskSpec.GetFuncOffset(),
-                                 taskSpec.args, actor);
+    auto data =
+        (*exec_function)(dylib_base_addr, taskSpec.GetFuncOffset(), taskSpec.args, actor);
     AbstractRayRuntime &rayRuntime = AbstractRayRuntime::GetInstance();
     rayRuntime.Put(std::move(data), taskSpec.returnId, taskSpec.taskId);
   } else {
@@ -27,4 +28,5 @@ void InvocationExecutor::Execute(const TaskSpec &taskSpec,
     rayRuntime.Put(std::move(data), taskSpec.returnId, taskSpec.taskId);
   }
 }
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

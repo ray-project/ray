@@ -52,7 +52,8 @@ RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, T1 arg1, T2 arg2
 }
 
 template <typename R, typename T1, typename T2>
-RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, RayObject<T1> &arg1, T2 arg2) {
+RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, RayObject<T1> &arg1,
+                             T2 arg2) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::Wrap(packer, true, arg1, false, arg2);
@@ -64,7 +65,8 @@ RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, RayObject<T1> &a
 }
 
 template <typename R, typename T1, typename T2>
-RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, T1 arg1, RayObject<T2> &arg2) {
+RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, T1 arg1,
+                             RayObject<T2> &arg2) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::Wrap(packer, false, arg1, true, arg2);

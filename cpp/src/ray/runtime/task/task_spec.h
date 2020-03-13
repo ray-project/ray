@@ -4,9 +4,9 @@
 #include <ray/core.h>
 #include <msgpack.hpp>
 #include <vector>
-#include <ray/core.h>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 class TaskSpec {
  public:
@@ -30,4 +30,5 @@ class TaskSpec {
   void SetexecFuncOffset(int32_t offset);
 };
 
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

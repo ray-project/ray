@@ -5,14 +5,15 @@
 
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime.h>
-#include <msgpack.hpp>
 #include <ray/core.h>
+#include <msgpack.hpp>
 #include "./object/object_store.h"
 #include "./task/task_executer.h"
-#include "./task/task_submitter.h"
 #include "./task/task_spec.h"
+#include "./task/task_submitter.h"
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 class AbstractRayRuntime : public RayRuntime {
   friend class Ray;
@@ -44,17 +45,15 @@ class AbstractRayRuntime : public RayRuntime {
       const std::vector<ObjectID> &objects);
 
   WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
-                          int64_t timeout_ms);
+                  int64_t timeout_ms);
 
-  ObjectID Call(remote_function_ptr_holder &fptr,
-                                 std::shared_ptr<msgpack::sbuffer> args);
+  ObjectID Call(remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args);
 
   ActorID Create(remote_function_ptr_holder &fptr,
-                                   std::shared_ptr<msgpack::sbuffer> args);
+                 std::shared_ptr<msgpack::sbuffer> args);
 
-  ObjectID Call(const remote_function_ptr_holder &fptr,
-                                 const ActorID &actor,
-                                 std::shared_ptr<msgpack::sbuffer> args);
+  ObjectID Call(const remote_function_ptr_holder &fptr, const ActorID &actor,
+                std::shared_ptr<msgpack::sbuffer> args);
 
   ActorID GetNextActorID();
 
@@ -67,4 +66,5 @@ class AbstractRayRuntime : public RayRuntime {
 
   void Execute(const TaskSpec &taskSpec);
 };
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray

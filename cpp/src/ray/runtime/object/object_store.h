@@ -6,7 +6,8 @@
 #include <ray/api/wait_result.h>
 #include <msgpack.hpp>
 
-namespace ray { namespace api {
+namespace ray {
+namespace api {
 
 extern const int getTimeoutMs;
 
@@ -33,8 +34,9 @@ class ObjectStore {
       const std::vector<ObjectID> &objects, int timeoutMs) = 0;
 
   virtual WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
-                                  int64_t timeout_ms) = 0;
+                          int64_t timeout_ms) = 0;
 
   virtual ~ObjectStore(){};
 };
-}  }// namespace ray::api
+}  // namespace api
+}  // namespace ray
