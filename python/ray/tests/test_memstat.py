@@ -155,8 +155,25 @@ def test_nested_object_refs(ray_start_regular):
 
 
 def test_pinned_object_call_site(ray_start_regular):
+    # Local ref only.
     x_id = ray.put(np.zeros(100000))
+    info = memstat()
+    print(info)
+    assert num_objects(info) == 1, info
+    assert count(info, LOCAL_REF) == 1, info
+    assert count(info, PINNED_IN_MEMORY) == 0, info
+    assert count(info, "test_memstat.py") == 1, info
+
+    # Local ref + pinned buffer.
     buf = ray.get(x_id)
+    info = memstat()
+    print(info)
+    assert num_objects(info) == 1, info
+    assert count(info, LOCAL_REF) == 0, info
+    assert count(info, PINNED_IN_MEMORY) == 1, info
+    assert count(info, "test_memstat.py") == 1, info
+
+    # Just pinned buffer.
     del x_id
     info = memstat()
     print(info)
@@ -164,11 +181,15 @@ def test_pinned_object_call_site(ray_start_regular):
     assert count(info, LOCAL_REF) == 0, info
     assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, "test_memstat.py") == 1, info
+
+    # Nothing.
     del buf
+    info = memstat()
+    print(info)
+    assert num_objects(info) == 0, info
 
 
 if __name__ == "__main__":
     import pytest
-    x_id = ray.put(np.zeros(100000))
     import sys
     sys.exit(pytest.main(["-v", __file__]))
