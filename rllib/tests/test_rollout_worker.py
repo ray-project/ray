@@ -284,7 +284,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy=MockPolicy,
             batch_mode="complete_episodes",
-            batch_steps=10,
+            rollout_fragment_length=10,
             episode_horizon=6,
             soft_horizon=False)
         samples = ev.sample()
