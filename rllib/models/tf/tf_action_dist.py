@@ -190,13 +190,7 @@ class DiagGaussian(TFActionDistribution):
         return np.prod(action_space.shape) * 2
 
 
-class SquashedGaussian(TFActionDistribution):
-    """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
-
-    The distribution will never return low or high exactly, but
-    `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
-    """
-
+class _SquashedGaussianBase(TFActionDistribution):
     def __init__(self, inputs, model, low=-1.0, high=1.0):
         """Parameterizes the distribution via `inputs`.
 
@@ -209,14 +203,37 @@ class SquashedGaussian(TFActionDistribution):
         assert tfp is not None
         loc, log_scale = tf.split(inputs, 2, axis=-1)
         # Clip `scale` values (coming from NN) to reasonable values.
-        log_scale = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
-                                     MAX_LOG_NN_OUTPUT)
-        scale = tf.exp(log_scale)
+        self.log_std = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
+                                        MAX_LOG_NN_OUTPUT)
+        scale = tf.exp(self.log_std)
         self.distr = tfp.distributions.Normal(loc=loc, scale=scale)
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high
         super().__init__(inputs, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        mean = self.distr.mean()
+        return self._squash(mean)
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self):
+        return self._squash(self.distr.sample())
+
+    def _squash(self, raw_values):
+        raise NotImplementedError
+
+    def _unsquash(self, values):
+        raise NotImplementedError
+
+
+class SquashedGaussian(_SquashedGaussianBase):
+    """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
+
+    The distribution will never return low or high exactly, but
+    `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
+    """
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):
@@ -228,15 +245,6 @@ class SquashedGaussian(TFActionDistribution):
             tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
             axis=-1)
         return log_prob
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        mean = self.distr.mean()
-        return self._squash(mean)
-
-    @override(TFActionDistribution)
-    def _build_sample_op(self):
-        return self._squash(self.distr.sample())
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -261,6 +269,77 @@ class SquashedGaussian(TFActionDistribution):
     def _unsquash(self, values):
         return tf.math.atanh((values - self.low) /
                              (self.high - self.low) * 2.0 - 1.0)
+
+
+class GaussianSquashedGaussian(_SquashedGaussianBase):
+    """A gaussian CDF-squashed Gaussian distribution.
+
+    The distribution will never return low or high exactly, but
+    `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
+    """
+    # Chosen to match the standard logistic variance, so that:
+    #   Var(N(0, 0.5 * _SCALE)) = Var(Logistic(0, 1))
+    _SCALE = 0.5 * 1.8137
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        unsquashed_values = self._unsquash(x)
+        log_prob = tf.reduce_sum(
+            self.distr.log_prob(value=unsquashed_values), axis=-1)
+        u = (unsquashed_values - self.low) / (self.high - self.low)
+        dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
+        log_prob -= tf.math.reduce_sum(dist.log_prob(value=u), axis=-1)
+        log_prob += tf.log(self.high - self.low)
+        return log_prob
+
+    @override(ActionDistribution)
+    def kl(self, other):
+        # KL(self || other) is just the KL of the two unsquashed distributions.
+        assert isinstance(other, GaussianSquashedGaussian)
+
+        mean = self.distr.mean()
+        std = self.distr.std()
+
+        other_mean = other.distr.mean()
+        other_std = other.distr.std()
+
+        return tf.reduce_sum(
+            other.log_std - self.log_std +
+            (tf.square(std) + tf.square(mean - other_mean)) /
+            (2.0 * tf.square(other_std)) - 0.5,
+            axis=1)
+
+    def entropy(self):
+        # Entropy is:
+        #   -KL(self.distr || N(0, _SCALE)) + log(high - low)
+        # where the latter distribution's CDF is used to do the squashing.
+
+        mean = self.distr.mean()
+        std = self.distr.std()
+
+        return tf.reduce_sum(
+            log(self.high - self.low) -
+            (tf.log(self._SCALE) - self.log_std +
+             (tf.square(std) + tf.square(mean)) /
+             (2.0 * tf.square(self._SCALE)) - 0.5))
+
+    def _squash(self, raw_values):
+        # Make sure raw_values are not too high/low (such that tanh would
+        # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
+
+        values = tfp.bijectors.NormalCDF().forward(
+                raw_values / self._SCALE
+        )
+        return (tf.clip_by_value(values,
+                                 SMALL_NUMBER,
+                                 1.0 - SMALL_NUMBER) *
+                (self.high - self.low) + self.low)
+
+    def _unsquash(self, values):
+        return self._SCALE * tfp.bijectors.NormalCDF().inverse(
+            (values - self.low) / (self.high - self.low)
+        )
+
 
 
 class Deterministic(TFActionDistribution):
