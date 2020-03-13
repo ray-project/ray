@@ -2,7 +2,7 @@ import ray
 
 
 @ray.remote(num_cpus=0)
-class BatchLogsReporter:
+class _BatchLogsReporter:
     def __init__(self):
         # we need the new_data field to allow sending back None as the legs
         self._logs = {"new_data": False, "data": None}

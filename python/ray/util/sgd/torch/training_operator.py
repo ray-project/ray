@@ -197,10 +197,6 @@ class TrainingOperator:
 
         return metric_meters.summary()
 
-    def forward(self, features, target):
-        output = self.model(features)
-        return self.criterion(output, target)
-
     def make_progress_bar_metrics(self, logs):
         return {}
 
@@ -244,7 +240,8 @@ class TrainingOperator:
 
         # Compute output.
         with self.timers.record("fwd"):
-            loss = self.forward(features, target)
+            output = self.model(features)
+            loss = self.criterion(output, target)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
@@ -371,14 +368,14 @@ class TrainingOperator:
     @property
     def train_loader(self):
         """
-        Data loader for the validation dataset created by the data_creator.
+        Data loader for the validation dataset created by the ``data_creator``.
         """
         return self._train_loader
 
     @property
     def validation_loader(self):
         """
-        Data loader for the train dataset created by the data_creator.
+        Data loader for the train dataset created by the ``data_creator``.
         """
         return self._validation_loader
 

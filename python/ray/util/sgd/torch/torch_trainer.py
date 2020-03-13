@@ -19,7 +19,7 @@ from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import (VALID_SCHEDULER_STEP,
                                           BATCH_LOGS_RATE_LIMIT)
-from ray.util.sgd.torch.batch_logs_reporter import BatchLogsReporter
+from ray.util.sgd.torch.batch_logs_reporter import _BatchLogsReporter
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -270,7 +270,7 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq,
                 )
             ]
-            self.batch_reporter = BatchLogsReporter.remote()
+            self.batch_reporter = _BatchLogsReporter.remote()
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
             # Get setup tasks in order to throw errors on failure
@@ -295,7 +295,7 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq)
                 for i in range(num_workers)
             ]
-            self.batch_reporter = BatchLogsReporter.remote()
+            self.batch_reporter = _BatchLogsReporter.remote()
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
 
