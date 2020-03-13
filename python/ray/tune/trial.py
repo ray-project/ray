@@ -236,13 +236,13 @@ class Trial:
     def checkpoint(self):
         """Returns the most recent checkpoint.
 
-        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
-        Otherwise, it is the most recent PERSISTENT checkpoint.
+        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
+        is returned.
         """
-        if self.status == Trial.PAUSED:
-            assert self.checkpoint_manager.newest_memory_checkpoint.value
-            return self.checkpoint_manager.newest_memory_checkpoint
-        checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
+        if self.status == Trial.ERROR:
+            checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
+        else:
+            checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.value is None:
             checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
         return checkpoint

@@ -3,7 +3,7 @@ Distributed PyTorch
 
 The RaySGD ``TorchTrainer`` simplifies distributed model training for PyTorch. The ``TorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to wrap your training code in bash scripts.
 
-Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
+Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor.
 
 .. image:: raysgd-actors.svg
     :align: center
@@ -139,7 +139,7 @@ You can also set the number of workers and whether the workers will use GPUs:
         loss_creator=nn.MSELoss,
         scheduler_creator=scheduler_creator,
         config={"lr": 0.001},
-        num_replicas=100,
+        num_workers=100,
         use_gpu=True)
 
 
@@ -287,7 +287,7 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
             optimizer_creator=optimizer_creator,
             loss_creator=nn.BCELoss,
             training_operator_cls=GANOperator,
-            num_replicas=num_replicas,
+            num_workers=num_workers,
             config=config,
             use_gpu=True,
             batch_size=128)
@@ -320,7 +320,7 @@ Use the ``initialization_hook`` parameter to initialize state on each worker pro
         loss_creator=nn.MSELoss,
         initialization_hook=initialization_hook,
         config={"lr": 0.001}
-        num_replicas=100,
+        num_workers=100,
         use_gpu=True)
 
 Save and Load
@@ -339,7 +339,7 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=num_replicas)
+        num_workers=num_workers)
     trainer_2.restore(checkpoint_path)
 
 
@@ -366,7 +366,7 @@ You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. 
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=4,
+        num_workers=4,
         use_fp16=True
     )
 
@@ -383,7 +383,7 @@ To specify particular parameters for ``amp.initialize``, you can use the ``apex_
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=4,
+        num_workers=4,
         use_fp16=True,
         apex_args={
             opt_level="O3",
@@ -417,7 +417,7 @@ After connecting, you can scale up the number of workers seamlessly across multi
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
-        num_replicas=100
+        num_workers=100
     )
     trainer.train()
     model = trainer.get_model()
@@ -544,10 +544,10 @@ RaySGD TorchTrainer provides comparable or better performance than other existin
     Number   DataParallel  Ray (PyTorch)  DataParallel  Ray (PyTorch)
     of GPUs                               + Apex        + Apex
     =======  ============  =============  ============  ==============
-    1        2769.7        5143           2962.7        6172
-    2        5492.2        9463           5886.1        10052.8
-    4        10733.4       18807          11705.9       20319.5
-    8        21872.5       36911.8        23317.9       38642
+    1        355.5         356            776           770
+    2        656           701            1303          1346
+    4        1289          1401           2606          2695
+    8        2521          2795           4795          5862
 
 **Multi-node benchmarks**:
 
@@ -561,10 +561,10 @@ RaySGD TorchTrainer provides comparable or better performance than other existin
     Number   Horovod  Ray (PyTorch)  Horovod  Ray (PyTorch)
     of GPUs                          + Apex   + Apex
     =======  =======  =============  =======  ==============
-    1 * 8    2769.7   5143           2962.7   6172
-    2 * 8    5492.2   9463           5886.1   10052.8
-    4 * 8    10733.4  18807          11705.9  20319.5
-    8 * 8    21872.5  36911.8        23317.9  38642
+    1 * 8    2769.7   2962.7         5143     6172
+    2 * 8    5492.2   5886.1         9463     10052.8
+    4 * 8    10733.4  11705.9        18807    20319.5
+    8 * 8    21872.5  23317.9        36911.8  38642
 
 
 

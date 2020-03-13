@@ -553,15 +553,6 @@ py_test(
         ]
 )
 
-# From test_rollout.sh (deprecated test file).
-py_test(
-    name = "test_impala_rollout",
-    main = "tests/test_rollout.py",
-    data = ["train.py", "rollout.py"],
-    tags = ["quick_train"],
-    srcs = ["tests/test_rollout.py"]
-)
-
 # MARWIL
 
 py_test(
@@ -855,6 +846,34 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Optimizers and Memories
+# rllib/optimizers/
+#
+# Tag: optimizers
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_optimizers",
+    tags = ["optimizers"],
+    size = "large",
+    srcs = ["optimizers/tests/test_optimizers.py"]
+)
+
+py_test(
+    name = "test_segment_tree",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_segment_tree.py"]
+)
+
+py_test(
+    name = "test_prioritized_replay_buffer",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+)
+
+# --------------------------------------------------------------------
 # Policies
 # rllib/policy/
 #
@@ -876,11 +895,10 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_framework_agnostic_components",
+    name = "test_explorations",
     tags = ["utils"],
-    size = "small",
-    data = glob(["utils/tests/**"]),
-    srcs = ["utils/tests/test_framework_agnostic_components.py"]
+    size = "large",
+    srcs = ["utils/exploration/tests/test_explorations.py"]
 )
 
 # Schedules
@@ -889,6 +907,14 @@ py_test(
     tags = ["utils"],
     size = "small",
     srcs = ["utils/schedules/tests/test_schedules.py"]
+)
+
+py_test(
+    name = "test_framework_agnostic_components",
+    tags = ["utils"],
+    size = "small",
+    data = glob(["utils/tests/**"]),
+    srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
 # TaskPool
@@ -957,13 +983,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_evaluators.py"]
-)
-
-py_test(
-    name = "tests/test_explorations",
-    tags = ["tests_dir", "tests_dir_E", "explorations"],
-    size = "large",
-    srcs = ["tests/test_explorations.py"]
 )
 
 py_test(
@@ -1037,17 +1056,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_optimizers",
-    tags = ["tests_dir", "tests_dir_O"],
-    size = "large",
-    srcs = ["tests/test_optimizers.py"]
-)
-
-py_test(
-    name = "tests/test_pipeline",
-    tags = ["tests_dir", "tests_dir_P"],
+    name = "tests/test_exec_api",
+    tags = ["tests_dir", "tests_dir_E"],
     size = "small",
-    srcs = ["tests/test_pipeline.py"]
+    srcs = ["tests/test_exec_api.py"]
 )
 
 py_test(
@@ -1055,6 +1067,15 @@ py_test(
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_reproducibility.py"]
+)
+
+py_test(
+    name = "test_rollout",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"]
 )
 
 py_test(

@@ -24,8 +24,8 @@ def get_policy_class(config):
         return PGTFPolicy
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     # Collects experiences in parallel from multiple RolloutWorker actors.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -46,4 +46,4 @@ PGTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     default_policy=PGTFPolicy,
     get_policy_class=get_policy_class,
-    training_pipeline=training_pipeline)
+    execution_plan=execution_plan)
