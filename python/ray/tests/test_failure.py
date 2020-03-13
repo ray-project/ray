@@ -1126,6 +1126,42 @@ def test_fate_sharing(ray_start_cluster):
     node_to_kill = test_node_failure(node_to_kill, use_actors=False)
 
 
+def test_plasma_failure_cached_object(ray_start_cluster):
+    config = json.dumps({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_timeout_milliseconds": 100,
+        "lineage_pinning_enabled": True,
+    })
+    cluster = Cluster()
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _internal_config=config)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    # Node to place the child actor.
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    obj = large_object.options(resources={"node1": 1}).remote()
+    ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+
+    for _ in range(10):
+        large_object.options(resources={"node2": 1}).remote()
+
+    ray.get(dependent_task.remote(obj))
+
+
 def test_plasma_reconstruction(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,

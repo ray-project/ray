@@ -261,6 +261,8 @@ class ReferenceCounter {
   void MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_returns_in_scope,
                                  const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
+  const ClientID GetPlasmaObjectPinnedAt(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
   std::vector<ObjectID> HandleNodeRemoved(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
  private:

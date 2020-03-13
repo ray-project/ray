@@ -324,9 +324,50 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   const auto node_id = ClientID::FromBinary(node_info.node_id());
   const auto lost_objects = reference_counter_->HandleNodeRemoved(node_id);
   for (const auto &object_id : lost_objects) {
-    RAY_LOG(INFO) << "Owned object " << object_id << " lost due to node failure "
+    RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure "
                   << node_id;
   }
+}
+
+void CoreWorker::ReconstructObject(const ObjectID &object_id) {
+  // Check the ReferenceCounter to see if there is a location for the object.
+  const auto node_id = reference_counter_->GetPlasmaObjectPinnedAt(object_id);
+  if (!node_id.IsNil()) {
+    return;
+  }
+
+  // Lookup the object in the GCS to find another copy.
+  RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, [this, object_id](Status status, const std::vector<rpc::ObjectTableData> &result) {
+      RAY_CHECK_OK(status);
+      // TODO(swang): Deduplicate concurrent requests to reconstruct the same
+      // object ID.
+      // If a copy still exists, pin the object by sending a
+      // PinObjectIDs RPC.
+      auto it = result.begin();
+      for (; it != result.end(); it++) {
+        const auto new_node_id = ClientID::FromBinary(it->manager());
+        auto new_node = gcs_client_->Nodes().Get(new_node_id);
+        RAY_CHECK(new_node.has_value());
+        if (new_node->state() == rpc::GcsNodeInfo::ALIVE) {
+          RAY_LOG(DEBUG) << "Trying to pin copy of lost object " << object_id << " at node " << new_node_id;
+          RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(
+              rpc_address_, {object_id},
+              [this, object_id, new_node_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+                if (status.ok()) {
+                  reference_counter_->MarkPlasmaObjectsPinnedAt({object_id}, new_node_id);
+                } else {
+                  // TODO: Retry reconstruction.
+                }
+              }));
+          break;
+        }
+      }
+
+      if (it == result.end()) {
+        // TODO: Re-execute the task spec that created the object.
+      }
+    }
+  ));
 }
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {

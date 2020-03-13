@@ -101,6 +101,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
 
+  void ReconstructObject(const ObjectID &object_id);
+
   WorkerType GetWorkerType() const { return worker_type_; }
 
   Language GetLanguage() const { return language_; }

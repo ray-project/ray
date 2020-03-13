@@ -198,6 +198,13 @@ void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &pl
   }
 }
 
+const ClientID ReferenceCounter::GetPlasmaObjectPinnedAt(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end()) << object_id;
+  return it->second.pinned_at_raylet.value_or(ClientID::Nil());
+}
+
 std::vector<ObjectID> ReferenceCounter::HandleNodeRemoved(const ClientID &node_id) {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> lost_objects;
