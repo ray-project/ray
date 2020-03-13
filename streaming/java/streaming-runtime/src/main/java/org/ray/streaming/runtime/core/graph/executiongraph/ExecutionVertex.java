@@ -61,7 +61,7 @@ public class ExecutionVertex implements Serializable {
     this.vertexIndex = index;
     this.vertexName = executionJobVertex.getJobVertexName() + "-" + vertexIndex;
     this.resources = generateResources(resourceConfig);
-    this.workerConfig =workerConfig;
+    this.workerConfig = workerConfig;
     this.streamOperator = streamOperator;
     this.parallelism = executionJobVertex.getParallelism();
     this.buildTime = buildTime;

@@ -12,7 +12,6 @@ import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.runtime.config.StreamingWorkerConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
-import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**

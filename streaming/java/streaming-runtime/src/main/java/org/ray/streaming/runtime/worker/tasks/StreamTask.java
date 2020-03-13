@@ -24,7 +24,8 @@ import org.slf4j.LoggerFactory;
  * The StreamTask represents one execution of a parallel subtask on a JobWorker. A StreamTask wraps
  * a operator and runs it.
  *
- * <P>StreamTask is an abstract class, which defines the abstract methods of task running life cycle.
+ * <P>StreamTask is an abstract class, which defines the abstract methods of task running
+ * life cycle.
  *
  */
 public abstract class StreamTask implements Runnable {

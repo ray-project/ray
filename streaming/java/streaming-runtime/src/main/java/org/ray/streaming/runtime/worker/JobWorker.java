@@ -1,26 +1,21 @@
 package org.ray.streaming.runtime.worker;
 
-import java.util.List;
 import org.ray.api.Ray;
-import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.config.StreamingWorkerConfig;
 import org.ray.streaming.runtime.config.types.TransferChannelType;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.processor.OneInputProcessor;
 import org.ray.streaming.runtime.core.processor.ProcessBuilder;
 import org.ray.streaming.runtime.core.processor.SourceProcessor;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
-import org.ray.streaming.runtime.core.processor.TwoInputProcessor;
 import org.ray.streaming.runtime.transfer.TransferHandler;
 import org.ray.streaming.runtime.util.EnvUtil;
 import org.ray.streaming.runtime.worker.context.JobWorkerContext;
 import org.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import org.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import org.ray.streaming.runtime.worker.tasks.StreamTask;
-import org.ray.streaming.runtime.worker.tasks.TwoInputStreamTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
