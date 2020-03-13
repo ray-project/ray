@@ -27,7 +27,6 @@ public class KillActorTest extends BaseTest {
 
   public void testKillActor() {
     TestUtils.skipTestUnderSingleProcess();
-    TestUtils.skipTestIfDirectActorCallDisabled();
     RayActor<HangActor> actor = Ray.createActor(HangActor::new);
     Assert.assertTrue(actor.call(HangActor::alive).get());
     RayObject<Boolean> result = actor.call(HangActor::hang);
