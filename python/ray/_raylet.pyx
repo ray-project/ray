@@ -571,11 +571,11 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 pass
             elif filename.endswith("ray/remote_function.py"):
                 # TODO(ekl) distinguish between task return objects and
-                # argmuents. This can only be done in the core worker.
+                # arguments. This can only be done in the core worker.
                 msg = "(task call) "
             elif filename.endswith("ray/actor.py"):
                 # TODO(ekl) distinguish between actor return objects and
-                # argmuents. This can only be done in the core worker.
+                # arguments. This can only be done in the core worker.
                 msg = "(actor call) "
             elif filename.endswith("ray/serialization.py"):
                 if frame.f_code.co_name == "id_deserializer":
