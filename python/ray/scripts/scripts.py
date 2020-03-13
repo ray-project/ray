@@ -975,7 +975,7 @@ def globalgc(address):
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
     ray.internal.internal_api.global_gc()
-    print("Global GC OK")
+    print("Triggered gc.collect() on all workers.")
 
 
 cli.add_command(dashboard)
