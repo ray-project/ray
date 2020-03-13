@@ -963,6 +963,21 @@ def memstat(address):
     print(ray.internal.internal_api.memstat())
 
 
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def globalgc(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+    ray.internal.internal_api.global_gc()
+    print("Global GC OK")
+
+
 cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)
@@ -981,6 +996,7 @@ cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(stat)
 cli.add_command(memstat)
+cli.add_command(globalgc)
 cli.add_command(timeline)
 cli.add_command(project_cli)
 cli.add_command(session_cli)

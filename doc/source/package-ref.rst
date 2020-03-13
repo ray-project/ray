@@ -97,6 +97,14 @@ The Ray Command Line API
    :prog: ray stat
    :show-nested:
 
+.. click:: ray.scripts.scripts:memstat
+   :prog: ray memstat
+   :show-nested:
+
+.. click:: ray.scripts.scripts:globalgc
+   :prog: ray globalgc
+   :show-nested:
+
 .. click:: ray.scripts.scripts:timeline
    :prog: ray timeline
    :show-nested:
