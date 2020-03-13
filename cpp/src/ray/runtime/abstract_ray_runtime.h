@@ -43,7 +43,7 @@ class AbstractRayRuntime : public RayRuntime {
   std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<ObjectID> &objects);
 
-  WaitResultInternal Wait(const std::vector<ObjectID> &objects, int num_objects,
+  WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
                           int64_t timeout_ms);
 
   ObjectID Call(remote_function_ptr_holder &fptr,

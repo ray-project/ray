@@ -21,7 +21,7 @@ template <typename T>
 class RayObject;
 template <typename T>
 class RayActor;
-template <typename T>
+
 class WaitResult;
 
 class Ray {
@@ -43,6 +43,14 @@ class Ray {
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects ready.
   ///
+  /// \param[in] ids The object id array which should be got.
+  /// \return shared pointer array of the result.
+  template <typename T>
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
+
+  /// Get a list of objects from the object store.
+  /// This method will be blocked until all the objects ready.
+  ///
   /// \param[in] objects The object array which should be got.
   /// \return shared pointer array of the result.
   template <typename T>
@@ -51,14 +59,12 @@ class Ray {
   /// Wait for a list of RayObjects to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
   ///
-  /// \param[in] objects The object array which should be waited.
+  /// \param[in] ids The object id array which should be waited.
   /// \param[in] num_objects The minimum number of objects to wait.
   /// \param[in] timeout_ms The maximum wait time.
   /// \return Two arrays, one containing locally available objects, one containing the rest.
-  template <typename T>
-  static WaitResult<T> Wait(const std::vector<RayObject<T>> &objects, int num_objects,
+  static WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
                             int64_t timeout_ms);
-
 
   /// Include all the Call method which should be auto genrated.
   /// Call a general remote fucntion.
@@ -125,12 +131,6 @@ inline static std::vector<RayObject<T>> ObjectID2RayObject(
 }
 
 template <typename T>
-static WaitResult<T> WaitResultFromInernal(const WaitResultInternal &internal) {
-  return WaitResult<T>(std::move(ObjectID2RayObject<T>(internal.readys)),
-                       std::move(ObjectID2RayObject<T>(internal.remains)));
-}
-
-template <typename T>
 inline RayObject<T> Ray::Put(const T &obj) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
@@ -153,9 +153,8 @@ inline std::shared_ptr<T> Ray::Get(const RayObject<T> &object) {
 
 template <typename T>
 inline std::vector<std::shared_ptr<T>> Ray::Get(
-    const std::vector<RayObject<T>> &objects) {
-  auto uniqueVector = RayObject2ObjectID<T>(objects);
-  auto result = _impl->Get(uniqueVector);
+    const std::vector<ObjectID> &ids) {
+  auto result = _impl->Get(ids);
   std::vector<std::shared_ptr<T>> rt;
   for (auto it = result.begin(); it != result.end(); it++) {
     msgpack::unpacker unpacker;
@@ -170,11 +169,15 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(
 }
 
 template <typename T>
-inline WaitResult<T> Ray::Wait(const std::vector<RayObject<T>> &objects, int num_objects,
-                               int64_t timeout_ms) {
+inline std::vector<std::shared_ptr<T>> Ray::Get(
+    const std::vector<RayObject<T>> &objects) {
   auto uniqueVector = RayObject2ObjectID<T>(objects);
-  auto result = _impl->Wait(uniqueVector, num_objects, timeout_ms);
-  return WaitResultFromInernal<T>(result);
+  return Get<T>(uniqueVector);
+}
+
+inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
+                               int64_t timeout_ms) {
+  return _impl->Wait(ids, num_objects, timeout_ms); 
 }
 
 #include <ray/api/generated/call_funcs_impl.generated.h>

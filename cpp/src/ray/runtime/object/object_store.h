@@ -32,7 +32,7 @@ class ObjectStore {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
       const std::vector<ObjectID> &objects, int timeoutMs) = 0;
 
-  virtual WaitResultInternal Wait(const std::vector<ObjectID> &objects, int num_objects,
+  virtual WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
                                   int64_t timeout_ms) = 0;
 
   virtual ~ObjectStore(){};

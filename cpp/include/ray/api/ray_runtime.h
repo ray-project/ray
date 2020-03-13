@@ -28,7 +28,7 @@ class RayRuntime {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<ObjectID> &objects) = 0;
 
-  virtual WaitResultInternal Wait(const std::vector<ObjectID> &objects, int num_objects,
+  virtual WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
                                   int64_t timeout_ms) = 0;
 
   virtual ObjectID Call(remote_function_ptr_holder &fptr,

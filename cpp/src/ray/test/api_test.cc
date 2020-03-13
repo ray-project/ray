@@ -48,17 +48,17 @@ TEST(ray_api_test_case, Put_test) {
 
 TEST(ray_api_test_case, wait_test) {
   Ray::Init();
-  auto r0 = Ray::Call(foo0);
-  auto r1 = Ray::Call(foo, 3);
-  auto r2 = Ray::Call(bar, 2, 3);
-  std::vector<RayObject<int>> vector;
-  vector.push_back(r0);
-  vector.push_back(r1);
-  vector.push_back(r2);
-  auto result = Ray::Wait(vector, 3, 1000);
+  RayObject<int> r0 = Ray::Call(foo0);
+  RayObject<int> r1 = Ray::Call(foo, 3);
+  RayObject<int> r2 = Ray::Call(bar, 2, 3);
+  std::vector<ObjectID> vector;
+  vector.push_back(r0.ID());
+  vector.push_back(r1.ID());
+  vector.push_back(r2.ID());
+  WaitResult result = Ray::Wait(vector, 3, 1000);
   EXPECT_EQ(result.readys.size(), 3);
   EXPECT_EQ(result.remains.size(), 0);
-  auto getResult = Ray::Get(vector);
+  std::vector<std::shared_ptr<int>> getResult = Ray::Get<int>(vector);
   EXPECT_EQ(getResult.size(), 3);
   EXPECT_EQ(*getResult[0], 1);
   EXPECT_EQ(*getResult[1], 4);

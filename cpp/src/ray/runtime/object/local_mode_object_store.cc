@@ -40,7 +40,7 @@ std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &o
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
     const std::vector<ObjectID> &objects, int timeoutMs) {
-  WaitResultInternal waitResult = WaitInternal(objects, objects.size(), timeoutMs);
+  WaitResult waitResult = WaitInternal(objects, objects.size(), timeoutMs);
   if (waitResult.remains.size() != 0) {
     throw "Objects are not all ready";
   }
@@ -60,7 +60,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
   return result;
 }
 
-WaitResultInternal LocalModeObjectStore::WaitInternal(
+WaitResult LocalModeObjectStore::WaitInternal(
     const std::vector<ObjectID> &objects, int num_objects, int64_t timeout_ms) {
   static const int GET_CHECK_INTERVAL_MS = 100;
   std::list<ObjectID> readys;
@@ -90,11 +90,11 @@ WaitResultInternal LocalModeObjectStore::WaitInternal(
 
   std::vector<ObjectID> readysVector{std::begin(readys), std::end(readys)};
   std::vector<ObjectID> readysRemains{std::begin(remains), std::end(remains)};
-  WaitResultInternal result(std::move(readysVector), std::move(readysVector));
+  WaitResult result(std::move(readysVector), std::move(readysVector));
   return result;
 }
 
-WaitResultInternal LocalModeObjectStore::Wait(const std::vector<ObjectID> &objects,
+WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &objects,
                                               int num_objects, int64_t timeout_ms) {
   return WaitInternal(objects, num_objects, timeout_ms);
 }
