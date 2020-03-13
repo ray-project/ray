@@ -17,7 +17,6 @@ import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtimecontext.RuntimeContext;
-import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.RuntimeContextImpl;
 import org.ray.runtime.context.WorkerContext;
@@ -166,7 +165,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, int numReturns, CallOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage(), /*isDirectCall*/false);
+        .wrap(args, functionDescriptor.getLanguage());
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
         functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -180,7 +179,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayObject callActorFunction(RayActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage(), isDirectCall(rayActor));
+        .wrap(args, functionDescriptor.getLanguage());
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
         functionDescriptor, functionArgs, numReturns, null);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -194,19 +193,12 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage(),  /*isDirectCall*/false);
+        .wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
     RayActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
-  }
-
-  private boolean isDirectCall(RayActor rayActor) {
-    if (rayActor instanceof NativeRayActor) {
-      return ((NativeRayActor) rayActor).isDirectCallActor();
-    }
-    return false;
   }
 
   public WorkerContext getWorkerContext() {
