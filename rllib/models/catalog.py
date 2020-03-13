@@ -13,7 +13,8 @@ from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
-    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet
+    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet, \
+    GaussianSquashedGaussian
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
@@ -105,6 +106,26 @@ class ModelCatalog:
     """
 
     @staticmethod
+    def _make_bounded_dist(action_space):
+        child_dists = []
+
+        low = np.ravel(action_space.low)
+        high = np.ravel(action_space.high)
+
+        for l, h in zip(low, high):
+            if np.isinf(l) and np.isinf(h):
+                dist = partial(GaussianSquashedGaussian, low=l, high=h)
+            else:
+                dist = DiagGaussian
+            child_dists.append(dist)
+
+        return partial(
+            MultiActionDistribution,
+            action_space=action_space,
+            child_distributions=child_dists,
+            input_lens=[2] * len(child_dists)), 2 * len(child_dists)
+
+    @staticmethod
     @DeveloperAPI
     def get_action_dist(action_space,
                         config,
@@ -147,9 +168,16 @@ class ModelCatalog:
                     "Consider reshaping this into a single dimension, "
                     "using a custom action distribution, "
                     "using a Tuple action space, or the multi-agent API.")
-            # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
-                dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
+                any_bounded = np.any(action_space.bounded_below &
+                                     action_space.bounded_above)
+                if framework != "tf":
+                    return TorchDiagGaussian
+                elif np.any(action_space.bounded_below &
+                            action_space.bounded_above):
+                    return ModelCatalog._make_bounded_dist(action_space)
+                else:
+                    dist = TorchDiagGaussian
             elif dist_type == "deterministic":
                 dist = Deterministic
         # Discrete Space -> Categorical.

@@ -217,6 +217,13 @@ class _SquashedGaussianBase(TFActionDistribution):
         mean = self.distr.mean()
         return self._squash(mean)
 
+    @override(ActionDistribution)
+    def logp(self, x):
+        unsquashed_values = self._unsquash(x)
+        log_prob = tf.reduce_sum(
+            self.distr.log_prob(value=unsquashed_values), axis=-1)
+        return log_prob - self._log_squash_grad(unsquashed_values)
+
     @override(TFActionDistribution)
     def _build_sample_op(self):
         return self._squash(self.distr.sample())
@@ -225,6 +232,9 @@ class _SquashedGaussianBase(TFActionDistribution):
         raise NotImplementedError
 
     def _unsquash(self, values):
+        raise NotImplementedError
+
+    def _log_squash_grad(self, unsquashed_values):
         raise NotImplementedError
 
 
@@ -246,16 +256,11 @@ class SquashedGaussian(_SquashedGaussianBase):
             axis=-1)
         return log_prob
 
-    @override(ActionDistribution)
-    def logp(self, x):
-        unsquashed_values = self._unsquash(x)
-        log_prob = tf.reduce_sum(
-            self.distr.log_prob(value=unsquashed_values), axis=-1)
+    def _log_squash_grad(self, unsquashed_values):
         unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
-        log_prob -= tf.math.reduce_sum(
+        return tf.math.reduce_sum(
             tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
             axis=-1)
-        return log_prob
 
     def _squash(self, raw_values):
         # Make sure raw_values are not too high/low (such that tanh would
@@ -265,6 +270,7 @@ class SquashedGaussian(_SquashedGaussianBase):
             -1.0 + SMALL_NUMBER,
             1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
                self.low
+
 
     def _unsquash(self, values):
         return tf.math.atanh((values - self.low) /
@@ -278,20 +284,9 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
     `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
     """
     # Chosen to match the standard logistic variance, so that:
-    #   Var(N(0, 0.5 * _SCALE)) = Var(Logistic(0, 1))
+    #   Var(N(0, 2 * _SCALE)) = Var(Logistic(0, 1))
     _SCALE = 0.5 * 1.8137
 
-    @override(ActionDistribution)
-    def logp(self, x):
-        unsquashed_values = self._unsquash(x)
-        log_prob = tf.reduce_sum(
-            self.distr.log_prob(value=unsquashed_values), axis=-1)
-        squash_dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
-        log_prob -= tf.reduce_sum(
-            squash_dist.log_prob(value=unsquashed_values), axis=-1)
-        log_prob -= tf.log(self.high - self.low)
-        return log_prob
-        
     @override(ActionDistribution)
     def kl(self, other):
         # KL(self || other) is just the KL of the two unsquashed distributions.
@@ -319,6 +314,13 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
                 (tf.log(self._SCALE) - self.log_std +
                 (tf.square(std) + tf.square(mean)) /
                 (2.0 * tf.square(self._SCALE)) - 0.5))
+
+    def _log_squash_grad(self, unsquashed_values):
+        squash_dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
+        log_grad = tf.reduce_sum(
+            squash_dist.log_prob(value=unsquashed_values), axis=-1)
+        log_grad += tf.log(self.high - self.low)
+        return log_grad
 
     def _squash(self, raw_values):
         # Make sure raw_values are not too high/low (such that tanh would
