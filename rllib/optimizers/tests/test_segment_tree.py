@@ -96,6 +96,23 @@ class TestSegmentTree(unittest.TestCase):
         assert np.isclose(tree.min(3, 4), 3.0)
 
     def test_microbenchmark_vs_old_version(self):
+        """
+        Results from March 2020 (capacity=1048576):
+
+        New tree:
+        0.049599366000000256s
+        results = timeit.timeit("tree.sum(5, 60000)",
+            setup="from ray.rllib.optimizers.segment_tree import
+            SumSegmentTree; tree = SumSegmentTree({})".format(capacity),
+            number=10000)
+
+        Old tree:
+        0.13390400999999974s
+        results = timeit.timeit("tree.sum(5, 60000)",
+            setup="from ray.rllib.optimizers.tests.old_segment_tree import
+            OldSumSegmentTree; tree = OldSumSegmentTree({})".format(capacity),
+            number=10000)
+        """
         capacity = 2**20
         new = timeit.timeit(
             "tree.sum(5, 60000)",
