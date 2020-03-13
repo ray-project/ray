@@ -895,13 +895,13 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
-    def kill_actor(self, ActorID actor_id):
+    def kill_actor(self, ActorID actor_id, c_bool no_reconstruction):
         cdef:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
             check_status(self.core_worker.get().KillActor(
-                  c_actor_id, True))
+                  c_actor_id, True, no_reconstruction))
 
     def resource_ids(self):
         cdef:

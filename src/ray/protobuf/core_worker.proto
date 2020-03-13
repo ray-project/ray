@@ -174,6 +174,8 @@ message KillActorRequest {
   bytes intended_actor_id = 1;
   // Whether to force kill the actor.
   bool force_kill = 2;
+  // If set to true, the killed actor will not be reconstructed anymore.
+  bool no_reconstruction = 3;
 }
 
 message KillActorReply {

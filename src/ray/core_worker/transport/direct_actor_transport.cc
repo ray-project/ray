@@ -23,13 +23,23 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                                   bool force_kill) {
+                                                   bool force_kill,
+                                                   bool no_reconstruction) {
   absl::MutexLock lock(&mu_);
-  auto inserted = pending_force_kills_.emplace(actor_id, force_kill);
+  rpc::KillActorRequest request;
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(force_kill);
+  request.set_no_reconstruction(no_reconstruction);
+  auto inserted = pending_force_kills_.emplace(actor_id, request);
   if (!inserted.second && force_kill) {
     // Overwrite the previous request to kill the actor if the new request is a
     // force kill.
-    inserted.first->second = true;
+    inserted.first->second.set_force_kill(true);
+    if (no_reconstruction) {
+      // Overwrite the previous request to disable reconstruction if the new request's
+      // no_reconstruction flag is set to true.
+      inserted.first->second.set_no_reconstruction(true);
+    }
   }
   auto it = rpc_clients_.find(actor_id);
   if (it == rpc_clients_.end()) {
@@ -102,9 +112,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   }
-  if (pending_requests_.count(actor_id) > 0) {
-    SendPendingTasks(actor_id);
-  }
+  SendPendingTasks(actor_id);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
@@ -135,6 +143,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // replies. They will be treated as failed once the connection dies.
     // We retain the sequencing information so that we can properly fail
     // any tasks submitted after the actor death.
+
+    pending_force_kills_.erase(actor_id);
   }
 }
 
@@ -145,11 +155,9 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // client.
   auto it = pending_force_kills_.find(actor_id);
   if (it != pending_force_kills_.end()) {
-    rpc::KillActorRequest request;
-    request.set_intended_actor_id(actor_id.Binary());
-    request.set_force_kill(it->second);
+    RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
     // It's okay if this fails because this means the worker is already dead.
-    RAY_UNUSED(client->KillActor(request, nullptr));
+    RAY_UNUSED(client->KillActor(it->second, nullptr));
     pending_force_kills_.erase(it);
   }
 
