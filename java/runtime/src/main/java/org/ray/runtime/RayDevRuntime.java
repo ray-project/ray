@@ -1,7 +1,6 @@
 package org.ray.runtime;
 
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.ray.api.RayActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
@@ -50,7 +49,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(RayActor<?> actor) {
+  public void killActor(RayActor<?> actor, boolean noReconstruction) {
     throw new UnsupportedOperationException();
   }
 
