@@ -5,7 +5,7 @@
 
 namespace ray { namespace api {
 
-std::unique_ptr<ObjectID> LocalModeTaskExcuter::execute(
+std::unique_ptr<ObjectID> LocalModeTaskExcuter::Execute(
     const InvocationSpec &invocation) {
   std::unique_ptr<ObjectID> dummy(new ObjectID());
   return dummy;

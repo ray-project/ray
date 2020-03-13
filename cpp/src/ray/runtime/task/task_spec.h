@@ -8,7 +8,7 @@
 
 namespace ray { namespace api {
 
-class LocalTaskSpec {
+class TaskSpec {
  public:
   TaskType type;
   JobID driverId;
@@ -17,17 +17,17 @@ class LocalTaskSpec {
   int parentCounter;
   ActorID actorId;
   int actorCounter;
-  int32_t func_offset;
-  int32_t exec_func_offset;
+  int32_t funcOffset;
+  int32_t execFuncOffset;
   std::shared_ptr<msgpack::sbuffer> args;
   ObjectID returnId;
 
-  LocalTaskSpec();
+  TaskSpec();
 
-  int32_t get_func_offset() const;
-  int32_t get_exec_func_offset() const;
-  void set_func_offset(int32_t offset);
-  void set_exec_func_offset(int32_t offset);
+  int32_t GetFuncOffset() const;
+  int32_t GetexecFuncOffset() const;
+  void SetFuncOffset(int32_t offset);
+  void SetexecFuncOffset(int32_t offset);
 };
 
 }  }// namespace ray::api

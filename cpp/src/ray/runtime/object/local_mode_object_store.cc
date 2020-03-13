@@ -8,7 +8,7 @@
 
 namespace ray { namespace api {
 
-void LocalModeObjectStore::putRaw(const ObjectID &objectId,
+void LocalModeObjectStore::PutRaw(const ObjectID &objectId,
                                   std::shared_ptr<msgpack::sbuffer> data) {
   _dataMutex.lock();
   if (_data.find(objectId) != _data.end()) {
@@ -18,12 +18,12 @@ void LocalModeObjectStore::putRaw(const ObjectID &objectId,
   _dataMutex.unlock();
 }
 
-void LocalModeObjectStore::del(const ObjectID &objectId) {}
+void LocalModeObjectStore::Del(const ObjectID &objectId) {}
 
-std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::getRaw(const ObjectID &objectId,
+std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &objectId,
                                                                int timeoutMs) {
   const std::vector<ObjectID> objects = {objectId};
-  waitInternal(objects, 1, -1);
+  WaitInternal(objects, 1, -1);
 
   std::shared_ptr<msgpack::sbuffer> ret;
   _dataMutex.lock();
@@ -38,9 +38,9 @@ std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::getRaw(const ObjectID &o
   return ret;
 }
 
-std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::getRaw(
+std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
     const std::vector<ObjectID> &objects, int timeoutMs) {
-  WaitResultInternal waitResult = waitInternal(objects, objects.size(), timeoutMs);
+  WaitResultInternal waitResult = WaitInternal(objects, objects.size(), timeoutMs);
   if (waitResult.remains.size() != 0) {
     throw "Objects are not all ready";
   }
@@ -60,7 +60,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::getRaw(
   return result;
 }
 
-WaitResultInternal LocalModeObjectStore::waitInternal(
+WaitResultInternal LocalModeObjectStore::WaitInternal(
     const std::vector<ObjectID> &objects, int num_objects, int64_t timeout_ms) {
   static const int GET_CHECK_INTERVAL_MS = 100;
   std::list<ObjectID> readys;
@@ -94,8 +94,8 @@ WaitResultInternal LocalModeObjectStore::waitInternal(
   return result;
 }
 
-WaitResultInternal LocalModeObjectStore::wait(const std::vector<ObjectID> &objects,
+WaitResultInternal LocalModeObjectStore::Wait(const std::vector<ObjectID> &objects,
                                               int num_objects, int64_t timeout_ms) {
-  return waitInternal(objects, num_objects, timeout_ms);
+  return WaitInternal(objects, num_objects, timeout_ms);
 }
 }  }// namespace ray::api

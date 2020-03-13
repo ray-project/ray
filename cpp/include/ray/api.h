@@ -28,32 +28,68 @@ class Ray {
   template <typename T>
   friend class RayObject;
 
+ public:
+  
+  /// Initialize Ray runtime with the default runtime implementation.
+  static void Init();
+
+  /// Store an object in the object store.
+  ///
+  /// \param[in] obj The object which should be stored.
+  /// \return RayObject which like a future and provide a 'Get' method.
+  template <typename T>
+  static RayObject<T> Put(const T &obj);
+
+  /// Get a list of objects from the object store.
+  /// This method will be blocked until all the objects ready.
+  ///
+  /// \param[in] objects The object array which should be got.
+  /// \return shared pointer array of the result.
+  template <typename T>
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<RayObject<T>> &objects);
+
+  /// Wait for a list of RayObjects to be locally available,
+  /// until specified number of objects are ready, or specified timeout has passed.
+  ///
+  /// \param[in] objects The object array which should be waited.
+  /// \param[in] num_objects The minimum number of objects to wait.
+  /// \param[in] timeout_ms The maximum wait time.
+  /// \return Two arrays, one containing locally available objects, one containing the rest.
+  template <typename T>
+  static WaitResult<T> Wait(const std::vector<RayObject<T>> &objects, int num_objects,
+                            int64_t timeout_ms);
+
+
+  /// Include all the Call method which should be auto genrated.
+  /// Call a general remote fucntion.
+  ///
+  /// \param[in] func The function pointer to be remote execution.
+  /// \param[in] arg The function args.
+  /// \return RayObject.
+  #include "api/generated/call_funcs.generated.h"
+
+  /// Include all the Call method which should be auto genrated.
+  /// Call a factory method which create an actor and return an actor pointer.
+  ///
+  /// \param[in] func The function pointer to be remote execution.
+  /// \param[in] arg The function args.
+  /// \return RayActor.
+  #include "api/generated/create_actors.generated.h"
+
+  /// Include all the Call method which should be auto genrated.
+  /// Call a actor remote fucntion.
+  ///
+  /// \param[in] func The function pointer to be remote execution.
+  /// \param[in] arg The function args.
+  /// \return RayObject.
+  #include "api/generated/call_actors.generated.h"
+
  private:
   static RayRuntime *_impl;
 
+  /// Used by RayObject to implement .Get()
   template <typename T>
-  static std::shared_ptr<T> get(const RayObject<T> &object);
-
- public:
-  static void init();
-
-  // static bool init(const RayConfig& rayConfig);
-
-  template <typename T>
-  static RayObject<T> put(const T &obj);
-
-  template <typename T>
-  static std::vector<std::shared_ptr<T>> get(const std::vector<RayObject<T>> &objects);
-
-  template <typename T>
-  static WaitResult<T> wait(const std::vector<RayObject<T>> &objects, int num_objects,
-                            int64_t timeout_ms);
-
-#include "api/generated/call_funcs.generated.h"
-
-#include "api/generated/create_actors.generated.h"
-
-#include "api/generated/call_actors.generated.h"
+  static std::shared_ptr<T> Get(const RayObject<T> &object);
 };
 
 }  }// namespace ray::api
@@ -69,11 +105,11 @@ namespace ray { namespace api {
 class Arguments;
 
 template <typename T>
-inline static std::vector<ObjectID> rayObject2ObjectID(
+inline static std::vector<ObjectID> RayObject2ObjectID(
     const std::vector<RayObject<T>> &rayObjects) {
   std::vector<ObjectID> unqueIds;
   for (auto it = rayObjects.begin(); it != rayObjects.end(); it++) {
-    unqueIds.push_back(it->id());
+    unqueIds.push_back(it->ID());
   }
   return unqueIds;
 }
@@ -89,37 +125,37 @@ inline static std::vector<RayObject<T>> ObjectID2RayObject(
 }
 
 template <typename T>
-static WaitResult<T> waitResultFromInernal(const WaitResultInternal &internal) {
+static WaitResult<T> WaitResultFromInernal(const WaitResultInternal &internal) {
   return WaitResult<T>(std::move(ObjectID2RayObject<T>(internal.readys)),
                        std::move(ObjectID2RayObject<T>(internal.remains)));
 }
 
 template <typename T>
-inline RayObject<T> Ray::put(const T &obj) {
+inline RayObject<T> Ray::Put(const T &obj) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::wrap(packer, obj);
-  auto id = _impl->put(buffer);
+  Arguments::Wrap(packer, obj);
+  auto id = _impl->Put(buffer);
   return RayObject<T>(id);
 }
 
 template <typename T>
-inline std::shared_ptr<T> Ray::get(const RayObject<T> &object) {
-  auto data = _impl->get(object.id());
+inline std::shared_ptr<T> Ray::Get(const RayObject<T> &object) {
+  auto data = _impl->Get(object.ID());
   msgpack::unpacker unpacker;
   unpacker.reserve_buffer(data->size());
   memcpy(unpacker.buffer(), data->data(), data->size());
   unpacker.buffer_consumed(data->size());
   std::shared_ptr<T> rt(new T);
-  Arguments::unwrap(unpacker, *rt);
+  Arguments::Unwrap(unpacker, *rt);
   return rt;
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::get(
+inline std::vector<std::shared_ptr<T>> Ray::Get(
     const std::vector<RayObject<T>> &objects) {
-  auto uniqueVector = rayObject2ObjectID<T>(objects);
-  auto result = _impl->get(uniqueVector);
+  auto uniqueVector = RayObject2ObjectID<T>(objects);
+  auto result = _impl->Get(uniqueVector);
   std::vector<std::shared_ptr<T>> rt;
   for (auto it = result.begin(); it != result.end(); it++) {
     msgpack::unpacker unpacker;
@@ -127,18 +163,18 @@ inline std::vector<std::shared_ptr<T>> Ray::get(
     memcpy(unpacker.buffer(), (*it)->data(), (*it)->size());
     unpacker.buffer_consumed((*it)->size());
     std::shared_ptr<T> obj(new T);
-    Arguments::unwrap(unpacker, *obj);
+    Arguments::Unwrap(unpacker, *obj);
     rt.push_back(obj);
   }
   return rt;
 }
 
 template <typename T>
-inline WaitResult<T> Ray::wait(const std::vector<RayObject<T>> &objects, int num_objects,
+inline WaitResult<T> Ray::Wait(const std::vector<RayObject<T>> &objects, int num_objects,
                                int64_t timeout_ms) {
-  auto uniqueVector = rayObject2ObjectID<T>(objects);
-  auto result = _impl->wait(uniqueVector, num_objects, timeout_ms);
-  return waitResultFromInernal<T>(result);
+  auto uniqueVector = RayObject2ObjectID<T>(objects);
+  auto result = _impl->Wait(uniqueVector, num_objects, timeout_ms);
+  return WaitResultFromInernal<T>(result);
 }
 
 #include <ray/api/generated/call_funcs_impl.generated.h>

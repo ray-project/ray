@@ -22,20 +22,20 @@ struct remote_function_ptr_holder {
 
 class RayRuntime {
  public:
-  virtual ObjectID put(std::shared_ptr<msgpack::sbuffer> data) = 0;
-  virtual std::shared_ptr<msgpack::sbuffer> get(const ObjectID &id) = 0;
+  virtual ObjectID Put(std::shared_ptr<msgpack::sbuffer> data) = 0;
+  virtual std::shared_ptr<msgpack::sbuffer> Get(const ObjectID &id) = 0;
 
-  virtual std::vector<std::shared_ptr<msgpack::sbuffer>> get(
+  virtual std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
       const std::vector<ObjectID> &objects) = 0;
 
-  virtual WaitResultInternal wait(const std::vector<ObjectID> &objects, int num_objects,
+  virtual WaitResultInternal Wait(const std::vector<ObjectID> &objects, int num_objects,
                                   int64_t timeout_ms) = 0;
 
-  virtual ObjectID call(remote_function_ptr_holder &fptr,
+  virtual ObjectID Call(remote_function_ptr_holder &fptr,
                                          std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual ActorID create(remote_function_ptr_holder &fptr,
+  virtual ActorID Create(remote_function_ptr_holder &fptr,
                                            std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual ObjectID call(const remote_function_ptr_holder &fptr,
+  virtual ObjectID Call(const remote_function_ptr_holder &fptr,
                                          const ActorID &actor,
                                          std::shared_ptr<msgpack::sbuffer> args) = 0;
 };

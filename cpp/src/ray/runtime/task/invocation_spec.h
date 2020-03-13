@@ -11,8 +11,8 @@ class InvocationSpec {
   TaskID taskId;
   ActorID actorId;
   int actorCounter;
-  int32_t func_offset;
-  int32_t exec_func_offset;
+  int32_t funcOffset;
+  int32_t execFuncOffset;
   std::shared_ptr<msgpack::sbuffer> args;
   int returnCount;
 };

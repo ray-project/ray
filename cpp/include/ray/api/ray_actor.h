@@ -17,7 +17,7 @@ class RayActor {
 
   RayActor(const ActorID &&id);
 
-  const ActorID &id() const;
+  const ActorID &ID() const;
 
   #include <ray/api/generated/actor_call.generated.h>
 
@@ -41,7 +41,7 @@ RayActor<O>::RayActor(const ActorID &&id) {
 }
 
 template <typename O>
-const ActorID &RayActor<O>::id() const {
+const ActorID &RayActor<O>::ID() const {
   return _id;
 }
 

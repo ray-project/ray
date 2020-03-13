@@ -15,20 +15,20 @@ class LocalModeObjectStore : public ObjectStore {
 
   std::mutex _dataMutex;
 
-  WaitResultInternal waitInternal(const std::vector<ObjectID> &objects, int num_objects,
+  WaitResultInternal WaitInternal(const std::vector<ObjectID> &objects, int num_objects,
                                   int64_t timeout_ms);
 
  public:
-  void putRaw(const ObjectID &objectId, std::shared_ptr<msgpack::sbuffer> data);
+  void PutRaw(const ObjectID &objectId, std::shared_ptr<msgpack::sbuffer> data);
 
-  void del(const ObjectID &objectId);
+  void Del(const ObjectID &objectId);
 
-  std::shared_ptr<msgpack::sbuffer> getRaw(const ObjectID &objectId, int timeoutMs);
+  std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &objectId, int timeoutMs);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> getRaw(
+  std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
       const std::vector<ObjectID> &objects, int timeoutMs);
 
-  WaitResultInternal wait(const std::vector<ObjectID> &objects, int num_objects,
+  WaitResultInternal Wait(const std::vector<ObjectID> &objects, int num_objects,
                           int64_t timeout_ms);
 };
 

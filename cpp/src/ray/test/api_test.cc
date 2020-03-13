@@ -38,47 +38,47 @@ class Foo {
   static int bar_s(int x, int y) { return x + y; }
 };
 
-TEST(ray_api_test_case, put_test) {
-  Ray::init();
+TEST(ray_api_test_case, Put_test) {
+  Ray::Init();
 
-  auto obj1 = Ray::put(1);
-  auto i1 = obj1.get();
+  auto obj1 = Ray::Put(1);
+  auto i1 = obj1.Get();
   EXPECT_EQ(1, *i1);
 }
 
 TEST(ray_api_test_case, wait_test) {
-  Ray::init();
-  auto r0 = Ray::call(foo0);
-  auto r1 = Ray::call(foo, 3);
-  auto r2 = Ray::call(bar, 2, 3);
+  Ray::Init();
+  auto r0 = Ray::Call(foo0);
+  auto r1 = Ray::Call(foo, 3);
+  auto r2 = Ray::Call(bar, 2, 3);
   std::vector<RayObject<int>> vector;
   vector.push_back(r0);
   vector.push_back(r1);
   vector.push_back(r2);
-  auto result = Ray::wait(vector, 3, 1000);
+  auto result = Ray::Wait(vector, 3, 1000);
   EXPECT_EQ(result.readys.size(), 3);
   EXPECT_EQ(result.remains.size(), 0);
-  auto getResult = Ray::get(vector);
+  auto getResult = Ray::Get(vector);
   EXPECT_EQ(getResult.size(), 3);
   EXPECT_EQ(*getResult[0], 1);
   EXPECT_EQ(*getResult[1], 4);
   EXPECT_EQ(*getResult[2], 5);
 }
 
-TEST(ray_api_test_case, call_with_value_test) {
-  auto r0 = Ray::call(foo0);
-  auto r1 = Ray::call(foo, 3);
-  auto r2 = Ray::call(bar, 2, 3);
+TEST(ray_api_test_case, Call_with_value_test) {
+  auto r0 = Ray::Call(foo0);
+  auto r1 = Ray::Call(foo, 3);
+  auto r2 = Ray::Call(bar, 2, 3);
 
-  int result0 = *(r0.get());
-  int result1 = *(r1.get());
-  int result2 = *(r2.get());
+  int result0 = *(r0.Get());
+  int result1 = *(r1.Get());
+  int result2 = *(r2.Get());
 
-  auto r3 = Ray::call(Foo::foo_s, 3);
-  auto r4 = Ray::call(Foo::bar_s, 3, 4);
+  auto r3 = Ray::Call(Foo::foo_s, 3);
+  auto r4 = Ray::Call(Foo::bar_s, 3, 4);
 
-  int result3 = *(r3.get());
-  int result4 = *(r4.get());
+  int result3 = *(r3.Get());
+  int result4 = *(r4.Get());
 
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 4);
@@ -87,18 +87,18 @@ TEST(ray_api_test_case, call_with_value_test) {
   EXPECT_EQ(result4, 7);
 }
 
-TEST(ray_api_test_case, call_with_object_test) {
-  auto rt0 = Ray::call(foo0);
-  auto rt1 = Ray::call(foo, rt0);
-  auto rt2 = Ray::call(bar, rt1, 3);
-  auto rt3 = Ray::call(Foo::foo_s, 3);
-  auto rt4 = Ray::call(Foo::bar_s, rt2, rt3);
+TEST(ray_api_test_case, Call_with_object_test) {
+  auto rt0 = Ray::Call(foo0);
+  auto rt1 = Ray::Call(foo, rt0);
+  auto rt2 = Ray::Call(bar, rt1, 3);
+  auto rt3 = Ray::Call(Foo::foo_s, 3);
+  auto rt4 = Ray::Call(Foo::bar_s, rt2, rt3);
 
-  int return0 = *(rt0.get());
-  int return1 = *(rt1.get());
-  int return2 = *(rt2.get());
-  int return3 = *(rt3.get());
-  int return4 = *(rt4.get());
+  int return0 = *(rt0.Get());
+  int return1 = *(rt1.Get());
+  int return2 = *(rt2.Get());
+  int return3 = *(rt3.Get());
+  int return4 = *(rt4.Get());
 
   EXPECT_EQ(return0, 1);
   EXPECT_EQ(return1, 2);
@@ -108,21 +108,21 @@ TEST(ray_api_test_case, call_with_object_test) {
 }
 
 TEST(ray_api_test_case, actor) {
-  Ray::init();
-  RayActor<Foo> actor = Ray::createActor(Foo::create);
-  auto rt1 = actor.call(&Foo::foo, 3);
-  auto rt2 = actor.call(&Foo::bar, 3, rt1);
-  auto rt3 = actor.call(&Foo::add, 1);
-  auto rt4 = actor.call(&Foo::add, 2);
-  auto rt5 = actor.call(&Foo::add, 3);
-  auto rt6 = actor.call(&Foo::add, rt5);
+  Ray::Init();
+  RayActor<Foo> actor = Ray::CreateActor(Foo::create);
+  auto rt1 = actor.Call(&Foo::foo, 3);
+  auto rt2 = actor.Call(&Foo::bar, 3, rt1);
+  auto rt3 = actor.Call(&Foo::add, 1);
+  auto rt4 = actor.Call(&Foo::add, 2);
+  auto rt5 = actor.Call(&Foo::add, 3);
+  auto rt6 = actor.Call(&Foo::add, rt5);
 
-  int return1 = *(rt1.get());
-  int return2 = *(rt2.get());
-  int return3 = *(rt3.get());
-  int return4 = *(rt4.get());
-  int return5 = *(rt5.get());
-  int return6 = *(rt6.get());
+  int return1 = *(rt1.Get());
+  int return2 = *(rt2.Get());
+  int return3 = *(rt3.Get());
+  int return4 = *(rt4.Get());
+  int return5 = *(rt5.Get());
+  int return6 = *(rt6.Get());
 
   EXPECT_EQ(return1, 4);
   EXPECT_EQ(return2, 7);
@@ -145,9 +145,9 @@ TEST(ray_api_test_case, compare_with_future) {
   int rt2 = f2.get();
 
   // Ray API
-  Ray::init();
-  RayObject<int> f3 = Ray::call(foo, 1);
-  int rt3 = *f3.get();
+  Ray::Init();
+  RayObject<int> f3 = Ray::Call(foo, 1);
+  int rt3 = *f3.Get();
 
   EXPECT_EQ(rt1, 2);
   EXPECT_EQ(rt2, 2);

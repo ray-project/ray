@@ -6,6 +6,6 @@ namespace ray { namespace api {
 
 class InvocationExecutor {
  public:
-  static void execute(const LocalTaskSpec &taskSpec, std::shared_ptr<msgpack::sbuffer> actor);
+  static void Execute(const TaskSpec &taskSpec, std::shared_ptr<msgpack::sbuffer> actor);
 };
 }  }// namespace ray::api

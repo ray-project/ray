@@ -17,15 +17,15 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
  public:
   LocalModeTaskSubmitter();
 
-  ObjectID submitTask(const InvocationSpec &invocation);
+  ObjectID SubmitTask(const InvocationSpec &invocation);
 
-  ActorID createActor(remote_function_ptr_holder &fptr,
+  ActorID CreateActor(remote_function_ptr_holder &fptr,
                                         std::shared_ptr<msgpack::sbuffer> args);
 
-  ObjectID submitActorTask(const InvocationSpec &invocation);
+  ObjectID SubmitActorTask(const InvocationSpec &invocation);
 
  private:
-  std::queue<LocalTaskSpec> _tasks;
+  std::queue<TaskSpec> _tasks;
 
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> _actorContexts;
 
@@ -33,8 +33,8 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   std::unique_ptr<boost::asio::thread_pool> _pool;
 
-  ObjectID submit(const InvocationSpec &invocation, TaskType type);
+  ObjectID Submit(const InvocationSpec &invocation, TaskType type);
 
-  ObjectID buildReturnId(const TaskID &taskId);
+  ObjectID BuildReturnId(const TaskID &taskId);
 };
 }  }// namespace ray::api

@@ -16,9 +16,9 @@ RayDevRuntime::RayDevRuntime(std::shared_ptr<RayConfig> config) {
   _taskSubmitter = std::unique_ptr<TaskSubmitter>(new LocalModeTaskSubmitter());
 }
 
-ActorID RayDevRuntime::create(remote_function_ptr_holder &fptr,
+ActorID RayDevRuntime::Create(remote_function_ptr_holder &fptr,
                                                 std::shared_ptr<msgpack::sbuffer> args) {
-  return _taskSubmitter.get()->createActor(fptr, args);
+  return _taskSubmitter->CreateActor(fptr, args);
 }
 
 }  }// namespace ray::api

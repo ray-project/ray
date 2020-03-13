@@ -12,18 +12,18 @@ int slow_function(int i) {
 }
 
 TEST(ray_slow_function_case, base_test) {
-  Ray::init();
+  Ray::Init();
   auto time1 = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch());
-  auto r0 = Ray::call(slow_function, 1);
-  auto r1 = Ray::call(slow_function, 2);
-  auto r2 = Ray::call(slow_function, 3);
-  auto r3 = Ray::call(slow_function, 4);
+  auto r0 = Ray::Call(slow_function, 1);
+  auto r1 = Ray::Call(slow_function, 2);
+  auto r2 = Ray::Call(slow_function, 3);
+  auto r3 = Ray::Call(slow_function, 4);
 
-  int result0 = *(r0.get());
-  int result1 = *(r1.get());
-  int result2 = *(r2.get());
-  int result3 = *(r3.get());
+  int result0 = *(r0.Get());
+  int result1 = *(r1.Get());
+  int result2 = *(r2.Get());
+  int result3 = *(r3.Get());
   auto time2 = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch());
 

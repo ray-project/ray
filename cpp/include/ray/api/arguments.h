@@ -8,21 +8,21 @@ namespace ray { namespace api {
 class Arguments {
  public:
   template <typename T>
-  static void wrap(msgpack::packer<msgpack::sbuffer> &packer, const T &val);
+  static void Wrap(msgpack::packer<msgpack::sbuffer> &packer, const T &val);
 
-  static void wrap(msgpack::packer<msgpack::sbuffer> &packer);
+  static void Wrap(msgpack::packer<msgpack::sbuffer> &packer);
 
   template <typename Arg1Type, typename... OtherArgTypes>
-  static void wrap(msgpack::packer<msgpack::sbuffer> &packer, const Arg1Type &arg1,
+  static void Wrap(msgpack::packer<msgpack::sbuffer> &packer, const Arg1Type &arg1,
                    const OtherArgTypes &... args);
 
   template <typename T>
-  static void unwrap(msgpack::unpacker &unpacker, T &val);
+  static void Unwrap(msgpack::unpacker &unpacker, T &val);
 
-  static void unwrap(msgpack::unpacker &unpacker);
+  static void Unwrap(msgpack::unpacker &unpacker);
 
   template <typename Arg1Type, typename... OtherArgTypes>
-  static void unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
+  static void Unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
                      OtherArgTypes &... args);
 };
 }  }// namespace ray::api
@@ -32,23 +32,23 @@ namespace ray { namespace api {
 using namespace ::ray;
 
 template <typename T>
-inline void Arguments::wrap(msgpack::packer<msgpack::sbuffer> &packer, const T &val) {
+inline void Arguments::Wrap(msgpack::packer<msgpack::sbuffer> &packer, const T &val) {
   packer.pack(val);
   return;
 }
 
-inline void Arguments::wrap(msgpack::packer<msgpack::sbuffer> &packer) { return; }
+inline void Arguments::Wrap(msgpack::packer<msgpack::sbuffer> &packer) { return; }
 
 template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::wrap(msgpack::packer<msgpack::sbuffer> &packer,
+inline void Arguments::Wrap(msgpack::packer<msgpack::sbuffer> &packer,
                             const Arg1Type &arg1, const OtherArgTypes &... args) {
-  wrap(packer, arg1);
-  wrap(packer, args...);
+  Wrap(packer, arg1);
+  Wrap(packer, args...);
   return;
 }
 
 template <typename T>
-inline void Arguments::unwrap(msgpack::unpacker &unpacker, T &val) {
+inline void Arguments::Unwrap(msgpack::unpacker &unpacker, T &val) {
   msgpack::object_handle oh;
   bool result = unpacker.next(oh);
   if (result == false) {
@@ -59,13 +59,13 @@ inline void Arguments::unwrap(msgpack::unpacker &unpacker, T &val) {
   return;
 }
 
-inline void Arguments::unwrap(msgpack::unpacker &unpacker) { return; }
+inline void Arguments::Unwrap(msgpack::unpacker &unpacker) { return; }
 
 template <typename Arg1Type, typename... OtherArgTypes>
-inline void Arguments::unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
+inline void Arguments::Unwrap(msgpack::unpacker &unpacker, Arg1Type &arg1,
                               OtherArgTypes &... args) {
-  unwrap(unpacker, arg1);
-  unwrap(unpacker, args...);
+  Unwrap(unpacker, arg1);
+  Unwrap(unpacker, args...);
   return;
 }
 

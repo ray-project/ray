@@ -19,13 +19,9 @@ class RayObject {
 
   RayObject(const ObjectID &&id);
 
-  void assign(const ObjectID &id);
+  const ObjectID &ID() const;
 
-  void assign(ObjectID &&id);
-
-  const ObjectID &id() const;
-
-  std::shared_ptr<T> get() const;
+  std::shared_ptr<T> Get() const;
 
   bool operator==(const RayObject<T> &object) const;
 
@@ -35,7 +31,7 @@ class RayObject {
   ObjectID _id;
 
   template <typename TO>
-  std::shared_ptr<TO> doGet() const;
+  std::shared_ptr<TO> DoGet() const;
 };
 
 }  }// namespace ray::api
@@ -59,34 +55,24 @@ RayObject<T>::RayObject(const ObjectID &&id) {
 }
 
 template <typename T>
-void RayObject<T>::assign(const ObjectID &id) {
-  _id = id;
-}
-
-template <typename T>
-void RayObject<T>::assign(ObjectID &&id) {
-  _id = std::move(id);
-}
-
-template <typename T>
-const ObjectID &RayObject<T>::id() const {
+const ObjectID &RayObject<T>::ID() const {
   return _id;
 }
 
 template <typename T>
-inline std::shared_ptr<T> RayObject<T>::get() const {
-  return doGet<T>();
+inline std::shared_ptr<T> RayObject<T>::Get() const {
+  return DoGet<T>();
 }
 
 template <typename T>
 template <typename TO>
-inline std::shared_ptr<TO> RayObject<T>::doGet() const {
-  return Ray::get(*this);
+inline std::shared_ptr<TO> RayObject<T>::DoGet() const {
+  return Ray::Get(*this);
 }
 
 template <typename T>
 inline bool RayObject<T>::operator==(const RayObject<T> &object) const {
-  if (_id == object.id()) {
+  if (_id == object.ID()) {
     return true;
   } else {
     return false;

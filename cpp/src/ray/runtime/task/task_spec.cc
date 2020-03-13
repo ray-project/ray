@@ -2,7 +2,7 @@
 
 namespace ray { namespace api {
 
-LocalTaskSpec::LocalTaskSpec() {
+TaskSpec::TaskSpec() {
   driverId = JobID::Nil();
   taskId = TaskID::Nil();
   parentTaskId = TaskID::Nil();
@@ -11,21 +11,21 @@ LocalTaskSpec::LocalTaskSpec() {
   actorCounter = 0;
 }
 
-int32_t LocalTaskSpec::get_func_offset() const {
-  return func_offset;
+int32_t TaskSpec::GetFuncOffset() const {
+  return funcOffset;
 }
 
-int32_t LocalTaskSpec::get_exec_func_offset() const {
-  return exec_func_offset;
+int32_t TaskSpec::GetexecFuncOffset() const {
+  return execFuncOffset;
 }
 
-void LocalTaskSpec::set_func_offset(int32_t offset) {
-  func_offset = offset;
+void TaskSpec::SetFuncOffset(int32_t offset) {
+  funcOffset = offset;
   return;
 }
 
-void LocalTaskSpec::set_exec_func_offset(int32_t offset) {
-  exec_func_offset = offset;
+void TaskSpec::SetexecFuncOffset(int32_t offset) {
+  execFuncOffset = offset;
   return;
 }
 }  }// namespace ray::api
