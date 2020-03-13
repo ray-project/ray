@@ -196,7 +196,7 @@ class DashboardController(BaseDashboardController):
         return self.node_stats.get_logs(hostname, pid)
 
     def get_errors(self, hostname, pid, **kwargs):
-        self.node_stats.get_errors(hostname, pid)
+        return self.node_stats.get_errors(hostname, pid)
 
     def start_collecting_metrics(self):
         self.node_stats.start()
