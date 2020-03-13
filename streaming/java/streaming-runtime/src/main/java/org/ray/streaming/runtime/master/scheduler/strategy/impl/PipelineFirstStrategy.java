@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.core.master.scheduler.strategy.impl;
+package org.ray.streaming.runtime.master.scheduler.strategy.impl;
 
 import com.google.common.base.Preconditions;
 import java.util.HashMap;
@@ -8,11 +8,11 @@ import org.ray.streaming.runtime.config.types.SlotAssignStrategyType;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
-import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.ContainerID;
 import org.ray.streaming.runtime.core.resource.Resources;
 import org.ray.streaming.runtime.core.resource.Slot;
+import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
