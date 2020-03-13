@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_TEST_UTIL_H
-#define RAY_UTIL_TEST_UTIL_H
+#ifndef RAY_COMMON_TEST_UTIL_H
+#define RAY_COMMON_TEST_UTIL_H
 
 #include <unistd.h>
 
@@ -21,9 +21,13 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "ray/common/id.h"
 #include "ray/util/util.h"
 
 namespace ray {
+
+class Buffer;
+class RayObject;
 
 // Magic argument to signal to mock_worker we should check message order.
 static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
@@ -34,6 +38,14 @@ static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
 /// \param[in] timeout_ms Timeout in milliseconds to wait for for.
 /// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
+
+// A helper function to return a random task id.
+TaskID RandomTaskId();
+
+std::shared_ptr<Buffer> GenerateRandomBuffer();
+
+std::shared_ptr<RayObject> GenerateRandomObject(
+    const std::vector<ObjectID> &inlined_ids = {});
 
 /// Path to redis server executable binary.
 extern std::string REDIS_SERVER_EXEC_PATH;

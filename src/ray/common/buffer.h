@@ -51,8 +51,6 @@ class Buffer {
   }
 };
 
-std::shared_ptr<Buffer> GenerateRandomBuffer();
-
 /// Represents a byte buffer in local memory.
 class LocalMemoryBuffer : public Buffer {
  public:
