@@ -7,7 +7,7 @@ __all__ = ["free", "global_gc"]
 def global_gc():
     """Trigger gc.collect() on all workers in the cluster."""
 
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
     worker.core_worker.global_gc()
 
 
@@ -36,7 +36,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         delete_creating_tasks (bool): Whether also delete the object creating
             tasks.
     """
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
 
     if isinstance(object_ids, ray.ObjectID):
         object_ids = [object_ids]
