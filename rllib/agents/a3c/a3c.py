@@ -65,8 +65,8 @@ def make_async_optimizer(workers, config):
     return AsyncGradientsOptimizer(workers, **config["optimizer"])
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     # For A3C, compute policy gradients remotely on the rollout workers.
     grads = AsyncGradients(workers)
 
@@ -84,4 +84,4 @@ A3CTrainer = build_trainer(
     get_policy_class=get_policy_class,
     validate_config=validate_config,
     make_policy_optimizer=make_async_optimizer,
-    training_pipeline=training_pipeline)
+    execution_plan=execution_plan)

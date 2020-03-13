@@ -31,7 +31,9 @@ def data_creator(config):
         ]))
     if config.get("test_mode"):
         dataset = torch.utils.data.Subset(dataset, list(range(64)))
-    return dataset
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=config.get("batch_size", 32))
+    return dataloader
 
 
 class Generator(nn.Module):
@@ -137,12 +139,15 @@ class GANOperator(TrainingOperator):
         N = len(imgs)
         dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
         up = nn.Upsample(
-            size=(28, 28), mode="bilinear").type(torch.FloatTensor)
+            size=(28, 28),
+            mode="bilinear",
+            align_corners=False  # This is to reduce user warnings from torch.
+        ).type(torch.FloatTensor)
 
         def get_pred(x):
             x = up(x)
             x = self.classifier(x)
-            return F.softmax(x).data.cpu().numpy()
+            return F.softmax(x, dim=1).data.cpu().numpy()
 
         # Obtain predictions for the fake provided images
         preds = np.zeros((N, 10))
@@ -218,27 +223,32 @@ class GANOperator(TrainingOperator):
         }
 
 
-def train_example(num_replicas=1, use_gpu=False, test_mode=False):
+def train_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "test_mode": test_mode,
+        "batch_size": 16 if test_mode else 512 // num_workers,
         "classification_model_path": os.path.join(
             os.path.dirname(ray.__file__),
             "util/sgd/torch/examples/mnist_cnn.pt")
     }
     trainer = TorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        nn.BCELoss,
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.BCELoss,
         training_operator_cls=GANOperator,
-        num_replicas=num_replicas,
+        num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
-        batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
-    for i in range(5):
+
+    from tabulate import tabulate
+    for itr in range(5):
         stats = trainer.train()
-        print(stats)
+        formatted = tabulate([stats], headers="keys")
+        if itr > 0:  # Get the last line of the stats.
+            formatted = formatted.split("\n")[-1]
+        print(formatted)
 
     return trainer
 
@@ -253,21 +263,21 @@ if __name__ == "__main__":
         type=str,
         help="the address to use to connect to a cluster.")
     parser.add_argument(
-        "--num-replicas",
+        "--num-workers",
         "-n",
         type=int,
         default=1,
-        help="Sets number of replicas for training.")
+        help="Sets number of workers for training.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
         default=False,
         help="Enables GPU training")
-    args, _ = parser.parse_known_args()
+    args = parser.parse_args()
     ray.init(address=args.address)
 
     trainer = train_example(
-        num_replicas=args.num_replicas,
+        num_workers=args.num_workers,
         use_gpu=args.use_gpu,
         test_mode=args.smoke_test)
     models = trainer.get_model()

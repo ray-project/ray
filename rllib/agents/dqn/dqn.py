@@ -312,8 +312,8 @@ def update_target_if_needed(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     local_replay_buffer = ReplayBuffer(config["buffer_size"])
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -346,7 +346,7 @@ GenericOffPolicyTrainer = build_trainer(
     before_train_step=update_worker_exploration,
     after_optimizer_step=update_target_if_needed,
     after_train_result=after_train_result,
-    training_pipeline=training_pipeline)
+    execution_plan=execution_plan)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)

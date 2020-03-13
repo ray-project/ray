@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
@@ -192,17 +206,6 @@ class GcsServerTest : public RedisServiceManagerForTest {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool ReportBatchHeartbeat(const rpc::ReportBatchHeartbeatRequest &request) {
-    std::promise<bool> promise;
-    client_->ReportBatchHeartbeat(
-        request,
-        [&promise](const Status &status, const rpc::ReportBatchHeartbeatReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -441,8 +444,8 @@ class GcsServerTest : public RedisServiceManagerForTest {
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  // Timeout waiting for gcs server reply, default is 2s
-  const uint64_t timeout_ms_ = 2000;
+  // Timeout waiting for gcs server reply, default is 5s
+  const uint64_t timeout_ms_ = 5000;
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
@@ -522,10 +525,6 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   rpc::ReportHeartbeatRequest report_heartbeat_request;
   report_heartbeat_request.mutable_heartbeat()->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
-  rpc::ReportBatchHeartbeatRequest report_batch_heartbeat_request;
-  report_batch_heartbeat_request.mutable_heartbeat_batch()->add_batch()->set_client_id(
-      node_id.Binary());
-  ASSERT_TRUE(ReportBatchHeartbeat(report_batch_heartbeat_request));
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_info_request;
