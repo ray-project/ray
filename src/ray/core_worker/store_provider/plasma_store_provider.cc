@@ -95,9 +95,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     if (plasma::IsPlasmaStoreFull(plasma_status)) {
       std::ostringstream message;
       message << "Failed to put object " << object_id << " in object store because it "
-              << "is full. Object size is " << data_size << " bytes. "
-              << "evict_if_full? " << (evict_if_full_ ? 1 : 0)
-              << " max retries: " << max_retries;
+              << "is full. Object size is " << data_size << " bytes.";
       status = Status::ObjectStoreFull(message.str());
       if (max_retries < 0 || retries < max_retries) {
         RAY_LOG(ERROR) << message.str() << "\nWaiting " << delay
