@@ -17,6 +17,7 @@
 
 #include <ray/gcs/redis_gcs_client.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
+#include "ray/gcs/gcs_server/gcs_detector.h"
 
 namespace ray {
 namespace gcs {
@@ -108,6 +109,8 @@ class GcsServer {
   boost::asio::io_context main_service_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  /// The gcs detector.
+  std::shared_ptr<GcsDetector> gcs_detector_;
   /// Job info handler and service
   std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;

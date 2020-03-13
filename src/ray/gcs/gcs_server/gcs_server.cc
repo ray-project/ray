@@ -40,6 +40,9 @@ void GcsServer::Start() {
   // Init gcs node_manager
   InitGcsNodeManager();
 
+  // Init gcs detector
+  gcs_detector_ = std::make_shared<GcsDetector>(main_service_, redis_gcs_client_);
+
   // Register rpc service.
   job_info_handler_ = InitJobInfoHandler();
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
