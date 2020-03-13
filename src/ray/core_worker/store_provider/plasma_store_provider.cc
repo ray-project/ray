@@ -109,10 +109,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
       } else {
         RAY_LOG(ERROR) << "Failed to put object " << object_id << " after " << max_retries
                        << " attempts. Plasma store status:\n"
-                       << MemoryUsageString() << "\n\n"
-                       << ">>> Tip: Use the `ray memstat` command to list active objects "
+                       << MemoryUsageString() << "\n---\n"
+                       << "--- Tip: Use the `ray memstat` command to list active objects "
                           "in the cluster."
-                       << "\n\n";
+                       << "\n---\n";
       }
     } else if (plasma::IsPlasmaObjectExists(plasma_status)) {
       RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "

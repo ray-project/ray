@@ -53,11 +53,9 @@ class RayOutOfMemoryError(Exception):
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
                 + "currently being used by the Ray object store. You can set "
                 "the object store size with the `object_store_memory` "
-                "parameter when starting Ray, and the max Redis size with "
-                "`redis_max_memory`. Note that Ray assumes all system "
-                "memory is available for use by workers. If your system "
-                "has other applications running, you should manually set "
-                "these memory limits to a lower value.")
+                "parameter when starting Ray.\n---\n"
+                "--- Tip: Use the `ray memstat` command to list active "
+                "objects in the cluster.\n---\n")
 
 
 class MemoryMonitor:
