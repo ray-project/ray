@@ -191,7 +191,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       store_socket, local_raylet_client_, check_signals_,
-      boost::bind(&CoreWorker::TriggerGlobalGC, this)));
+      boost::bind(&CoreWorker::TriggerGlobalGC, this),
+      boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_LOG(DEBUG) << "Promoting object to plasma " << obj_id;

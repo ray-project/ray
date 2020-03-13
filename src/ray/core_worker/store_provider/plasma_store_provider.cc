@@ -24,10 +24,16 @@ namespace ray {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals, std::function<void()> on_store_full)
+    std::function<Status()> check_signals, std::function<void()> on_store_full,
+    std::function<std::string()> current_call_site)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
   on_store_full_ = on_store_full;
+  if (current_call_site != nullptr) {
+    current_call_site_ = current_call_site;
+  } else {
+    current_call_site_ = []() { return "Error: no callsite callback"; };
+  }
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
@@ -175,7 +181,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
             });
         {
           absl::MutexLock lock(&active_buffers_mutex_);
-          active_buffers_.insert(std::make_pair(object_id, data.get()));
+          active_buffers_[std::make_pair(object_id, data.get())] = current_call_site_();
         }
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
@@ -357,11 +363,11 @@ std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
   return store_client_.DebugString();
 }
 
-absl::flat_hash_map<ObjectID, int64_t> CoreWorkerPlasmaStoreProvider::UsedObjectsList() {
-  absl::flat_hash_map<ObjectID, int64_t> used;
+absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> CoreWorkerPlasmaStoreProvider::UsedObjectsList() {
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
   absl::MutexLock lock(&active_buffers_mutex_);
   for (const auto &entry : active_buffers_) {
-    used[entry.first] = entry.second->Size();
+    used[entry.first.first] = std::make_pair(entry.first.second->Size(), entry.second);
   }
   return used;
 }

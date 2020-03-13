@@ -36,7 +36,8 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 const std::shared_ptr<raylet::RayletClient> raylet_client,
                                 std::function<Status()> check_signals,
-                                std::function<void()> on_store_full = nullptr);
+                                std::function<void()> on_store_full = nullptr,
+                                std::function<std::string()> current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -97,8 +98,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   /// Lists objects in used (pinned) by the current client.
   ///
-  /// \return Output mapping of used object ids to their sizes.
-  absl::flat_hash_map<ObjectID, int64_t> UsedObjectsList();
+  /// \return Output mapping of used object ids to (size, callsite).
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjectsList();
 
   std::string MemoryUsageString();
 
@@ -140,13 +141,14 @@ class CoreWorkerPlasmaStoreProvider {
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
   std::function<void()> on_store_full_;
+  std::function<std::string()> current_call_site_;
 
   // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
   // destruction.
   absl::Mutex active_buffers_mutex_;
-  // The set of live object data buffers. Destroyed buffers are automatically removed from
-  // this list via destructor callback.
-  absl::flat_hash_set<std::pair<ObjectID, PlasmaBuffer *>> active_buffers_
+  // Mapping of live object buffers to their creation call site. Destroyed buffers are
+  // automatically removed from this list via destructor callback.
+  absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
       GUARDED_BY(active_buffers_mutex_);
 };
 
