@@ -9,7 +9,6 @@ from azure.mgmt.authorization import AuthorizationManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.msi import ManagedServiceIdentityClient
-import paramiko
 
 RETRIES = 30
 MSI_NAME = "ray-msi-user-identity"
@@ -120,39 +119,27 @@ def _configure_msi_user(config):
 
 def _configure_key_pair(config):
     ssh_user = config["auth"]["ssh_user"]
-    private_key_path = config["auth"].get("ssh_private_key")
-    if private_key_path:
-        # skip key generation if it is manually specified
-        assert os.path.exists(private_key_path), (
-            "Could not find private ssh key: {}".format(private_key_path))
 
-        # make sure public key also exists
-        public_key_path = config["auth"]["ssh_public_key"]
-        assert os.path.exists(public_key_path), (
-            "Could not find public ssh key: {}".format(public_key_path))
-    else:
-        resource_group = config["provider"]["resource_group"]
+    for key_type in ["ssh_private_key", "ssh_public_key"]:
+        try:
+            key_path = os.path.expanduser(config["auth"][key_type])
+        except KeyError:
+            raise Exception("Config must define {}".format(key_type))
+        except TypeError:
+            raise Exception("Invalid config value for {}".format(key_type))
 
-        # look for an existing key pair
-        key_name = "ray_azure_{}_{}".format(resource_group, ssh_user)
-        public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
-        private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+        assert os.path.exists(key_path), (
+            "Could not find ssh key: {}".format(key_path))
 
-    if os.path.exists(public_key_path) and os.path.exists(private_key_path):
-        logger.info("Found SSH key pair: %s", key_name)
-        with open(public_key_path, "r") as f:
-            public_key = f.read()
-    else:
-        public_key, private_key_path = _generate_ssh_keys(key_name)
-        logger.info("Creating SSH key pair: %s", key_name)
-
-    config["auth"]["ssh_private_key"] = private_key_path
+        if key_type == "ssh_public_key":
+            with open(key_path, "r") as f:
+                public_key = f.read()
 
     os_profile = {
         "admin_username": ssh_user,
         "computer_name": None,
         "linux_configuration": {
-            "disable_password_authentiation": True,
+            "disable_password_authentication": True,
             "ssh": {
                 "public_keys": [{
                     "key_data": public_key,
@@ -238,25 +225,3 @@ def _configure_network(config):
         parameters=nsg_params).wait()
 
     return config
-
-
-def _generate_ssh_keys(key_name):
-    """Generate and store public and private keys"""
-    public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
-    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
-
-    ssh_dir, _ = os.path.split(private_key_path)
-    if not os.path.exists(ssh_dir):
-        os.makedirs(ssh_dir)
-        os.chmod(ssh_dir, 0o700)
-
-    key = paramiko.RSAKey.generate(2048)
-    key.write_private_key_file(private_key_path)
-    os.chmod(private_key_path, 0o600)
-
-    with open(public_key_path, "w") as public_key_file:
-        public_key = "%s %s" % (key.get_name(), key.get_base64())
-        public_key_file.write(public_key)
-    os.chmod(public_key_path, 0o644)
-
-    return public_key, private_key_path

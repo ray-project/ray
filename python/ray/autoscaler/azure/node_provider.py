@@ -29,8 +29,8 @@ def synchronized(f):
 
 
 class AzureNodeProvider(NodeProvider):
-    """Node Provider for Azure.
-    
+    """Node Provider for Azure
+
     This provider assumes Azure credentials are set by running ``az login``
     and the default subscription is configured through ``az account``
     or set in the ``provider`` field of the autoscaler configuration.
@@ -262,9 +262,9 @@ class AzureNodeProvider(NodeProvider):
             # gather disks to delete later
             vm = self.compute_client.virtual_machines.get(
                 resource_group_name=resource_group, vm_name=node)
-            disks = vm.storage_profile.data_disks
-            disks.append(vm.storage_profile.os_disk)
-            # delete machine
+            disks = set([d.name for d in vm.storage_profile.data_disks])
+            disks.add(vm.storage_profile.os_disk.name)
+            # delete machine, must wait for this to complete
             self.compute_client.virtual_machines.delete(
                 resource_group_name=resource_group, vm_name=node).wait()
             # delete nic
@@ -279,7 +279,7 @@ class AzureNodeProvider(NodeProvider):
             # delete disks
             for disk in disks:
                 self.compute_client.disks.delete(
-                    resource_group_name=resource_group, disk_name=disk.name)
+                    resource_group_name=resource_group, disk_name=disk)
 
     def _get_node(self, node_id):
         self._get_filtered_nodes({})  # Side effect: updates cache

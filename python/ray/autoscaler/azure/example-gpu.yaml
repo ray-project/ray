@@ -60,9 +60,10 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
-# By default Ray creates a new private keypair, but you can also use your own.
-#    ssh_private_key: /path/to/your/key.pem
-#    ssh_public_key: /path/to/your/public_key.pub
+    # you must specify paths to matching private and public key pair files
+    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+    ssh_private_key: ~/.ssh/id_rsa
+    ssh_public_key: ~/.ssh/id_rsa.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
 # Ray will auto-configure unspecified fields
@@ -134,7 +135,6 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - echo 'conda activate py37_pytorch' >> ~/.bashrc
     - echo 'conda activate py37_tensorflow' >> ~/.bashrc
-    - pip install azure-cli-core azure-core azure-mgmt-authorization azure-mgmt-network azure-mgmt-compute azure-mgmt-msi paramiko 
     - pip install -U https://sdgraystorage.blob.core.windows.net/ray-wheels/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
@@ -142,7 +142,8 @@ setup_commands:
     # - sudo dpkg --configure -a
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
+head_setup_commands: 
+    - pip install azure-cli-core azure-core azure-mgmt-authorization azure-mgmt-network azure-mgmt-compute azure-mgmt-msi
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

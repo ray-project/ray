@@ -13,4 +13,7 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
-
+    # you must specify paths to matching private and public key pair files
+    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+    ssh_private_key: ~/.ssh/id_rsa
+    ssh_public_key: ~/.ssh/id_rsa.pub
