@@ -191,6 +191,8 @@ class DiagGaussian(TFActionDistribution):
 
 
 class _SquashedGaussianBase(TFActionDistribution):
+    """A univariate gaussian distribution, squashed into bounded support."""
+
     def __init__(self, inputs, model, low=-1.0, high=1.0):
         """Parameterizes the distribution via `inputs`.
 
@@ -201,12 +203,14 @@ class _SquashedGaussianBase(TFActionDistribution):
                 (excluding this value).
         """
         assert tfp is not None
-        loc, log_scale = tf.split(inputs, 2, axis=-1)
+        loc, log_scale = inputs[:, 0], inputs[:, 1]
         # Clip `scale` values (coming from NN) to reasonable values.
         self.log_std = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
                                         MAX_LOG_NN_OUTPUT)
         scale = tf.exp(self.log_std)
         self.distr = tfp.distributions.Normal(loc=loc, scale=scale)
+        assert len(self.distr.loc.shape) == 1
+        assert len(self.distr.scale.shape) == 1
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high
@@ -215,26 +219,59 @@ class _SquashedGaussianBase(TFActionDistribution):
     @override(ActionDistribution)
     def deterministic_sample(self):
         mean = self.distr.mean()
-        return self._squash(mean)
+        assert len(mean.shape) == 1, "Shape should be batch dim only"
+        s = self._squash(mean)
+        assert len(s.shape) == 1
+        return s[:, None]
 
     @override(ActionDistribution)
     def logp(self, x):
-        unsquashed_values = self._unsquash(x)
-        log_prob = tf.reduce_sum(
-            self.distr.log_prob(value=unsquashed_values), axis=-1)
+        assert len(x.shape) >= 2, "First dim batch, second dim variable"
+        unsquashed_values = self._unsquash(x[:, 0])
+        log_prob = self.distr.log_prob(value=unsquashed_values)
         return log_prob - self._log_squash_grad(unsquashed_values)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
-        return self._squash(self.distr.sample())
+        s = self._squash(self.distr.sample())
+        assert len(s.shape) == 1
+        return s[:, None]
 
-    def _squash(self, raw_values):
+    def _squash(self, unsquashed_values):
+        """Squash an array element-wise into the (high, low) range
+        
+        Arguments:
+            unsquashed_values: values to be squashed
+
+        Returns:
+            The squashed values.  The output shape is `unsquashed_values.shape`
+
+        """
         raise NotImplementedError
 
     def _unsquash(self, values):
+        """Unsquash an array element-wise from the (high, low) range
+        
+        Arguments:
+            squashed_values: values to be unsquashed
+
+        Returns:
+            The unsquashed values.  The output shape is `squashed_values.shape`
+
+        """
         raise NotImplementedError
 
     def _log_squash_grad(self, unsquashed_values):
+        """Log gradient of _squash with respect to its argument.
+
+        Arguments:
+            squashed_values:  Point at which to measure the gradient.
+
+        Returns:
+            The gradient at the given point.  The output shape is
+            `squashed_values.shape`.
+
+        """
         raise NotImplementedError
 
 
@@ -258,9 +295,7 @@ class SquashedGaussian(_SquashedGaussianBase):
 
     def _log_squash_grad(self, unsquashed_values):
         unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
-        return tf.math.reduce_sum(
-            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
-            axis=-1)
+        return tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER)
 
     def _squash(self, raw_values):
         # Make sure raw_values are not too high/low (such that tanh would
@@ -270,7 +305,6 @@ class SquashedGaussian(_SquashedGaussianBase):
             -1.0 + SMALL_NUMBER,
             1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
                self.low
-
 
     def _unsquash(self, values):
         return tf.math.atanh((values - self.low) /
@@ -317,8 +351,7 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
 
     def _log_squash_grad(self, unsquashed_values):
         squash_dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
-        log_grad = tf.reduce_sum(
-            squash_dist.log_prob(value=unsquashed_values), axis=-1)
+        log_grad = squash_dist.log_prob(value=unsquashed_values)
         log_grad += tf.log(self.high - self.low)
         return log_grad
 

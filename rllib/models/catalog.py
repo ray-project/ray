@@ -113,11 +113,14 @@ class ModelCatalog:
         high = np.ravel(action_space.high)
 
         for l, h in zip(low, high):
-            if np.isinf(l) and np.isinf(h):
+            if not np.isinf(l) and not np.isinf(h):
                 dist = partial(GaussianSquashedGaussian, low=l, high=h)
             else:
                 dist = DiagGaussian
             child_dists.append(dist)
+
+        if len(child_dists) == 1:
+            return dist, 2
 
         return partial(
             MultiActionDistribution,
