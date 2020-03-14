@@ -72,7 +72,6 @@ class SACModel(TFModelV2):
             tf.keras.layers.Dense(
                 units=action_outs, activation=None, name="action_out")
         ])
-        self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
         self.register_variables(self.action_model.variables)
 
@@ -160,6 +159,20 @@ class SACModel(TFModelV2):
             return self.twin_q_net([model_out, actions])
         else:
             return self.twin_q_net(model_out)
+
+    def get_policy_output(self, model_out):
+        """Return the action output for the most recent forward pass.
+
+        This implements pi(s).
+
+        Arguments:
+            model_out (Tensor): obs embeddings from the model layers, of shape
+                [BATCH_SIZE, num_outputs].
+
+        Returns:
+            tensor of shape [BATCH_SIZE, action_out_size]
+        """
+        return self.action_model(model_out)
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""
