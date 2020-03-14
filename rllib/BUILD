@@ -428,7 +428,7 @@ py_test(
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"buffer_size\": 10000, \"sample_batch_size\": 4, \"learning_starts\": 10000, \"target_network_update_freq\": 1000, \"gamma\": 0.99, \"prioritized_replay\": true}'"
+        "--config", "'{\"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"buffer_size\": 10000, \"rollout_fragment_length\": 4, \"learning_starts\": 10000, \"target_network_update_freq\": 1000, \"gamma\": 0.99, \"prioritized_replay\": true}'"
         ]
 )
 
@@ -549,7 +549,7 @@ py_test(
         "--run", "IMPALA",
         "--stop", "'{\"timesteps_total\": 40000}'",
         "--ray-object-store-memory=1000000000",
-        "--config", "'{\"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"sample_batch_size\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
+        "--config", "'{\"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"rollout_fragment_length\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
         ]
 )
 
@@ -580,7 +580,7 @@ py_test(
         "--env", "FrozenLake-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -594,7 +594,7 @@ py_test(
         "--env", "FrozenLake-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -607,7 +607,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -620,7 +620,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500}'"
+        "--config", "'{\"rollout_fragment_length\": 500}'"
         ]
 )
 
@@ -632,7 +632,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
         ]
 )
 
@@ -645,7 +645,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
         ]
 )
 
@@ -658,7 +658,7 @@ py_test(
         "--env", "Pong-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 

@@ -36,12 +36,11 @@ namespace ray {
 class CoreWorkerPlasmaStoreProvider
     : public std::enable_shared_from_this<CoreWorkerPlasmaStoreProvider> {
  public:
-  CoreWorkerPlasmaStoreProvider(
-      const std::string &store_socket,
-      const std::shared_ptr<raylet::RayletClient> raylet_client,
-      std::function<Status()> check_signals,
-      std::function<void()> on_store_full = nullptr,
-      std::function<std::string()> get_current_call_site = nullptr);
+  CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
+                                const std::shared_ptr<raylet::RayletClient> raylet_client,
+                                std::function<Status()> check_signals, bool evict_if_full,
+                                std::function<void()> on_store_full = nullptr,
+                                std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -144,6 +143,7 @@ class CoreWorkerPlasmaStoreProvider
   plasma::PlasmaClient store_client_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
+  const bool evict_if_full_;
   std::function<void()> on_store_full_;
   std::function<std::string()> get_current_call_site_;
 

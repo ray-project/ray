@@ -16,10 +16,10 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 

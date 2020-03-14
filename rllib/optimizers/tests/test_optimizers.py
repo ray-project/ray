@@ -68,7 +68,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo = PPOTrainer(
             env="CartPole-v0",
             config={
-                "sample_batch_size": 200,
+                "rollout_fragment_length": 200,
                 "train_batch_size": 128,
                 "num_workers": 3,
             })
@@ -80,7 +80,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo = PPOTrainer(
             env="CartPole-v0",
             config={
-                "sample_batch_size": 200,
+                "rollout_fragment_length": 200,
                 "train_batch_size": 900,
                 "num_workers": 3,
             })
@@ -92,7 +92,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo = PPOTrainer(
             env="CartPole-v0",
             config={
-                "sample_batch_size": 200,
+                "rollout_fragment_length": 200,
                 "num_envs_per_worker": 2,
                 "train_batch_size": 900,
                 "num_workers": 3,
@@ -150,7 +150,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
             workers,
             minibatch_buffer_size=10,
             num_sgd_iter=10,
-            sample_batch_size=10,
+            rollout_fragment_length=10,
             train_batch_size=50)
         self._wait_for(optimizer, 1000, 10000)
         self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
@@ -163,7 +163,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
             workers,
             replay_buffer_num_slots=100,
             replay_proportion=10,
-            sample_batch_size=10,
+            rollout_fragment_length=10,
             train_batch_size=10,
         )
         self._wait_for(optimizer, 1000, 1000)
@@ -182,7 +182,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
             num_sgd_iter=10,
             replay_buffer_num_slots=100,
             replay_proportion=10,
-            sample_batch_size=10,
+            rollout_fragment_length=10,
             train_batch_size=10)
         self._wait_for(optimizer, 1000, 1000)
 
@@ -219,21 +219,21 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
             workers,
             num_gpus=1,
             train_batch_size=100,
-            sample_batch_size=50,
+            rollout_fragment_length=50,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
             workers,
             num_gpus=1,
             train_batch_size=100,
-            sample_batch_size=25,
+            rollout_fragment_length=25,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
             workers,
             num_gpus=1,
             train_batch_size=100,
-            sample_batch_size=74,
+            rollout_fragment_length=74,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
@@ -242,7 +242,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers,
-            sample_batch_size=1000,
+            rollout_fragment_length=1000,
             train_batch_size=1000,
             learner_queue_timeout=1)
         self.assertRaises(AssertionError,

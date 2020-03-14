@@ -24,15 +24,17 @@ namespace ray {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals, std::function<void()> on_store_full,
+    std::function<Status()> check_signals, bool evict_if_full,
+    std::function<void()> on_store_full,
     std::function<std::string()> get_current_call_site)
-    : raylet_client_(raylet_client) {
-  check_signals_ = check_signals;
-  on_store_full_ = on_store_full;
+    : raylet_client_(raylet_client),
+      check_signals_(check_signals),
+      evict_if_full_(evict_if_full),
+      on_store_full_(on_store_full) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
-    get_current_call_site_ = []() { return "Error: no callsite callback"; };
+    get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
@@ -81,15 +83,20 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   uint32_t delay = RayConfig::instance().object_store_full_initial_delay_ms();
   Status status;
   bool should_retry = true;
+  // If we cannot retry, then always evict on the first attempt.
+  bool evict_if_full = max_retries == 0 ? true : evict_if_full_;
   while (should_retry) {
     should_retry = false;
     arrow::Status plasma_status;
     std::shared_ptr<arrow::Buffer> arrow_buffer;
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_.Create(
-          object_id.ToPlasmaId(), data_size, metadata ? metadata->Data() : nullptr,
-          metadata ? metadata->Size() : 0, &arrow_buffer);
+      plasma_status = store_client_.Create(object_id.ToPlasmaId(), data_size,
+                                           metadata ? metadata->Data() : nullptr,
+                                           metadata ? metadata->Size() : 0, &arrow_buffer,
+                                           /*device_num=*/0, evict_if_full);
+      // Always try to evict after the first attempt.
+      evict_if_full = true;
     }
     if (plasma::IsPlasmaStoreFull(plasma_status)) {
       std::ostringstream message;
@@ -107,7 +114,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
         retries += 1;
         should_retry = true;
       } else {
-        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after " << max_retries
+        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after " << (max_retries + 1)
                        << " attempts. Plasma store status:\n"
                        << MemoryUsageString() << "\n---\n"
                        << "--- Tip: Use the `ray memory` command to list active objects "
