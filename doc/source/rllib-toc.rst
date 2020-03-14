@@ -33,7 +33,7 @@ Training APIs
 
    -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
 
-   -  `Customized Exploration Behavior (Training and Evaluation) <rllib-training.html#customized-exploration-behavior-training-and-evaluation>`__
+   -  `Customizing Exploration Behavior <rllib-training.html#customizing-exploration-behavior>`__
 
    -  `Customized Evaluation During Training <rllib-training.html#customized-evaluation-during-training>`__
 
