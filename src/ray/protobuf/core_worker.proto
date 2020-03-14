@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
@@ -13,26 +27,32 @@ message ActorHandle {
   // ID of the actor.
   bytes actor_id = 1;
 
+  // The task or actor ID of the actor's owner.
+  bytes owner_id = 2;
+
+  // The address of the actor's owner.
+  Address owner_address = 3;
+
   // ID of the job that created the actor (it is possible that the handle
   // exists on a job with a different job ID).
-  bytes creation_job_id = 3;
+  bytes creation_job_id = 4;
 
   // Language of the actor.
-  Language actor_language = 4;
+  Language actor_language = 5;
 
   // Function descriptor of actor creation task.
-  FunctionDescriptor actor_creation_task_function_descriptor = 5;
+  FunctionDescriptor actor_creation_task_function_descriptor = 6;
 
   // The unique id of the dummy object returned by the actor creation task.
   // It's used as a dependency for the first task.
   // TODO: Remove this once scheduling is done by task counter only.
-  bytes actor_cursor = 6;
+  bytes actor_cursor = 7;
 
   // Whether direct actor call is used.
-  bool is_direct_call = 7;
+  bool is_direct_call = 8;
 
   // An extension field that is used for storing app-language-specific data.
-  bytes extension_data = 8;
+  bytes extension_data = 9;
 }
 
 message AssignTaskRequest {
@@ -150,6 +170,10 @@ message WaitForObjectEvictionReply {
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
+  // Whether to force kill the actor.
+  bool force_kill = 2;
+  // If set to true, the killed actor will not be reconstructed anymore.
+  bool no_reconstruction = 3;
 }
 
 message KillActorReply {

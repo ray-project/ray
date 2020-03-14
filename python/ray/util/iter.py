@@ -414,11 +414,16 @@ class ParallelIterator(Generic[T]):
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, MetricsContext(), name=name)
 
-    def gather_async(self) -> "LocalIterator[T]":
+    def gather_async(self, async_queue_depth=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
+
+        Arguments:
+            async_queue_depth (int): The max number of async requests in flight
+                per actor. Increasing this improves the amount of pipeline
+                parallelism in the iterator.
 
         Examples:
             >>> it = from_range(100, 1).gather_async()
@@ -430,16 +435,19 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
-        metrics = MetricsContext()
+        if async_queue_depth < 1:
+            raise ValueError("queue depth must be positive")
 
         def base_iterator(timeout=None):
+            metrics = LocalIterator.get_metrics()
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
                 all_actors.extend(actor_set.actors)
             futures = {}
-            for a in all_actors:
-                futures[a.par_iter_next.remote()] = a
+            for _ in range(async_queue_depth):
+                for a in all_actors:
+                    futures[a.par_iter_next.remote()] = a
             while futures:
                 pending = list(futures)
                 if timeout is None:
@@ -455,7 +463,7 @@ class ParallelIterator(Generic[T]):
                 for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
-                        metrics.cur_actor = actor
+                        metrics.current_actor = actor
                         yield ray.get(obj_id)
                         futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
@@ -465,7 +473,7 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, metrics, name=name)
+        return LocalIterator(base_iterator, MetricsContext(), name=name)
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -638,7 +646,13 @@ class LocalIterator(Generic[T]):
                 if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
-                    yield fn(item)
+                    # Keep retrying the function until it returns a valid
+                    # value. This allows for non-blocking functions.
+                    while True:
+                        result = fn(item)
+                        yield result
+                        if not isinstance(result, _NextValueNotReady):
+                            break
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
@@ -756,6 +770,17 @@ class LocalIterator(Generic[T]):
     def combine(self, fn: Callable[[T], List[U]]) -> "LocalIterator[U]":
         it = self.for_each(fn).flatten()
         it.name = self.name + ".combine()"
+        return it
+
+    def zip_with_source_actor(self):
+        def zip_with_source(item):
+            metrics = LocalIterator.get_metrics()
+            if metrics.current_actor is None:
+                raise ValueError("Could not identify source actor of item")
+            return metrics.current_actor, item
+
+        it = self.for_each(zip_with_source)
+        it.name = self.name + ".zip_with_source_actor()"
         return it
 
     def take(self, n: int) -> List[T]:

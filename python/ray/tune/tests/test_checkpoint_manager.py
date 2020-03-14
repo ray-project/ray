@@ -4,17 +4,29 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager, logger
 
 
 class CheckpointManagerTest(unittest.TestCase):
     @staticmethod
     def mock_result(i):
-        return {"i": i}
+        return {"i": i, TRAINING_ITERATION: i}
 
     def checkpoint_manager(self, keep_checkpoints_num):
         return CheckpointManager(
             keep_checkpoints_num, "i", delete_fn=lambda c: None)
+
+    def testNewestCheckpoint(self):
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
+        memory_checkpoint = Checkpoint(Checkpoint.MEMORY, {0},
+                                       self.mock_result(0))
+        checkpoint_manager.on_checkpoint(memory_checkpoint)
+        persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT, {1},
+                                           self.mock_result(1))
+        checkpoint_manager.on_checkpoint(persistent_checkpoint)
+        self.assertEqual(checkpoint_manager.newest_persistent_checkpoint,
+                         persistent_checkpoint)
 
     def testOnCheckpointOrdered(self):
         """

@@ -1,17 +1,15 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
-#include "src/ray/util/test_util.h"
-
 #include "data_reader.h"
 #include "data_writer.h"
+#include "gtest/gtest.h"
 #include "message/message.h"
 #include "message/message_bundle.h"
 #include "queue/queue_client.h"
+#include "ray/common/test_util.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 #include "ring_buffer.h"
 #include "status.h"
-
-#include "gtest/gtest.h"
 using namespace std::placeholders;
 
 const uint32_t MESSAGE_BOUND_SIZE = 10000;
@@ -405,7 +403,7 @@ class StreamingWorker {
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();
     std::string actor_handle_serialized = message->ActorHandleSerialized();
-    worker_->DeserializeAndRegisterActorHandle(actor_handle_serialized);
+    worker_->DeserializeAndRegisterActorHandle(actor_handle_serialized, ObjectID::Nil());
     std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
     STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();

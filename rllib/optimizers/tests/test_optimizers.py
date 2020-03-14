@@ -18,11 +18,15 @@ tf = try_import_tf()
 
 
 class LRScheduleTest(unittest.TestCase):
-    def tearDown(self):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=2)
+
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
-    def testBasic(self):
-        ray.init(num_cpus=2)
+    def test_basic(self):
         ppo = PPOTrainer(
             env="CartPole-v0",
             config={"lr_schedule": [[0, 1e-5], [1000, 0.0]]})
@@ -32,11 +36,15 @@ class LRScheduleTest(unittest.TestCase):
 
 
 class AsyncOptimizerTest(unittest.TestCase):
-    def tearDown(self):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=4, object_store_memory=1000 * 1024 * 1024)
+
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
-    def testBasic(self):
-        ray.init(num_cpus=4, object_store_memory=1000 * 1024 * 1024)
+    def test_basic(self):
         local = _MockWorker()
         remotes = ray.remote(_MockWorker)
         remote_workers = [remotes.remote() for i in range(5)]
@@ -47,17 +55,20 @@ class AsyncOptimizerTest(unittest.TestCase):
 
 
 class PPOCollectTest(unittest.TestCase):
-    def tearDown(self):
-        ray.shutdown()
-
-    def testPPOSampleWaste(self):
+    @classmethod
+    def setUpClass(cls):
         ray.init(num_cpus=4, object_store_memory=1000 * 1024 * 1024)
 
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_ppo_sample_waste(self):
         # Check we at least collect the initial wave of samples
         ppo = PPOTrainer(
             env="CartPole-v0",
             config={
-                "sample_batch_size": 200,
+                "rollout_fragment_length": 200,
                 "train_batch_size": 128,
                 "num_workers": 3,
             })
@@ -69,7 +80,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo = PPOTrainer(
             env="CartPole-v0",
             config={
-                "sample_batch_size": 200,
+                "rollout_fragment_length": 200,
                 "train_batch_size": 900,
                 "num_workers": 3,
             })
@@ -81,7 +92,7 @@ class PPOCollectTest(unittest.TestCase):
         ppo = PPOTrainer(
             env="CartPole-v0",
             config={
-                "sample_batch_size": 200,
+                "rollout_fragment_length": 200,
                 "num_envs_per_worker": 2,
                 "train_batch_size": 900,
                 "num_workers": 3,
@@ -92,7 +103,7 @@ class PPOCollectTest(unittest.TestCase):
 
 
 class SampleBatchTest(unittest.TestCase):
-    def testConcat(self):
+    def test_concat(self):
         b1 = SampleBatch({"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])})
         b2 = SampleBatch({"a": np.array([1]), "b": np.array([4])})
         b3 = SampleBatch({"a": np.array([1]), "b": np.array([5])})
@@ -106,53 +117,53 @@ class SampleBatchTest(unittest.TestCase):
 
 class AsyncSamplesOptimizerTest(unittest.TestCase):
     @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
-    @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=8, object_store_memory=1000 * 1024 * 1024)
 
-    def testSimple(self):
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_simple(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(workers)
         self._wait_for(optimizer, 1000, 1000)
 
-    def testMultiGPU(self):
+    def test_multi_gpu(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(workers, num_gpus=1, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
-    def testMultiGPUParallelLoad(self):
+    def test_multi_gpu_parallel_load(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers, num_gpus=1, num_data_loader_buffers=1, _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
-    def testMultiplePasses(self):
+    def test_multiple_passes(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers,
             minibatch_buffer_size=10,
             num_sgd_iter=10,
-            sample_batch_size=10,
+            rollout_fragment_length=10,
             train_batch_size=50)
         self._wait_for(optimizer, 1000, 10000)
         self.assertLess(optimizer.stats()["num_steps_sampled"], 5000)
         self.assertGreater(optimizer.stats()["num_steps_trained"], 8000)
 
-    def testReplay(self):
+    def test_replay(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers,
             replay_buffer_num_slots=100,
             replay_proportion=10,
-            sample_batch_size=10,
+            rollout_fragment_length=10,
             train_batch_size=10,
         )
         self._wait_for(optimizer, 1000, 1000)
@@ -162,7 +173,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         self.assertGreater(replay_ratio, 0.7)
         self.assertLess(stats["num_steps_trained"], stats["num_steps_sampled"])
 
-    def testReplayAndMultiplePasses(self):
+    def test_replay_and_multiple_passes(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
@@ -171,7 +182,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
             num_sgd_iter=10,
             replay_buffer_num_slots=100,
             replay_proportion=10,
-            sample_batch_size=10,
+            rollout_fragment_length=10,
             train_batch_size=10)
         self._wait_for(optimizer, 1000, 1000)
 
@@ -181,7 +192,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         replay_ratio = stats["num_steps_replayed"] / stats["num_steps_sampled"]
         self.assertGreater(replay_ratio, 0.7)
 
-    def testMultiTierAggregationBadConf(self):
+    def test_multi_tier_aggregation_bad_conf(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         aggregators = TreeAggregator.precreate_aggregators(4)
@@ -189,7 +200,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         self.assertRaises(ValueError,
                           lambda: optimizer.aggregator.init(aggregators))
 
-    def testMultiTierAggregation(self):
+    def test_multi_tier_aggregation(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         aggregators = TreeAggregator.precreate_aggregators(1)
@@ -197,7 +208,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         optimizer.aggregator.init(aggregators)
         self._wait_for(optimizer, 1000, 1000)
 
-    def testRejectBadConfigs(self):
+    def test_reject_bad_configs(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         self.assertRaises(
@@ -208,30 +219,30 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
             workers,
             num_gpus=1,
             train_batch_size=100,
-            sample_batch_size=50,
+            rollout_fragment_length=50,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
             workers,
             num_gpus=1,
             train_batch_size=100,
-            sample_batch_size=25,
+            rollout_fragment_length=25,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
         optimizer = AsyncSamplesOptimizer(
             workers,
             num_gpus=1,
             train_batch_size=100,
-            sample_batch_size=74,
+            rollout_fragment_length=74,
             _fake_gpus=True)
         self._wait_for(optimizer, 1000, 1000)
 
-    def testLearnerQueueTimeout(self):
+    def test_learner_queue_timeout(self):
         local, remotes = self._make_envs()
         workers = WorkerSet._from_existing(local, remotes)
         optimizer = AsyncSamplesOptimizer(
             workers,
-            sample_batch_size=1000,
+            rollout_fragment_length=1000,
             train_batch_size=1000,
             learner_queue_timeout=1)
         self.assertRaises(AssertionError,
@@ -265,4 +276,6 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

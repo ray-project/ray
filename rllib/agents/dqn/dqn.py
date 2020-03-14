@@ -101,7 +101,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 4,
+    "rollout_fragment_length": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -157,7 +157,7 @@ def make_policy_optimizer(workers, config):
 def validate_config_and_setup_param_noise(config):
     """Checks and updates the config based on settings.
 
-    Rewrites sample_batch_size to take into account n_step truncation.
+    Rewrites rollout_fragment_length to take into account n_step truncation.
     """
     # PyTorch check.
     if config["use_pytorch"]:
@@ -223,9 +223,9 @@ def validate_config_and_setup_param_noise(config):
         }
 
     # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["sample_batch_size"],
+    adjusted_batch_size = max(config["rollout_fragment_length"],
                               config.get("n_step", 1))
-    config["sample_batch_size"] = adjusted_batch_size
+    config["rollout_fragment_length"] = adjusted_batch_size
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):
@@ -312,8 +312,8 @@ def update_target_if_needed(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
-# Experimental pipeline-based impl; enable with "use_pipeline_impl": True.
-def training_pipeline(workers, config):
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
     local_replay_buffer = ReplayBuffer(config["buffer_size"])
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -346,7 +346,7 @@ GenericOffPolicyTrainer = build_trainer(
     before_train_step=update_worker_exploration,
     after_optimizer_step=update_target_if_needed,
     after_train_result=after_train_result,
-    training_pipeline=training_pipeline)
+    execution_plan=execution_plan)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)

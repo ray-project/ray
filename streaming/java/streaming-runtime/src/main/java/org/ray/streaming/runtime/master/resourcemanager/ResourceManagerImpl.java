@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.core.master.resourcemanager;
+package org.ray.streaming.runtime.master.resourcemanager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,11 +13,11 @@ import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.streaming.runtime.config.StreamingMasterConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.config.types.SlotAssignStrategyType;
-import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
-import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategyFactory;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.Resources;
 import org.ray.streaming.runtime.master.JobRuntimeContext;
+import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategy;
+import org.ray.streaming.runtime.master.scheduler.strategy.SlotAssignStrategyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

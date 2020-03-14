@@ -62,7 +62,7 @@ class ExecutionTask:
         self.task_id = task_pb.task_id
         self.task_index = task_pb.task_index
         self.worker_actor = ray.actor.ActorHandle.\
-            _deserialization_helper(task_pb.worker_actor, False)
+            _deserialization_helper(task_pb.worker_actor)
 
 
 class ExecutionGraph:

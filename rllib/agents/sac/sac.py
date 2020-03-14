@@ -4,8 +4,8 @@ from ray.rllib.agents.sac.sac_policy import SACTFPolicy
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts"
+    "prioritized_replay_beta", "prioritized_replay_eps",
+    "rollout_fragment_length", "train_batch_size", "learning_starts"
 ]
 
 # yapf: disable
@@ -29,6 +29,9 @@ DEFAULT_CONFIG = with_common_config({
     "normalize_actions": True,
 
     # === Learning ===
+    # Disable setting done=True at end of episode. This should be set to True
+    # for infinite-horizon MDPs (e.g., many continuous control problems).
+    "no_done_at_end": False,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 5e-3,
     # Initial value to use for the entropy weight alpha.
@@ -37,8 +40,6 @@ DEFAULT_CONFIG = with_common_config({
     # Discrete(2), -3.0 for Box(shape=(3,))).
     # This is the inverse of reward scale, and will be optimized automatically.
     "target_entropy": "auto",
-    # Disable setting done=True at end of episode.
-    "no_done_at_end": True,
     # N-step target updates.
     "n_step": 1,
 
@@ -71,7 +72,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 1,
+    "rollout_fragment_length": 1,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.

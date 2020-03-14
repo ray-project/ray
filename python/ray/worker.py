@@ -439,8 +439,8 @@ def get_gpu_ids():
         A list of GPU IDs.
     """
     if _mode() == LOCAL_MODE:
-        raise Exception("ray.get_gpu_ids() currently does not work in LOCAL "
-                        "MODE.")
+        raise RuntimeError("ray.get_gpu_ids() currently does not work in "
+                           "local_mode.")
 
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
@@ -466,9 +466,8 @@ def get_resource_ids():
         resource reserved for this worker.
     """
     if _mode() == LOCAL_MODE:
-        raise Exception(
-            "ray.get_resource_ids() currently does not work in LOCAL "
-            "MODE.")
+        raise RuntimeError("ray.get_resource_ids() currently does not work in "
+                           "local_mode.")
 
     return global_worker.core_worker.resource_ids()
 
@@ -482,7 +481,7 @@ def get_webui_url():
         The URL of the web UI as a string.
     """
     if _global_node is None:
-        raise Exception("Ray has not been initialized/connected.")
+        raise RuntimeError("Ray has not been initialized/connected.")
     return _global_node.webui_url
 
 
@@ -551,7 +550,8 @@ def init(address=None,
          temp_dir=None,
          load_code_from_local=False,
          use_pickle=True,
-         _internal_config=None):
+         _internal_config=None,
+         lru_evict=False):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -647,6 +647,12 @@ def init(address=None,
         use_pickle: Deprecated.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
+        lru_evict (bool): If True, when an object store is full, it will evict
+            objects in LRU order to make more space and when under memory
+            pressure, ray.UnreconstructableError may be thrown. If False, then
+            reference counting will be used to decide which objects are safe to
+            evict and when under memory pressure, ray.ObjectStoreFullError may
+            be thrown.
 
     Returns:
         Address information about the started processes.
@@ -687,14 +693,26 @@ def init(address=None,
                          "called.")
             return
         else:
-            raise Exception("Perhaps you called ray.init twice by accident? "
-                            "This error can be suppressed by passing in "
-                            "'ignore_reinit_error=True' or by calling "
-                            "'ray.shutdown()' prior to 'ray.init()'.")
+            raise RuntimeError("Maybe you called ray.init twice by accident? "
+                               "This error can be suppressed by passing in "
+                               "'ignore_reinit_error=True' or by calling "
+                               "'ray.shutdown()' prior to 'ray.init()'.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
+
+    _internal_config = (json.loads(_internal_config)
+                        if _internal_config else {})
+    # Set the internal config options for LRU eviction.
+    if lru_evict:
+        # Turn off object pinning.
+        if _internal_config.get("object_pinning_enabled", False):
+            raise Exception(
+                "Object pinning cannot be enabled if using LRU eviction.")
+        _internal_config["object_pinning_enabled"] = False
+        _internal_config["object_store_full_max_retries"] = -1
+        _internal_config["free_objects_period_milliseconds"] = 1000
 
     global _global_node
     if driver_mode == LOCAL_MODE:
@@ -743,44 +761,46 @@ def init(address=None,
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
-            raise Exception("When connecting to an existing cluster, num_cpus "
-                            "and num_gpus must not be provided.")
+            raise ValueError(
+                "When connecting to an existing cluster, num_cpus "
+                "and num_gpus must not be provided.")
         if resources is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "resources must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "resources must not be provided.")
         if num_redis_shards is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "num_redis_shards must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "num_redis_shards must not be provided.")
         if redis_max_clients is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "redis_max_clients must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "redis_max_clients must not be provided.")
         if memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "memory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "memory must not be provided.")
         if object_store_memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "object_store_memory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "object_store_memory must not be provided.")
         if redis_max_memory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "redis_max_memory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "redis_max_memory must not be provided.")
         if plasma_directory is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "plasma_directory must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "plasma_directory must not be provided.")
         if huge_pages:
-            raise Exception("When connecting to an existing cluster, "
-                            "huge_pages must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "huge_pages must not be provided.")
         if temp_dir is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "temp_dir must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "temp_dir must not be provided.")
         if plasma_store_socket_name is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "plasma_store_socket_name must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "plasma_store_socket_name must not be provided.")
         if raylet_socket_name is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "raylet_socket_name must not be provided.")
+            raise ValueError("When connecting to an existing cluster, "
+                             "raylet_socket_name must not be provided.")
         if _internal_config is not None:
-            raise Exception("When connecting to an existing cluster, "
-                            "_internal_config must not be provided.")
+            logger.warning(
+                "When connecting to an existing cluster, "
+                "_internal_config must match the cluster's _internal_config.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -789,7 +809,8 @@ def init(address=None,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local)
+            load_code_from_local=load_code_from_local,
+            _internal_config=_internal_config)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -804,8 +825,7 @@ def init(address=None,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
         job_id=job_id,
-        internal_config=json.loads(_internal_config)
-        if _internal_config else {})
+        internal_config=_internal_config)
 
     for hook in _post_init_hooks:
         hook()
@@ -1604,13 +1624,13 @@ def wait(object_ids, num_returns=1, timeout=None):
             return [], []
 
         if len(object_ids) != len(set(object_ids)):
-            raise Exception("Wait requires a list of unique object IDs.")
+            raise ValueError("Wait requires a list of unique object IDs.")
         if num_returns <= 0:
-            raise Exception(
+            raise ValueError(
                 "Invalid number of objects to return %d." % num_returns)
         if num_returns > len(object_ids):
-            raise Exception("num_returns cannot be greater than the number "
-                            "of objects provided to ray.wait.")
+            raise ValueError("num_returns cannot be greater than the number "
+                             "of objects provided to ray.wait.")
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
@@ -1643,7 +1663,7 @@ def kill(actor):
                          "Got: {}.".format(type(actor)))
 
     worker = ray.worker.get_global_worker()
-    worker.core_worker.kill_actor(actor._ray_actor_id)
+    worker.core_worker.kill_actor(actor._ray_actor_id, False)
 
 
 def _mode(worker=global_worker):
@@ -1676,8 +1696,8 @@ def make_decorator(num_return_vals=None,
                 or is_cython(function_or_class)):
             # Set the remote function default resources.
             if max_reconstructions is not None:
-                raise Exception("The keyword 'max_reconstructions' is not "
-                                "allowed for remote functions.")
+                raise ValueError("The keyword 'max_reconstructions' is not "
+                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
@@ -1686,17 +1706,17 @@ def make_decorator(num_return_vals=None,
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
-                raise Exception("The keyword 'num_return_vals' is not allowed "
-                                "for actors.")
+                raise TypeError("The keyword 'num_return_vals' is not "
+                                "allowed for actors.")
             if max_calls is not None:
-                raise Exception("The keyword 'max_calls' is not allowed for "
-                                "actors.")
+                raise TypeError("The keyword 'max_calls' is not "
+                                "allowed for actors.")
 
             return worker.make_actor(function_or_class, num_cpus, num_gpus,
                                      memory, object_store_memory, resources,
                                      max_reconstructions)
 
-        raise Exception("The @ray.remote decorator must be applied to "
+        raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
 
     return decorator
@@ -1815,7 +1835,7 @@ def remote(*args, **kwargs):
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
-        raise Exception("The 'resources' keyword argument must be a "
+        raise TypeError("The 'resources' keyword argument must be a "
                         "dictionary, but received type {}.".format(
                             type(resources)))
     if resources is not None:
