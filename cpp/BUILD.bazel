@@ -5,24 +5,23 @@ load("//bazel:ray.bzl", "COPTS")
 
 cc_library(
     name = "libray_api_hdr",
-    copts = COPTS,
     hdrs = glob([
         "include/ray/*.h",
         "include/ray/**/*.h",
         "include/ray/**/**/*.h",
     ]),
+    copts = COPTS,
     strip_include_prefix = "include",
     deps = [
-        "@plasma//:plasma_client",
-        "@msgpack",
-        "//:ray_common",
         "//:core_worker_lib",
+        "//:ray_common",
+        "@msgpack",
+        "@plasma//:plasma_client",
     ],
 )
 
 cc_binary(
     name = "libray_api.so",
-    copts = COPTS,
     srcs = glob([
         "src/ray/api.cc",
         "src/ray/api/*.cc",
@@ -40,16 +39,17 @@ cc_binary(
         "src/ray/*.cc",
         "src/ray/*.h",
     ]),
+    copts = COPTS,
+    linkshared = 1,
+    linkstatic = 1,
     deps = [
         "libray_api_hdr",
+        "//:core_worker_lib",
+        "//:ray_common",
         "@boost//:asio",
         "@boost//:thread",
         "@msgpack",
-        "//:ray_common",
-        "//:core_worker_lib",
     ],
-    linkshared = 1,
-    linkstatic = 1,
 )
 
 cc_import(
@@ -59,56 +59,56 @@ cc_import(
 
 cc_binary(
     name = "example",
-    copts = COPTS,
     testonly = 1,
     srcs = [
         "src/example/example.cc",
-        "src/example/example.h"
-        ],
+        "src/example/example.h",
+    ],
+    copts = COPTS,
     deps = [
-        "ray_api",
         "libray_api_hdr",
+        "ray_api",
     ],
 )
 
 cc_binary(
     name = "api_test",
-    copts = COPTS,
     testonly = 1,
     srcs = [
-        "src/ray/test/api_test.cc"
-        ],
+        "src/ray/test/api_test.cc",
+    ],
+    copts = COPTS,
     deps = [
-        "ray_api",
         "libray_api_hdr",
-        "@com_google_googletest//:gtest_main"
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_binary(
     name = "wrap_test",
-    copts = COPTS,
     testonly = 1,
     srcs = [
-        "src/ray/test/wrap_test.cc"
-        ],
+        "src/ray/test/wrap_test.cc",
+    ],
+    copts = COPTS,
     deps = [
-        "ray_api",
         "libray_api_hdr",
-        "@com_google_googletest//:gtest_main"
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_binary(
     name = "slow_function_test",
-    copts = COPTS,
     testonly = 1,
     srcs = [
-        "src/ray/test/slow_function_test.cc"
-        ],
+        "src/ray/test/slow_function_test.cc",
+    ],
+    copts = COPTS,
     deps = [
-        "ray_api",
         "libray_api_hdr",
-        "@com_google_googletest//:gtest_main"
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
     ],
 )
