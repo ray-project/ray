@@ -15,8 +15,6 @@
 #ifndef RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 #define RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 
-#include <boost/enable_shared_from_this.hpp>
-
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "plasma/client.h"
@@ -33,8 +31,7 @@ namespace ray {
 /// local and remote stores. Local access goes is done via a
 /// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
 /// See `CoreWorkerStoreProvider` for the semantics of public methods.
-class CoreWorkerPlasmaStoreProvider
-    : public std::enable_shared_from_this<CoreWorkerPlasmaStoreProvider> {
+class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
@@ -148,15 +145,22 @@ class CoreWorkerPlasmaStoreProvider
   std::function<void()> on_store_full_;
   std::function<std::string()> get_current_call_site_;
 
-  // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
-  // destruction.
-  mutable absl::Mutex active_buffers_mutex_;
-  // Mapping of live object buffers to their creation call site. Destroyed buffers are
-  // automatically removed from this list via destructor callback. The map key uniquely
-  // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
-  // alive forever (i.e., this is a weak ref map).
-  absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
-      GUARDED_BY(active_buffers_mutex_);
+  // Active buffers tracker. This must be allocated as a separate structure since its
+  // lifetime can exceed that of the store provider due to callback references.
+  struct BufferTracker {
+    // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
+    // destruction.
+    mutable absl::Mutex active_buffers_mutex_;
+    // Mapping of live object buffers to their creation call site. Destroyed buffers are
+    // automatically removed from this list via destructor callback. The map key uniquely
+    // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
+    // alive forever (i.e., this is a weak ref map).
+    absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
+        GUARDED_BY(active_buffers_mutex_);
+  };
+
+  // Pointer to the shared buffer tracker.
+  std::shared_ptr<BufferTracker> buffer_tracker_;
 };
 
 }  // namespace ray

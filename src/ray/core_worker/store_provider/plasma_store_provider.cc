@@ -36,6 +36,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   } else {
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
+  buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
@@ -182,18 +183,17 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].data && plasma_results[i].data->size()) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
-        std::shared_ptr<CoreWorkerPlasmaStoreProvider> this_ptr = shared_from_this();
+        std::shared_ptr<BufferTracker> tracker = buffer_tracker_;
         data = std::make_shared<PlasmaBuffer>(
-            plasma_results[i].data,
-            [this, this_ptr, object_id](PlasmaBuffer *this_buffer) {
-              absl::MutexLock lock(&active_buffers_mutex_);
+            plasma_results[i].data, [tracker, object_id](PlasmaBuffer *this_buffer) {
+              absl::MutexLock lock(&tracker->active_buffers_mutex_);
               auto key = std::make_pair(object_id, this_buffer);
-              RAY_CHECK(active_buffers_.contains(key));
-              active_buffers_.erase(key);
+              RAY_CHECK(tracker->active_buffers_.contains(key));
+              tracker->active_buffers_.erase(key);
             });
         {
-          absl::MutexLock lock(&active_buffers_mutex_);
-          active_buffers_[std::make_pair(object_id, data.get())] =
+          absl::MutexLock lock(&tracker->active_buffers_mutex_);
+          tracker->active_buffers_[std::make_pair(object_id, data.get())] =
               get_current_call_site_();
         }
       }
@@ -379,8 +379,8 @@ std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
 CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
   absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
-  absl::MutexLock lock(&active_buffers_mutex_);
-  for (const auto &entry : active_buffers_) {
+  absl::MutexLock lock(&buffer_tracker_->active_buffers_mutex_);
+  for (const auto &entry : buffer_tracker_->active_buffers_) {
     auto it = used.find(entry.first.first);
     if (it != used.end()) {
       // Prefer to keep entries that have non-empty callsites.
