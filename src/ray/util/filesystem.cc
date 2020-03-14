@@ -10,9 +10,9 @@
 
 namespace ray {
 
-std::string get_ray_temp_dir() { return join_paths(get_user_temp_dir(), "ray"); }
+std::string GetRayTempDir() { return JoinPaths(GetUserTempDir(), "ray"); }
 
-std::string get_user_temp_dir() {
+std::string GetUserTempDir() {
   std::string result;
 #if defined(__APPLE__) || defined(__linux__)
   // Prefer the hard-coded path for now, for compatibility.
@@ -37,7 +37,7 @@ std::string get_user_temp_dir() {
   result = found ? found : "/tmp";
 #endif
   // Strip trailing separators
-  while (!result.empty() && is_dir_sep(result.back())) {
+  while (!result.empty() && IsDirSep(result.back())) {
     result.pop_back();
   }
   RAY_CHECK(!result.empty());

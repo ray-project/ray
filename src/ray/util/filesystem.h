@@ -6,10 +6,10 @@
 namespace ray {
 
 /// \return The portable directory separator (slash on all OSes).
-static char get_alt_dir_sep() { return '/'; }
+static char GetAltDirSep() { return '/'; }
 
 /// \return The platform directory separator (backslash on Windows, slash on other OSes).
-static char get_dir_sep() {
+static char GetDirSep() {
   char result;
 #ifdef _WIN32
   result = '\\';
@@ -20,7 +20,7 @@ static char get_dir_sep() {
 }
 
 /// \return The platform PATH separator (semicolon on Windows, colon on other OSes).
-static char get_path_sep() {
+static char GetPathSep() {
   char result;
 #ifdef _WIN32
   result = ';';
@@ -31,31 +31,31 @@ static char get_path_sep() {
 }
 
 /// \return A non-volatile temporary directory in which Ray can stores its files.
-std::string get_ray_temp_dir();
+std::string GetRayTempDir();
 
 /// \return The non-volatile temporary directory for the current user (often /tmp).
-std::string get_user_temp_dir();
+std::string GetUserTempDir();
 
 /// \return Whether or not the given character is a directory separator on this platform.
-static bool is_dir_sep(char ch) {
-  bool result = ch == get_dir_sep();
+static bool IsDirSep(char ch) {
+  bool result = ch == GetDirSep();
 #ifdef _WIN32
-  result |= ch == get_alt_dir_sep();
+  result |= ch == GetAltDirSep();
 #endif
   return result;
 }
 
 /// \return Whether or not the given character is a PATH separator on this platform.
-static bool is_path_sep(char ch) { return ch == get_path_sep(); }
+static bool IsPathSep(char ch) { return ch == GetPathSep(); }
 
 /// \return The result of joining multiple path components.
 template <class... Paths>
-std::string join_paths(std::string base, Paths... components) {
+std::string JoinPaths(std::string base, Paths... components) {
   std::string to_append[] = {components...};
   for (size_t i = 0; i < sizeof(to_append) / sizeof(*to_append); ++i) {
     const std::string &s = to_append[i];
-    if (!base.empty() && !is_dir_sep(base.back()) && !s.empty() && !is_dir_sep(s[0])) {
-      base += get_dir_sep();
+    if (!base.empty() && !IsDirSep(base.back()) && !s.empty() && !IsDirSep(s[0])) {
+      base += GetDirSep();
     }
     base += s;
   }

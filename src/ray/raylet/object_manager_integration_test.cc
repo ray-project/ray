@@ -38,7 +38,7 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   std::string StartStore(const std::string &id) {
-    std::string store_id = ray::join_paths(ray::get_user_temp_dir(), "store");
+    std::string store_id = ray::JoinPaths(ray::GetUserTempDir(), "store");
     store_id = store_id + id;
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
                                  " 1> /dev/null 2> /dev/null &";
