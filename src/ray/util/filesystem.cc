@@ -25,7 +25,7 @@ std::string GetUserTempDir() {
     n = GetTempPath(static_cast<DWORD>(result.size()), &*result.begin());
   }
   result.resize(0 < n && n <= result.size() ? static_cast<size_t>(n) : 0);
-#else
+#else  // not Linux, Darwin, or Windows
   const char *candidates[] = {"TMPDIR", "TMP", "TEMP", "TEMPDIR"};
   const char *found = NULL;
   for (char const *candidate : candidates) {
