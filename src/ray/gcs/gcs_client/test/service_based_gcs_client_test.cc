@@ -646,6 +646,21 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   promise.get_future().get();
 }
 
+TEST_F(ServiceBasedGcsGcsClientTest, TestGcsDetector) {
+  //  TearDownTestCase();
+  //  sleep(1);
+  //  RAY_LOG(INFO) << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
+  //  SetUpTestCase();
+  TearDown();
+  SetUp();
+
+  // Create job_table_data
+  JobID add_job_id = JobID::FromInt(1);
+  auto job_table_data = GenJobTableData(add_job_id);
+
+  ASSERT_TRUE(AddJob(job_table_data));
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

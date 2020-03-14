@@ -16,7 +16,8 @@ class GcsDetector {
   /// \param io_service The event loop to run the monitor on.
   /// \param gcs_client The client of gcs to access/pub/sub data.
   explicit GcsDetector(boost::asio::io_service &io_service,
-                       std::shared_ptr<gcs::RedisGcsClient> gcs_client);
+                       std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                       std::function<void()> destroy_callback);
 
  protected:
   /// Listen for heartbeats from Raylets and mark Raylets
@@ -41,6 +42,8 @@ class GcsDetector {
 
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
   boost::asio::deadline_timer detect_timer_;
+
+  std::function<void()> destroy_callback_;
 };
 
 }  // namespace gcs

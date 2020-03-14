@@ -6,8 +6,11 @@ namespace ray {
 namespace gcs {
 
 GcsDetector::GcsDetector(boost::asio::io_service &io_service,
-                         std::shared_ptr<gcs::RedisGcsClient> gcs_client)
-    : gcs_client_(std::move(gcs_client)), detect_timer_(io_service) {
+                         std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                         std::function<void()> destroy_callback)
+    : gcs_client_(std::move(gcs_client)),
+      detect_timer_(io_service),
+      destroy_callback_(destroy_callback) {
   Start();
 }
 
@@ -16,7 +19,17 @@ void GcsDetector::Start() {
   Tick();
 }
 
-void GcsDetector::DetectGcs() {}
+void GcsDetector::DetectGcs() {
+  redisReply *reply = reinterpret_cast<redisReply *>(
+      redisCommand(gcs_client_->primary_context()->sync_context(), "PING"));
+  if (reply == nullptr || reply->type == REDIS_REPLY_NIL) {
+    RAY_LOG(INFO) << "Failed..............";
+    destroy_callback_();
+  } else {
+    std::string result(reply->str);
+    freeReplyObject(reply);
+  }
+}
 
 /// A periodic timer that checks for timed out clients.
 void GcsDetector::Tick() {

@@ -26,19 +26,19 @@ ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
 Status ServiceBasedJobInfoAccessor::AsyncAdd(
     const std::shared_ptr<JobTableData> &data_ptr, const StatusCallback &callback) {
   JobID job_id = JobID::FromBinary(data_ptr->job_id());
-  RAY_LOG(DEBUG) << "Adding job, job id = " << job_id
-                 << ", driver pid = " << data_ptr->driver_pid();
+  RAY_LOG(INFO) << "Adding job, job id = " << job_id
+                << ", driver pid = " << data_ptr->driver_pid();
   rpc::AddJobRequest request;
   request.mutable_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddJob(
       request,
       [job_id, data_ptr, callback](const Status &status, const rpc::AddJobReply &reply) {
+        RAY_LOG(INFO) << "Finished adding job, status = " << status
+                      << ", job id = " << job_id
+                      << ", driver pid = " << data_ptr->driver_pid();
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished adding job, status = " << status
-                       << ", job id = " << job_id
-                       << ", driver pid = " << data_ptr->driver_pid();
       });
   return Status::OK();
 }
