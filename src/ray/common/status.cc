@@ -31,6 +31,8 @@
 
 #include <assert.h>
 
+#include <boost/system/error_code.hpp>
+
 namespace ray {
 
 #define STATUS_CODE_OK "OK"
@@ -102,6 +104,15 @@ std::string Status::ToString() const {
   result += ": ";
   result += state_->msg;
   return result;
+}
+
+Status boost_to_ray_status(const boost::system::error_code &error) {
+  switch (error.value()) {
+  case boost::system::errc::success:
+    return Status::OK();
+  default:
+    return Status::IOError(strerror(error.value()));
+  }
 }
 
 }  // namespace ray
