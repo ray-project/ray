@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 def one_worker_100MiB(request):
     config = json.dumps({
         "distributed_ref_counting_enabled": 1,
-        "object_store_full_max_retries": 1,
+        "object_store_full_max_retries": 3,
+        "object_store_full_initial_delay_ms": 100,
     })
     yield ray.init(
         num_cpus=1,
