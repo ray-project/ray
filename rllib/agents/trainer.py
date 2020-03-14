@@ -934,7 +934,7 @@ class Trainer(Trainable):
 
         logger.info("Health checking all workers...")
         checks = []
-        for ev in self.optimizer.workers.remote_workers():
+        for ev in workers.remote_workers():
             _, obj_id = ev.sample_with_count.remote()
             checks.append(obj_id)
 
@@ -962,8 +962,7 @@ class Trainer(Trainable):
             assert hasattr(self, "execution_plan")
             logger.warning("Recreating execution plan after failure")
             workers.reset(healthy_workers)
-            self.train_exec_impl = self.execution_plan(self.workers,
-                                                       self.config)
+            self.train_exec_impl = self.execution_plan(workers, self.config)
 
     def _has_policy_optimizer(self):
         """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
