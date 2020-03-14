@@ -163,7 +163,8 @@ class SACModel(TFModelV2):
     def get_policy_output(self, model_out):
         """Return the action output for the most recent forward pass.
 
-        This implements pi(s).
+        This outputs the support for pi(s). For continuous action spaces, this
+        is the action directly. For discrete, is is the mean / std dev.
 
         Arguments:
             model_out (Tensor): obs embeddings from the model layers, of shape
