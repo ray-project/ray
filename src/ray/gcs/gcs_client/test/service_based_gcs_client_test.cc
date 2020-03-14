@@ -36,11 +36,12 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     config.is_test = true;
     config.redis_port = REDIS_SERVER_PORT;
     gcs_server_.reset(new gcs::GcsServer(config));
+    io_service_.reset(new boost::asio::io_service());
 
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
-      io_service_.run();
+          new boost::asio::io_service::work(*io_service_));
+      io_service_->run();
     }));
 
     thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
@@ -54,12 +55,12 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password, config.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
-    RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+    RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
   }
 
   void TearDown() override {
     gcs_server_->Stop();
-    io_service_.stop();
+    io_service_->stop();
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
@@ -340,7 +341,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<std::thread> thread_gcs_server_;
-  boost::asio::io_service io_service_;
+  std::unique_ptr<boost::asio::io_service> io_service_;
 
   // Gcs client
   std::unique_ptr<gcs::GcsClient> gcs_client_;
@@ -647,18 +648,11 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestGcsDetector) {
-  //  TearDownTestCase();
-  //  sleep(1);
-  //  RAY_LOG(INFO) << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
-  //  SetUpTestCase();
-  TearDown();
-  SetUp();
+  // Stop redis.
+  TearDownTestCase();
 
-  // Create job_table_data
-  JobID add_job_id = JobID::FromInt(1);
-  auto job_table_data = GenJobTableData(add_job_id);
-
-  ASSERT_TRUE(AddJob(job_table_data));
+  // Check if gcs server has exited.
+  RAY_CHECK(gcs_server_->IsStopped());
 }
 
 }  // namespace ray

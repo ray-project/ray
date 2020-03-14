@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_DETECTOR_H
 #define RAY_GCS_DETECTOR_H
 
@@ -20,30 +34,27 @@ class GcsDetector {
                        std::function<void()> destroy_callback);
 
  protected:
-  /// Listen for heartbeats from Raylets and mark Raylets
-  /// that do not send a heartbeat within a given period as dead.
+  /// Start to detect gcs.
   void Start();
 
-  /// A periodic timer that fires on every heartbeat period. Raylets that have
-  /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
-  /// marked as dead in the client table.
+  /// A periodic timer that fires on every gcs detect period.
   void Tick();
 
   /// Schedule another tick after a short time.
   void ScheduleTick();
 
   /// Check that if redis is inactive.
-  /// If found any, mark it as dead.
-  void DetectGcs();
+  void DetectRedis();
 
  private:
-  /// A client to the GCS, through which heartbeats are received.
+  /// A client to the GCS, through which ping redis.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
-  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
+  /// A timer that ticks every gcs_detect_timeout_milliseconds.
   boost::asio::deadline_timer detect_timer_;
 
-  std::function<void()> destroy_callback_;
+  /// A function is called when redis is detected to be unavailable.
+  std::function<void()> callback_;
 };
 
 }  // namespace gcs
