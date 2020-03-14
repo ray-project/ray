@@ -16,7 +16,10 @@ std::string get_ray_temp_dir() { return join_paths(get_user_temp_dir(), "ray"); 
 
 std::string get_user_temp_dir() {
   std::string result;
-#if __cplusplus >= 201703L
+#if defined(__APPLE__) || defined(__linux__)
+  // Prefer the hard-coded path for now, for compatibility.
+  result = "/tmp";
+#elif __cplusplus >= 201703L
   result = std::filesystem::temp_directory_path();
 #elif defined(_WIN32)
   result.resize(1 << 8);
@@ -43,17 +46,6 @@ std::string get_user_temp_dir() {
   }
   RAY_CHECK(!result.empty());
   return result;
-}
-
-std::string join_paths(std::string base, size_t nsuffixes, const char *suffixes[]) {
-  for (size_t i = 0; i < nsuffixes; ++i) {
-    const char *suffix = suffixes[i];
-    if (!base.empty() && !is_dir_sep(base.back()) && suffix && !is_dir_sep(*suffix)) {
-      base += get_dir_sep();
-    }
-    base += suffix;
-  }
-  return base;
 }
 
 }  // namespace ray

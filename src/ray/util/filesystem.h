@@ -5,13 +5,6 @@
 
 namespace ray {
 
-namespace detail {
-
-static const char *c_str(const std::string &s) { return s.c_str(); }
-static const char *c_str(const char *s) { return s; }
-
-}  // namespace detail
-
 /// \return The portable directory separator (slash on all OSes).
 static char get_alt_dir_sep() { return '/'; }
 
@@ -56,13 +49,17 @@ static bool is_dir_sep(char ch) {
 static bool is_path_sep(char ch) { return ch == get_path_sep(); }
 
 /// \return The result of joining multiple path components.
-std::string join_paths(std::string base, size_t ncomponents, const char *components[]);
-
-/// \return The result of joining multiple path components (variadic version).
 template <class... Paths>
 std::string join_paths(std::string base, Paths... components) {
-  const char *to_append[] = {detail::c_str(components)...};
-  return join_paths(base, sizeof(to_append) / sizeof(*to_append), to_append);
+  std::string to_append[] = {components...};
+  for (size_t i = 0; i < sizeof(to_append) / sizeof(*to_append); ++i) {
+    const std::string &s = to_append[i];
+    if (!base.empty() && !is_dir_sep(base.back()) && !s.empty() && !is_dir_sep(s[0])) {
+      base += get_dir_sep();
+    }
+    base += s;
+  }
+  return base;
 }
 
 }  // namespace ray
