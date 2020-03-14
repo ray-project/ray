@@ -15,11 +15,11 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
-#include "src/ray/util/test_util.h"
 
 namespace ray {
 

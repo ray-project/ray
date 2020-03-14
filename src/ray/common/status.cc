@@ -27,9 +27,11 @@
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
 #include "ray/common/status.h"
-#include <map>
 
 #include <assert.h>
+
+#include <boost/system/error_code.hpp>
+#include <map>
 
 namespace ray {
 
@@ -102,6 +104,15 @@ std::string Status::ToString() const {
   result += ": ";
   result += state_->msg;
   return result;
+}
+
+Status boost_to_ray_status(const boost::system::error_code &error) {
+  switch (error.value()) {
+  case boost::system::errc::success:
+    return Status::OK();
+  default:
+    return Status::IOError(strerror(error.value()));
+  }
 }
 
 }  // namespace ray

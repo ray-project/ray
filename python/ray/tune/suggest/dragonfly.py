@@ -93,8 +93,10 @@ class DragonflySearch(SuggestionAlgorithm):
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._initial_points = []
+        self._opt = optimizer
+        self._opt.initialise()
         if points_to_evaluate and evaluated_rewards:
-            optimizer.tell(points_to_evaluate, evaluated_rewards)
+            self._opt.tell([(points_to_evaluate, evaluated_rewards)])
         elif points_to_evaluate:
             self._initial_points = points_to_evaluate
         self._max_concurrent = max_concurrent
@@ -104,8 +106,6 @@ class DragonflySearch(SuggestionAlgorithm):
             self._metric_op = -1.
         elif mode == "max":
             self._metric_op = 1.
-        self._opt = optimizer
-        self._opt.initialise()
         self._live_trial_mapping = {}
         super(DragonflySearch, self).__init__(
             metric=self._metric, mode=mode, **kwargs)

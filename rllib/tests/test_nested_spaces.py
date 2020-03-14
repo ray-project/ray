@@ -251,7 +251,7 @@ class NestedSpacesTest(unittest.TestCase):
             env="nested",
             config={
                 "num_workers": 0,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite",
@@ -280,7 +280,7 @@ class NestedSpacesTest(unittest.TestCase):
             env="nested2",
             config={
                 "num_workers": 0,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite2",
@@ -340,7 +340,7 @@ class NestedSpacesTest(unittest.TestCase):
             env="nested_ma",
             config={
                 "num_workers": 0,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "multiagent": {
                     "policies": {
@@ -404,7 +404,7 @@ class NestedSpacesTest(unittest.TestCase):
             config={
                 "num_workers": 0,
                 "use_pytorch": True,
-                "sample_batch_size": 5,
+                "rollout_fragment_length": 5,
                 "train_batch_size": 5,
                 "model": {
                     "custom_model": "composite",

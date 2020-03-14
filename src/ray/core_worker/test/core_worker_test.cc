@@ -27,15 +27,14 @@
 #include "hiredis/hiredis.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/filesystem.h"
-#include "ray/util/test_util.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/util/test_util.h"
 
 namespace {
 

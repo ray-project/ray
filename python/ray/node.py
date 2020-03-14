@@ -2,7 +2,6 @@ import atexit
 import collections
 import datetime
 import errno
-import json
 import os
 import logging
 import signal
@@ -92,8 +91,7 @@ class Node:
         self._resource_spec = None
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = (json.loads(ray_params._internal_config)
-                        if ray_params._internal_config else None)
+        self._config = ray_params._internal_config
 
         if head:
             redis_client = None

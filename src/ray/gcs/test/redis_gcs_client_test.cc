@@ -20,10 +20,10 @@ extern "C" {
 }
 
 #include "ray/common/ray_config.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 
