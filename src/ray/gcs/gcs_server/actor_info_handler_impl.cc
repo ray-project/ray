@@ -143,7 +143,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
   };
 
   Status status =
-      gcs_client_.Actors().AsyncGetCheckpoint(actor_id, checkpoint_id, on_done);
+      gcs_client_.Actors().AsyncGetCheckpoint(checkpoint_id, actor_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }

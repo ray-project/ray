@@ -144,7 +144,7 @@ Status RedisActorInfoAccessor::AsyncAddCheckpoint(
 }
 
 Status RedisActorInfoAccessor::AsyncGetCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id,
+    const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
     const OptionalItemCallback<ActorCheckpointData> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_success = [callback](RedisGcsClient *client,

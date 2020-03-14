@@ -216,7 +216,7 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id,
+    const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
     const OptionalItemCallback<rpc::ActorCheckpointData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor checkpoint, checkpoint id = " << checkpoint_id;
   rpc::GetActorCheckpointRequest request;

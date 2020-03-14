@@ -82,7 +82,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
                             const StatusCallback &callback) override;
 
   Status AsyncGetCheckpoint(
-      const ActorID &actor_id, const ActorCheckpointID &checkpoint_id,
+      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointData> &callback) override;
 
   Status AsyncGetCheckpointID(
