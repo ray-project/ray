@@ -37,7 +37,7 @@ The ``rllib train`` command (same as the ``train.py`` script in the repo) has a 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
+(available options include ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
 Evaluating Trained Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,6 +83,7 @@ Specifying Resources
 
 You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most algorithms. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting ``num_gpus: 0.2``.
 
+.. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: rllib-config.svg
 
 Common Parameters
@@ -632,8 +633,9 @@ The following are example excerpts from different Trainers' configs
     # a) DQN: see rllib/agents/dqn/dqn.py
     "explore": True,
     "exploration_config": {
-       "type": "EpsilonGreedy",  # <- Exploration sub-class by name or full path to module+class
-                                 # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       # Exploration sub-class by name or full path to module+class
+       # (e.g. “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       "type": "EpsilonGreedy",
        # Parameters for the Exploration class' constructor:
        "initial_epsilon": 1.0,
        "final_epsilon": 0.02,
@@ -747,6 +749,19 @@ Note that in the ``on_postprocess_traj`` callback you have full access to the tr
 
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
+
+To access the policy / model (``policy.model``) in the callbacks, note that ``info['pre_batch']`` returns a tuple where the first element is a policy and the second one is the batch itself. You can also access all the rollout worker state using the following call:
+
+.. code-block:: python
+
+    from ray.rllib.evaluation.rollout_worker import get_global_worker
+
+    # You can use this from any callback to get a reference to the
+    # RolloutWorker running in the process, which in turn has references to
+    # all the policies, etc: see rollout_worker.py for more info.
+    rollout_worker = get_global_worker()
+
+Policy losses are defined over the ``post_batch`` data, so you can mutate that in the callbacks to change what data the policy loss function sees.
 
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
