@@ -103,6 +103,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void ReconstructObject(const ObjectID &object_id);
 
+  void PinNewObjectCopy(const ObjectID &object_id,
+                        const std::vector<rpc::ObjectTableData> &locations);
+
   WorkerType GetWorkerType() const { return worker_type_; }
 
   Language GetLanguage() const { return language_; }
@@ -733,6 +736,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // one client, and we need to keep the connection alive until we return all
   // of the workers.
   std::shared_ptr<raylet::RayletClient> local_raylet_client_;
+
+  absl::flat_hash_map<ClientID, std::shared_ptr<raylet::RayletClient>>
+      remote_raylet_clients_;
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;

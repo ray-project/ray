@@ -1199,8 +1199,11 @@ def test_plasma_failure_cached_object(ray_start_cluster):
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    assert wait_for_condition(
+        lambda: not all(node["Alive"] for node in ray.nodes()),
+        timeout_ms=10000)
 
-    for _ in range(10):
+    for _ in range(20):
         large_object.options(resources={"node2": 1}).remote()
 
     ray.get(dependent_task.remote(obj))
