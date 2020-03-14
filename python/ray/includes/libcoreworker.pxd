@@ -189,7 +189,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
 
         void GetAsync(const CObjectID &object_id,
-                      ray_callback_function successs_callback,
+                      ray_callback_function success_callback,
                       ray_callback_function fallback_callback,
                       void* python_future)
 
