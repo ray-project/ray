@@ -1,4 +1,4 @@
-Contributing to Ray
+CONTRIBUTING.rst  contributing to Ray
 ===================
 
 Reporting bugs and asking questions
