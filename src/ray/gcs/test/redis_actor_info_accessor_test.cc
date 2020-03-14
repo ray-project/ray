@@ -166,8 +166,8 @@ TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
         --pending_count_;
       };
       ++pending_count_;
-      Status status =
-          actor_accessor.AsyncGetCheckpoint(ActorID::Nil(), checkpoint_id, on_get_done);
+      Status status = actor_accessor.AsyncGetCheckpoint(
+          ActorID::FromBinary(checkpoint->actor_id()), checkpoint_id, on_get_done);
       RAY_CHECK_OK(status);
     }
   }
