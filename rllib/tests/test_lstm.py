@@ -198,7 +198,7 @@ class TestRNNSequencing(unittest.TestCase):
             env="counter",
             config={
                 "num_workers": 0,
-                "sample_batch_size": 10,
+                "rollout_fragment_length": 10,
                 "train_batch_size": 10,
                 "sgd_minibatch_size": 10,
                 "vf_share_layers": True,
@@ -256,7 +256,7 @@ class TestRNNSequencing(unittest.TestCase):
             config={
                 "shuffle_sequences": False,  # for deterministic testing
                 "num_workers": 0,
-                "sample_batch_size": 20,
+                "rollout_fragment_length": 20,
                 "train_batch_size": 20,
                 "sgd_minibatch_size": 10,
                 "vf_share_layers": True,
