@@ -18,6 +18,7 @@ def rollout_test(algo, env="CartPole-v0"):
               "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo) +
               "--config='{\"num_workers\": 1, \"num_gpus\": 0}' "
               "--stop='{\"training_iteration\": 1, "
+              "\"timesteps_per_iter\": 10, "
               "\"min_iter_time_s\": 1}'" + " --env={}".format(env))
 
     checkpoint_path = os.popen(

@@ -121,6 +121,7 @@ def build_trainer(name,
                                                   self.config["num_workers"])
             self.train_exec_impl = None
             self.optimizer = None
+            self.execution_plan = execution_plan
 
             if use_exec_api:
                 logger.warning(
