@@ -80,8 +80,8 @@ def test_worker_task_refs(ray_start_regular):
     assert count(info, PUT_OBJ) == 1, info
     assert count(info, DESER_TASK_ARG) == 1, info
     assert count(info, UNKNOWN_SIZE) == 1, info
-    assert count(info, "test_memory.py:f") == 1, info
-    assert count(info, "test_memory.py:test_worker_task_refs") == 2, info
+    assert count(info, "test_memstat.py:f") == 1, info
+    assert count(info, "test_memstat.py:test_worker_task_refs") == 2, info
 
     info = memory()
     print(info)
@@ -122,8 +122,8 @@ def test_actor_task_refs(ray_start_regular):
     assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, USED_BY_PENDING_TASK) == 2, info
     assert count(info, DESER_ACTOR_TASK_ARG) == 1, info
-    assert count(info, "test_memory.py:test_actor_task_refs") == 2, info
-    assert count(info, "test_memory.py:make_actor") == 1, info
+    assert count(info, "test_memstat.py:test_actor_task_refs") == 2, info
+    assert count(info, "test_memstat.py:make_actor") == 1, info
     del x_id
 
     # These should accumulate in the actor.
@@ -162,7 +162,7 @@ def test_pinned_object_call_site(ray_start_regular):
     assert num_objects(info) == 1, info
     assert count(info, LOCAL_REF) == 1, info
     assert count(info, PINNED_IN_MEMORY) == 0, info
-    assert count(info, "test_memory.py") == 1, info
+    assert count(info, "test_memstat.py") == 1, info
 
     # Local ref + pinned buffer.
     buf = ray.get(x_id)
@@ -171,7 +171,7 @@ def test_pinned_object_call_site(ray_start_regular):
     assert num_objects(info) == 1, info
     assert count(info, LOCAL_REF) == 0, info
     assert count(info, PINNED_IN_MEMORY) == 1, info
-    assert count(info, "test_memory.py") == 1, info
+    assert count(info, "test_memstat.py") == 1, info
 
     # Just pinned buffer.
     del x_id
@@ -180,7 +180,7 @@ def test_pinned_object_call_site(ray_start_regular):
     assert num_objects(info) == 1, info
     assert count(info, LOCAL_REF) == 0, info
     assert count(info, PINNED_IN_MEMORY) == 1, info
-    assert count(info, "test_memory.py") == 1, info
+    assert count(info, "test_memstat.py") == 1, info
 
     # Nothing.
     del buf

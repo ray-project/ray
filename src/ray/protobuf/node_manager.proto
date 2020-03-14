@@ -122,5 +122,6 @@ service NodeManagerService {
   // Trigger garbage collection in all workers across the cluster.
   rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
   // Get global object reference stats in formatted form.
-  rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest) returns (FormatGlobalMemoryInfoReply);
+  rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
+      returns (FormatGlobalMemoryInfoReply);
 }
