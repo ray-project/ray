@@ -3445,6 +3445,7 @@ std::string FormatMemoryInfo(
         }
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         builder << obj_id.Hex() << "  ";
+        // TODO(ekl) we could convey more information about the reference status.
         if (object_ref.pinned_in_memory()) {
           builder << "PINNED_IN_MEMORY     ";
         } else if (object_ref.submitted_task_ref_count() > 0) {

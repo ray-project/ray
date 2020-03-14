@@ -580,7 +580,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Private methods related to task submission.
   ///
 
-  /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
   /// by the language frontend when a new reference is created.
   ///

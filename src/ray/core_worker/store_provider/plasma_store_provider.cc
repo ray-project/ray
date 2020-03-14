@@ -370,7 +370,7 @@ std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
-CoreWorkerPlasmaStoreProvider::UsedObjectsList() {
+CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
   absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
   absl::MutexLock lock(&active_buffers_mutex_);
   for (const auto &entry : active_buffers_) {

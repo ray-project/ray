@@ -103,7 +103,7 @@ class CoreWorkerPlasmaStoreProvider
   /// Lists objects in used (pinned) by the current client.
   ///
   /// \return Output mapping of used object ids to (size, callsite).
-  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjectsList();
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjectsList() const;
 
   std::string MemoryUsageString();
 
@@ -149,7 +149,7 @@ class CoreWorkerPlasmaStoreProvider
 
   // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
   // destruction.
-  absl::Mutex active_buffers_mutex_;
+  mutable absl::Mutex active_buffers_mutex_;
   // Mapping of live object buffers to their creation call site. Destroyed buffers are
   // automatically removed from this list via destructor callback. The map key uniquely
   // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
