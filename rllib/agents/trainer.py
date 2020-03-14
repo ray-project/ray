@@ -922,19 +922,25 @@ class Trainer(Trainable):
         an error is raised.
         """
 
-        if not self._has_policy_optimizer():
+        if (not self._has_policy_optimizer()
+                and not hasattr(self, "execution_plan")):
             raise NotImplementedError(
                 "Recovery is not supported for this algorithm")
+        if self._has_policy_optimizer():
+            workers = self.optimizer.workers
+        else:
+            assert hasattr(self, "execution_plan")
+            workers = self.workers
 
         logger.info("Health checking all workers...")
         checks = []
-        for ev in self.optimizer.workers.remote_workers():
+        for ev in workers.remote_workers():
             _, obj_id = ev.sample_with_count.remote()
             checks.append(obj_id)
 
         healthy_workers = []
         for i, obj_id in enumerate(checks):
-            w = self.optimizer.workers.remote_workers()[i]
+            w = workers.remote_workers()[i]
             try:
                 ray_get_and_free(obj_id)
                 healthy_workers.append(w)
@@ -950,7 +956,13 @@ class Trainer(Trainable):
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
 
-        self.optimizer.reset(healthy_workers)
+        if self._has_policy_optimizer():
+            self.optimizer.reset(healthy_workers)
+        else:
+            assert hasattr(self, "execution_plan")
+            logger.warning("Recreating execution plan after failure")
+            workers.reset(healthy_workers)
+            self.train_exec_impl = self.execution_plan(workers, self.config)
 
     def _has_policy_optimizer(self):
         """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
