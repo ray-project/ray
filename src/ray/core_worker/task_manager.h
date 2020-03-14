@@ -35,18 +35,15 @@ class TaskManager : public TaskFinisherInterface {
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
-              RetryTaskCallback retry_task_callback, bool lineage_pinning_enabled)
+              RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback),
-        lineage_pinning_enabled_(lineage_pinning_enabled) {
-    if (lineage_pinning_enabled_) {
-      reference_counter_->SetReleaseLineageCallback(
-          [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
-            RemoveLineageReference(object_id, ids_to_release);
-          });
-    }
+        retry_task_callback_(retry_task_callback) {
+    reference_counter_->SetReleaseLineageCallback(
+        [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+          RemoveLineageReference(object_id, ids_to_release);
+        });
   }
 
   /// Add a task that is pending execution.
@@ -178,18 +175,6 @@ class TaskManager : public TaskFinisherInterface {
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
-
-  /// Whether to pin the lineage of object IDs that are in scope. If true, then
-  /// we will continue to cache the TaskSpecification for tasks that have
-  /// already finished if they may be retried in the future. A task may be
-  /// retried if it has retries available and has at least one plasma return ID
-  /// for which one of the following is true:
-  /// 1. The return ID is still in scope.
-  /// 2. Another task depends on the return ID and that task is pending or may
-  /// be tried again.
-  /// If false, then a task's TaskSpecification will be removed as soon as it
-  /// completes execution or fails.
-  const bool lineage_pinning_enabled_;
 
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;

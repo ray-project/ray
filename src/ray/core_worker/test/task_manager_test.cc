@@ -32,15 +32,15 @@ class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        reference_counter_(
-            std::shared_ptr<ReferenceCounter>(new ReferenceCounter(rpc::Address()))),
+        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+            rpc::Address(),
+            /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
         actor_manager_(std::shared_ptr<ActorManagerInterface>(new MockActorManager())),
         manager_(store_, reference_counter_, actor_manager_,
                  [this](const TaskSpecification &spec) {
                    num_retries_++;
                    return Status::OK();
-                 },
-                 lineage_pinning_enabled) {}
+                 }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
@@ -171,6 +171,38 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+}
+
+TEST_F(TaskManagerTest, TestLineageEvicted) {
+  TaskID caller_id = TaskID::Nil();
+  rpc::Address caller_address;
+  ObjectID dep1 = ObjectID::FromRandom();
+  ObjectID dep2 = ObjectID::FromRandom();
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  auto spec = CreateTaskHelper(1, {dep1, dep2});
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_id, caller_address, spec, num_retries);
+
+  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  // The task is still pinned because its return ID is still in scope.
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  // The dependencies should not be pinned because lineage pinning is
+  // disabled.
+  ASSERT_FALSE(reference_counter_->HasReference(dep1));
+  ASSERT_FALSE(reference_counter_->HasReference(dep2));
+  ASSERT_TRUE(reference_counter_->HasReference(return_id));
+
+  // Once the return ID goes out of scope, the task spec and its dependencies
+  // are released.
+  reference_counter_->AddLocalReference(return_id);
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
 TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {

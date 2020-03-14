@@ -31,8 +31,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
-  reference_counter_->UpdateSubmittedTaskReferences(
-      task_deps, /*pin_lineage=*/lineage_pinning_enabled_);
+  reference_counter_->UpdateSubmittedTaskReferences(task_deps);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
@@ -140,12 +139,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // stored in plasma.
     bool task_retryable =
         it->second.num_retries_left > 0 && !it->second.plasma_returns_in_scope.empty();
-    if (!lineage_pinning_enabled_ || !task_retryable) {
-      // A task spec can be erased if lineage pinning is disabled or if it
-      // cannot be tried again.
-      pending_tasks_.erase(it);
-    } else {
+    if (task_retryable) {
+      // Pin the task spec if it may be retried again.
       release_lineage = false;
+    } else {
+      pending_tasks_.erase(it);
     }
   }
 
@@ -230,7 +228,6 @@ void TaskManager::OnTaskDependenciesInlined(
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateSubmittedTaskReferences(
       /*argument_ids_to_add=*/contained_ids,
-      /*pin_lineage=*/lineage_pinning_enabled_,
       /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
   in_memory_store_->Delete(deleted);
 }
@@ -253,15 +250,12 @@ void TaskManager::RemoveFinishedTaskReferences(
 
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateFinishedTaskReferences(
-      plasma_dependencies, lineage_pinning_enabled_ ? release_lineage : false,
-      borrower_addr, borrowed_refs, &deleted);
+      plasma_dependencies, release_lineage, borrower_addr, borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::RemoveLineageReference(const ObjectID &object_id,
                                          std::vector<ObjectID> *released_objects) {
-  RAY_CHECK(lineage_pinning_enabled_);
-
   absl::MutexLock lock(&mu_);
   const TaskID &task_id = object_id.TaskId();
   auto it = pending_tasks_.find(task_id);

@@ -168,7 +168,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
-      [this](const rpc::Address &addr) {
+      RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
@@ -205,8 +205,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        << spec.DebugString();
         absl::MutexLock lock(&mutex_);
         to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
-      },
-      /*lineage_pinning_enabled=*/RayConfig::instance().lineage_pinning_enabled()));
+      }));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
