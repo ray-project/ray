@@ -114,8 +114,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
         retries += 1;
         should_retry = true;
       } else {
-        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after " << (max_retries + 1)
-                       << " attempts. Plasma store status:\n"
+        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after "
+                       << (max_retries + 1) << " attempts. Plasma store status:\n"
                        << MemoryUsageString() << "\n---\n"
                        << "--- Tip: Use the `ray memory` command to list active objects "
                           "in the cluster."
