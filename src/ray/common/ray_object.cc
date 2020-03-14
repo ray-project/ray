@@ -14,8 +14,6 @@
 
 #include "ray/common/ray_object.h"
 
-#include "ray/common/test_util.h"
-
 namespace ray {
 
 std::shared_ptr<LocalMemoryBuffer> MakeErrorMetadataBuffer(rpc::ErrorType error_type) {
