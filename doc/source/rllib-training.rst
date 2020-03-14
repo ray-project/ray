@@ -665,9 +665,9 @@ Customized Evaluation During Training
 
 RLlib will report online training rewards, however in some cases you may want to compute
 rewards with different settings (e.g., with exploration turned off, or on a specific set
-of environment configurations). You can evaluate policies during training by setting one
-or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
-``evaluation_num_workers``, and ``custom_eval_function`` configs
+of environment configurations). You can evaluate policies during training by setting
+the ``evaluation_interval`` config, and optionally also ``evaluation_num_episodes``,
+``evaluation_config``, ``evaluation_num_workers``, and ``custom_eval_function``
 (see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
 
 By default, exploration is left as-is within ``evaluation_config``.
