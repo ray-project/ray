@@ -960,7 +960,7 @@ def memory(address):
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
-    print(ray.internal.internal_api.memory())
+    print(ray.internal.internal_api.memory_summary())
 
 
 @cli.command()
