@@ -4,9 +4,7 @@
 
 #include "ray/util/logging.h"
 
-#if __cplusplus >= 201703L
-#include <filesystem>
-#elif defined(_WIN32)
+#ifdef _WIN32
 #include <Windows.h>
 #endif
 
@@ -19,8 +17,6 @@ std::string get_user_temp_dir() {
 #if defined(__APPLE__) || defined(__linux__)
   // Prefer the hard-coded path for now, for compatibility.
   result = "/tmp";
-#elif __cplusplus >= 201703L
-  result = std::filesystem::temp_directory_path();
 #elif defined(_WIN32)
   result.resize(1 << 8);
   DWORD n = GetTempPath(static_cast<DWORD>(result.size()), &*result.begin());
