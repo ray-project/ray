@@ -46,6 +46,11 @@ namespace rpc {
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(WorkerInfoGcsService, HANDLER)
 
+#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
+  reply->mutable_status()->set_code((int)status.code());       \
+  reply->mutable_status()->set_message(status.message());      \
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr)
+
 class JobInfoGcsServiceHandler {
  public:
   virtual ~JobInfoGcsServiceHandler() = default;
@@ -165,10 +170,6 @@ class NodeInfoGcsServiceHandler {
                                      ReportHeartbeatReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
-                                          ReportBatchHeartbeatReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetResources(const GetResourcesRequest &request,
                                   GetResourcesReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -202,7 +203,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportBatchHeartbeat);
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);

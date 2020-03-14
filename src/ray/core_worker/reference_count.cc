@@ -142,7 +142,7 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids_to_add, bool pin_lineage,
+    const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids_to_add) {
@@ -153,14 +153,24 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
       it = object_id_refs_.emplace(argument_id, Reference()).first;
     }
     it->second.submitted_task_ref_count++;
-    if (pin_lineage) {
-      it->second.lineage_ref_count++;
-    }
+    // The lineage ref will get released once the task finishes and cannot be
+    // retried again.
+    it->second.lineage_ref_count++;
   }
-  // If we are pinning the lineage for this task, then we should also release
-  // the lineage ref count for any argument IDs whose values were inlined.
-  RemoveSubmittedTaskReferences(argument_ids_to_remove, /*release_lineage=*/pin_lineage,
+  // Release the submitted task ref and the lineage ref for any argument IDs
+  // whose values were inlined.
+  RemoveSubmittedTaskReferences(argument_ids_to_remove, /*release_lineage=*/true,
                                 deleted);
+}
+
+void ReferenceCounter::UpdateResubmittedTaskReferences(
+    const std::vector<ObjectID> &argument_ids) {
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &argument_id : argument_ids) {
+    auto it = object_id_refs_.find(argument_id);
+    RAY_CHECK(it != object_id_refs_.end());
+    it->second.submitted_task_ref_count++;
+  }
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
@@ -178,9 +188,6 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   }
   for (const ObjectID &argument_id : argument_ids) {
     MergeRemoteBorrowers(argument_id, worker_addr, refs);
-
-    auto it = object_id_refs_.find(argument_id);
-    RAY_CHECK(it != object_id_refs_.end());
   }
 
   RemoveSubmittedTaskReferences(argument_ids, release_lineage, deleted);
@@ -188,6 +195,8 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
 
 void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_ids,
                                                  const ClientID &node_id) {
+  if (!lineage_pinning_enabled_) {
+  }
   absl::MutexLock lock(&mutex_);
   for (const auto &plasma_id : plasma_ids) {
     RAY_LOG(DEBUG) << "Marking plasma object " << plasma_id << " pinned at " << node_id;
@@ -234,12 +243,18 @@ void ReferenceCounter::ReleaseLineageReferencesInternal(
     const std::vector<ObjectID> &argument_ids) {
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
-    RAY_CHECK(it != object_id_refs_.end());
+    if (it == object_id_refs_.end()) {
+      // References can get evicted early when lineage pinning is disabled.
+      RAY_CHECK(!lineage_pinning_enabled_);
+      continue;
+    }
+
     RAY_CHECK(it->second.lineage_ref_count > 0);
     it->second.lineage_ref_count--;
     if (it->second.lineage_ref_count == 0) {
       // Don't have to pass in a deleted vector here because the reference
-      // cannot have gone out of scope here.
+      // cannot have gone out of scope here since we are only modifying the
+      // lineage ref count.
       DeleteReferenceInternal(it, nullptr);
     }
   }
@@ -362,7 +377,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       deleted->push_back(id);
     }
   }
-  if (it->second.CanDelete()) {
+  if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
     if (on_lineage_released_ && it->second.owned_by_us) {

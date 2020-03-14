@@ -49,18 +49,15 @@ class TaskManager : public TaskFinisherInterface {
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
-              RetryTaskCallback retry_task_callback, bool lineage_pinning_enabled)
+              RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback),
-        lineage_pinning_enabled_(lineage_pinning_enabled) {
-    if (lineage_pinning_enabled_) {
-      reference_counter_->SetReleaseLineageCallback(
-          [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
-            RemoveLineageReference(object_id, ids_to_release);
-          });
-    }
+        retry_task_callback_(retry_task_callback) {
+    reference_counter_->SetReleaseLineageCallback(
+        [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+          RemoveLineageReference(object_id, ids_to_release);
+        });
   }
 
   /// Add a task that is pending execution.
@@ -78,12 +75,6 @@ class TaskManager : public TaskFinisherInterface {
   ///
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
-
-  /// Return whether the task is pending.
-  ///
-  /// \param[in] task_id ID of the task to query.
-  /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const;
 
   /// Write return objects for a pending task to the memory store.
   ///
@@ -118,8 +109,20 @@ class TaskManager : public TaskFinisherInterface {
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
+  /// Return whether this task can be submitted for execution.
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task can be submitted for execution.
+  bool IsTaskSubmissible(const TaskID &task_id) const;
+
+  /// Return whether the task is pending.
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task is pending.
+  bool IsTaskPending(const TaskID &task_id) const;
+
   /// Return the number of pending tasks.
-  int NumPendingTasks() const { return pending_tasks_.size(); }
+  int NumSubmissibleTasks() const;
 
  private:
   struct TaskEntry {
@@ -127,17 +130,20 @@ class TaskManager : public TaskFinisherInterface {
               size_t num_returns)
         : spec(spec_arg), num_retries_left(num_retries_left_arg) {
       for (size_t i = 0; i < num_returns; i++) {
-        plasma_returns_in_scope.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
+        reconstructable_return_ids.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
       }
     }
-    // The task spec. This is pinned as long as the following are true:
-    // - num_retries_left > 0. If this is not true, then this means that the
-    //   task may be retried in the future.
-    // - num_executions > 0. If this is not true, then this means that the task
-    //   is still pending its first execution.
-    // - num_plasma_returns_in_scope > 0. If this is not true, then this means
-    //   that the task does not have any return values that may be passed as
-    //   dependencies to other tasks.
+    /// The task spec. This is pinned as long as the following are true:
+    /// - The task is still pending execution. This means that the task may
+    /// fail and so it may be retried in the future.
+    /// - The task finished execution, but it has num_retries_left > 0 and
+    /// reconstructable_return_ids is not empty. This means that the task may
+    /// be retried in the future to recreate its return objects.
+    /// TODO(swang): The TaskSpec protobuf must be copied into the
+    /// PushTaskRequest protobuf when sent to a worker so that we can retry it if
+    /// the worker fails. We could avoid this by either not caching the full
+    /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
+    /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
     const TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
@@ -146,16 +152,18 @@ class TaskManager : public TaskFinisherInterface {
     // the task entry if the task is still pending but all of its return IDs
     // are out of scope.
     bool pending = true;
-    // Plasma objects returned by this task whose value is still needed. This
-    // is set initially to the task's return objects. Once the task finishes
-    // its first execution, then the objects that the task returned by value
-    // are removed from this set. Objects that the task returned through plasma
-    // are removed from this set once:
+    // Objects returned by this task that are reconstructable. This is set
+    // initially to the task's return objects, since if the task fails, these
+    // objects may be reconstructed by resubmitting the task. Once the task
+    // finishes its first execution, then the objects that the task returned by
+    // value are removed from this set because they can be inlined in any
+    // dependent tasks. Objects that the task returned through plasma are
+    // reconstructable, so they are only removed from this set once:
     // 1) The language frontend no longer has a reference to the object ID.
     // 2) There are no tasks that depend on the object. This includes both
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
-    absl::flat_hash_set<ObjectID> plasma_returns_in_scope;
+    absl::flat_hash_set<ObjectID> reconstructable_return_ids;
   };
 
   /// Remove a lineage reference to this object ID. This should be called
@@ -193,18 +201,6 @@ class TaskManager : public TaskFinisherInterface {
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
 
-  /// Whether to pin the lineage of object IDs that are in scope. If true, then
-  /// we will continue to cache the TaskSpecification for tasks that have
-  /// already finished if they may be retried in the future. A task may be
-  /// retried if it has retries available and has at least one plasma return ID
-  /// for which one of the following is true:
-  /// 1. The return ID is still in scope.
-  /// 2. Another task depends on the return ID and that task is pending or may
-  /// be tried again.
-  /// If false, then a task's TaskSpecification will be removed as soon as it
-  /// completes execution or fails.
-  const bool lineage_pinning_enabled_;
-
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
 
@@ -214,16 +210,11 @@ class TaskManager : public TaskFinisherInterface {
   /// Protects below fields.
   mutable absl::Mutex mu_;
 
-  /// This map contains one entry per pending task that we submitted. If
-  /// lineage_pinning_enabled_ is true, then this map also contains entries for
-  /// tasks that we submitted that have completed execution, but that may be
-  /// retried again in the future.
-  /// TODO(swang): The TaskSpec protobuf must be copied into the
-  /// PushTaskRequest protobuf when sent to a worker so that we can retry it if
-  /// the worker fails. We could avoid this by either not caching the full
-  /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
-  /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-  absl::flat_hash_map<TaskID, TaskEntry> pending_tasks_ GUARDED_BY(mu_);
+  /// This map contains one entry per task that may be submitted for
+  /// execution. This includes both tasks that are currently pending execution
+  /// and tasks that finished execution but that may be retried again in the
+  /// future.
+  absl::flat_hash_map<TaskID, TaskEntry> submissible_tasks_ GUARDED_BY(mu_);
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;

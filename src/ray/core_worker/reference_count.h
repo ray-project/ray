@@ -41,9 +41,11 @@ class ReferenceCounter {
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    bool distributed_ref_counting_enabled = true,
+                   bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
         distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
+        lineage_pinning_enabled_(lineage_pinning_enabled),
         client_factory_(client_factory) {}
 
   ~ReferenceCounter() {}
@@ -63,21 +65,23 @@ class ReferenceCounter {
       LOCKS_EXCLUDED(mutex_);
 
   /// Add references for the provided object IDs that correspond to them being
-  /// dependencies to a submitted task.
+  /// dependencies to a submitted task. If lineage pinning is enabled, then
+  /// this will also pin the Reference entry for each new argument until the
+  /// argument's lineage ref is released.
   ///
   /// \param[in] argument_ids_to_add The arguments of the task to add
   /// references for.
-  /// \param[in] pin_lineage Whether to increment the arguments' lineage ref
-  /// count. If true, then the Reference entry for each new argument will not
-  /// be deleted until the arguments' lineage ref is released.
   /// \param[out] argument_ids_to_remove The arguments of the task to remove
   /// references for.
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &argument_ids_to_add, bool pin_lineage,
+      const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
+
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
@@ -261,7 +265,8 @@ class ReferenceCounter {
   void MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_returns_in_scope,
                                  const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
-  const ClientID GetPlasmaObjectPinnedAt(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  const ClientID GetPlasmaObjectPinnedAt(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
 
   std::vector<ObjectID> HandleNodeRemoved(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
@@ -306,11 +311,14 @@ class ReferenceCounter {
     /// Whether the Reference can be deleted. A Reference can only be deleted
     /// if:
     /// 1. The ObjectID's ref count is 0 on all workers.
-    /// 2. There are no tasks that depend on the object that may be retried in
-    /// the future.
-    bool CanDelete() const {
-      bool lineage_needed = lineage_ref_count > 0;
-      return OutOfScope() && !lineage_needed;
+    /// 2. If lineage pinning is enabled, there are no tasks that depend on
+    /// the object that may be retried in the future.
+    bool ShouldDelete(bool lineage_pinning_enabled) const {
+      bool release_lineage = true;
+      if (lineage_pinning_enabled) {
+        release_lineage = lineage_ref_count == 0;
+      }
+      return OutOfScope() && release_lineage;
     }
 
     /// Whether we own the object. If we own the object, then we are
@@ -382,7 +390,8 @@ class ReferenceCounter {
     absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
-    /// is direct (not stored in plasma), then its lineage ref count is 0.
+    /// is inlined (not stored in plasma), then its lineage ref count is 0
+    /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
 
     /// Callback that will be called when this ObjectID no longer has
@@ -505,7 +514,13 @@ class ReferenceCounter {
   /// Feature flag for distributed ref counting. If this is false, then we will
   /// keep the distributed ref count, but only the local ref count will be used
   /// to decide when objects can be evicted.
-  bool distributed_ref_counting_enabled_;
+  const bool distributed_ref_counting_enabled_;
+
+  /// Feature flag for lineage pinning. If this is false, then we will keep the
+  /// lineage ref count, but this will not be used to decide when the object's
+  /// Reference can be deleted. The object's lineage ref count is the number of
+  /// tasks that depend on that object that may be retried in the future.
+  const bool lineage_pinning_enabled_;
 
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;

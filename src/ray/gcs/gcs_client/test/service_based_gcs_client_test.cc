@@ -13,11 +13,12 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
+
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -222,14 +223,6 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
         heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool ReportBatchHeartbeat(
-      const std::shared_ptr<rpc::HeartbeatBatchTableData> batch_heartbeat) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportBatchHeartbeat(
-        batch_heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -563,14 +556,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
 }
 
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
-  int heartbeat_count = 0;
-  auto heartbeat_subscribe = [&heartbeat_count](const ClientID &id,
-                                                const gcs::HeartbeatTableData &result) {
-    ++heartbeat_count;
-  };
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_subscribe, nullptr));
-
   int heartbeat_batch_count = 0;
   auto heartbeat_batch_subscribe =
       [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
@@ -584,12 +569,6 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitPendingDone(heartbeat_count, 1);
-
-  // Report batch heartbeat
-  auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
-  batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
-  ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
   WaitPendingDone(heartbeat_batch_count, 1);
 }
 

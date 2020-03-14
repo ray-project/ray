@@ -2962,6 +2962,7 @@ void NodeManager::ForwardTask(
   if (worker_pool_.HasPendingWorkerForTask(spec.GetLanguage(), task_id)) {
     // There is a worker being starting for this task,
     // so we shouldn't forward this task to another node.
+    on_error(ray::Status::Invalid("Already has pending worker for this task"), task);
     return;
   }
 
