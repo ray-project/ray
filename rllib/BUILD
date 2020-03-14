@@ -995,7 +995,7 @@ py_test(
 py_test(
     name = "tests/test_external_multi_agent_env",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
@@ -1016,21 +1016,21 @@ py_test(
 py_test(
     name = "tests/test_io",
     tags = ["tests_dir", "tests_dir_I"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_io.py"]
 )
 
 py_test(
     name = "tests/test_local",
     tags = ["tests_dir", "tests_dir_L"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_local.py"]
 )
 
 py_test(
     name = "tests/test_lstm",
     tags = ["tests_dir", "tests_dir_L"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_lstm.py"]
 )
 
@@ -1051,7 +1051,7 @@ py_test(
 py_test(
     name = "tests/test_nested_spaces",
     tags = ["tests_dir", "tests_dir_N"],
-    size = "large",
+    size = "small",
     srcs = ["tests/test_nested_spaces.py"]
 )
 
