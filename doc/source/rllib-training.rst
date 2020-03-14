@@ -520,8 +520,8 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
-Customized Exploration Behavior (Training and Evaluation)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Customizing Exploration Behavior
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib offers a unified top-level API to configure and customize an agent’s
 exploration behavior, including the decisions (how and whether) to sample
@@ -665,9 +665,9 @@ Customized Evaluation During Training
 
 RLlib will report online training rewards, however in some cases you may want to compute
 rewards with different settings (e.g., with exploration turned off, or on a specific set
-of environment configurations). You can evaluate policies during training by setting one
-or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
-``evaluation_num_workers``, and ``custom_eval_function`` configs
+of environment configurations). You can evaluate policies during training by setting
+the ``evaluation_interval`` config, and optionally also ``evaluation_num_episodes``,
+``evaluation_config``, ``evaluation_num_workers``, and ``custom_eval_function``
 (see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
 
 By default, exploration is left as-is within ``evaluation_config``.
@@ -682,9 +682,11 @@ via:
        "explore": False
     }
 
-**IMPORTANT NOTE**: Policy gradient algorithms are able to find the optimal
-policy, even if this is a stochastic one. Setting "explore=False" above
-will result in the evaluation workers not using this optimal policy.
+.. note::
+
+    Policy gradient algorithms are able to find the optimal
+    policy, even if this is a stochastic one. Setting "explore=False" above
+    will result in the evaluation workers not using this stochastic policy.
 
 There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
 
