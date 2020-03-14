@@ -684,7 +684,7 @@ via:
 
 **IMPORTANT NOTE**: Policy gradient algorithms are able to find the optimal
 policy, even if this is a stochastic one. Setting "explore=False" above
-will result in the evaluation workers not using this optimal policy.
+will result in the evaluation workers not using this stochastic policy.
 
 There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
 
