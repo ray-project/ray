@@ -72,6 +72,7 @@ class SACModel(TFModelV2):
             tf.keras.layers.Dense(
                 units=action_outs, activation=None, name="action_out")
         ])
+        self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
         self.register_variables(self.action_model.variables)
 
