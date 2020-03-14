@@ -288,7 +288,7 @@ class ReferenceCounter {
     /// 1. The ObjectID's ref count is 0 on all workers.
     /// 2. If lineage pinning is enabled, there are no tasks that depend on
     /// the object that may be retried in the future.
-    bool CanDelete(bool lineage_pinning_enabled) const {
+    bool ShouldDelete(bool lineage_pinning_enabled) const {
       bool release_lineage = true;
       if (lineage_pinning_enabled) {
         release_lineage = lineage_ref_count == 0;
@@ -361,7 +361,8 @@ class ReferenceCounter {
     absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
-    /// is direct (not stored in plasma), then its lineage ref count is 0.
+    /// is inlined (not stored in plasma), then its lineage ref count is 0
+    /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
 
     /// Callback that will be called when this ObjectID no longer has

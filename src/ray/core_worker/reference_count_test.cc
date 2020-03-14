@@ -1689,6 +1689,7 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
 
 // TODO: Test Pop and Merge individually.
 
+// Test to make sure that we call the lineage released callback correctly.
 TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   std::vector<ObjectID> out;
   std::vector<ObjectID> lineage_deleted;
@@ -1714,6 +1715,10 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   ASSERT_EQ(lineage_deleted.size(), 1);
 }
 
+// Test for pinning the lineage of an object, where the lineage is a chain of
+// tasks that each depend on the previous. The previous objects should already
+// have gone out of scope, but their Reference entry is pinned until the final
+// object goes out of scope.
 TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   std::vector<ObjectID> out;
   std::vector<ObjectID> lineage_deleted;

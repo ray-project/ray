@@ -164,9 +164,6 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   }
   for (const ObjectID &argument_id : argument_ids) {
     MergeRemoteBorrowers(argument_id, worker_addr, refs);
-
-    auto it = object_id_refs_.find(argument_id);
-    RAY_CHECK(it != object_id_refs_.end());
   }
 
   RemoveSubmittedTaskReferences(argument_ids, release_lineage, deleted);
@@ -192,7 +189,8 @@ void ReferenceCounter::ReleaseLineageReferencesInternal(
     it->second.lineage_ref_count--;
     if (it->second.lineage_ref_count == 0) {
       // Don't have to pass in a deleted vector here because the reference
-      // cannot have gone out of scope here.
+      // cannot have gone out of scope here since we are only modifying the
+      // lineage ref count.
       DeleteReferenceInternal(it, nullptr);
     }
   }
@@ -315,7 +313,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       deleted->push_back(id);
     }
   }
-  if (it->second.CanDelete(lineage_pinning_enabled_)) {
+  if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
     if (on_lineage_released_ && it->second.owned_by_us) {

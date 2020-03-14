@@ -173,6 +173,8 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
+// Test to make sure that the task spec and dependencies for an object are
+// evicted when lineage pinning is disabled in the ReferenceCounter.
 TEST_F(TaskManagerTest, TestLineageEvicted) {
   TaskID caller_id = TaskID::Nil();
   rpc::Address caller_address;
@@ -190,7 +192,8 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   return_object->set_in_plasma(true);
   manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
   // The task is still pinned because its return ID is still in scope.
-  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // The dependencies should not be pinned because lineage pinning is
   // disabled.
   ASSERT_FALSE(reference_counter_->HasReference(dep1));
@@ -201,10 +204,52 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   // are released.
   reference_counter_->AddLocalReference(return_id);
   reference_counter_->RemoveLocalReference(return_id, nullptr);
-  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
+// Test to make sure that the task spec and dependencies for an object are
+// pinned when lineage pinning is enabled in the ReferenceCounter.
+TEST_F(TaskManagerLineageTest, TestLineagePinned) {
+  TaskID caller_id = TaskID::Nil();
+  rpc::Address caller_address;
+  // Submit a task with 2 arguments.
+  ObjectID dep1 = ObjectID::FromRandom();
+  ObjectID dep2 = ObjectID::FromRandom();
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  auto spec = CreateTaskHelper(1, {dep1, dep2});
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_id, caller_address, spec, num_retries);
+  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  reference_counter_->AddLocalReference(return_id);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+
+  // The task completes.
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  // The task should still be in the lineage because its return ID is in scope.
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_TRUE(reference_counter_->HasReference(dep1));
+  ASSERT_TRUE(reference_counter_->HasReference(dep2));
+  ASSERT_TRUE(reference_counter_->HasReference(return_id));
+
+  // All lineage should be erased.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_FALSE(reference_counter_->HasReference(dep1));
+  ASSERT_FALSE(reference_counter_->HasReference(dep2));
+  ASSERT_FALSE(reference_counter_->HasReference(return_id));
+}
+
+// Test to make sure that the task spec and dependencies for an object are
+// evicted if the object is returned by value, instead of stored in plasma.
 TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   TaskID caller_id = TaskID::Nil();
   rpc::Address caller_address;
@@ -237,44 +282,9 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   ASSERT_TRUE(reference_counter_->HasReference(return_id));
 }
 
-TEST_F(TaskManagerLineageTest, TestLineagePinned) {
-  TaskID caller_id = TaskID::Nil();
-  rpc::Address caller_address;
-  // Submit a task with 2 arguments.
-  ObjectID dep1 = ObjectID::FromRandom();
-  ObjectID dep2 = ObjectID::FromRandom();
-  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
-  auto spec = CreateTaskHelper(1, {dep1, dep2});
-  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
-  int num_retries = 3;
-  manager_.AddPendingTask(caller_id, caller_address, spec, num_retries);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
-  reference_counter_->AddLocalReference(return_id);
-  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
-  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-
-  // The task completes.
-  rpc::PushTaskReply reply;
-  auto return_object = reply.add_return_objects();
-  return_object->set_object_id(return_id.Binary());
-  auto data = GenerateRandomBuffer();
-  return_object->set_data(data->Data(), data->Size());
-  return_object->set_in_plasma(true);
-  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
-  // The task should still be in the lineage because its return ID is in scope.
-  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
-  ASSERT_TRUE(reference_counter_->HasReference(dep1));
-  ASSERT_TRUE(reference_counter_->HasReference(dep2));
-  ASSERT_TRUE(reference_counter_->HasReference(return_id));
-
-  // All lineage should be erased.
-  reference_counter_->RemoveLocalReference(return_id, nullptr);
-  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
-  ASSERT_FALSE(reference_counter_->HasReference(dep1));
-  ASSERT_FALSE(reference_counter_->HasReference(dep2));
-  ASSERT_FALSE(reference_counter_->HasReference(return_id));
-}
-
+// Test to make sure that the task spec and dependencies for an object are
+// pinned if the object goes out of scope before the task finishes. This is
+// needed in case the pending task fails and needs to be retried.
 TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   TaskID caller_id = TaskID::Nil();
   rpc::Address caller_address;
@@ -314,6 +324,9 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
+// Test for pinning the lineage of an object, where the lineage is a chain of
+// tasks that each depend on the previous. All tasks should be pinned until the
+// final object goes out of scope.
 TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
   TaskID caller_id = TaskID::Nil();
   rpc::Address caller_address;
@@ -337,7 +350,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
 
     // All tasks should be pinned in the lineage.
-    ASSERT_EQ(manager_.NumPendingTasks(), i + 1);
+    ASSERT_EQ(manager_.NumSubmissibleTasks(), i + 1);
     // All objects in the lineage of the newest return ID, plus the return ID
     // itself, should be pinned.
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), i + 2);
@@ -348,10 +361,14 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
 
   // The task's return ID goes out of scope before the task finishes.
   reference_counter_->RemoveLocalReference(dep, nullptr);
-  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
+// Test for evicting the lineage of an object passed by value, where the
+// lineage is a chain of tasks that each depend on the previous and each return
+// a direct value. All tasks should be evicted as soon as they complete, even
+// though the final object is still in scope.
 TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
   TaskID caller_id = TaskID::Nil();
   rpc::Address caller_address;
@@ -375,7 +392,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
 
     // No tasks should be pinned because they returned direct objects.
-    ASSERT_EQ(manager_.NumPendingTasks(), 0);
+    ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
     // Only the dependency and the newest return ID should be in scope because
     // all objects in the lineage were direct.
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
@@ -386,7 +403,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
 
   // The task's return ID goes out of scope before the task finishes.
   reference_counter_->RemoveLocalReference(dep, nullptr);
-  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+  ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 

@@ -50,27 +50,41 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
 
   {
     absl::MutexLock lock(&mu_);
-    RAY_CHECK(
-        pending_tasks_.emplace(spec.TaskId(), TaskEntry(spec, max_retries, num_returns))
-            .second);
+    RAY_CHECK(submissible_tasks_
+                  .emplace(spec.TaskId(), TaskEntry(spec, max_retries, num_returns))
+                  .second);
   }
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mu_);
-  if (pending_tasks_.empty()) {
+  if (submissible_tasks_.empty()) {
     shutdown();
   } else {
     RAY_LOG(WARNING)
-        << "This worker is still managing " << pending_tasks_.size()
+        << "This worker is still managing " << submissible_tasks_.size()
         << " in flight tasks, waiting for them to finish before shutting down.";
   }
   shutdown_hook_ = shutdown;
 }
 
+bool TaskManager::IsTaskSubmissible(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  return submissible_tasks_.count(task_id) > 0;
+}
+
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
-  return pending_tasks_.count(task_id) > 0;
+  const auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.pending;
+}
+
+int TaskManager::NumSubmissibleTasks() const {
+  absl::MutexLock lock(&mu_);
+  return submissible_tasks_.size();
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -116,8 +130,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
-    auto it = pending_tasks_.find(task_id);
-    RAY_CHECK(it != pending_tasks_.end())
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
 
@@ -125,12 +139,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     for (const auto &direct_return_id : direct_return_ids) {
       RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
                      << direct_return_id << ", now has "
-                     << it->second.plasma_returns_in_scope.size()
+                     << it->second.reconstructable_return_ids.size()
                      << " plasma returns in scope";
-      it->second.plasma_returns_in_scope.erase(direct_return_id);
+      it->second.reconstructable_return_ids.erase(direct_return_id);
     }
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
-                   << it->second.plasma_returns_in_scope.size()
+                   << it->second.reconstructable_return_ids.size()
                    << " plasma returns in scope";
     it->second.pending = false;
 
@@ -138,12 +152,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
     bool task_retryable =
-        it->second.num_retries_left > 0 && !it->second.plasma_returns_in_scope.empty();
+        it->second.num_retries_left > 0 && !it->second.reconstructable_return_ids.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
     } else {
-      pending_tasks_.erase(it);
+      submissible_tasks_.erase(it);
     }
   }
 
@@ -163,13 +177,13 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
-    auto it = pending_tasks_.find(task_id);
-    RAY_CHECK(it != pending_tasks_.end())
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     if (num_retries_left == 0) {
-      pending_tasks_.erase(it);
+      submissible_tasks_.erase(it);
     } else {
       RAY_CHECK(it->second.num_retries_left > 0);
       it->second.num_retries_left--;
@@ -216,7 +230,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
 
 void TaskManager::ShutdownIfNeeded() {
   absl::MutexLock lock(&mu_);
-  if (shutdown_hook_ && pending_tasks_.empty()) {
+  if (shutdown_hook_ && submissible_tasks_.empty()) {
     RAY_LOG(WARNING) << "All in flight tasks finished, shutting down worker.";
     shutdown_hook_();
   }
@@ -258,22 +272,22 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
                                          std::vector<ObjectID> *released_objects) {
   absl::MutexLock lock(&mu_);
   const TaskID &task_id = object_id.TaskId();
-  auto it = pending_tasks_.find(task_id);
-  if (it == pending_tasks_.end()) {
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
     RAY_LOG(DEBUG) << "No lineage for object " << object_id;
     return;
   }
 
   RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
-  for (const auto &plasma_id : it->second.plasma_returns_in_scope) {
+  for (const auto &plasma_id : it->second.reconstructable_return_ids) {
     RAY_LOG(DEBUG) << "Task " << task_id << " has " << plasma_id << " in scope";
   }
-  it->second.plasma_returns_in_scope.erase(object_id);
+  it->second.reconstructable_return_ids.erase(object_id);
   RAY_LOG(DEBUG) << "Task " << task_id << " now has "
-                 << it->second.plasma_returns_in_scope.size()
+                 << it->second.reconstructable_return_ids.size()
                  << " plasma returns in scope";
 
-  if (it->second.plasma_returns_in_scope.empty() && !it->second.pending) {
+  if (it->second.reconstructable_return_ids.empty() && !it->second.pending) {
     // If the task can no longer be retried, decrement the lineage ref count
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
@@ -290,7 +304,7 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
 
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
-    pending_tasks_.erase(it);
+    submissible_tasks_.erase(it);
   }
 }
 
@@ -316,8 +330,8 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
 
 TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
-  auto it = pending_tasks_.find(task_id);
-  RAY_CHECK(it != pending_tasks_.end());
+  auto it = submissible_tasks_.find(task_id);
+  RAY_CHECK(it != submissible_tasks_.end());
   return it->second.spec;
 }
 

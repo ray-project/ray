@@ -1328,7 +1328,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   auto stats = reply->mutable_core_worker_stats();
-  stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  // TODO(swang): Differentiate between tasks that are currently pending
+  // execution and tasks that have finished but may be retried.
+  stats->set_num_pending_tasks(task_manager_->NumSubmissibleTasks());
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
