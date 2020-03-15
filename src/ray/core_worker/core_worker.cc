@@ -327,11 +327,11 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
-    RAY_CHECK_OK(AttemptObjectRecovery(object_id));
+    RAY_CHECK_OK(RecoverObject(object_id));
   }
 }
 
-Status CoreWorker::AttemptObjectRecovery(const ObjectID &object_id) {
+Status CoreWorker::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
   bool pinned;
   if (!reference_counter_->IsPlasmaObjectPinned(object_id, &pinned)) {
@@ -340,27 +340,47 @@ Status CoreWorker::AttemptObjectRecovery(const ObjectID &object_id) {
         "is disabled or this object ID is borrowed.");
   }
 
+  bool already_pending_recovery = true;
   if (!pinned) {
-    // TODO(swang): Deduplicate concurrent requests to reconstruct the same
-    // object ID.
-    // Lookup the object in the GCS to find another copy.
-    RAY_RETURN_NOT_OK(gcs_client_->Objects().AsyncGetLocations(
-        object_id, [this, object_id](Status status,
-                                     const std::vector<rpc::ObjectTableData> &result) {
-          RAY_CHECK_OK(status);
-          bool pinned = PinNewObjectCopy(object_id, result);
-          if (!pinned) {
-            if (RayConfig::instance().lineage_pinning_enabled()) {
-              ReconstructObject(object_id);
-            } else {
-              RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                               /*contained_object_ids=*/{}, object_id,
-                               /*pin_object=*/true));
-            }
-          }
-        }));
+    {
+      absl::MutexLock lock(&mutex_);
+      bool inserted = objects_pending_recovery_.insert(object_id).second;
+      RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
+      if (inserted) {
+        memory_store_->GetAsync(
+            object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
+              absl::MutexLock lock(&mutex_);
+              RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
+              RAY_LOG(DEBUG) << "Recovery complete for object " << object_id;
+            });
+        already_pending_recovery = false;
+      }
+    }
+  }
+
+  if (!already_pending_recovery) {
+    AttemptObjectRecovery(object_id);
   }
   return Status::OK();
+}
+
+Status CoreWorker::AttemptObjectRecovery(const ObjectID &object_id) {
+  // Lookup the object in the GCS to find another copy.
+  return gcs_client_->Objects().AsyncGetLocations(
+      object_id,
+      [this, object_id](Status status, const std::vector<rpc::ObjectTableData> &result) {
+        RAY_CHECK_OK(status);
+        bool pinned = PinNewObjectCopy(object_id, result);
+        if (!pinned) {
+          if (RayConfig::instance().lineage_pinning_enabled()) {
+            ReconstructObject(object_id);
+          } else {
+            RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                             /*contained_object_ids=*/{}, object_id,
+                             /*pin_object=*/true));
+          }
+        }
+      });
 }
 
 bool CoreWorker::PinNewObjectCopy(const ObjectID &object_id,
@@ -446,7 +466,7 @@ void CoreWorker::ReconstructObject(const ObjectID &object_id) {
   }
 
   for (const auto &dep : task_deps) {
-    auto status = AttemptObjectRecovery(dep);
+    auto status = RecoverObject(dep);
     if (!status.ok()) {
       RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": " << status.message();
       // We do not pin the dependency because we may not be the owner.

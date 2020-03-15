@@ -147,6 +147,59 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
+    config = json.dumps({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_timeout_milliseconds": 100,
+        "lineage_pinning_enabled": 1 if reconstruction_enabled else 0,
+    })
+    cluster = Cluster()
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _internal_config=config)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.add_node(
+        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address, _internal_config=config)
+
+    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def chain(x):
+        return x
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    obj = large_object.options(resources={"node2": 1}).remote()
+    downstream = [chain.remote(obj) for _ in range(4)]
+    for obj in downstream:
+        ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+
+    if reconstruction_enabled:
+        for obj in downstream:
+            ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError) as e:
+            for obj in downstream:
+                ray.get(
+                    dependent_task.options(resources={
+                        "node1": 1
+                    }).remote(obj))
+            with pytest.raises(ray.exceptions.UnreconstructableError):
+                raise e.as_instanceof_cause()
+
+
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,

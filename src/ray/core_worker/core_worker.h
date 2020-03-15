@@ -99,15 +99,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void Disconnect();
 
-  void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
-
-  Status AttemptObjectRecovery(const ObjectID &object_id);
-
-  void ReconstructObject(const ObjectID &object_id);
-
-  bool PinNewObjectCopy(const ObjectID &object_id,
-                        const std::vector<rpc::ObjectTableData> &locations);
-
   WorkerType GetWorkerType() const { return worker_type_; }
 
   Language GetLanguage() const { return language_; }
@@ -671,6 +662,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  /// Private methods related to loss of plasma objects.
+  void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
+
+  Status RecoverObject(const ObjectID &object_id);
+
+  Status AttemptObjectRecovery(const ObjectID &object_id);
+
+  void ReconstructObject(const ObjectID &object_id);
+
+  bool PinNewObjectCopy(const ObjectID &object_id,
+                        const std::vector<rpc::ObjectTableData> &locations);
+
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
 
@@ -842,6 +845,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Plasma Callback
   PlasmaSubscriptionCallback plasma_done_callback_;
+
+  absl::flat_hash_set<ObjectID> objects_pending_recovery_ GUARDED_BY(mutex_);
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
