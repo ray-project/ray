@@ -74,7 +74,8 @@ WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &objects, int nu
 ObjectID AbstractRayRuntime::Call(remote_function_ptr_holder &fptr,
                                   std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
-  invocationSpec.taskId = TaskID::ForFakeTask();  // TODO: make it from different task
+  invocationSpec.taskId =
+      TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
   invocationSpec.actorId = ActorID::Nil();
   invocationSpec.args = args;
   invocationSpec.funcOffset = (int32_t)(fptr.value[0] - dylib_base_addr);
@@ -91,7 +92,8 @@ ObjectID AbstractRayRuntime::Call(const remote_function_ptr_holder &fptr,
                                   const ActorID &actor,
                                   std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
-  invocationSpec.taskId = TaskID::ForFakeTask();  // TODO: make it from different task
+  invocationSpec.taskId =
+      TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
   invocationSpec.actorId = actor;
   invocationSpec.args = args;
   invocationSpec.funcOffset = (int32_t)(fptr.value[0] - dylib_base_addr);

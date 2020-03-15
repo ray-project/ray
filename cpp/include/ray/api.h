@@ -103,14 +103,12 @@ class Ray {
 
 // --------- inline implementation ------------
 #include <ray/api/arguments.h>
-#include <ray/api/generated/execute.h>
 #include <ray/api/ray_actor.h>
 #include <ray/api/ray_object.h>
 #include <ray/api/wait_result.h>
 
 namespace ray {
 namespace api {
-class Arguments;
 
 template <typename T>
 inline static std::vector<ObjectID> RayObject2ObjectID(
@@ -180,6 +178,8 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
                             int64_t timeout_ms) {
   return _impl->Wait(ids, num_objects, timeout_ms);
 }
+
+#include <ray/api/generated/exec_funcs.generated.h>
 
 #include <ray/api/generated/call_funcs_impl.generated.h>
 

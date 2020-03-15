@@ -19,7 +19,7 @@ class ActorContext {
 
 class TaskExcuter {
  public:
-  /// TODO: support multiple tasks execution
+  /// TODO(Guyang Song): support multiple tasks execution
   std::unique_ptr<ObjectID> Execute(const InvocationSpec &invocation);
 
   virtual ~TaskExcuter(){};

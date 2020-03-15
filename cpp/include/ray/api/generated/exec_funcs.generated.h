@@ -1,12 +1,5 @@
-#pragma once
-#include <ray/api/arguments.h>
-#include <ray/api/ray_object.h>
-#include <ray/core.h>
 
-namespace ray {
-namespace api {
-
-// class Arguments;
+// TODO(Guyang Song): code generation
 
 // 0 args
 template <typename RT>
@@ -299,5 +292,3 @@ std::shared_ptr<msgpack::sbuffer> actor_exec_function(
   Arguments::Wrap(packer, rt);
   return buffer;
 }
-}  // namespace api
-}  // namespace ray
