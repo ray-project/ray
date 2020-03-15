@@ -75,20 +75,40 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
   }
 }
 
-Status TaskManager::ResubmitTask(const TaskID &task_id, bool *resubmit) {
-  absl::MutexLock lock(&mu_);
-  auto it = submissible_tasks_.find(task_id);
-  if (it == submissible_tasks_.end()) {
-    return Status::Invalid("Task is not resubmittable");
+Status TaskManager::ResubmitTask(const TaskID &task_id, bool *resubmit,
+                                 std::vector<ObjectID> *task_deps) {
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      return Status::Invalid("Task is not resubmittable");
+    }
+
+    if (it->second.pending) {
+      *resubmit = false;
+    } else {
+      *resubmit = true;
+      it->second.pending = true;
+      RAY_CHECK(it->second.num_retries_left > 0);
+      it->second.num_retries_left--;
+      const auto &spec = it->second.spec;
+      for (size_t i = 0; i < spec.NumArgs(); i++) {
+        if (spec.ArgByRef(i)) {
+          for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+            task_deps->push_back(spec.ArgId(i, j));
+          }
+        } else {
+          const auto &inlined_ids = spec.ArgInlinedIds(i);
+          for (const auto &inlined_id : inlined_ids) {
+            task_deps->push_back(inlined_id);
+          }
+        }
+      }
+    }
   }
 
-  if (it->second.pending) {
-    *resubmit = false;
-  } else {
-    *resubmit = true;
-    it->second.pending = true;
-    RAY_CHECK(it->second.num_retries_left > 0);
-    it->second.num_retries_left--;
+  if (!task_deps->empty()) {
+    reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
   }
 
   return Status::OK();

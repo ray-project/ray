@@ -211,7 +211,10 @@ const bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
                                                   bool *pinned) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end()) << object_id;
+  if (it == object_id_refs_.end()) {
+    RAY_CHECK(!lineage_pinning_enabled_);
+    return false;
+  }
 
   if (it->second.owned_by_us) {
     *pinned = it->second.pinned_at_raylet.has_value();

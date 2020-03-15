@@ -335,8 +335,9 @@ Status CoreWorker::AttemptObjectRecovery(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
   bool pinned;
   if (!reference_counter_->IsPlasmaObjectPinned(object_id, &pinned)) {
-    return Status::NotImplemented(
-        "Reconstruction for borrowed objects is not currently implemented");
+    return Status::Invalid(
+        "Object reference no longer exists or is not owned by us. Either lineage pinning "
+        "is disabled or this object ID is borrowed.");
   }
 
   if (!pinned) {
@@ -349,7 +350,13 @@ Status CoreWorker::AttemptObjectRecovery(const ObjectID &object_id) {
           RAY_CHECK_OK(status);
           bool pinned = PinNewObjectCopy(object_id, result);
           if (!pinned) {
-            ReconstructObject(object_id);
+            if (RayConfig::instance().lineage_pinning_enabled()) {
+              ReconstructObject(object_id);
+            } else {
+              RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                               /*contained_object_ids=*/{}, object_id,
+                               /*pin_object=*/true));
+            }
           }
         }));
   }
@@ -419,7 +426,8 @@ void CoreWorker::ReconstructObject(const ObjectID &object_id) {
   // object.
   const auto task_id = object_id.TaskId();
   bool resubmit;
-  auto status = task_manager_->ResubmitTask(task_id, &resubmit);
+  std::vector<ObjectID> task_deps;
+  auto status = task_manager_->ResubmitTask(task_id, &resubmit, &task_deps);
 
   if (!status.ok()) {
     RAY_LOG(INFO) << "Failed to reconstruct object " << object_id
@@ -427,34 +435,23 @@ void CoreWorker::ReconstructObject(const ObjectID &object_id) {
     RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
                      /*contained_object_ids=*/{}, object_id,
                      /*pin_object=*/true));
-  } else if (resubmit) {
+  }
+
+  if (resubmit) {
     // Resubmit the task.
     const auto spec = task_manager_->GetTaskSpec(task_id);
     RAY_LOG(ERROR) << "Resubmitting task to reconstruct object " << object_id
                    << ", spec: " << spec.DebugString();
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-    std::vector<ObjectID> task_deps;
-    for (size_t i = 0; i < spec.NumArgs(); i++) {
-      if (spec.ArgByRef(i)) {
-        for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
-          task_deps.push_back(spec.ArgId(i, j));
-        }
-      } else {
-        const auto &inlined_ids = spec.ArgInlinedIds(i);
-        for (const auto &inlined_id : inlined_ids) {
-          task_deps.push_back(inlined_id);
-        }
-      }
-    }
-    for (const auto &dep : task_deps) {
-      auto status = AttemptObjectRecovery(dep);
-      if (!status.ok()) {
-        RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": "
-                      << status.message();
-        // We do not pin the dependency because we may not be the owner.
-        RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                         /*contained_object_ids=*/{}, dep));
-      }
+  }
+
+  for (const auto &dep : task_deps) {
+    auto status = AttemptObjectRecovery(dep);
+    if (!status.ok()) {
+      RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": " << status.message();
+      // We do not pin the dependency because we may not be the owner.
+      RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                       /*contained_object_ids=*/{}, dep));
     }
   }
 }

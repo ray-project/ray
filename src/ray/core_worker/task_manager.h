@@ -71,7 +71,8 @@ class TaskManager : public TaskFinisherInterface {
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
                       const TaskSpecification &spec, int max_retries = 0);
 
-  Status ResubmitTask(const TaskID &task_id, bool *resubmit);
+  Status ResubmitTask(const TaskID &task_id, bool *resubmit,
+                      std::vector<ObjectID> *task_deps);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
