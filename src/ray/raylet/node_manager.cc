@@ -1534,7 +1534,12 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
   RAY_CHECK(new_scheduler_enabled_);
   size_t queue_size = tasks_to_dispatch_.size(); 
 
-  while (queue_size > 0) { //
+  // Check every task in task_to_dispatch queue to see
+  // whether it can be dispatched and ran. This avoids head-of-line
+  // blocking where a task which cannot be dispatches because
+  // there are not enough available resources blocks other
+  // tasks from being dispatched.
+  while (queue_size > 0) { 
     auto task = tasks_to_dispatch_.front(); 
     auto reply = task.first;
     auto spec = task.second.GetTaskSpecification();
@@ -1578,9 +1583,13 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 
 void NodeManager::NewSchedulerSchedulePendingTasks() {
   RAY_CHECK(new_scheduler_enabled_);
-
   size_t queue_size = tasks_to_schedule_.size();
 
+  // Check every task in task_to_schedule queue to see
+  // whether it can be scheduled. This avoids head-of-line
+  // blocking where a task which cannot be scheduled because
+  // there are not enough available resources blocks other
+  // tasks from being scheduled.
   while (queue_size > 0) {
     if (queue_size == 0) {
       return;
