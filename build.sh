@@ -25,17 +25,6 @@ Options:
 EOF
 }
 
-# Determine how many parallel jobs to use for make based on the number of cores
-unamestr="$(uname)"
-if [[ "$unamestr" == "Linux" ]]; then
-  PARALLEL=1
-elif [[ "$unamestr" == "Darwin" ]]; then
-  PARALLEL=$(sysctl -n hw.ncpu)
-else
-  echo "Unrecognized platform."
-  exit 1
-fi
-
 RAY_BUILD_PYTHON="YES"
 RAY_BUILD_JAVA="NO"
 PYTHON_EXECUTABLE=""
@@ -97,7 +86,8 @@ if [[ -z $found ]]
 then
   cat <<EOF
 ERROR: Detected Python version $PYTHON_VERSION, which is not supported.
-       Please use version 3.6 or 3.7.
+       Please use one of the following Python versions:
+       $(printf ", %s" "${SUPPORTED_PYTHONS[@]}" | cut -c3-)
 EOF
   exit 1
 fi
