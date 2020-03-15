@@ -155,6 +155,9 @@
                     "type": "string",
                     "default": "ubuntu"
                 },
+                "ssh_public_key": { 
+                    "type": "string"
+                },
                 "ssh_private_key": { 
                     "type": "string"
                 }
