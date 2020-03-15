@@ -75,6 +75,25 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
   }
 }
 
+Status TaskManager::ResubmitTask(const TaskID &task_id, bool *resubmit) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return Status::Invalid("Task is not resubmittable");
+  }
+
+  if (it->second.pending) {
+    *resubmit = false;
+  } else {
+    *resubmit = true;
+    it->second.pending = true;
+    RAY_CHECK(it->second.num_retries_left > 0);
+    it->second.num_retries_left--;
+  }
+
+  return Status::OK();
+}
+
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mu_);
   if (submissible_tasks_.empty()) {

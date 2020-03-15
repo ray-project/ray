@@ -195,23 +195,29 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
 
 void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_ids,
                                                  const ClientID &node_id) {
-  if (!lineage_pinning_enabled_) {
-  }
   absl::MutexLock lock(&mutex_);
   for (const auto &plasma_id : plasma_ids) {
     RAY_LOG(DEBUG) << "Marking plasma object " << plasma_id << " pinned at " << node_id;
     auto it = object_id_refs_.find(plasma_id);
     RAY_CHECK(it != object_id_refs_.end()) << plasma_id;
     RAY_CHECK(!it->second.pinned_at_raylet.has_value());
-    it->second.pinned_at_raylet = node_id;
+    if (!it->second.OutOfScope()) {
+      it->second.pinned_at_raylet = node_id;
+    }
   }
 }
 
-const ClientID ReferenceCounter::GetPlasmaObjectPinnedAt(const ObjectID &object_id) {
+const bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
+                                                  bool *pinned) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end()) << object_id;
-  return it->second.pinned_at_raylet.value_or(ClientID::Nil());
+
+  if (it->second.owned_by_us) {
+    *pinned = it->second.pinned_at_raylet.has_value();
+  }
+
+  return it->second.owned_by_us;
 }
 
 std::vector<ObjectID> ReferenceCounter::HandleNodeRemoved(const ClientID &node_id) {
@@ -369,6 +375,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   // Perform the deletion.
   if (should_delete_value) {
     if (it->second.on_delete) {
+      it->second.pinned_at_raylet.reset();
       RAY_LOG(DEBUG) << "Calling on_delete for object " << id;
       it->second.on_delete(id);
       it->second.on_delete = nullptr;

@@ -101,9 +101,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
 
+  Status AttemptObjectRecovery(const ObjectID &object_id);
+
   void ReconstructObject(const ObjectID &object_id);
 
-  void PinNewObjectCopy(const ObjectID &object_id,
+  bool PinNewObjectCopy(const ObjectID &object_id,
                         const std::vector<rpc::ObjectTableData> &locations);
 
   WorkerType GetWorkerType() const { return worker_type_; }

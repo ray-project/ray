@@ -1171,7 +1171,6 @@ def test_plasma_failure_cached_object(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "lineage_pinning_enabled": True,
     })
     cluster = Cluster()
     # Head node with no resources.
@@ -1209,7 +1208,8 @@ def test_plasma_failure_cached_object(ray_start_cluster):
     ray.get(dependent_task.remote(obj))
 
 
-def test_plasma_reconstruction(ray_start_cluster):
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_plasma_reconstruction(ray_start_cluster, reconstruction_enabled):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
@@ -1224,7 +1224,7 @@ def test_plasma_reconstruction(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    @ray.remote
+    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
         return np.zeros(100000)
 
@@ -1238,7 +1238,13 @@ def test_plasma_reconstruction(ray_start_cluster):
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(num_cpus=1, resources={"node1": 1})
 
-    ray.get(dependent_task.remote(obj))
+    if reconstruction_enabled:
+        ray.get(dependent_task.remote(obj))
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError) as e:
+            ray.get(dependent_task.remote(obj))
+            with pytest.raises(ray.exceptions.UnreconstructableError):
+                raise e.as_instanceof_cause()
 
 
 if __name__ == "__main__":
