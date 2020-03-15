@@ -262,7 +262,7 @@ class AzureNodeProvider(NodeProvider):
             # gather disks to delete later
             vm = self.compute_client.virtual_machines.get(
                 resource_group_name=resource_group, vm_name=node)
-            disks = set([d.name for d in vm.storage_profile.data_disks])
+            disks = {d.name for d in vm.storage_profile.data_disks}
             disks.add(vm.storage_profile.os_disk.name)
             # delete machine, must wait for this to complete
             self.compute_client.virtual_machines.delete(

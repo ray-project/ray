@@ -9,6 +9,7 @@ max_workers: 1
 provider:
     type: azure
     location: westus2
+    resource_group: ray-cluster
 
 # How Ray will authenticate with newly launched nodes.
 auth:
