@@ -128,15 +128,23 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWo
   delete core_worker;
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv *env,
-                                                                         jclass,
-                                                                         jstring logDir) {
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(
+    JNIEnv *env, jclass, jstring logDir, jobject rayletConfigParameters) {
   std::string log_dir = JavaStringToNativeString(env, logDir);
   ray::RayLog::StartRayLog("java_worker", ray::RayLogLevel::INFO, log_dir);
   // TODO (kfstorm): We can't InstallFailureSignalHandler here, because JVM already
   // installed its own signal handler. It's possible to fix this by chaining signal
   // handlers. But it's not easy. See
   // https://docs.oracle.com/javase/9/troubleshoot/handle-signals-and-exceptions.htm.
+  auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
+      env, rayletConfigParameters,
+      [](JNIEnv *env, jobject java_key) {
+        return JavaStringToNativeString(env, (jstring)java_key);
+      },
+      [](JNIEnv *env, jobject java_value) {
+        return JavaStringToNativeString(env, (jstring)java_value);
+      });
+  RayConfig::instance().initialize(raylet_config);
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
