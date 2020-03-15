@@ -16,7 +16,11 @@ def easy_objective(config, reporter):
     for i in range(config["iterations"]):
         reporter(
             timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
+            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3),
+            mean_loss1=(config["height"] - 14)**2 - abs(config["width"] - 3),
+            mean_loss2=(config["height"] - 14)**2 - abs(config["width"] - 3),
+            mean_loss3=(config["height"] - 14)**2 - abs(config["width"] - 3),
+            mean_loss4=(config["height"] - 14)**2 - abs(config["width"] - 3))
         time.sleep(0.02)
 
 

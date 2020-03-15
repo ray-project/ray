@@ -15,6 +15,7 @@ import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
 import TuneTable from "./TuneTable";
 import TuneTensorBoard from "./TuneTensorBoard";
+import TuneErrors from "./TuneErrors";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -83,14 +84,18 @@ class Tune extends React.Component<
   };
 
   render() {
-    const { classes } = this.props;
+    const { classes, tuneInfo } = this.props;
 
     const { tabIndex } = this.state;
 
-    const tabs = [
+    let tabs = [
       { label: "Table", component: TuneTable },
       { label: "TensorBoard", component: TuneTensorBoard },
     ];
+
+    if (tuneInfo != null && Object.keys(tuneInfo["errors"]).length > 0) {
+      tabs.push({ label: "Errors", component: TuneErrors });
+    }
 
     const SelectedComponent = tabs[tabIndex].component;
     return (
