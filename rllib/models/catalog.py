@@ -172,8 +172,8 @@ class ModelCatalog:
                     "using a custom action distribution, "
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
-                any_bounded = np.any(action_space.bounded_below &
-                                     action_space.bounded_above)
+                any_bounded = np.any(
+                    action_space.bounded_below & action_space.bounded_above)
                 if framework != "tf":
                     return TorchDiagGaussian
                 elif np.any(action_space.bounded_below &

@@ -346,8 +346,8 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
 
         return (tf.log(self.high - self.low) -
                 (tf.log(self._SCALE) - self.log_std +
-                (tf.square(std) + tf.square(mean)) /
-                (2.0 * tf.square(self._SCALE)) - 0.5))
+                 (tf.square(std) + tf.square(mean)) /
+                 (2.0 * tf.square(self._SCALE)) - 0.5))
 
     def _log_squash_grad(self, unsquashed_values):
         squash_dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
@@ -359,19 +359,13 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         # Make sure raw_values are not too high/low (such that tanh would
         # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
 
-        values = tfp.bijectors.NormalCDF().forward(
-                raw_values / self._SCALE
-        )
-        return (tf.clip_by_value(values,
-                                 SMALL_NUMBER,
-                                 1.0 - SMALL_NUMBER) *
+        values = tfp.bijectors.NormalCDF().forward(raw_values / self._SCALE)
+        return (tf.clip_by_value(values, SMALL_NUMBER, 1.0 - SMALL_NUMBER) *
                 (self.high - self.low) + self.low)
 
     def _unsquash(self, values):
         return self._SCALE * tfp.bijectors.NormalCDF().inverse(
-            (values - self.low) / (self.high - self.low)
-        )
-
+            (values - self.low) / (self.high - self.low))
 
 
 class Deterministic(TFActionDistribution):
