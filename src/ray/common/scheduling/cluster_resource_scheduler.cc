@@ -162,7 +162,7 @@ bool NodeResources::operator==(const NodeResources &other) {
   return true;
 }
 
-std::string NodeResources::DebugString() const {
+std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
   buffer << " {";
   for (size_t i = 0; i < static_cast<size_t>(this->predefined_resources.size()); i++) {
@@ -174,7 +174,7 @@ std::string NodeResources::DebugString() const {
   buffer << "  {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":(" << it->second.total << ":" << it->second.available << ") ";
+    buffer << string_to_in_map.Get(it->first) << ":(" << it->second.total << ":" << it->second.available << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -213,7 +213,7 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   return true;
 }
 
-std::string NodeResourceInstances::DebugString() const {
+std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) const {
   std::stringstream buffer;
   buffer << " {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
@@ -225,7 +225,8 @@ std::string NodeResourceInstances::DebugString() const {
   buffer << " {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":(" << VectorToString(it->second.total) << ":"
+    buffer << string_to_int_map.Get(it->first) 
+           << ":(" << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ") ";
   }
   buffer << "}" << std::endl;
@@ -711,10 +712,10 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\n Local id: " << local_node_id_;
-  buffer << " Local resources: " << local_resources_.DebugString();
+  buffer << " Local resources: " << local_resources_.DebugString(string_to_int_map_);
   for (auto &node : nodes_) {
     buffer << "   node id: " << node.first;
-    buffer << node.second.DebugString();
+    buffer << node.second.DebugString(string_to_int_map_);
   }
   return buffer.str();
 }

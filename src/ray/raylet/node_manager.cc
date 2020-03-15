@@ -1286,8 +1286,8 @@ void NodeManager::ProcessDisconnectClientMessage(
   
     // Return the resources that were being used by this worker. 
     if (new_scheduler_enabled_) {
-      new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
       new_resource_scheduler_->SubtractCPUResourceInstances(worker->GetBorrowedCPUInstances());
+      new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
       worker->ClearAllocatedInstances();
       new_resource_scheduler_->FreeLocalTaskResources(worker->GetLifetimeAllocatedInstances());
       worker->ClearLifetimeAllocatedInstances();
@@ -1533,10 +1533,12 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 void NodeManager::DispatchScheduledTasksToWorkers() {
   RAY_CHECK(new_scheduler_enabled_);
   size_t queue_size = tasks_to_dispatch_.size(); 
+
   while (queue_size > 0) { //
     auto task = tasks_to_dispatch_.front(); 
     auto reply = task.first;
     auto spec = task.second.GetTaskSpecification();
+
     tasks_to_dispatch_.pop_front(); 
     queue_size--; 
 
@@ -1576,7 +1578,15 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 
 void NodeManager::NewSchedulerSchedulePendingTasks() {
   RAY_CHECK(new_scheduler_enabled_);
-  while (!tasks_to_schedule_.empty()) {
+
+  size_t queue_size = tasks_to_schedule_.size();
+
+  while (queue_size > 0) {
+    if (queue_size == 0) {
+      return;
+    } else {
+      queue_size--;
+    }
     auto work = tasks_to_schedule_.front();
     auto task = work.second;
     auto request_resources =
@@ -1586,7 +1596,9 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
         new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
     if (node_id_string.empty()) {
       /// There is no node that has available resources to run the request.
-      break;
+      tasks_to_schedule_.pop_front();
+      tasks_to_schedule_.push_back(work);
+      continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
         WaitForTaskArgsRequests(work);
@@ -1767,7 +1779,6 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
-  RAY_LOG(DEBUG) << "Return worker " << worker_id;
   std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   Status status;
@@ -1783,8 +1794,8 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         HandleDirectCallTaskUnblocked(worker);
       }
       if (new_scheduler_enabled_) {
-        new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
         new_resource_scheduler_->SubtractCPUResourceInstances(worker->GetBorrowedCPUInstances());
+        new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
         worker->ClearAllocatedInstances();
       }
       HandleWorkerAvailable(worker);
@@ -2476,8 +2487,8 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     task = worker.GetAssignedTask();
     // leased_workers_.erase(worker.WorkerId()); // Maybe RAY_CHECK ???
     if (worker.GetAllocatedInstances() != nullptr) {
-      new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       new_resource_scheduler_->SubtractCPUResourceInstances(worker.GetBorrowedCPUInstances());
+      new_resource_scheduler_->FreeLocalTaskResources(worker.GetAllocatedInstances());
       worker.ClearAllocatedInstances();
     }
   } else {

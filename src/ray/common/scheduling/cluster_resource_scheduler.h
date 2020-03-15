@@ -14,7 +14,8 @@
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
+// static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
+static std::unordered_set<int64_t> UnitInstanceResources{};
 
 // Helper function to compare two vectors with double values.
 bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2);
@@ -98,7 +99,7 @@ class NodeResources {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -115,7 +116,7 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 /// Class encapsulating the cluster resources and the logic to assign
