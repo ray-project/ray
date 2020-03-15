@@ -41,7 +41,7 @@ void RedisServiceManagerForTest::TearDownTestCase() {
   std::string stop_redis_command =
       REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SERVER_PORT) + " shutdown";
   RAY_LOG(INFO) << "Stop redis command is: " << stop_redis_command;
-  RAY_CHECK(system(stop_redis_command.c_str()) == 0);
+  system(stop_redis_command.c_str());
   usleep(100 * 1000);
 }
 
