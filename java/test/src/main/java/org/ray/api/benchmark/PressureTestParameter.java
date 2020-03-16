@@ -19,10 +19,7 @@ public class PressureTestParameter implements Serializable {
 
   private RayBenchmarkTest rayBenchmarkTest; //reference of current test case instance
 
-  /**
-   * reference of the Actor, if only test remote funtion it could be null
-   */
-  private RayActor rayActor;
+  private RayActor rayActor; // reference of the Actor, if only test remote funtion it could be null
 
   public Integer getClientNum() {
     return clientNum;

@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.streaming.jobgraph.JobVertex;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
@@ -62,8 +62,8 @@ public class ExecutionJobVertex {
     return executionVertices;
   }
 
-  public Map<Integer, RayJavaActor<JobWorker>> getExecutionVertexWorkers() {
-    Map<Integer, RayJavaActor<JobWorker>> executionVertexWorkersMap = new HashMap<>();
+  public Map<Integer, RayActor<JobWorker>> getExecutionVertexWorkers() {
+    Map<Integer, RayActor<JobWorker>> executionVertexWorkersMap = new HashMap<>();
 
     Preconditions.checkArgument(
         executionVertices != null && !executionVertices.isEmpty(),

@@ -89,7 +89,7 @@ public class ResourcesManagementTest extends BaseTest {
     ActorCreationOptions actorCreationOptions2 = new ActorCreationOptions.Builder()
         .setResources(ImmutableMap.of("CPU", 8.0)).createActorCreationOptions();
 
-    RayActor<Echo> echo2 =
+    RayActor<ResourcesManagementTest.Echo> echo2 =
         Ray.createActor(Echo::new, actorCreationOptions2);
     final RayObject<Integer> result2 = echo2.call(Echo::echo, 100);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);

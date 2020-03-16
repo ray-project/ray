@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.streaming.api.Language;
@@ -61,7 +60,7 @@ public class JobSchedulerImpl implements JobScheduler {
         RayActor worker = executionTask.getWorker();
         switch (executionNode.getLanguage()) {
           case JAVA:
-            RayJavaActor<JobWorker> jobWorker = (RayJavaActor<JobWorker>) worker;
+            RayActor<JobWorker> jobWorker = (RayActor<JobWorker>) worker;
             waits.add(jobWorker.call(JobWorker::init,
                 new WorkerContext(taskId, executionGraph, jobConfig)));
             break;

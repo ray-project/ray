@@ -126,8 +126,7 @@ public class ActorReconstructionTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
-    RayActor<CheckpointableCounter> actor = Ray
-        .createActor(CheckpointableCounter::new, options);
+    RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
       actor.call(CheckpointableCounter::increase).get();

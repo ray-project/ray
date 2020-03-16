@@ -10,7 +10,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   @Test
   public void singleLatencyTest() {
     int times = 10;
-    RayActor<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    RayActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     super.singleLatencyTest(times, adder);
   }
 
@@ -18,7 +18,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   public void maxTest() {
     int clientNum = 2;
     int totalNum = 20;
-    RayActor<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    RayActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalNum(totalNum);
@@ -32,7 +32,7 @@ public class ActorPressTest extends RayBenchmarkTest {
     int clientNum = 2;
     int totalQps = 2;
     int duration = 3;
-    RayActor<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    RayActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalQps(totalQps);
