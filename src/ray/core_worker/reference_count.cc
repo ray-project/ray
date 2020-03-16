@@ -43,7 +43,8 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
 
 void ReferenceCounter::ShutdownIfNeeded() {
   if (shutdown_hook_ && object_id_refs_.empty()) {
-    RAY_LOG(WARNING) << "All object references have gone out of scope, shutting down worker.";
+    RAY_LOG(WARNING)
+        << "All object references have gone out of scope, shutting down worker.";
     shutdown_hook_();
   }
 }

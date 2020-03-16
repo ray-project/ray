@@ -207,7 +207,8 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
 void TaskManager::ShutdownIfNeeded() {
   absl::MutexLock lock(&mu_);
   if (shutdown_hook_ && pending_tasks_.empty()) {
-    RAY_LOG(WARNING) << "All in flight tasks finished, worker will shut down after draining references.";
+    RAY_LOG(WARNING) << "All in flight tasks finished, worker will shut down after "
+                        "draining references.";
     reference_counter_->DrainAndShutdown(shutdown_hook_);
     shutdown_hook_ = nullptr;
   }

@@ -282,7 +282,9 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::Exit(bool intentional) {
-  RAY_LOG(INFO) << "Exit signal " << (intentional ? "(intentional)" : "") << " received, this process will exit after all outstanding tasks have finished";
+  RAY_LOG(INFO)
+      << "Exit signal " << (intentional ? "(intentional)" : "")
+      << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
@@ -981,7 +983,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
             RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/true, /*no_reconstruction=*/false));
+                KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
           }
         }));
   }
