@@ -135,7 +135,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callPy(RayPyActor pyActor, String functionName, Object... args) {
+  public RayObject callPyActor(RayPyActor pyActor, String functionName, Object... args) {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), functionName);

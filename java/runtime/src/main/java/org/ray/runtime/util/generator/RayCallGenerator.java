@@ -63,10 +63,6 @@ public class RayCallGenerator extends BaseGenerator {
       buildPyCalls(i, false, false, false);
       buildPyCalls(i, false, false, true);
     }
-    // TODO(hchen): move Python actor call API to `RayPyActor` class.
-    for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
-      buildPyCalls(i, true, false, false);
-    }
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       buildPyCalls(i, false, true, false);
       buildPyCalls(i, false, true, true);
@@ -103,6 +99,12 @@ public class RayCallGenerator extends BaseGenerator {
       buildCalls(i, true, false, false, false);
     }
 
+    newLine(1, "// ===========================");
+    newLine(1, "// Cross-language methods.");
+    newLine(1, "// ===========================");
+    for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
+      buildPyCalls(i, true, false, false);
+    }
     newLine("}");
     return sb.toString();
   }
@@ -213,13 +215,15 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   /**
-   * Build the `Ray.callPy` or `Ray.createPyActor` methods.
+   * Build the `Ray.callPyActor` or `Ray.createPyActor` methods.
    *
    * @param forActor Build actor api when true, otherwise build task api.
-   * @param forActorCreation Build `Ray.createPyActor` when true, otherwise build `Ray.callPy`.
+   * @param forActorCreation Build `Ray.createPyActor` when true, otherwise build `Ray.callPyActor`.
    */
   private void buildPyCalls(int numParameters, boolean forActor,
       boolean forActorCreation, boolean hasOptionsParam) {
+    String modifiers = forActor ? "default" : "public static";
+
     String argList = "";
     String paramList = "";
     for (int i = 0; i < numParameters; i++) {
@@ -239,8 +243,8 @@ public class RayCallGenerator extends BaseGenerator {
       paramPrefix += "String moduleName, String className";
       funcArgs += "moduleName, className";
     } else if (forActor) {
-      paramPrefix += "RayPyActor pyActor, String functionName";
-      funcArgs += "pyActor, functionName";
+      paramPrefix += "String functionName";
+      funcArgs += "functionName";
     } else {
       paramPrefix += "String moduleName, String functionName";
       funcArgs += "moduleName, functionName";
@@ -268,17 +272,23 @@ public class RayCallGenerator extends BaseGenerator {
     }
 
     String returnType = !forActorCreation ? "RayObject" : "RayPyActor";
-    String funcName = !forActorCreation ? "callPy" : "createPyActor";
+    String funcName = forActorCreation ? "createPyActor": forActor ? "call": "callPy";
+    String internalCallFunc = forActorCreation ? "createPyActor" : forActor ? "callPyActor" : "callPy";
     funcArgs += ", args";
     // Method signature.
     newLine(1, String.format(
-        "public static %s %s(%s%s) {",
+        "%s %s %s(%s%s) {", modifiers,
         returnType, funcName, paramPrefix + paramList, optionsParam
     ));
     // Method body.
     newLine(2, String.format("Object[] args = new Object[]{%s};", argList));
-    newLine(2, String.format("return Ray.internal().%s(%s%s);", funcName, funcArgs, optionsArg));
+    if (forActor) {
+      newLine(2, String.format("return Ray.internal().%s((RayPyActor)this, %s%s);", internalCallFunc, funcArgs, optionsArg));
+    } else {
+      newLine(2, String.format("return Ray.internal().%s(%s%s);", internalCallFunc, funcArgs, optionsArg));
+    }
     newLine(1, "}");
+    newLine("");
   }
 
   private List<String> generateParameters(int numParams) {
