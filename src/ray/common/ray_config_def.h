@@ -86,7 +86,7 @@ RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_timeout_milliseconds.
-RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
