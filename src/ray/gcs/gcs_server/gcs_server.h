@@ -32,8 +32,6 @@ struct GcsServerConfig {
   bool is_test = false;
 };
 
-class GcsNodeManager;
-
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
 /// In the future, GCS server's main responsibility is to manage meta data
@@ -58,15 +56,10 @@ class GcsServer {
   bool IsStarted() const { return is_started_; }
 
  protected:
-  /// Initialize the backend storage client.
+  /// Initialize the backend storage client
   /// The gcs server is just the proxy between the gcs client and reliable storage
   /// for the time being, so we need a backend client to connect to the storage.
   virtual void InitBackendClient();
-
-  /// Initialize the gcs node manager.
-  /// The gcs node manager is responsible for managing and monitoring all nodes in the
-  /// cluster.
-  virtual void InitGcsNodeManager();
 
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
@@ -106,8 +99,6 @@ class GcsServer {
   rpc::GrpcServer rpc_server_;
   /// The main io service to drive event posted from grpc threads.
   boost::asio::io_context main_service_;
-  /// The gcs node manager.
-  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// Job info handler and service
   std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;

@@ -200,6 +200,9 @@ service NodeInfoGcsService {
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
+  // Report batch heartbeat to GCS Service.
+  rpc ReportBatchHeartbeat(ReportBatchHeartbeatRequest)
+      returns (ReportBatchHeartbeatReply);
   // Get node's resources from GCS Service.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
   // Update resources of a node in GCS Service.

@@ -209,6 +209,17 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool ReportBatchHeartbeat(const rpc::ReportBatchHeartbeatRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportBatchHeartbeat(
+        request,
+        [&promise](const Status &status, const rpc::ReportBatchHeartbeatReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool UpdateResources(const rpc::UpdateResourcesRequest &request) {
     std::promise<bool> promise;
     client_->UpdateResources(request, [&promise](const Status &status,
@@ -525,6 +536,10 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   rpc::ReportHeartbeatRequest report_heartbeat_request;
   report_heartbeat_request.mutable_heartbeat()->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  rpc::ReportBatchHeartbeatRequest report_batch_heartbeat_request;
+  report_batch_heartbeat_request.mutable_heartbeat_batch()->add_batch()->set_client_id(
+      node_id.Binary());
+  ASSERT_TRUE(ReportBatchHeartbeat(report_batch_heartbeat_request));
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_info_request;

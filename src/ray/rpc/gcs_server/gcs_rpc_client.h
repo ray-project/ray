@@ -132,6 +132,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat,
                              node_info_grpc_client_, )
 
+  /// Report batch heartbeat to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat,
+                             node_info_grpc_client_, )
+
   /// Get node's resources from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, node_info_grpc_client_, )
 
