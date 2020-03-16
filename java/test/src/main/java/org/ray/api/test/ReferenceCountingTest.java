@@ -2,6 +2,8 @@ package org.ray.api.test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import com.google.common.collect.ImmutableMap;
 import org.ray.api.Ray;
@@ -135,5 +137,21 @@ public class ReferenceCountingTest extends BaseTest {
     ((RayObjectImpl<?>) dependency).removeLocalReference();
     ((RayObjectImpl<?>) result).removeLocalReference();
     checkRefCounts(ImmutableMap.of());
+  }
+
+  public void testBasicNestedIds() {
+    RayObject<byte[]> inner = Ray.put(new byte[40 * 1024 * 1024]);
+    RayObject<List<RayObject<byte[]>>> outer = Ray.put(Collections.singletonList(inner));
+
+    byte[] innerObjecrIdBytes = inner.getId().getBytes();
+    inner = null;
+    System.gc();
+
+    for (int i = 0; i < 100; i++) {
+      Ray.put(new byte[40 * 1024 * 1024]);
+    }
+
+    inner = new RayObjectImpl<>(new ObjectId(innerObjecrIdBytes));
+    Assert.assertNotNull(inner.get());
   }
 }
