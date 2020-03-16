@@ -66,7 +66,7 @@ class SyncSampler(SamplerInput):
                  preprocessors,
                  obs_filters,
                  clip_rewards,
-                 unroll_length,
+                 rollout_fragment_length,
                  callbacks,
                  horizon=None,
                  pack=False,
@@ -75,7 +75,7 @@ class SyncSampler(SamplerInput):
                  soft_horizon=False,
                  no_done_at_end=False):
         self.base_env = BaseEnv.to_base_env(env)
-        self.unroll_length = unroll_length
+        self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
@@ -85,7 +85,7 @@ class SyncSampler(SamplerInput):
         self.perf_stats = PerfStats()
         self.rollout_provider = _env_runner(
             self.base_env, self.extra_batches.put, self.policies,
-            self.policy_mapping_fn, self.unroll_length, self.horizon,
+            self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             pack, callbacks, tf_sess, self.perf_stats, soft_horizon,
             no_done_at_end)
@@ -127,7 +127,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  preprocessors,
                  obs_filters,
                  clip_rewards,
-                 unroll_length,
+                 rollout_fragment_length,
                  callbacks,
                  horizon=None,
                  pack=False,
@@ -144,7 +144,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.queue = queue.Queue(5)
         self.extra_batches = queue.Queue()
         self.metrics_queue = queue.Queue()
-        self.unroll_length = unroll_length
+        self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
         self.policies = policies
         self.policy_mapping_fn = policy_mapping_fn
@@ -179,7 +179,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         rollout_provider = _env_runner(
             self.base_env, extra_batches_putter, self.policies,
-            self.policy_mapping_fn, self.unroll_length, self.horizon,
+            self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.pack, self.callbacks, self.tf_sess,
             self.perf_stats, self.soft_horizon, self.no_done_at_end)
@@ -225,7 +225,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
 
 
 def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
-                unroll_length, horizon, preprocessors, obs_filters,
+                rollout_fragment_length, horizon, preprocessors, obs_filters,
                 clip_rewards, clip_actions, pack, callbacks, tf_sess,
                 perf_stats, soft_horizon, no_done_at_end):
     """This implements the common experience collection logic.
@@ -237,8 +237,9 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         policy_mapping_fn (func): Function that maps agent ids to policy ids.
             This is called when an agent first enters the environment. The
             agent is then "bound" to the returned policy for the episode.
-        unroll_length (int): Number of episode steps before `SampleBatch` is
-            yielded. Set to infinity to yield complete episodes.
+        rollout_fragment_length (int): Number of episode steps before
+            `SampleBatch` is yielded. Set to infinity to yield complete
+            episodes.
         horizon (int): Horizon of the episode.
         preprocessors (dict): Map of policy id to preprocessor for the
             observations prior to filtering.
@@ -246,7 +247,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
             observations for the policy.
         clip_rewards (bool): Whether to clip rewards before postprocessing.
         pack (bool): Whether to pack multiple episodes into each batch. This
-            guarantees batches will be exactly `unroll_length` in size.
+            guarantees batches will be exactly `rollout_fragment_length` in
+            size.
         clip_actions (bool): Whether to clip actions to the space range.
         callbacks (dict): User callbacks to run on episode events.
         tf_sess (Session|None): Optional tensorflow session to use for batching
@@ -336,8 +338,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         active_envs, to_eval, outputs = _process_observations(
             base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
-            preprocessors, obs_filters, unroll_length, pack, callbacks,
-            soft_horizon, no_done_at_end)
+            preprocessors, obs_filters, rollout_fragment_length, pack,
+            callbacks, soft_horizon, no_done_at_end)
         perf_stats.processing_time += time.time() - t1
         for o in outputs:
             yield o
@@ -365,8 +367,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
 def _process_observations(base_env, policies, batch_builder_pool,
                           active_episodes, unfiltered_obs, rewards, dones,
                           infos, off_policy_actions, horizon, preprocessors,
-                          obs_filters, unroll_length, pack, callbacks,
-                          soft_horizon, no_done_at_end):
+                          obs_filters, rollout_fragment_length, pack,
+                          callbacks, soft_horizon, no_done_at_end):
     """Record new data from the environment and prepare for policy evaluation.
 
     Returns:
@@ -378,8 +380,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
     active_envs = set()
     to_eval = defaultdict(list)
     outputs = []
-    large_batch_threshold = max(1000, unroll_length * 10) if \
-        unroll_length != float("inf") else 5000
+    large_batch_threshold = max(1000, rollout_fragment_length * 10) if \
+        rollout_fragment_length != float("inf") else 5000
 
     # For each environment
     for env_id, agent_obs in unfiltered_obs.items():
@@ -399,8 +401,9 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 "the sampler. If this is more than you expected, check that "
                 "that you set a horizon on your environment correctly and that"
                 " it terminates at some point. "
-                "Note: In multi-agent environments, `sample_batch_size` sets "
-                "the batch size based on environment steps, not the steps of "
+                "Note: In multi-agent environments, `rollout_fragment_length` "
+                "sets the batch size based on environment steps, not the "
+                "steps of "
                 "individual agents, which can result in unexpectedly large "
                 "batches. Also, you may be in evaluation waiting for your Env "
                 "to terminate (batch_mode=`complete_episodes`). Make sure it "
@@ -484,7 +487,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
             if dones[env_id]["__all__"] and not no_done_at_end:
                 episode.batch_builder.check_missing_dones()
             if (all_done and not pack) or \
-                    episode.batch_builder.count >= unroll_length:
+                    episode.batch_builder.count >= rollout_fragment_length:
                 outputs.append(episode.batch_builder.build_and_reset(episode))
             elif all_done:
                 # Make sure postprocessor stays within one episode

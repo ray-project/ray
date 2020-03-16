@@ -30,7 +30,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "buffer_size": 2000000,
         "learning_starts": 50000,
         "train_batch_size": 512,
-        "sample_batch_size": 50,
+        "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
@@ -62,7 +62,7 @@ def make_async_optimizer(workers, config):
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         train_batch_size=config["train_batch_size"],
-        sample_batch_size=config["sample_batch_size"],
+        rollout_fragment_length=config["rollout_fragment_length"],
         **extra_config)
     workers.add_workers(config["num_workers"])
     opt._set_workers(workers.remote_workers())

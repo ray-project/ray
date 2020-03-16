@@ -70,7 +70,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] actor_id The actor_id of the actor to kill.
   /// \param[in] force_kill Whether to force kill the actor, or let the actor
   /// try a clean exit.
-  void KillActor(const ActorID &actor_id, bool force_kill);
+  /// \param[in] no_reconstruction If set to true, the killed actor will not be
+  /// reconstructed anymore.
+  void KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -134,8 +136,10 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// rpc_clients_ map.
   absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
 
-  /// Set of actor ids that should be force killed once a client is available.
-  absl::flat_hash_map<ActorID, bool> pending_force_kills_ GUARDED_BY(mu_);
+  /// Map from actor ids that should be force killed once a client is available to the
+  /// pending kill actor requests.
+  absl::flat_hash_map<ActorID, rpc::KillActorRequest> pending_force_kills_
+      GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
