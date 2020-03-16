@@ -303,11 +303,11 @@ class ReferenceCounter {
     /// 2. If lineage pinning is enabled, there are no tasks that depend on
     /// the object that may be retried in the future.
     bool ShouldDelete(bool lineage_pinning_enabled) const {
-      bool release_lineage = true;
       if (lineage_pinning_enabled) {
-        release_lineage = lineage_ref_count == 0;
+        return OutOfScope() && (lineage_ref_count == 0);
+      } else {
+        return OutOfScope();
       }
-      return OutOfScope() && release_lineage;
     }
 
     /// Whether we own the object. If we own the object, then we are

@@ -146,6 +146,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids_to_add) {
+    RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       // This happens if a large argument is transparently passed by reference
@@ -199,7 +200,13 @@ void ReferenceCounter::ReleaseLineageReferencesInternal(
       continue;
     }
 
-    RAY_CHECK(it->second.lineage_ref_count > 0);
+    if (it->second.lineage_ref_count == 0) {
+      // References can get evicted early when lineage pinning is disabled.
+      RAY_CHECK(!lineage_pinning_enabled_);
+      continue;
+    }
+
+    RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
     it->second.lineage_ref_count--;
     if (it->second.lineage_ref_count == 0) {
       // Don't have to pass in a deleted vector here because the reference
@@ -214,6 +221,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids, bool release_lineage,
     std::vector<ObjectID> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {
+    RAY_LOG(DEBUG) << "Releasing ref for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
@@ -223,8 +231,12 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     RAY_CHECK(it->second.submitted_task_ref_count > 0);
     it->second.submitted_task_ref_count--;
     if (release_lineage) {
-      RAY_CHECK(it->second.lineage_ref_count > 0);
-      it->second.lineage_ref_count--;
+      if (it->second.lineage_ref_count > 0) {
+        it->second.lineage_ref_count--;
+      } else {
+        // References can get evicted early when lineage pinning is disabled.
+        RAY_CHECK(!lineage_pinning_enabled_);
+      }
     }
     if (it->second.RefCount() == 0) {
       DeleteReferenceInternal(it, deleted);
