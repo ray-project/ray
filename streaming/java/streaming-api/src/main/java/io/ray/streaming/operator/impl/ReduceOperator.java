@@ -1,15 +1,15 @@
 package io.ray.streaming.operator.impl;
 
 import io.ray.streaming.api.collector.Collector;
-import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.function.impl.ReduceFunction;
 import io.ray.streaming.message.KeyRecord;
 import io.ray.streaming.message.Record;
 import io.ray.streaming.operator.OneInputOperator;
-import io.ray.streaming.operator.StreamOperator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.ray.streaming.api.context.StreamRuntimeContext;
+import org.ray.streaming.operator.StreamOperator;
 
 public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>> implements
     OneInputOperator<T> {
@@ -21,7 +21,7 @@ public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>> impl
   }
 
   @Override
-  public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
+  public void open(List<Collector> collectorList, StreamRuntimeContext runtimeContext) {
     super.open(collectorList, runtimeContext);
     this.reduceState = new HashMap<>();
   }

@@ -1,27 +1,25 @@
 package io.ray.streaming.runtime.worker.tasks;
 
-import io.ray.api.BaseActor;
-import io.ray.api.Ray;
 import io.ray.streaming.api.collector.Collector;
-import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.runtime.core.collector.OutputCollector;
 import io.ray.streaming.runtime.core.graph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.ExecutionNode;
-import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.transfer.ChannelID;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.worker.JobWorker;
-import io.ray.streaming.runtime.worker.context.RayRuntimeContext;
 import io.ray.streaming.util.Config;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import org.ray.api.BaseActor;
+import org.ray.api.Ray;
+import org.ray.streaming.api.context.StreamRuntimeContext;
+import org.ray.streaming.runtime.core.processor.Processor;
+import org.ray.streaming.runtime.worker.context.RayStreamRuntimeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,7 +103,7 @@ public abstract class StreamTask implements Runnable {
       reader = new DataReader(channelIDs, inputActors, queueConf);
     }
 
-    RuntimeContext runtimeContext = new RayRuntimeContext(
+    StreamRuntimeContext runtimeContext = new RayStreamRuntimeContext(
         worker.getExecutionTask(), worker.getConfig(), executionNode.getParallelism());
 
     processor.open(collectors, runtimeContext);
