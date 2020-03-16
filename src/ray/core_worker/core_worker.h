@@ -50,10 +50,9 @@
 
 namespace ray {
 
-/// The root class that contains all the core and language-independent functionalities
-/// of the worker. This class is supposed to be used to implement app-language (Java,
-/// Python, etc) workers.
-class CoreWorker : public rpc::CoreWorkerServiceHandler {
+class CoreWorker;
+
+struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
@@ -64,34 +63,125 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results, const ray::WorkerID &worker_id)>;
 
+  /// Type of this worker (i.e., DRIVER or WORKER).
+  WorkerType worker_type;
+  /// Application language of this worker (i.e., PYTHON or JAVA).
+  Language language;
+  /// Object store socket to connect to.
+  std::string store_socket;
+  /// Raylet socket to connect to.
+  std::string raylet_socket;
+  /// Job ID of this worker.
+  JobID job_id;
+  /// Options for the GCS client.
+  gcs::GcsClientOptions gcs_options;
+  /// Directory to write logs to. If this is empty, logs won't be written to a file.
+  std::string log_dir;
+  /// If false, will not call `RayLog::InstallFailureSignalHandler()`.
+  bool install_failure_signal_handler;
+  /// IP address of the node.
+  std::string node_ip_address;
+  /// Port of the local raylet.
+  int node_manager_port;
+  /// Language worker callback to execute tasks.
+  TaskExecutionCallback task_execution_callback;
+  /// Application-language callback to check for signals that have been received
+  /// since calling into C++. This will be called periodically (at least every
+  /// 1s) during long-running operations. If the function returns anything but StatusOK,
+  /// any long-running operations in the core worker will short circuit and return that
+  /// status.
+  std::function<Status()> check_signals;
+  /// Application-language callback to trigger garbage collection in the language
+  /// runtime. This is required to free distributed references that may otherwise
+  /// be held up in garbage objects.
+  std::function<void()> gc_collect;
+  /// Whether to enable object ref counting.
+  bool ref_counting_enabled;
+  /// The number of workers to be started in the current process.
+  int num_workers;
+};
+
+/// Lifecycle management of one or more `CoreWorker` instances in a process.
+class CoreWorkerProcess {
+ public:
+  /// Initialize core workers at process level.
+  ///
+  /// \param[in] options The various initialization options.
+  static void Initialize(const CoreWorkerOptions &options);
+
+  /// Shutdown workers completely at process level.
+  static void Shutdown();
+
+  /// Shutdown the core worker associated with the current thread.
+  static void ShutdownCurrentWorker();
+
+  /// Get the core worker associated with the current thread.
+  /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
+  /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
+  static CoreWorker &GetCoreWorker();
+
+  /// Set the core worker associated with the current thread by worker ID.
+  /// Currently used by Java worker only.
+  ///
+  /// \param worker_id The worker ID of the core worker instance.
+  static void SetCurrentThreadWorkerId(const WorkerID &worker_id);
+
+  /// Start receiving and executing tasks.
+  /// Used by worker process only.
+  ///
+  /// \return void.
+  static void StartExecutingTasks();
+
+  ~CoreWorkerProcess();
+
+ private:
+  CoreWorkerProcess(const CoreWorkerOptions &options);
+
+  std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
+      LOCKS_EXCLUDED(worker_map_mutex_);
+
+  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(worker_map_mutex_);
+
+  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
+
+  void SetCurrentThreadCoreWorker(std::shared_ptr<CoreWorker> worker);
+
+  /// The global instance.
+  static std::unique_ptr<CoreWorkerProcess> instance_;
+
+  const CoreWorkerOptions options_;
+
+  /// The core worker instance associated with the current thread.
+  /// Use weak_ptr here to avoid memory leak due to multi-threading.
+  static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
+
+  /// The only core worker instance, if the number of workers is 1.
+  std::shared_ptr<CoreWorker> global_worker_;
+
+  /// The worker ID of the global worker, if the number of workers is 1.
+  const WorkerID global_worker_id_;
+
+  /// Map from worker ID to worker.
+  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_
+      GUARDED_BY(worker_map_mutex_);
+
+  /// To protect access the `workers_` map.
+  mutable absl::Mutex worker_map_mutex_;
+};
+
+/// The root class that contains all the core and language-independent functionalities
+/// of the worker. This class is supposed to be used to implement app-language (Java,
+/// Python, etc) workers.
+class CoreWorker : public rpc::CoreWorkerServiceHandler {
  public:
   /// Construct a CoreWorker instance.
   ///
-  /// \param[in] worker_type Type of this worker.
-  /// \param[in] language Language of this worker.
-  /// \param[in] store_socket Object store socket to connect to.
-  /// \param[in] raylet_socket Raylet socket to connect to.
-  /// \param[in] job_id Job ID of this worker.
-  /// \param[in] gcs_options Options for the GCS client.
-  /// \param[in] log_dir Directory to write logs to. If this is empty, logs
-  ///            won't be written to a file.
-  /// \param[in] node_ip_address IP address of the node.
-  /// \param[in] node_manager_port Port of the local raylet.
-  /// \param[in] task_execution_callback Language worker callback to execute tasks.
-  /// \param[in] check_signals Language worker function to check for signals and handle
-  ///            them. If the function returns anything but StatusOK, any long-running
-  ///            operations in the core worker will short circuit and return that status.
-  /// \param[in] ref_counting_enabled Whether to enable object ref counting.
-  ///
-  /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  CoreWorker(const WorkerType worker_type, const Language language,
-             const std::string &store_socket, const std::string &raylet_socket,
-             const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-             const std::string &log_dir, const std::string &node_ip_address,
-             int node_manager_port, const TaskExecutionCallback &task_execution_callback,
-             std::function<Status()> check_signals = nullptr,
-             std::function<void()> gc_collect = nullptr,
-             bool ref_counting_enabled = false);
+  /// \param[in] options The various initialization options.
+  /// \param[in] worker_id ID of this worker.
+  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
+
+  CoreWorker(CoreWorker const &) = delete;
+  void operator=(CoreWorker const &other) = delete;
 
   virtual ~CoreWorker();
 
@@ -99,9 +189,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void Disconnect();
 
-  WorkerType GetWorkerType() const { return worker_type_; }
+  WorkerType GetWorkerType() const { return options_.worker_type; }
 
-  Language GetLanguage() const { return language_; }
+  Language GetLanguage() const { return options_.language; }
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
@@ -443,11 +533,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
-
+// TOCHECK: move to the private section
+private:
   /// Start receiving and executing tasks.
   /// \return void.
   void StartExecutingTasks();
 
+public:
   /// Allocate the return objects for an executing task. The caller should write into the
   /// data buffers of the allocated buffers.
   ///
@@ -662,27 +754,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  /// Type of this worker (i.e., DRIVER or WORKER).
-  const WorkerType worker_type_;
-
-  /// Application language of this worker (i.e., PYTHON or JAVA).
-  const Language language_;
-
-  /// Directory where log files are written.
-  const std::string log_dir_;
-
-  /// Whether local reference counting is enabled.
-  const bool ref_counting_enabled_;
-
-  /// Application-language callback to check for signals that have been received
-  /// since calling into C++. This will be called periodically (at least every
-  /// 1s) during long-running operations.
-  std::function<Status()> check_signals_;
-
-  /// Application-language callback to trigger garbage collection in the language
-  /// runtime. This is required to free distributed references that may otherwise
-  /// be held up in garbage objects.
-  std::function<void()> gc_collect_;
+  const CoreWorkerOptions options_;
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -834,6 +906,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
 
+  friend class CoreWorkerProcess;
   friend class CoreWorkerTest;
 };
 

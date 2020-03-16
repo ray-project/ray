@@ -77,41 +77,209 @@ void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
 
 namespace ray {
 
-CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
-                       const std::string &store_socket, const std::string &raylet_socket,
-                       const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-                       const std::string &log_dir, const std::string &node_ip_address,
-                       int node_manager_port,
-                       const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals,
-                       std::function<void()> gc_collect, bool ref_counting_enabled)
-    : worker_type_(worker_type),
-      language_(language),
-      log_dir_(log_dir),
-      ref_counting_enabled_(ref_counting_enabled),
-      check_signals_(check_signals),
-      gc_collect_(gc_collect),
-      worker_context_(worker_type, job_id),
+std::unique_ptr<CoreWorkerProcess> CoreWorkerProcess::instance_;
+
+thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
+
+void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
+  RAY_CHECK(!instance_) << "The process is already initialized for core worker.";
+  instance_ = std::unique_ptr<CoreWorkerProcess>(new CoreWorkerProcess(options));
+}
+
+void CoreWorkerProcess::Shutdown() {
+  if (!instance_) {
+    return;
+  }
+  RAY_CHECK(instance_->options_.worker_type == WorkerType::DRIVER)
+      << "The `Shutdown` interface is for driver only.";
+  RAY_CHECK(instance_->global_worker_);
+  instance_->global_worker_->Disconnect();
+  instance_->global_worker_->Shutdown();
+  instance_->RemoveWorker(instance_->global_worker_);
+  instance_.reset();
+}
+
+void CoreWorkerProcess::ShutdownCurrentWorker() {
+  RAY_CHECK(instance_) << "The process is not initialized for core worker.";
+  RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER)
+      << "The `ShutdownCurrentWorker` interface is for worker only.";
+  auto &worker = GetCoreWorker();
+  worker.Disconnect();
+  worker.Shutdown();
+  // TODO (kfstorm): Maybe we can call `exit(0)` directly if num_workers is 1?
+}
+
+CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
+    : options_(options),
+      global_worker_id_(
+          options.worker_type == WorkerType::DRIVER
+              ? ComputeDriverIdFromJob(options_.job_id)
+              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil()))) {
+  int pid = getpid();
+
+  // Initialize logging if log_dir is passed. Otherwise, it must be initialized
+  // and cleaned up by the caller.
+  if (options_.log_dir != "") {
+    std::stringstream app_name;
+    app_name << LanguageString(options_.language) << "-core-"
+             << WorkerTypeString(options_.worker_type) << "-" << pid;
+    if (!global_worker_id_.IsNil()) {
+      app_name << "-" << global_worker_id_;
+    }
+    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, 30, options_.log_dir);
+    if (options_.install_failure_signal_handler) {
+      RayLog::InstallFailureSignalHandler();
+    }
+  }
+
+  RAY_CHECK(options_.num_workers > 0);
+  if (options_.worker_type == WorkerType::DRIVER) {
+    // Driver process can only contain one worker.
+    RAY_CHECK(options_.num_workers == 1);
+  }
+
+  RAY_LOG(INFO) << "Constructing CoreWorkerProcess, pid: " << pid;
+
+  // TOCHECK: Previously cython needs the Raylet client.
+  if (options_.num_workers == 1) {
+    CreateWorker();
+  }
+}
+
+CoreWorkerProcess::~CoreWorkerProcess() {
+  RAY_LOG(INFO) << "Core worker process is exiting.";
+  {
+    absl::MutexLock lock(&worker_map_mutex_);
+    RAY_CHECK(workers_.empty());
+  }
+  if (options_.log_dir != "") {
+    RayLog::ShutDownRayLog(options_.install_failure_signal_handler);
+  }
+}
+
+CoreWorker &CoreWorkerProcess::GetCoreWorker() {
+  RAY_CHECK(instance_);
+  if (instance_->options_.num_workers == 1) {
+    return *instance_->global_worker_;
+  }
+  auto ptr = current_core_worker_.lock();
+  RAY_CHECK(ptr != nullptr)
+      << "The current thread is not bound with a core worker instance.";
+  return *ptr;
+}
+
+void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
+  RAY_CHECK(instance_);
+  if (instance_->options_.num_workers == 1) {
+    RAY_CHECK(instance_->global_worker_->GetWorkerID() == worker_id);
+    return;
+  }
+  current_core_worker_ = instance_->GetWorker(worker_id);
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
+    const WorkerID &worker_id) const {
+  absl::MutexLock lock(&worker_map_mutex_);
+  auto it = workers_.find(worker_id);
+  RAY_CHECK(it != workers_.end()) << "Worker " << worker_id << " not found.";
+  return it->second;
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
+  WorkerID worker_id;
+  if (options_.worker_type == WorkerType::DRIVER) {
+    worker_id = global_worker_id_;
+  } else {
+    worker_id = options_.num_workers == 1 ? global_worker_id_ : WorkerID::FromRandom();
+  }
+  auto worker = std::make_shared<CoreWorker>(options_, worker_id);
+  RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
+  if (options_.num_workers == 1) {
+    global_worker_ = worker;
+  }
+  current_core_worker_ = worker;
+
+  absl::MutexLock lock(&worker_map_mutex_);
+  // TOCHECK
+  // Store it in the map before calling `CoreWorker::Connect`. When tasks arrive, we can
+  // find the worker from the map.
+  workers_.emplace(worker->GetWorkerID(), worker);
+  // Once we register to Raylet, Raylet will start assigning tasks to this core worker.
+  // We need to make sure the registration happens after putting the worker instance into
+  // the `workers_` map, otherwise some required fields was not initialized when the
+  // first task arrived.
+  worker->Connect(rpc_server_port);
+  return worker;
+}
+
+void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
+  RAY_CHECK(worker->IsShutdown());
+  if (global_worker_) {
+    RAY_CHECK(global_worker_ == worker);
+  } else {
+    RAY_CHECK(current_core_worker_.lock() == worker);
+  }
+  current_core_worker_.reset();
+  {
+    absl::MutexLock lock(&worker_map_mutex_);
+    workers_.erase(worker->GetWorkerID());
+    RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
+  }
+  if (global_worker_ == worker) {
+    global_worker_ = nullptr;
+  }
+}
+
+void CoreWorkerProcess::SetCurrentThreadCoreWorker(std::shared_ptr<CoreWorker> worker) {
+  if (options_.num_workers == 1) {
+    RAY_CHECK(worker == global_worker_);
+  } else {
+    current_core_worker_ = worker;
+  }
+}
+
+void CoreWorkerProcess::StartExecutingTasks() {
+  RAY_CHECK(instance_);
+  if (instance_->options_.num_workers == 1) {
+    // CoreWorker has been initialized in constructor.
+    auto worker = instance_->global_worker_;
+    // Run the task loop in the current thread only if the number of workers is 1.
+    worker->Run();
+    instance_->RemoveWorker(worker);
+  } else {
+    std::vector<std::thread> worker_threads;
+    for (int i = 0; i < instance_->options_.num_workers; i++) {
+      worker_threads.emplace_back([]() {
+        while (true) {
+          auto worker = instance_->CreateWorker();
+          worker->Run();
+          instance_->RemoveWorker(worker);
+        }
+      });
+    }
+    for (auto &thread : worker_threads) {
+      thread.join();
+    }
+  }
+
+  instance_.reset();
+}
+
+CoreWorker::CoreWorker(
+    const CoreWorkerOptions &options, const WorkerID &worker_id)
+    : options_(options),
+      worker_context_(options_.worker_type, worker_id, options_.job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
-      core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
+      core_worker_server_(WorkerTypeString(options_.worker_type), 0 /* let grpc choose a port */),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
-  // Initialize logging if log_dir is passed. Otherwise, it must be initialized
-  // and cleaned up by the caller.
-  if (log_dir_ != "") {
-    std::stringstream app_name;
-    app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
-             << worker_context_.GetWorkerID();
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
-    RayLog::InstallFailureSignalHandler();
-  }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
   if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
