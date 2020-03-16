@@ -43,9 +43,9 @@ public class ArgumentsBuilder {
         id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
-        List<ObjectId> innerObjectIds = RayObjectSerializer.getAndClearContainedObjectIds();
+        List<ObjectId> containedObjectIds = RayObjectSerializer.getAndClearContainedObjectIds();
         if (!isDirectCall && value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = RuntimeUtil.getRuntime().getObjectStore().putRaw(value, innerObjectIds);
+          id = RuntimeUtil.getRuntime().getObjectStore().putRaw(value, containedObjectIds);
           value = null;
         }
       }
