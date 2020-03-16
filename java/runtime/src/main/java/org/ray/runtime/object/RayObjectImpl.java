@@ -3,16 +3,13 @@ package org.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.io.ObjectInput;
-import java.io.Serializable;
+import java.io.Externalizable;
+import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.nustaq.serialization.FSTBasicObjectSerializer;
-import org.nustaq.serialization.FSTClazzInfo;
-import org.nustaq.serialization.FSTObjectInput;
-import org.nustaq.serialization.FSTObjectOutput;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
@@ -22,7 +19,7 @@ import org.ray.runtime.util.RuntimeUtil;
 /**
  * Implementation of {@link RayObject}.
  */
-public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
+public final class RayObjectImpl<T> implements RayObject<T>, Externalizable {
 
   private ObjectId id;
 
@@ -57,9 +54,25 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
     }
   }
 
-  void readObject(FSTObjectInput in) throws Exception {
-    ObjectId id = (ObjectId) in.readObject(ObjectId.class);
-    this.id = id;
+  static ThreadLocal<Set<ObjectId>> containedObjectIds = ThreadLocal.withInitial(HashSet::new);
+
+  public static List<ObjectId> getAndClearContainedObjectIds() {
+    List<ObjectId> ids = new ArrayList<>(containedObjectIds.get());
+    containedObjectIds.get().clear();
+    return ids;
+  }
+
+  public RayObjectImpl() {}
+
+  @Override
+  public void writeExternal(ObjectOutput out) throws IOException {
+    out.writeObject(this.getId());
+    containedObjectIds.get().add(this.getId());
+  }
+
+  @Override
+  public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    this.id = (ObjectId) in.readObject();
     addLocalReference();
   }
 
@@ -79,7 +92,4 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
     }
     runtime = null;
   }
-
-
-
 }
