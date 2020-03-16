@@ -71,6 +71,7 @@ jclass java_native_ray_object_class;
 jmethodID java_native_ray_object_init;
 jfieldID java_native_ray_object_data;
 jfieldID java_native_ray_object_metadata;
+jfieldID java_native_ray_object_contained_object_ids;
 
 jclass java_task_executor_class;
 jmethodID java_task_executor_execute;
@@ -192,6 +193,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_native_ray_object_class, "data", "[B");
   java_native_ray_object_metadata =
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
+  java_native_ray_object_contained_object_ids =
+      env->GetFieldID(java_native_ray_object_class, "containedObjectIds", "Ljava/util/List;");
 
   java_task_executor_class = LoadClass(env, "org/ray/runtime/task/TaskExecutor");
   java_task_executor_execute =

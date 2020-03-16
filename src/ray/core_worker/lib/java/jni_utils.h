@@ -132,6 +132,9 @@ extern jmethodID java_native_ray_object_init;
 extern jfieldID java_native_ray_object_data;
 /// metadata field of NativeRayObject class
 extern jfieldID java_native_ray_object_metadata;
+// containedObjectIds field of NativeRayObject class
+extern jfieldID java_native_ray_object_contained_object_ids;
+
 
 /// TaskExecutor class
 extern jclass java_task_executor_class;
@@ -393,6 +396,14 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
+  auto java_contained_ids = env->GetObjectField(java_obj, java_native_ray_object_contained_object_ids);
+  std::vector<ray::ObjectID> contained_object_ids;
+  JavaListToNativeVector<ray::ObjectID>(
+          env, java_contained_ids, &contained_object_ids, [](JNIEnv *env, jobject id) {
+        return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
+      });
+  auto java_contained_object_ids = env->GetObjectField(java_obj,
+          java_native_ray_object_contained_object_ids);
   // TODO: Support nested IDs for Java.
   return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
                                           std::vector<ray::ObjectID>());

@@ -1,10 +1,12 @@
 package org.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
+import org.ray.api.id.BaseId;
 import org.ray.api.id.ObjectId;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Binary representation of a ray object. See `RayObject` class in C++ for details.
@@ -13,7 +15,7 @@ public class NativeRayObject {
 
   public byte[] data;
   public byte[] metadata;
-  private List<ObjectId> containedObjectIds = Collections.emptyList();
+  public List<byte[]> containedObjectIds = Collections.emptyList();
 
   public NativeRayObject(byte[] data, byte[] metadata) {
     Preconditions.checkState(bufferLength(data) > 0 || bufferLength(metadata) > 0);
@@ -21,12 +23,8 @@ public class NativeRayObject {
     this.metadata = metadata;
   }
 
-  public List<ObjectId> getContainedObjectIds() {
-    return containedObjectIds;
-  }
-
   public void setContainedObjectIds(List<ObjectId> containedObjectIds) {
-    this.containedObjectIds = containedObjectIds;
+    this.containedObjectIds = toBinaryList(containedObjectIds);
   }
 
   private static int bufferLength(byte[] buffer) {
@@ -35,6 +33,11 @@ public class NativeRayObject {
     }
     return buffer.length;
   }
+
+  private static List<byte[]> toBinaryList(List<ObjectId> ids) {
+    return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
+  }
+
 
   @Override
   public String toString() {
