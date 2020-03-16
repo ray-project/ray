@@ -834,6 +834,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
 
+  std::unordered_map<ActorID, std::shared_ptr<gcs::ActorTableData>> actor_map_;
+
+  /// The `actor_map_` field could be mutated concurrently due to multi-threading, we
+  /// need a mutex to protect it.
+  mutable absl::Mutex actor_map_mutex_;
+
   friend class CoreWorkerTest;
 };
 

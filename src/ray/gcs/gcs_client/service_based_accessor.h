@@ -90,9 +90,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
  private:
-  void FilterSubscribedData(const rpc::ActorTableData &actor_table_data,
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe);
-
   ServiceBasedGcsClient *client_impl_;
 
   ClientID subscribe_id_;
@@ -102,8 +99,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   ActorSubscriptionExecutor actor_sub_executor_;
 
   Sequencer<ActorID> sequencer_;
-
-  std::unordered_map<ActorID, std::shared_ptr<ActorTableData>> actor_map_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor
@@ -171,9 +166,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
  private:
-  void FilterSubscribedData(const rpc::GcsNodeInfo &node_info,
-                            const SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe);
-
   ServiceBasedGcsClient *client_impl_;
 
   typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>

@@ -930,6 +930,26 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
+      actor_map_mutex_.Lock();
+      auto it = actor_map_.find(actor_id);
+      if (it != actor_map_.end()) {
+        // Filter out repeated data.
+        if (it->second->remaining_reconstructions() ==
+                actor_data.remaining_reconstructions() &&
+            it->second->state() == actor_data.state()) {
+          return;
+        }
+
+        // Filter out old data.
+        if (it->second->remaining_reconstructions() <
+                actor_data.remaining_reconstructions() ||
+            it->second->state() < actor_data.state()) {
+          return;
+        }
+      }
+      actor_map_[actor_id] = std::make_shared<gcs::ActorTableData>(actor_data);
+      actor_map_mutex_.Unlock();
+
       if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
         absl::MutexLock lock(&actor_handles_mutex_);
         auto it = actor_handles_.find(actor_id);

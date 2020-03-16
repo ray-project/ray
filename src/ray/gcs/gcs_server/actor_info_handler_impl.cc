@@ -46,6 +46,14 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
                  << ", actor id = " << actor_id;
 }
 
+void DefaultActorInfoHandler::HandleGetAllActorInfo(
+    const GetAllActorInfoRequest &request, GetAllActorInfoReply *reply,
+    SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all actor info.";
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+  RAY_LOG(DEBUG) << "Finished getting all actor info.";
+}
+
 void DefaultActorInfoHandler::HandleRegisterActorInfo(
     const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {

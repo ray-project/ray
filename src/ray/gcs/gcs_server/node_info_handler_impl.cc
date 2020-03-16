@@ -127,7 +127,11 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
 
 void DefaultNodeInfoHandler::HandleGetAllResources(
     const GetAllResourcesRequest &request, GetAllResourcesReply *reply,
-    SendReplyCallback send_reply_callback) {}
+    SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all resources.";
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+  RAY_LOG(DEBUG) << "Finished getting all resources.";
+}
 
 void DefaultNodeInfoHandler::HandleUpdateResources(
     const UpdateResourcesRequest &request, UpdateResourcesReply *reply,

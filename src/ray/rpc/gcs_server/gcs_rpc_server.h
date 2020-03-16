@@ -213,6 +213,7 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllResources);
     NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
   }
