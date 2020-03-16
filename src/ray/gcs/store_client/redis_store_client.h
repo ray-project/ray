@@ -58,9 +58,84 @@ class RedisStoreClient : public StoreClient {
                const std::string &value, const std::string &shard_key,
                const StatusCallback &callback);
 
-  std::shared_ptr<RedisContext> GetRedisContext(const std::string &key);
+  typedef ScanBatchCallback =
+      std::function<void(Status status, size_t cursor,
+                         const std::vector<std::pair<std::string, std::string>> &result)>;
 
-  std::unique_ptr<RedisClient> redis_client_;
+  Status DoScan(size_t cursor, const std::string &match_pattern,
+                const std::string &shard_key, const ScanBatchCallback &callback);
+
+  void OnScanCallback();
+
+  std::shared_ptr<RedisClient> redis_client_;
+};
+
+/// \class RedisRangeOpExecutor
+/// This class is used for three kind of operations:
+/// 1. Get All Data with the same prefix from Redis (GetAll).
+/// 2. Get All Data Key with the same index from Redis (GetByIndex).
+/// 3. Delete Index and Data Key with the same index from Redis (DeleteByIndex).
+/// TODO(micafan) Consider encapsulating three different classes.
+class RedisRangeOpExecutor : public std::enable_shared_from_this<CallbackItem> {
+ public:
+  RedisRangeOpExecutor(std::shared_ptr<RedisClient> redis_client,
+                       const std::string &table_name, const std::string &index,
+                       const MultiItemCallback<std::string> &get_by_index_callback);
+
+  RedisRangeOpExecutor(std::shared_ptr<RedisClient> redis_client,
+                       const std::string &table_name, const std::string &index,
+                       const StatusCallback &delete_by_index_callback);
+
+  RedisRangeOpExecutor(std::shared_ptr<RedisClient> redis_client,
+                       const std::string &table_name,
+                       const ScanCallback<std::string, std::string> &get_all_callback);
+
+  ~RedisRangeOpExecutor();
+
+  Status Run();
+
+ private:
+  void OnFailed();
+
+  void OnDone();
+
+  void DoScan();
+
+  void OnScanCallback(std::shared_ptr<CallbackReply> reply);
+
+  void DoParseKeys(const std::vector<std::string> &index_keys);
+
+  void DoBatchDelete(const std::vector<std::string> &index_keys);
+
+  void DoMultiRead(const std::vector<std::string> &data_keys);
+
+  void DoCallback();
+
+  std::vector<std::string> DedupeKeys(std::vector<std::string> keys);
+
+ private:
+  std::shared_ptr<RedisClient> redis_client_{nullptr};
+
+  std::string table_name_;
+  std::string index_;
+
+  MultiItemCallback<std::string> get_by_index_callback_{nullptr};
+  std::vector<std::string> get_by_index_result_;
+
+  StatusCallback delete_by_index_callback_{nullptr};
+  std::atomic<int> pending_delete_count_{0};
+
+  ScanCallback<std::string, std::string> get_all_callback_{nullptr};
+  std::vector<std::pair<std::string, std::string>> get_all_partial_result_;
+  std::unordered_set<std::string> pending_read_keys_;
+
+  int cursor_{-1};
+  std::string index_table_prefix_;
+  std::string data_table_prefix_;
+  std::string match_pattern_;
+
+  Status status_{Status::OK()};
+  std::unordered_set<std::string> keys_returned_by_scan_;
 };
 
 }  // namespace gcs

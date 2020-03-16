@@ -208,6 +208,8 @@ class RedisContext {
     return *async_redis_subscribe_context_;
   }
 
+  boost::asio::io_service &io_service() { return io_service_; }
+
  private:
   boost::asio::io_service &io_service_;
   redisContext *context_;

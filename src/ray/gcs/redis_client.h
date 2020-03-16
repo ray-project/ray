@@ -51,6 +51,16 @@ class RedisClient {
   /// \return Status
   Status Connect(boost::asio::io_service &io_service);
 
+  // TODO(micafan) Maybe it's not necessary to use multi threads.
+  /// Connect to Redis. Non-thread safe.
+  /// Call this function before calling other functions.
+  ///
+  /// \param io_services The event loops for this client. Each RedisContext bind to
+  // a event loop.
+  /// Must be single-threaded io_service (get more information from RedisAsioClient).
+  /// \return Status
+  Status Connect(std::vector<boost::asio::io_service &> io_services);
+
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
 
@@ -58,12 +68,14 @@ class RedisClient {
     return shard_contexts_;
   }
 
+  std::shared_ptr<RedisContext> GetRedisContext(const std::string &shard_key);
+
   std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
 
  protected:
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
-  void Attach(boost::asio::io_service &io_service);
+  void Attach();
 
   RedisClientOptions options_;
 

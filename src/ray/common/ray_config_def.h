@@ -239,6 +239,9 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
 RAY_CONFIG(int64_t, gcs_service_connect_wait_milliseconds, 100)
 
+/// Maximum number of keys in one batch to scan from storage.
+RAY_CONFIG(uint32_t, gcs_service_scan_batch_size, 1000)
+
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
 RAY_CONFIG(int32_t, object_store_full_max_retries, 5)

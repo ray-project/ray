@@ -1,6 +1,7 @@
 #ifndef RAY_UTIL_IO_SERVICE_POOL_H
 #define RAY_UTIL_IO_SERVICE_POOL_H
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <thread>
 
@@ -30,11 +31,17 @@ class IOServicePool {
   /// \return io_service
   boost::asio::io_service &Get(size_t hash);
 
- private:
-  std::vector<std::thread> threads_;
-  std::vector<boost::io_service> io_services_;
+  /// Get all io_service.
+  /// This is only use for RedisClient::Connect().
+  std::vector<boost::asio::io_service &> GetAll();
 
-  size_t current_index_;
+ private:
+  size_t io_service_num_{0};
+
+  std::vector<std::thread> threads_;
+  std::vector<boost::asio::io_service> io_services_;
+
+  std::atomic<size_t> current_index_;
 };
 
 }  // namespace ray
