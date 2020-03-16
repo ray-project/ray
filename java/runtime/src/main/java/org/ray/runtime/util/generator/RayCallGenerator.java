@@ -288,8 +288,9 @@ public class RayCallGenerator extends BaseGenerator {
     }
 
     String returnType = !forActorCreation ? "RayObject" : "RayPyActor";
-    String funcName = forActorCreation ? "createPyActor": forActor ? "call": "callPy";
-    String internalCallFunc = forActorCreation ? "createPyActor" : forActor ? "callPyActor" : "callPy";
+    String funcName = forActorCreation ? "createPyActor" : forActor ? "call" : "callPy";
+    String internalCallFunc = forActorCreation ? "createPyActor" :
+        forActor ? "callPyActor" : "callPy";
     funcArgs += ", args";
     // Method signature.
     newLine(1, String.format(
@@ -299,9 +300,11 @@ public class RayCallGenerator extends BaseGenerator {
     // Method body.
     newLine(2, String.format("Object[] args = new Object[]{%s};", argList));
     if (forActor) {
-      newLine(2, String.format("return Ray.internal().%s((RayPyActor)this, %s%s);", internalCallFunc, funcArgs, optionsArg));
+      newLine(2, String.format("return Ray.internal().%s((RayPyActor)this, %s%s);",
+          internalCallFunc, funcArgs, optionsArg));
     } else {
-      newLine(2, String.format("return Ray.internal().%s(%s%s);", internalCallFunc, funcArgs, optionsArg));
+      newLine(2, String.format("return Ray.internal().%s(%s%s);",
+          internalCallFunc, funcArgs, optionsArg));
     }
     newLine(1, "}");
     newLine("");
