@@ -164,7 +164,9 @@ cdef class MessagePackSerializer(object):
             if python_serializer is not None:
                 return msgpack.ExtType(kLanguageSpecificTypeExtensionId, msgpack.dumps(python_serializer(obj)))
             return obj
-        return msgpack.dumps(o, default=_default, use_bin_type=True)
+        # If we let strict_types is False, then whether list or tuple will be packed to
+        # a message pack array. So, they can't be distinguished when unpacking.
+        return msgpack.dumps(o, default=_default, use_bin_type=True, strict_types=True)
 
     @classmethod
     def loads(cls, s, python_deserializer=None):
