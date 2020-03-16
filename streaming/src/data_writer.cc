@@ -102,13 +102,14 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
   return write_message_id;
 }
 
-StreamingStatus DataWriter::InitChannel(const ObjectID &q_id, const ActorID &actor_id,
+StreamingStatus DataWriter::InitChannel(const ObjectID &q_id,
+                                        const ChannelInitialParameter &param,
                                         uint64_t channel_message_id,
                                         uint64_t queue_size) {
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   channel_info.current_message_id = channel_message_id;
   channel_info.channel_id = q_id;
-  channel_info.actor_id = actor_id;
+  channel_info.parameter = param;
   channel_info.queue_size = queue_size;
   STREAMING_LOG(WARNING) << " Init queue [" << q_id << "]";
   channel_info.writer_ring_buffer = std::make_shared<StreamingRingBuffer>(
@@ -129,7 +130,7 @@ StreamingStatus DataWriter::InitChannel(const ObjectID &q_id, const ActorID &act
 }
 
 StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
-                                 const std::vector<ActorID> &actor_ids,
+                                 const std::vector<ChannelInitialParameter> &init_params,
                                  const std::vector<uint64_t> &channel_message_id_vec,
                                  const std::vector<uint64_t> &queue_size_vec) {
   STREAMING_CHECK(!queue_id_vec.empty() && !channel_message_id_vec.empty());
@@ -144,7 +145,7 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
-    StreamingStatus status = InitChannel(queue_id_vec[i], actor_ids[i],
+    StreamingStatus status = InitChannel(queue_id_vec[i], init_params[i],
                                          channel_message_id_vec[i], queue_size_vec[i]);
     if (status != StreamingStatus::OK) {
       return status;

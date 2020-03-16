@@ -6,7 +6,7 @@ import java.nio.ByteOrder;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.ray.api.id.ActorId;
+import org.ray.api.RayActor;
 import org.ray.streaming.runtime.util.Platform;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
@@ -33,14 +33,14 @@ public class DataWriter {
    * @param conf           configuration
    */
   public DataWriter(List<String> outputChannels,
-                    List<ActorId> toActors,
+                    Map<String, RayActor> toActors,
                     Map<String, String> conf) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
+    ChannelInitialParameters initialParameters =
+        new ChannelInitialParameters().buildOutputQueueParameters(outputChannels, toActors);
     byte[][] outputChannelsBytes = outputChannels.stream()
         .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
-    byte[][] toActorsBytes = toActors.stream()
-        .map(ActorId::getBytes).toArray(byte[][]::new);
     long channelSize = Long.parseLong(
         conf.getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT));
     long[] msgIds = new long[outputChannels.size()];
@@ -53,8 +53,8 @@ public class DataWriter {
       isMock = true;
     }
     this.nativeWriterPtr = createWriterNative(
+        initialParameters,
         outputChannelsBytes,
-        toActorsBytes,
         msgIds,
         channelSize,
         ChannelUtils.toNativeConf(conf),
@@ -123,8 +123,8 @@ public class DataWriter {
   }
 
   private static native long createWriterNative(
+      ChannelInitialParameters initialParameters,
       byte[][] outputQueueIds,
-      byte[][] outputActorIds,
       long[] msgIds,
       long channelSize,
       byte[] confBytes,

@@ -10,10 +10,10 @@ extern "C" {
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataWriter
  * Method:    createWriterNative
- * Signature: ([[B[[B[JJ[BZ)J
+ * Signature: (Lorg/ray/streaming/runtime/transfer/ChannelInitialParameters;[[B[JJ[BZ)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_createWriterNative
-  (JNIEnv *, jclass, jobjectArray, jobjectArray, jlongArray, jlong, jbyteArray, jboolean);
+  (JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlong, jbyteArray, jboolean);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataWriter

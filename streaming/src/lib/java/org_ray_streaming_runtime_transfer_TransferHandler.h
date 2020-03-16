@@ -13,7 +13,7 @@ extern "C" {
  * Signature: (J)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative
-  (JNIEnv *, jobject, jlong, jobject, jobject);
+  (JNIEnv *, jobject, jlong);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_TransferHandler
@@ -21,7 +21,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_TransferHandler_
  * Signature: (J)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative
-  (JNIEnv *, jobject, jlong, jobject, jobject);
+  (JNIEnv *, jobject, jlong);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_TransferHandler

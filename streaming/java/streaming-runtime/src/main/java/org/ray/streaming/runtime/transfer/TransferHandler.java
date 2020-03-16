@@ -2,8 +2,6 @@ package org.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
 import org.ray.runtime.RayNativeRuntime;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
-import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.util.JniUtils;
 
 /**
@@ -24,16 +22,12 @@ public class TransferHandler {
   private long writerClientNative;
   private long readerClientNative;
 
-  public TransferHandler(long coreWorkerNative,
-                         JavaFunctionDescriptor writerAsyncFunc,
-                         JavaFunctionDescriptor writerSyncFunc,
-                         JavaFunctionDescriptor readerAsyncFunc,
-                         JavaFunctionDescriptor readerSyncFunc) {
+  public TransferHandler(long coreWorkerNative) {
     Preconditions.checkArgument(coreWorkerNative != 0);
     writerClientNative = createWriterClientNative(
-        coreWorkerNative, writerAsyncFunc, writerSyncFunc);
+        coreWorkerNative);
     readerClientNative = createReaderClientNative(
-        coreWorkerNative, readerAsyncFunc, readerSyncFunc);
+        coreWorkerNative);
   }
 
   public void onWriterMessage(byte[] buffer) {
@@ -53,14 +47,10 @@ public class TransferHandler {
   }
 
   private native long createWriterClientNative(
-      long coreWorkerNative,
-      FunctionDescriptor asyncFunc,
-      FunctionDescriptor syncFunc);
+      long coreWorkerNative);
 
   private native long createReaderClientNative(
-      long coreWorkerNative,
-      FunctionDescriptor asyncFunc,
-      FunctionDescriptor syncFunc);
+      long coreWorkerNative);
 
   private native void handleWriterMessageNative(long handler, byte[] buffer);
 

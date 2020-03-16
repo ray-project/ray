@@ -78,11 +78,13 @@ class DataReader {
   ///  \param channel_seq_ids
   ///  \param msg_ids
   ///  \param timer_interval
-  void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids,
+  void Init(const std::vector<ObjectID> &input_ids,
+            const std::vector<ChannelInitialParameter> &init_params,
             const std::vector<uint64_t> &channel_seq_ids,
             const std::vector<uint64_t> &msg_ids, int64_t timer_interval);
 
-  void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids,
+  void Init(const std::vector<ObjectID> &input_ids,
+            const std::vector<ChannelInitialParameter> &init_params,
             int64_t timer_interval);
 
   /// Get latest message from input queues.

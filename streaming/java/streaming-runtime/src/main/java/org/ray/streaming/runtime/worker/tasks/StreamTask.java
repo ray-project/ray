@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.id.ActorId;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.context.RuntimeContext;
 import org.ray.streaming.api.partition.Partition;
@@ -25,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class StreamTask implements Runnable {
+
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
 
   protected int taskId;
@@ -64,22 +64,20 @@ public abstract class StreamTask implements Runnable {
     List<ExecutionEdge> outputEdges = executionNode.getOutputEdges();
     List<Collector> collectors = new ArrayList<>();
     for (ExecutionEdge edge : outputEdges) {
-      Map<String, ActorId> outputActorIds = new HashMap<>();
+      Map<String, RayActor> outputActors = new HashMap<>();
       Map<Integer, RayActor> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
         String queueName = ChannelID.genIdStr(taskId, targetTaskId, executionGraph.getBuildTime());
-        outputActorIds.put(queueName, targetActor.getId());
+        outputActors.put(queueName, targetActor);
       });
 
-      if (!outputActorIds.isEmpty()) {
+      if (!outputActors.isEmpty()) {
         List<String> channelIDs = new ArrayList<>();
-        List<ActorId> toActorIds = new ArrayList<>();
-        outputActorIds.forEach((k, v) -> {
+        outputActors.forEach((k, v) -> {
           channelIDs.add(k);
-          toActorIds.add(v);
         });
-        DataWriter writer = new DataWriter(channelIDs, toActorIds, queueConf);
+        DataWriter writer = new DataWriter(channelIDs, outputActors, queueConf);
         LOG.info("Create DataWriter succeed.");
         writers.put(edge, writer);
         Partition partition = edge.getPartition();
@@ -89,24 +87,22 @@ public abstract class StreamTask implements Runnable {
 
     // consumer
     List<ExecutionEdge> inputEdges = executionNode.getInputsEdges();
-    Map<String, ActorId> inputActorIds = new HashMap<>();
+    Map<String, RayActor> inputActors = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
       Map<Integer, RayActor> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
       taskId2Worker.forEach((srcTaskId, srcActor) -> {
         String queueName = ChannelID.genIdStr(srcTaskId, taskId, executionGraph.getBuildTime());
-        inputActorIds.put(queueName, srcActor.getId());
+        inputActors.put(queueName, srcActor);
       });
     }
-    if (!inputActorIds.isEmpty()) {
+    if (!inputActors.isEmpty()) {
       List<String> channelIDs = new ArrayList<>();
-      List<ActorId> fromActorIds = new ArrayList<>();
-      inputActorIds.forEach((k, v) -> {
+      inputActors.forEach((k, v) -> {
         channelIDs.add(k);
-        fromActorIds.add(v);
       });
       LOG.info("Register queue consumer, queues {}.", channelIDs);
-      reader = new DataReader(channelIDs, fromActorIds, queueConf);
+      reader = new DataReader(channelIDs, inputActors, queueConf);
     }
 
     RuntimeContext runtimeContext = new RayRuntimeContext(

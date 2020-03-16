@@ -7,7 +7,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import org.ray.api.id.ActorId;
+import org.ray.api.RayActor;
 import org.ray.streaming.runtime.util.Platform;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
@@ -24,14 +24,14 @@ public class DataReader {
   private Queue<DataMessage> buf = new LinkedList<>();
 
   public DataReader(List<String> inputChannels,
-                    List<ActorId> fromActors,
+                    Map<String, RayActor> fromActors,
                     Map<String, String> conf) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
+    ChannelInitialParameters initialParameters =
+        new ChannelInitialParameters().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
         .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
-    byte[][] fromActorsBytes = fromActors.stream()
-        .map(ActorId::getBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
@@ -48,8 +48,8 @@ public class DataReader {
     boolean isRecreate = Boolean.parseBoolean(
         conf.getOrDefault(Config.IS_RECREATE, "false"));
     this.nativeReaderPtr = createDataReaderNative(
+        initialParameters,
         inputChannelsBytes,
-        fromActorsBytes,
         seqIds,
         msgIds,
         timerInterval,
@@ -155,8 +155,8 @@ public class DataReader {
   }
 
   private static native long createDataReaderNative(
+      ChannelInitialParameters initialParameters,
       byte[][] inputChannels,
-      byte[][] inputActorIds,
       long[] seqIds,
       long[] msgIds,
       long timerInterval,

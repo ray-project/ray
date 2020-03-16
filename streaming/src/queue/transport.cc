@@ -37,17 +37,16 @@ void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
   }
 }
 
-void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function) {
+void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer) {
   STREAMING_LOG(INFO) << "Transport::Send buffer size: " << buffer->Size();
   std::vector<ObjectID> return_ids;
-  SendInternal(std::move(buffer), function, TASK_OPTION_RETURN_NUM_0, return_ids);
+  SendInternal(std::move(buffer), async_func_, TASK_OPTION_RETURN_NUM_0, return_ids);
 }
 
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
-    std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function,
-    int64_t timeout_ms) {
+    std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) {
   std::vector<ObjectID> return_ids;
-  SendInternal(buffer, function, TASK_OPTION_RETURN_NUM_1, return_ids);
+  SendInternal(buffer, sync_func_, TASK_OPTION_RETURN_NUM_1, return_ids);
 
   std::vector<std::shared_ptr<RayObject>> results;
   Status get_st = core_worker_->Get(return_ids, timeout_ms, &results);
@@ -73,14 +72,12 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
 }
 
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResultWithRetry(
-    std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt,
-    int64_t timeout_ms) {
+    std::shared_ptr<LocalMemoryBuffer> buffer, int retry_cnt, int64_t timeout_ms) {
   STREAMING_LOG(INFO) << "SendForResultWithRetry retry_cnt: " << retry_cnt
-                      << " timeout_ms: " << timeout_ms
-                      << " function: " << function.GetFunctionDescriptor()->ToString();
+                      << " timeout_ms: " << timeout_ms;
   std::shared_ptr<LocalMemoryBuffer> buffer_shared = std::move(buffer);
   for (int cnt = 0; cnt < retry_cnt; cnt++) {
-    auto result = SendForResult(buffer_shared, function, timeout_ms);
+    auto result = SendForResult(buffer_shared, timeout_ms);
     if (result != nullptr) {
       return result;
     }
