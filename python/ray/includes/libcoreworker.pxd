@@ -198,7 +198,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string node_ip_address
         int node_manager_port
         c_string name
-        (CRayStatus(CTaskType task_type,
+        (CRayStatus(
+            CTaskType task_type,
             const CRayFunction &ray_function,
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,

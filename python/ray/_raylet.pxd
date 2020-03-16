@@ -72,8 +72,9 @@ cdef class ActorID(BaseID):
 
 cdef class CoreWorker:
     cdef:
-        # Always access C++ CoreWorker through this pointer instead of CCoreWorkerProcess.GetCoreWorker().
-        # Because Python CoreWorker object not be GC indicated that the C++ CoreWorker is alive.
+        # Always access the C++ CoreWorker through this pointer instead of
+        # CCoreWorkerProcess.GetCoreWorker(). Because the C++ CoreWorker will
+        # stay alive until the Python CoreWorker object is garbage collected.
         CCoreWorker *core_worker
         object async_thread
         object async_event_loop

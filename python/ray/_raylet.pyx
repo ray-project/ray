@@ -596,7 +596,8 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port):
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
-        options.worker_type = WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER
+        options.worker_type = (
+            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER)
         options.language = LANGUAGE_PYTHON
         options.store_socket = store_socket.encode("ascii")
         options.raylet_socket = raylet_socket.encode("ascii")
@@ -619,7 +620,8 @@ cdef class CoreWorker:
     # TOCHECK: https://github.com/ray-project/ray/pull/6450
     def __dealloc__(self):
         with nogil:
-            if <int>self.core_worker.GetWorkerType() == <int>WORKER_TYPE_DRIVER:
+            if <int>self.core_worker.GetWorkerType() \
+                    == <int>WORKER_TYPE_DRIVER:
                 CCoreWorkerProcess.Shutdown()
             else:
                 CCoreWorkerProcess.ShutdownCurrentWorker()
