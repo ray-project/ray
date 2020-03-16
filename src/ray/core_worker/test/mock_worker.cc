@@ -26,10 +26,8 @@ int64_t prev_seq_no_ = 0;
 Status GetWorkerPid(std::vector<std::shared_ptr<RayObject>> *results) {
   // Save the pid of current process to the return object.
   std::string pid_string = std::to_string(static_cast<int>(getpid()));
-  auto data =
-      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
-  auto memory_buffer =
-      std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
+  auto data = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
+  auto memory_buffer = std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
   results->push_back(
       std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
   return Status::OK();
@@ -80,7 +78,8 @@ Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
                    const std::vector<std::shared_ptr<RayObject>> &args,
                    const std::vector<ObjectID> &arg_reference_ids,
                    const std::vector<ObjectID> &return_ids,
-                    std::vector<std::shared_ptr<RayObject>> *results, const ray::WorkerID &worker_id) {
+                   std::vector<std::shared_ptr<RayObject>> *results,
+                   const ray::WorkerID &worker_id) {
   // Note that this doesn't include dummy object id.
   const ray::FunctionDescriptor function_descriptor =
       ray_function.GetFunctionDescriptor();
@@ -98,7 +97,7 @@ Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
     return MergeInputArgsAsOutput(args, return_ids, results);
   } else {
     return Status::TypeError("Unknown function descriptor: " +
-                              typed_descriptor->ModuleName());
+                             typed_descriptor->ModuleName());
   }
 }
 
@@ -107,21 +106,21 @@ Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
 int main(int argc, char **argv) {
   RAY_CHECK(argc == 4);
   ray::CoreWorkerOptions options = {
-      ray::WorkerType::WORKER,  // worker_type
-      ray::Language::PYTHON,    // langauge
-      std::string(argv[1]),     // store_socket
-      std::string(argv[2]),     // raylet_socket
-      JobID::FromInt(1),        // job_id
-      {"127.0.0.1", 6379, ""},  // gcs_options
-      "",                       // log_dir
-      true,                     // install_failure_signal_handler
-      "127.0.0.1",              // node_ip_address
-      std::stoi(std::string(argv[3])),              // node_manager_port
-      &ray::ExecuteTask,        // task_execution_callback
-      nullptr,                  // check_signals
-      nullptr,                  // gc_collect
-      1,                      // ref_counting_enabled
-      1,                        // num_workers
+      ray::WorkerType::WORKER,          // worker_type
+      ray::Language::PYTHON,            // langauge
+      std::string(argv[1]),             // store_socket
+      std::string(argv[2]),             // raylet_socket
+      JobID::FromInt(1),                // job_id
+      {"127.0.0.1", 6379, ""},          // gcs_options
+      "",                               // log_dir
+      true,                             // install_failure_signal_handler
+      "127.0.0.1",                      // node_ip_address
+      std::stoi(std::string(argv[3])),  // node_manager_port
+      &ray::ExecuteTask,                // task_execution_callback
+      nullptr,                          // check_signals
+      nullptr,                          // gc_collect
+      1,                                // ref_counting_enabled
+      1,                                // num_workers
   };
   ray::CoreWorkerProcess::Initialize(options);
   ray::CoreWorkerProcess::StartExecutingTasks();

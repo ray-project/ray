@@ -76,8 +76,8 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
 
   // Create an actor.
   ActorID actor_id;
-  RAY_CHECK_OK(
-      CoreWorkerProcess::GetCoreWorker().CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
+  RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(
+      func, args, actor_options, /*extension_data*/ "", &actor_id));
   return actor_id;
 }
 
@@ -88,7 +88,8 @@ std::string MetadataToString(std::shared_ptr<RayObject> obj) {
 
 class CoreWorkerTest : public ::testing::Test {
  public:
-  CoreWorkerTest(int num_nodes) : num_nodes_(num_nodes), gcs_options_("127.0.0.1", 6379, "") {
+  CoreWorkerTest(int num_nodes)
+      : num_nodes_(num_nodes), gcs_options_("127.0.0.1", 6379, "") {
 #ifdef _WIN32
     RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
@@ -256,14 +257,14 @@ class CoreWorkerTest : public ::testing::Test {
           NextJobId(),                    // job_id
           gcs_options_,                   // gcs_options
           "",                             // log_dir
-          true,                     // install_failure_signal_handler
-          "127.0.0.1",              // node_ip_address
+          true,                           // install_failure_signal_handler
+          "127.0.0.1",                    // node_ip_address
           node_manager_port,              // node_manager_port
-          nullptr,        // task_execution_callback
-          nullptr,                  // check_signals
-          nullptr,                  // gc_collect
-          1,                      // ref_counting_enabled
-          1,                        // num_workers
+          nullptr,                        // task_execution_callback
+          nullptr,                        // check_signals
+          nullptr,                        // gc_collect
+          1,                              // ref_counting_enabled
+          1,                              // num_workers
       };
       CoreWorkerProcess::Initialize(options);
     }
@@ -295,11 +296,11 @@ class CoreWorkerTest : public ::testing::Test {
                                bool is_direct_call);
 
  protected:
-  bool WaitForDirectCallActorState( const ActorID &actor_id,
-                                   bool wait_alive, int timeout_ms);
+  bool WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+                                   int timeout_ms);
 
   // Get the pid for the worker process that runs the actor.
-  int GetActorPid( const ActorID &actor_id,
+  int GetActorPid(const ActorID &actor_id,
                   std::unordered_map<std::string, double> &resources,
                   bool is_direct_call);
 
@@ -311,18 +312,19 @@ class CoreWorkerTest : public ::testing::Test {
   std::string gcs_server_pid_;
 };
 
-bool CoreWorkerTest::WaitForDirectCallActorState(
-                                                 const ActorID &actor_id, bool wait_alive,
+bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
                                                  int timeout_ms) {
   auto condition_func = [actor_id, wait_alive]() -> bool {
-    bool actor_alive = CoreWorkerProcess::GetCoreWorker().direct_actor_submitter_->IsActorAlive(actor_id);
+    bool actor_alive =
+        CoreWorkerProcess::GetCoreWorker().direct_actor_submitter_->IsActorAlive(
+            actor_id);
     return wait_alive ? actor_alive : !actor_alive;
   };
 
   return WaitForCondition(condition_func, timeout_ms);
 }
 
-int CoreWorkerTest::GetActorPid( const ActorID &actor_id,
+int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources,
                                 bool is_direct_call) {
   std::vector<TaskArg> args;
@@ -331,7 +333,8 @@ int CoreWorkerTest::GetActorPid( const ActorID &actor_id,
   RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                          "GetWorkerPid", "", "", "")};
 
-  RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options, &return_ids));
+  RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args,
+                                                                  options, &return_ids));
 
   std::vector<std::shared_ptr<ray::RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));

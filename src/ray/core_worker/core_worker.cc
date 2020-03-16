@@ -185,7 +185,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
-  auto worker = std::make_shared<CoreWorker>(options_, global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
+  auto worker = std::make_shared<CoreWorker>(
+      options_,
+      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
   RAY_LOG(INFO) << "Worker " << worker->worker_context_.GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
@@ -252,15 +254,15 @@ void CoreWorkerProcess::StartExecutingTasks() {
   instance_.reset();
 }
 
-CoreWorker::CoreWorker(
-    const CoreWorkerOptions &options, const WorkerID &worker_id)
+CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
       worker_context_(options_.worker_type, worker_id, options_.job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
-      core_worker_server_(WorkerTypeString(options_.worker_type), 0 /* let grpc choose a port */),
+      core_worker_server_(WorkerTypeString(options_.worker_type),
+                          0 /* let grpc choose a port */),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -278,8 +280,8 @@ CoreWorker::CoreWorker(
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
   // Initialize profiler.
-  profiler_ = std::make_shared<worker::Profiler>(worker_context_, options_.node_ip_address,
-                                                 io_service_, gcs_client_);
+  profiler_ = std::make_shared<worker::Profiler>(
+      worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
@@ -308,9 +310,10 @@ CoreWorker::CoreWorker(
       options_.node_ip_address, options_.node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      io_service_, std::move(grpc_client), options_.raylet_socket, worker_context_.GetWorkerID(),
-      (options_.worker_type == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      options_.language, &local_raylet_id, core_worker_server_.GetPort()));
+      io_service_, std::move(grpc_client), options_.raylet_socket,
+      worker_context_.GetWorkerID(), (options_.worker_type == ray::WorkerType::WORKER),
+      worker_context_.GetCurrentJobID(), options_.language, &local_raylet_id,
+      core_worker_server_.GetPort()));
   connected_ = true;
 
   // Set our own address.
@@ -330,7 +333,8 @@ CoreWorker::CoreWorker(
   if (options_.worker_type == ray::WorkerType::WORKER) {
     death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
         RayConfig::instance().raylet_death_check_interval_milliseconds()));
-    death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
+    death_check_timer_.async_wait(
+        boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
   }
 
   internal_timer_.expires_from_now(
@@ -371,7 +375,8 @@ CoreWorker::CoreWorker(
   if (options_.worker_type == WorkerType::DRIVER) {
     TaskSpecBuilder builder;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetDriverTaskSpec(task_id, options_.language, worker_context_.GetCurrentJobID(),
+    builder.SetDriverTaskSpec(task_id, options_.language,
+                              worker_context_.GetCurrentJobID(),
                               TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
                               GetCallerId(), rpc_address_);
 
@@ -497,7 +502,8 @@ void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
       death_check_timer_.expiry() +
       boost::asio::chrono::milliseconds(
           RayConfig::instance().raylet_death_check_interval_milliseconds()));
-  death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
+  death_check_timer_.async_wait(
+      boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
 }
 
 void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
@@ -1558,8 +1564,13 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     }
     if (options_.num_workers > 1) {
-      // TODO (kfstorm): Should we add some kind of check before sending the killing request?
-      RAY_LOG(ERROR) << "Killing an actor which is running in a worker process with multiple workers is not supported yet. The worker process will fail anyway, but you should try to create the Java actor with some dynamic options to make it being hosted with a dedicated worker process.";
+      // TODO (kfstorm): Should we add some kind of check before sending the killing
+      // request?
+      RAY_LOG(ERROR)
+          << "Killing an actor which is running in a worker process with multiple "
+             "workers is not supported yet. The worker process will fail anyway, but you "
+             "should try to create the Java actor with some dynamic options to make it "
+             "being hosted with a dedicated worker process.";
     }
     if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();
