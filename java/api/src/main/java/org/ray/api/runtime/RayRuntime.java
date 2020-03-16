@@ -81,8 +81,9 @@ public interface RayRuntime {
    * Kill the actor immediately.
    *
    * @param actor The actor to be killed.
+   * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
    */
-  void killActor(RayActor actor);
+  void killActor(RayActor actor, boolean noReconstruction);
 
   /**
    * Invoke a remote function.

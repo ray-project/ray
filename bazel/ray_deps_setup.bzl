@@ -73,32 +73,26 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
 def ray_deps_setup():
     auto_http_archive(
-        name = "redis",
-        build_file = True,
+        name = "com_github_antirez_redis",
+        build_file = "//bazel:BUILD.redis",
         url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
         patches = [
-            "//thirdparty/patches:hiredis-async-include-dict.patch",
             "//thirdparty/patches:hiredis-casts.patch",
             "//thirdparty/patches:hiredis-connect-rename.patch",
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
             "//thirdparty/patches:hiredis-windows-poll.patch",
+            "//thirdparty/patches:hiredis-windows-translations.patch",
             "//thirdparty/patches:redis-windows-poll.patch",
         ],
     )
 
     http_file(
-        name = "win-redis-bin",
+        name = "com_github_tporadowski_redis_bin",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
         urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
-    )
-
-    http_file(
-        name = "redis-src",
-        sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
-        urls = ["https://github.com/antirez/redis/archive/5.0.3.tar.gz"],
     )
 
     auto_http_archive(
@@ -172,8 +166,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "plasma",
         build_file = True,
-        url = "https://github.com/apache/arrow/archive/86f34aa07e611787d9cc98c6a33b0a0a536dce57.tar.gz",
-        sha256 = "6b5f55d10681a3938bbf8f07eee52c4eb6e761da6ba27490f55ccb89ce645ac8",
+        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
+        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
         patches = [
             "//thirdparty/patches:arrow-headers-unused.patch",
             "//thirdparty/patches:arrow-windows-export.patch",

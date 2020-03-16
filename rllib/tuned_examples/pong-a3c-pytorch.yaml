@@ -3,7 +3,7 @@ pong-a3c-pytorch-cnn:
     run: A3C
     config:
         num_workers: 16
-        sample_batch_size: 20
+        rollout_fragment_length: 20
         use_pytorch: true
         vf_loss_coeff: 0.5
         entropy_coeff: 0.01

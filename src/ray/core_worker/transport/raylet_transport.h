@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_RAYLET_TRANSPORT_H
 #define RAY_CORE_WORKER_RAYLET_TRANSPORT_H
 
@@ -20,8 +34,7 @@ class CoreWorkerRayletTaskReceiver {
 
   CoreWorkerRayletTaskReceiver(const WorkerID &worker_id,
                                std::shared_ptr<raylet::RayletClient> &raylet_client,
-                               const TaskHandler &task_handler,
-                               const std::function<void(bool)> &exit_handler);
+                               const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When handling is done,
@@ -42,8 +55,6 @@ class CoreWorkerRayletTaskReceiver {
   std::shared_ptr<raylet::RayletClient> &raylet_client_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
-  /// The callback function to exit the worker.
-  std::function<void(bool)> exit_handler_;
   /// The callback to process arg wait complete.
   std::function<void(int64_t)> on_wait_complete_;
 };

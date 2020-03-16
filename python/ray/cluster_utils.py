@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 
@@ -77,8 +78,10 @@ class Cluster:
             "num_gpus": 0,
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
         }
+        if "_internal_config" in node_args:
+            node_args["_internal_config"] = json.loads(
+                node_args["_internal_config"])
         ray_params = ray.parameter.RayParams(**node_args)
-        ray_params.use_pickle = ray.cloudpickle.FAST_CLOUDPICKLE_USED
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
             node = ray.node.Node(
@@ -142,8 +145,8 @@ class Cluster:
                 exception.
 
         Raises:
-            Exception: An exception is raised if the timeout expires before the
-                node appears in the client table.
+            TimeoutError: An exception is raised if the timeout expires before
+                the node appears in the client table.
         """
         ip_address, port = self.redis_address.split(":")
         redis_client = redis.StrictRedis(
@@ -159,7 +162,7 @@ class Cluster:
                 return
             else:
                 time.sleep(0.1)
-        raise Exception("Timed out while waiting for nodes to join.")
+        raise TimeoutError("Timed out while waiting for nodes to join.")
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.
@@ -175,8 +178,8 @@ class Cluster:
                 before failing.
 
         Raises:
-            Exception: An exception is raised if we time out while waiting for
-                nodes to join.
+            TimeoutError: An exception is raised if we time out while waiting
+                for nodes to join.
         """
         ip_address, port = self.address.split(":")
         redis_client = redis.StrictRedis(
@@ -196,7 +199,7 @@ class Cluster:
                     "{} nodes are currently registered, but we are expecting "
                     "{}".format(len(live_clients), expected))
                 time.sleep(0.1)
-        raise Exception("Timed out while waiting for nodes to join.")
+        raise TimeoutError("Timed out while waiting for nodes to join.")
 
     def list_all_nodes(self):
         """Lists all nodes.

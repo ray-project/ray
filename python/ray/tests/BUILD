@@ -329,14 +329,6 @@ py_test(
 )
 
 py_test(
-    name = "test_signal",
-    size = "medium",
-    srcs = ["test_signal.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_tempfile",
     size = "small",
     srcs = ["test_tempfile.py"],
