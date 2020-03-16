@@ -91,7 +91,7 @@ void DefaultNodeInfoHandler::HandleReportHeartbeat(
   rpc::HeartbeatTableData heartbeat_data;
   heartbeat_data.CopyFrom(request.heartbeat());
   gcs_node_manager_.HandleHeartbeat(node_id, std::move(heartbeat_data));
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   RAY_LOG(DEBUG) << "Finished reporting heartbeat, node id = " << node_id;
 }
 
