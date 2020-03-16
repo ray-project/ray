@@ -1,7 +1,7 @@
 package org.ray.api.benchmark;
 
-import org.ray.api.BaseActor;
 import org.ray.api.Ray;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.testng.annotations.Test;
 
@@ -30,7 +30,7 @@ public class RateLimiterPressureTest extends RayBenchmarkTest {
   }
 
   @Override
-  public RayObject<RemoteResult<Integer>> rayCall(BaseActor rayActor) {
+  public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
 
     return Ray.call(RateLimiterPressureTest::currentTime);
   }

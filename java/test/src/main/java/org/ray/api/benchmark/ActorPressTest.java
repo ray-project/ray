@@ -1,6 +1,5 @@
 package org.ray.api.benchmark;
 
-import org.ray.api.BaseActor;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -44,7 +43,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   }
 
   @Override
-  public RayObject<RemoteResult<Integer>> rayCall(BaseActor rayActor) {
+  public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
     return ((RayActor<Adder>) rayActor).call(Adder::add, 10);
   }
 
