@@ -56,7 +56,7 @@ cdef class ReaderClient:
                   FunctionDescriptor async_func,
                   FunctionDescriptor sync_func):
         cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
+            CCoreWorker *core_worker = worker.core_worker
             CRayFunction async_native_func
             CRayFunction sync_native_func
         async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
@@ -95,7 +95,7 @@ cdef class WriterClient:
                   FunctionDescriptor async_func,
                   FunctionDescriptor sync_func):
         cdef:
-            CCoreWorker *core_worker = worker.core_worker.get()
+            CCoreWorker *core_worker = worker.core_worker
             CRayFunction async_native_func
             CRayFunction sync_native_func
         async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)

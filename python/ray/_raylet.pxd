@@ -72,7 +72,9 @@ cdef class ActorID(BaseID):
 
 cdef class CoreWorker:
     cdef:
-        unique_ptr[CCoreWorker] core_worker
+        # Always access C++ CoreWorker through this pointer instead of CCoreWorkerProcess.GetCoreWorker().
+        # Because Python CoreWorker object not be GC indicated that the C++ CoreWorker is alive.
+        CCoreWorker *core_worker
         object async_thread
         object async_event_loop
         object plasma_event_handler

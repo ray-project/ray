@@ -140,8 +140,13 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess, pid: " << pid;
 
-  if (options_.worker_type == WorkerType::DRIVER) {
-    CreateWorker();
+  if (options_.num_workers == 1) {
+    // We need to create the worker instance here if:
+    // 1. This is a driver process. In this case, the driver is ready to use right after the CoreWorkerProcess::Initialize.
+    // 2. This is a Python worker process. In this case, Python will invoke some core worker APIs before `CoreWorkerProcess::StartExecutingTasks` is called. So we need to create the worker instance here. One example of invocations is https://github.com/ray-project/ray/blob/45ce40e5d44801193220d2c546be8de0feeef988/python/ray/worker.py#L1281.
+    if (options_.worker_type == WorkerType::DRIVER || options_.language == Language::PYTHON) {
+      CreateWorker();
+    }
   }
 }
 
@@ -197,6 +202,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
   absl::MutexLock lock(&worker_map_mutex_);
   // TOCHECK
   workers_.emplace(worker->worker_context_.GetWorkerID(), worker);
+  RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
 }
 
@@ -234,7 +240,7 @@ void CoreWorkerProcess::StartExecutingTasks() {
   RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER);
   if (instance_->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
-    auto worker = instance_->CreateWorker();
+    auto worker = instance_->global_worker_ ? instance_->global_worker_ : instance_->CreateWorker();
     worker->StartExecutingTasks();
     instance_->RemoveWorker(worker);
   } else {
