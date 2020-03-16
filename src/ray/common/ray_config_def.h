@@ -72,7 +72,7 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// cluster and all objects that contain it are also out of scope. If this flag
 /// is off and object_pinning_enabled is turned on, then an object will not be
 /// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
