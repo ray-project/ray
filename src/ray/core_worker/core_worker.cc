@@ -140,8 +140,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess, pid: " << pid;
 
-  // TOCHECK: Previously cython needs the Raylet client.
-  if (options_.num_workers == 1) {
+  if (options_.worker_type == WorkerType::DRIVER) {
     CreateWorker();
   }
 }
@@ -186,13 +185,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
-  WorkerID worker_id;
-  if (options_.worker_type == WorkerType::DRIVER) {
-    worker_id = global_worker_id_;
-  } else {
-    worker_id = options_.num_workers == 1 ? global_worker_id_ : WorkerID::FromRandom();
-  }
-  auto worker = std::make_shared<CoreWorker>(options_, worker_id);
+  auto worker = std::make_shared<CoreWorker>(options_, global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
   RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
@@ -243,9 +236,10 @@ void CoreWorkerProcess::SetCurrentThreadCoreWorker(std::shared_ptr<CoreWorker> w
 
 void CoreWorkerProcess::StartExecutingTasks() {
   RAY_CHECK(instance_);
+  RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER);
   if (instance_->options_.num_workers == 1) {
     // CoreWorker has been initialized in constructor.
-    auto worker = instance_->global_worker_;
+    auto worker = instance_->CreateWorker();
     // Run the task loop in the current thread only if the number of workers is 1.
     worker->StartExecutingTasks();
     instance_->RemoveWorker(worker);
