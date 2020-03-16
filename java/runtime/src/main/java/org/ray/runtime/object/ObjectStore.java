@@ -29,7 +29,7 @@ public abstract class ObjectStore {
    * @param obj The ray object.
    * @return Generated ID of the object.
    */
-  public abstract ObjectId putRaw(NativeRayObject obj, List<ObjectId> containedObjectIds);
+  public abstract ObjectId putRaw(NativeRayObject obj);
 
   /**
    * Put a raw object with specified ID into object store.
@@ -37,7 +37,7 @@ public abstract class ObjectStore {
    * @param obj The ray object.
    * @param objectId Object ID specified by user.
    */
-  public abstract void putRaw(NativeRayObject obj, ObjectId objectId, List<ObjectId> containedObjectIds);
+  public abstract void putRaw(NativeRayObject obj, ObjectId objectId);
 
   /**
    * Serialize and put an object to the object store.
@@ -52,7 +52,7 @@ public abstract class ObjectStore {
     }
     NativeRayObject serialized = ObjectSerializer.serialize(object);
     List<ObjectId> containedObjectIds = RayObjectSerializer.getAndClearContainedObjectIds();
-    return putRaw(serialized, containedObjectIds);
+    return putRaw(serialized);
   }
 
   /**
@@ -70,7 +70,7 @@ public abstract class ObjectStore {
     }
     NativeRayObject serialized = ObjectSerializer.serialize(object);
     List<ObjectId> containedObjectIds = RayObjectSerializer.getAndClearContainedObjectIds();
-    putRaw(serialized, objectId, containedObjectIds);
+    putRaw(serialized, objectId);
   }
 
   /**

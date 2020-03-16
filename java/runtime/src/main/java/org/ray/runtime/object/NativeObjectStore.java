@@ -28,13 +28,13 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public ObjectId putRaw(NativeRayObject obj, List<ObjectId> containedObjectIds) {
-    return new ObjectId(nativePut(nativeCoreWorkerPointer, obj, toBinaryList(containedObjectIds)));
+  public ObjectId putRaw(NativeRayObject obj) {
+    return new ObjectId(nativePut(nativeCoreWorkerPointer, obj));
   }
 
   @Override
-  public void putRaw(NativeRayObject obj, ObjectId objectId, List<ObjectId> containedObjectIds) {
-    nativePut(nativeCoreWorkerPointer, objectId.getBytes(), obj, toBinaryList(containedObjectIds));
+  public void putRaw(NativeRayObject obj, ObjectId objectId) {
+    nativePut(nativeCoreWorkerPointer, objectId.getBytes(), obj);
   }
 
   @Override
@@ -75,11 +75,10 @@ public class NativeObjectStore extends ObjectStore {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
 
-  private static native byte[] nativePut(long nativeCoreWorkerPointer, NativeRayObject obj,
-                                         List<byte[]> containedObjectIds);
+  private static native byte[] nativePut(long nativeCoreWorkerPointer, NativeRayObject obj);
 
   private static native void nativePut(long nativeCoreWorkerPointer, byte[] objectId,
-      NativeRayObject obj, List<byte[]> containedObjectIds);
+      NativeRayObject obj);
 
   private static native List<NativeRayObject> nativeGet(long nativeCoreWorkerPointer,
       List<byte[]> ids, long timeoutMs);

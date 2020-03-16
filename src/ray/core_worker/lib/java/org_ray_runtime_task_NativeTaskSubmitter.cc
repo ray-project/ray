@@ -42,7 +42,7 @@ inline std::vector<ray::TaskArg> ToTaskArgs(JNIEnv *env, jobject args) {
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
         RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
-        auto value = JavaNativeRayObjectToNativeRayObject(env, java_value, nullptr);
+        auto value = JavaNativeRayObjectToNativeRayObject(env, java_value);
         return ray::TaskArg::PassByValue(value);
       });
   return task_args;

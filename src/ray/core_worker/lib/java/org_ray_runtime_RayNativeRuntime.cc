@@ -73,8 +73,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
         JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
             env, java_return_objects, &return_objects,
             [](JNIEnv *env, jobject java_native_ray_object) {
-              return JavaNativeRayObjectToNativeRayObject(
-                  env, java_native_ray_object, nullptr);
+              return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
             });
         for (auto &obj : return_objects) {
           results->push_back(obj);
