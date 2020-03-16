@@ -27,14 +27,13 @@
 #include "hiredis/hiredis.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/util/test_util.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/util/test_util.h"
 
 namespace {
 
@@ -108,13 +107,13 @@ class CoreWorkerTest : public ::testing::Test {
       store_socket = StartStore();
     }
 
-    // core worker test relies on node resources. It's important that one raylet can
-    // receive the heartbeat from another. So starting raylet monitor is required here.
-    raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
-
     // start gcs server
     if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
       gcs_server_pid_ = StartGcsServer("127.0.0.1");
+    } else {
+      // core worker test relies on node resources. It's important that one raylet can
+      // receive the heartbeat from another. So starting raylet monitor is required here.
+      raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
     }
 
     // start raylet on each node. Assign each node with different resources so that

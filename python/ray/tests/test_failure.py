@@ -939,6 +939,47 @@ def test_fill_object_store_exception(shutdown_only):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
 
 
+def test_fill_object_store_lru_fallback(shutdown_only):
+    ray.init(num_cpus=2, object_store_memory=10**8, lru_evict=True)
+
+    @ray.remote
+    def expensive_task():
+        return np.zeros((10**8) // 2, dtype=np.uint8)
+
+    oids = []
+    for _ in range(3):
+        oid = expensive_task.remote()
+        ray.get(oid)
+        oids.append(oid)
+
+    @ray.remote
+    class LargeMemoryActor:
+        def some_expensive_task(self):
+            return np.zeros(10**8 // 2, dtype=np.uint8)
+
+        def test(self):
+            return 1
+
+    actor = LargeMemoryActor.remote()
+    for _ in range(3):
+        oid = actor.some_expensive_task.remote()
+        ray.get(oid)
+        oids.append(oid)
+    # Make sure actor does not die
+    ray.get(actor.test.remote())
+
+    for _ in range(3):
+        oid = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
+        ray.get(oid)
+        oids.append(oid)
+
+    # NOTE: Needed to unset the config set by the lru_evict flag, for Travis.
+    ray._raylet.set_internal_config({
+        "object_pinning_enabled": 1,
+        "object_store_full_max_retries": 5,
+    })
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 1,

@@ -1247,7 +1247,8 @@ def start_raylet(redis_address,
     if include_java is True:
         default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
-            java_worker_options or ["-classpath", default_cp],
+            json.loads(java_worker_options)
+            if java_worker_options else ["-classpath", default_cp],
             redis_address,
             node_manager_port,
             plasma_store_name,
@@ -1365,10 +1366,10 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.log-dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    pairs.append(("ray.raylet.config.num_workers_per_process_java",
-                  "RAY_WORKER_NUM_WORKERS_PLACEHOLDER"))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
+
+    command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")

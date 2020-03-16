@@ -33,7 +33,7 @@ def on_episode_start(info):
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # Size of batches collected from each worker
-    "sample_batch_size": 200,
+    "rollout_fragment_length": 200,
     # Number of timesteps collected for each SGD round
     "train_batch_size": 4000,
     # Total SGD batch size across all devices for SGD
@@ -160,10 +160,9 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         def mcts_creator():
             return MCTS(model, config["mcts_config"])
 
-        super().__init__(
-            obs_space, action_space, config, model, alpha_zero_loss,
-            TorchCategorical, mcts_creator, _env_creator
-        )
+        super().__init__(obs_space, action_space, config, model,
+                         alpha_zero_loss, TorchCategorical, mcts_creator,
+                         _env_creator)
 
 
 AlphaZeroTrainer = build_trainer(

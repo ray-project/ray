@@ -25,12 +25,12 @@ void DefaultErrorInfoHandler::HandleReportJobError(
   RAY_LOG(DEBUG) << "Reporting job error, job id = " << job_id << ", type = " << type;
   auto error_table_data = std::make_shared<ErrorTableData>();
   error_table_data->CopyFrom(request.error_data());
-  auto on_done = [job_id, type, send_reply_callback](Status status) {
+  auto on_done = [job_id, type, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report job error, job id = " << job_id
                      << ", type = " << type;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Errors().AsyncReportJobError(error_table_data, on_done);

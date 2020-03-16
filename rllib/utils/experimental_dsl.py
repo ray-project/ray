@@ -1,16 +1,19 @@
-"""Experimental operators for defining distributed training pipelines.
+"""Experimental distributed execution API.
 
 TODO(ekl): describe the concepts."""
 
 import logging
 from typing import List, Any, Tuple, Union
 import numpy as np
+import queue
+import random
 import time
 
 import ray
-from ray.util.iter import from_actors, LocalIterator
+from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import MetricsContext
-from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
+from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer, \
+    ReplayBuffer
 from ray.rllib.evaluation.metrics import collect_episodes, \
     summarize_episodes, get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -58,8 +61,8 @@ def _get_global_vars():
     return {"timestep": metrics.counters[STEPS_SAMPLED_COUNTER]}
 
 
-def ParallelRollouts(workers: WorkerSet,
-                     mode="bulk_sync") -> LocalIterator[SampleBatch]:
+def ParallelRollouts(workers: WorkerSet, mode="bulk_sync",
+                     async_queue_depth=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
     If there are no remote workers, experiences will be collected serially from
@@ -72,6 +75,8 @@ def ParallelRollouts(workers: WorkerSet,
               computed by rollout workers with no order guarantees.
             - In 'bulk_sync' mode, we collect one batch from each worker
               and concatenate them together into a large batch to return.
+        async_queue_depth (int): In async mode, the max number of async
+            requests in flight per actor.
 
     Returns:
         A local iterator over experiences collected in parallel.
@@ -80,12 +85,12 @@ def ParallelRollouts(workers: WorkerSet,
         >>> rollouts = ParallelRollouts(workers, mode="async")
         >>> batch = next(rollouts)
         >>> print(batch.count)
-        50  # config.sample_batch_size
+        50  # config.rollout_fragment_length
 
         >>> rollouts = ParallelRollouts(workers, mode="bulk_sync")
         >>> batch = next(rollouts)
         >>> print(batch.count)
-        200  # config.sample_batch_size * config.num_workers
+        200  # config.rollout_fragment_length * config.num_workers
 
     Updates the STEPS_SAMPLED_COUNTER counter in the local iterator context.
     """
@@ -116,7 +121,8 @@ def ParallelRollouts(workers: WorkerSet,
             .for_each(lambda batches: SampleBatch.concat_samples(batches)) \
             .for_each(report_timesteps)
     elif mode == "async":
-        return rollouts.gather_async().for_each(report_timesteps)
+        return rollouts.gather_async(
+            async_queue_depth=async_queue_depth).for_each(report_timesteps)
     else:
         raise ValueError(
             "mode must be one of 'bulk_sync', 'async', got '{}'".format(mode))
@@ -437,14 +443,15 @@ class ApplyGradients:
                     for e in self.workers.remote_workers():
                         e.set_weights.remote(weights, _get_global_vars())
         else:
-            if metrics.cur_actor is None:
-                raise ValueError("Could not find actor to update. When "
-                                 "update_all=False, `cur_actor` must be set "
-                                 "in the iterator context.")
+            if metrics.current_actor is None:
+                raise ValueError(
+                    "Could not find actor to update. When "
+                    "update_all=False, `current_actor` must be set "
+                    "in the iterator context.")
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = self.workers.local_worker().get_weights()
-                metrics.cur_actor.set_weights.remote(weights,
-                                                     _get_global_vars())
+                metrics.current_actor.set_weights.remote(
+                    weights, _get_global_vars())
 
 
 class AverageGradients:
@@ -475,7 +482,21 @@ class AverageGradients:
 
 
 class StoreToReplayBuffer:
-    def __init__(self, replay_buffer):
+    """Callable that stores data into a local replay buffer.
+
+    This should be used with the .for_each() operator on a rollouts iterator.
+    The batch that was stored is returned.
+
+    Examples:
+        >>> buf = ReplayBuffer(1000)
+        >>> rollouts = ParallelRollouts(...)
+        >>> store_op = rollouts.for_each(StoreToReplayBuffer(buf))
+        >>> next(store_op)
+        SampleBatch(...)
+    """
+
+    def __init__(self, replay_buffer: ReplayBuffer):
+        assert isinstance(replay_buffer, ReplayBuffer)
         self.replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
 
     def __call__(self, batch: SampleBatchType):
@@ -492,11 +513,73 @@ class StoreToReplayBuffer:
                     pack_if_needed(row["new_obs"]),
                     row["dones"],
                     weight=None)
+        return batch
 
 
-def LocalReplay(replay_buffer, train_batch_size):
+class StoreToReplayActors:
+    """Callable that stores data into a replay buffer actors.
+
+    This should be used with the .for_each() operator on a rollouts iterator.
+    The batch that was stored is returned.
+
+    Examples:
+        >>> actors = [ReplayActor.remote() for _ in range(4)]
+        >>> rollouts = ParallelRollouts(...)
+        >>> store_op = rollouts.for_each(StoreToReplayActors(actors))
+        >>> next(store_op)
+        SampleBatch(...)
+    """
+
+    def __init__(self, replay_actors: List["ActorHandle"]):
+        self.replay_actors = replay_actors
+
+    def __call__(self, batch: SampleBatchType):
+        actor = random.choice(self.replay_actors)
+        actor.add_batch.remote(batch)
+        return batch
+
+
+def ParallelReplay(replay_actors: List["ActorHandle"], async_queue_depth=4):
+    """Replay experiences in parallel from the given actors.
+
+    This should be combined with the StoreToReplayActors operation using the
+    Concurrently() operator.
+
+    Arguments:
+        replay_actors (list): List of replay actors.
+        async_queue_depth (int): In async mode, the max number of async
+            requests in flight per actor.
+
+    Examples:
+        >>> actors = [ReplayActor.remote() for _ in range(4)]
+        >>> replay_op = ParallelReplay(actors)
+        >>> next(replay_op)
+        SampleBatch(...)
+    """
+    replay = from_actors(replay_actors)
+    return replay.gather_async(
+        async_queue_depth=async_queue_depth).filter(lambda x: x is not None)
+
+
+def LocalReplay(replay_buffer: ReplayBuffer, train_batch_size: int):
+    """Replay experiences from a local buffer instance.
+
+    This should be combined with the StoreToReplayBuffer operation using the
+    Concurrently() operator.
+
+    Arguments:
+        replay_buffer (ReplayBuffer): Buffer to replay experiences from.
+        train_batch_size (int): Batch size of fetches from the buffer.
+
+    Examples:
+        >>> actors = [ReplayActor.remote() for _ in range(4)]
+        >>> replay_op = ParallelReplay(actors)
+        >>> next(replay_op)
+        SampleBatch(...)
+    """
+    assert isinstance(replay_buffer, ReplayBuffer)
     replay_buffers = {DEFAULT_POLICY_ID: replay_buffer}
-    # TODO(ekl) support more options
+    # TODO(ekl) support more options, or combine with ParallelReplay (?)
     synchronize_sampling = False
     prioritized_replay_beta = None
 
@@ -581,16 +664,83 @@ class UpdateTargetNetwork:
     track when we should update the target next.
     """
 
-    def __init__(self, workers, target_update_freq):
+    def __init__(self, workers, target_update_freq, by_steps_trained=False):
         self.workers = workers
         self.target_update_freq = target_update_freq
+        if by_steps_trained:
+            self.metric = STEPS_TRAINED_COUNTER
+        else:
+            self.metric = STEPS_SAMPLED_COUNTER
 
     def __call__(self, _):
         metrics = LocalIterator.get_metrics()
-        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
+        cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
             self.workers.local_worker().foreach_trainable_policy(
                 lambda p, _: p.update_target())
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+
+class Enqueue:
+    """Enqueue data items into a queue.Queue instance.
+
+    The enqueue is non-blocking, so Enqueue operations can executed with
+    Dequeue via the Concurrently() operator.
+
+    Examples:
+        >>> queue = queue.Queue(100)
+        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
+        >>> read_op = Dequeue(queue)
+        >>> combined_op = Concurrently([write_op, read_op], mode="async")
+        >>> next(combined_op)
+        SampleBatch(...)
+    """
+
+    def __init__(self, output_queue: queue.Queue):
+        if not isinstance(output_queue, queue.Queue):
+            raise ValueError("Expected queue.Queue, got {}".format(
+                type(output_queue)))
+        self.queue = output_queue
+
+    def __call__(self, x):
+        try:
+            self.queue.put_nowait(x)
+        except queue.Full:
+            return _NextValueNotReady()
+
+
+def Dequeue(input_queue: queue.Queue, check=lambda: True):
+    """Dequeue data items from a queue.Queue instance.
+
+    The dequeue is non-blocking, so Dequeue operations can executed with
+    Enqueue via the Concurrently() operator.
+
+    Arguments:
+        input_queue (Queue): queue to pull items from.
+        check (fn): liveness check. When this function returns false,
+            Dequeue() will raise an error to halt execution.
+
+    Examples:
+        >>> queue = queue.Queue(100)
+        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
+        >>> read_op = Dequeue(queue)
+        >>> combined_op = Concurrently([write_op, read_op], mode="async")
+        >>> next(combined_op)
+        SampleBatch(...)
+    """
+    if not isinstance(input_queue, queue.Queue):
+        raise ValueError("Expected queue.Queue, got {}".format(
+            type(input_queue)))
+
+    def base_iterator(timeout=None):
+        while check():
+            try:
+                item = input_queue.get_nowait()
+                yield item
+            except queue.Empty:
+                yield _NextValueNotReady()
+        raise RuntimeError("Error raised reading from queue")
+
+    return LocalIterator(base_iterator, MetricsContext())

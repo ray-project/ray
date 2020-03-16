@@ -194,46 +194,51 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put,
                                              failure):
     @ray.remote
     def return_an_id():
-        return [
-            put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-        ]
+        return put_object(
+            np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
 
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
-        ray.get(ref[0])
+        inner_id = ray.get(ref[0])
         if depth == max_depth:
             ray.get(signal.wait.remote())
             if failure:
                 os._exit(0)
-            return
+            return inner_id
         else:
-            return recursive.remote(ref, signal, max_depth, depth + 1)
+            return inner_id, recursive.remote(ref, signal, max_depth,
+                                              depth + 1)
 
     max_depth = 5
     outer_oid = return_an_id.remote()
-    inner_oid_bytes = ray.get(outer_oid)[0].binary()
     signal = SignalActor.remote()
     head_oid = recursive.remote([outer_oid], signal, max_depth)
 
     # Remove the local reference.
-    del outer_oid
-
-    tail_oid = head_oid
-    for _ in range(max_depth):
-        tail_oid = ray.get(tail_oid)
+    inner_oid = None
+    outer_oid = head_oid
+    for i in range(max_depth):
+        inner_oid, outer_oid = ray.get(outer_oid)
 
     # Check that the remote reference pins the object.
-    _fill_object_store_and_get(inner_oid_bytes)
+    _fill_object_store_and_get(outer_oid, succeed=False)
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
+
     try:
-        ray.get(tail_oid)
+        # Check that the remote reference pins the object.
+        ray.get(outer_oid)
+        _fill_object_store_and_get(inner_oid)
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
     except ray.exceptions.UnreconstructableError:
         assert failure
+
+    inner_oid_bytes = inner_oid.binary()
+    del inner_oid
+    del head_oid
+    del outer_oid
 
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)

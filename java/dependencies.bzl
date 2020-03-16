@@ -4,6 +4,7 @@ def gen_java_deps():
     maven_install(
         artifacts = [
             "com.beust:jcommander:1.72",
+            "com.google.code.gson:gson:2.8.5",
             "com.google.guava:guava:27.0.1-jre",
             "com.google.protobuf:protobuf-java:3.8.0",
             "com.puppycrawl.tools:checkstyle:8.15",

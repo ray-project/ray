@@ -843,6 +843,7 @@ cc_library(
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@plasma//:plasma_client",
     ],
 )
@@ -1185,6 +1186,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/aws/example-full.yaml",
+        "python/ray/autoscaler/azure/example-full.yaml",
         "python/ray/autoscaler/gcp/example-full.yaml",
         "python/ray/autoscaler/local/example-full.yaml",
         "python/ray/cloudpickle/*.py",
