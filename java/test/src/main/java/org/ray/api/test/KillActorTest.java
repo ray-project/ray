@@ -3,7 +3,7 @@ package org.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import java.util.function.BiConsumer;
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayActorException;
@@ -41,26 +41,26 @@ public class KillActorTest extends BaseTest {
 
   public static class KillerActor {
 
-    public void kill(RayJavaActor<?> actor, boolean noReconstruction) {
+    public void kill(RayActor<?> actor, boolean noReconstruction) {
       actor.kill(noReconstruction);
     }
   }
 
-  private static void localKill(RayJavaActor<?> actor, boolean noReconstruction) {
+  private static void localKill(RayActor<?> actor, boolean noReconstruction) {
     actor.kill(noReconstruction);
   }
 
-  private static void remoteKill(RayJavaActor<?> actor, boolean noReconstruction) {
-    RayJavaActor<KillerActor> killer = Ray.createActor(KillerActor::new);
+  private static void remoteKill(RayActor<?> actor, boolean noReconstruction) {
+    RayActor<KillerActor> killer = Ray.createActor(KillerActor::new);
     killer.call(KillerActor::kill, actor, noReconstruction);
   }
 
-  private void testKillActor(BiConsumer<RayJavaActor<?>, Boolean> kill, boolean noReconstruction) {
+  private void testKillActor(BiConsumer<RayActor<?>, Boolean> kill, boolean noReconstruction) {
     TestUtils.skipTestUnderSingleProcess();
 
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
-    RayJavaActor<HangActor> actor = Ray.createActor(HangActor::new, options);
+    RayActor<HangActor> actor = Ray.createActor(HangActor::new, options);
     RayObject<Boolean> result = actor.call(HangActor::hang);
     // The actor will hang in this task.
     Assert.assertEquals(0, Ray.wait(ImmutableList.of(result), 1, 500).getReady().size());

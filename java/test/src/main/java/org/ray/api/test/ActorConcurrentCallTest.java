@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.options.ActorCreationOptions;
@@ -35,7 +35,7 @@ public class ActorConcurrentCallTest extends BaseTest {
     ActorCreationOptions op = new ActorCreationOptions.Builder()
         .setMaxConcurrency(3)
         .createActorCreationOptions();
-    RayJavaActor<ConcurrentActor> actor = Ray.createActor(ConcurrentActor::new, op);
+    RayActor<ConcurrentActor> actor = Ray.createActor(ConcurrentActor::new, op);
     RayObject<String> obj1 = actor.call(ConcurrentActor::countDown);
     RayObject<String> obj2 = actor.call(ConcurrentActor::countDown);
     RayObject<String> obj3 = actor.call(ConcurrentActor::countDown);

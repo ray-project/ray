@@ -139,7 +139,7 @@ To create an actor instance, use ``Ray.createActor()``.
 
 .. code:: java
 
-    RayJavaActor<Adder> adder = Ray.createActor(Adder::new, 0);
+    RayActor<Adder> adder = Ray.createActor(Adder::new, 0);
 
 Similar to ``Ray.call``, the first parameter of ``Ray.createActor`` is a method that returns an instance
 of the Actor class (the method can be either a constructor, or any factory methods). The rest of the parameters are

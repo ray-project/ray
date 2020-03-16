@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
@@ -48,7 +48,7 @@ public class ActorTest extends BaseTest {
 
   public void testCreateAndCallActor() {
     // Test creating an actor from a constructor
-    RayJavaActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
     // A java actor is not a python actor
     Assert.assertFalse(actor instanceof RayPyActor);
@@ -65,7 +65,7 @@ public class ActorTest extends BaseTest {
    * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
    */
   public void testGetObjectTwice() {
-    RayJavaActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     RayObject<Integer> result = actor.call(Counter::getValue);
     Assert.assertEquals(result.get(), Integer.valueOf(1));
     Assert.assertEquals(result.get(), Integer.valueOf(1));
@@ -74,7 +74,7 @@ public class ActorTest extends BaseTest {
   }
 
   public void testCallActorWithLargeObject() {
-    RayJavaActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     LargeObject largeObject = new LargeObject();
     Assert.assertEquals(Integer.valueOf(largeObject.data.length + 1),
         actor.call(Counter::accessLargeObject, largeObject).get());
@@ -86,29 +86,29 @@ public class ActorTest extends BaseTest {
 
   public void testCreateActorFromFactory() {
     // Test creating an actor from a factory method
-    RayJavaActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
+    RayActor<Counter> actor = Ray.createActor(ActorTest::factory, 1);
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), actor.call(Counter::getValue).get());
   }
 
-  static int testActorAsFirstParameter(RayJavaActor<Counter> actor, int delta) {
+  static int testActorAsFirstParameter(RayActor<Counter> actor, int delta) {
     RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
-  static int testActorAsSecondParameter(int delta, RayJavaActor<Counter> actor) {
+  static int testActorAsSecondParameter(int delta, RayActor<Counter> actor) {
     RayObject<Integer> res = actor.call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
-  static int testActorAsFieldOfParameter(List<RayJavaActor<Counter>> actor, int delta) {
+  static int testActorAsFieldOfParameter(List<RayActor<Counter>> actor, int delta) {
     RayObject<Integer> res = actor.get(0).call(Counter::increaseAndGet, delta);
     return res.get();
   }
 
   public void testPassActorAsParameter() {
-    RayJavaActor<Counter> actor = Ray.createActor(Counter::new, 0);
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
     Assert.assertEquals(Integer.valueOf(1),
         Ray.call(ActorTest::testActorAsFirstParameter, actor, 1).get());
     Assert.assertEquals(Integer.valueOf(11),
@@ -124,7 +124,7 @@ public class ActorTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
 
     // The UnreconstructableException is created by raylet.
-    RayJavaActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
     // Call an actor method.
     RayObject value = counter.call(Counter::getValue);
     Assert.assertEquals(100, value.get());

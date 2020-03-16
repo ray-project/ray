@@ -3,7 +3,7 @@ package org.ray.api.test;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.testng.Assert;
@@ -60,7 +60,7 @@ public class RuntimeContextTest extends BaseTest {
 
   @Test
   public void testRuntimeContextInActor() {
-    RayJavaActor<RuntimeContextTester> actor = Ray.createActor(RuntimeContextTester::new);
+    RayActor<RuntimeContextTester> actor = Ray.createActor(RuntimeContextTester::new);
     Assert.assertEquals("ok",
         actor.call(RuntimeContextTester::testRuntimeContext, actor.getId()).get());
   }

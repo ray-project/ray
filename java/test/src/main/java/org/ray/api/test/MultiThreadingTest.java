@@ -10,7 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
@@ -77,7 +77,7 @@ public class MultiThreadingTest extends BaseTest {
     }, LOOP_COUNTER);
 
     // Test calling actors.
-    RayJavaActor<Echo> echoActor = Ray.createActor(Echo::new);
+    RayActor<Echo> echoActor = Ray.createActor(Echo::new);
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
       RayObject<Integer> obj = echoActor.call(Echo::echo, arg);
@@ -87,7 +87,7 @@ public class MultiThreadingTest extends BaseTest {
     // Test creating multi actors
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
-      RayJavaActor<Echo> echoActor1 = Ray.createActor(Echo::new);
+      RayActor<Echo> echoActor1 = Ray.createActor(Echo::new);
       try {
         // Sleep a while to test the case that another actor is created before submitting
         // tasks to this actor.
@@ -130,7 +130,7 @@ public class MultiThreadingTest extends BaseTest {
 
   public void testGetCurrentActorId() {
     TestUtils.skipTestUnderSingleProcess();
-    RayJavaActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
+    RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
     ActorId actorId = actorIdTester.call(ActorIdTester::getCurrentActorId).get();
     Assert.assertEquals(actorId, actorIdTester.getId());
   }

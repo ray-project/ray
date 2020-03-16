@@ -6,8 +6,8 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.ray.api.BaseActor;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.function.RayFunc1;
 import org.ray.api.test.BaseTest;
@@ -74,7 +74,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     }
   }
 
-  public void singleLatencyTest(int times, RayActor rayActor) {
+  public void singleLatencyTest(int times, BaseActor rayActor) {
 
     List<Long> counterList = new ArrayList<>();
     for (int i = 0; i < times; i++) {
@@ -92,7 +92,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     printList(counterList);
   }
 
-  public abstract RayObject<RemoteResult<T>> rayCall(RayActor rayActor);
+  public abstract RayObject<RemoteResult<T>> rayCall(BaseActor rayActor);
 
   public abstract boolean checkResult(T t);
 

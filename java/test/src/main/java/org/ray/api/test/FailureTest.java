@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayActorException;
@@ -94,14 +94,14 @@ public class FailureTest extends BaseTest {
   @Test
   public void testActorCreationFailure() {
     TestUtils.skipTestUnderSingleProcess();
-    RayJavaActor<BadActor> actor = Ray.createActor(BadActor::new, true);
+    RayActor<BadActor> actor = Ray.createActor(BadActor::new, true);
     assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
   }
 
   @Test
   public void testActorTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
-    RayJavaActor<BadActor> actor = Ray.createActor(BadActor::new, false);
+    RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     assertTaskFailedWithRayTaskException(actor.call(BadActor::badMethod));
   }
 
@@ -120,7 +120,7 @@ public class FailureTest extends BaseTest {
   @Test
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
-    RayJavaActor<BadActor> actor = Ray.createActor(BadActor::new, false);
+    RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     try {
       actor.call(BadActor::badMethod2).get();
       Assert.fail("This line shouldn't be reached.");

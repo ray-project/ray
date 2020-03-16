@@ -1,7 +1,7 @@
 package org.ray.api.test;
 
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.options.ActorCreationOptions;
@@ -24,7 +24,7 @@ public class WorkerJvmOptionsTest extends BaseTest {
         // that raylet can correctly handle dynamic options with whitespaces.
         .setJvmOptions(" -Dtest.suffix=suffix -Dtest.suffix1=suffix1 ")
         .createActorCreationOptions();
-    RayJavaActor<Echo> actor = Ray.createActor(Echo::new, options);
+    RayActor<Echo> actor = Ray.createActor(Echo::new, options);
     RayObject<String> obj = actor.call(Echo::getOptions);
     Assert.assertEquals(obj.get(), "suffix");
   }

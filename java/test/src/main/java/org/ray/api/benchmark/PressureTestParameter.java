@@ -1,7 +1,7 @@
 package org.ray.api.benchmark;
 
 import java.io.Serializable;
-import org.ray.api.RayActor;
+import org.ray.api.BaseActor;
 
 public class PressureTestParameter implements Serializable {
 
@@ -19,7 +19,10 @@ public class PressureTestParameter implements Serializable {
 
   private RayBenchmarkTest rayBenchmarkTest; //reference of current test case instance
 
-  private RayActor rayActor; // reference of the Actor, if only test remote funtion it could be null
+  /**
+   * reference of the Actor, if only test remote funtion it could be null
+   */
+  private BaseActor rayActor;
 
   public Integer getClientNum() {
     return clientNum;
@@ -69,11 +72,11 @@ public class PressureTestParameter implements Serializable {
     this.rayBenchmarkTest = rayBenchmarkTest;
   }
 
-  public RayActor getRayActor() {
+  public BaseActor getRayActor() {
     return rayActor;
   }
 
-  public void setRayActor(RayActor rayActor) {
+  public void setRayActor(BaseActor rayActor) {
     this.rayActor = rayActor;
   }
 }

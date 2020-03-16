@@ -1,8 +1,8 @@
 package org.ray.api.benchmark;
 
+import org.ray.api.BaseActor;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 import org.testng.annotations.Test;
 
@@ -11,7 +11,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   @Test
   public void singleLatencyTest() {
     int times = 10;
-    RayJavaActor<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    RayActor<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     super.singleLatencyTest(times, adder);
   }
 
@@ -19,7 +19,7 @@ public class ActorPressTest extends RayBenchmarkTest {
   public void maxTest() {
     int clientNum = 2;
     int totalNum = 20;
-    RayJavaActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    RayActor<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalNum(totalNum);
@@ -33,7 +33,7 @@ public class ActorPressTest extends RayBenchmarkTest {
     int clientNum = 2;
     int totalQps = 2;
     int duration = 3;
-    RayJavaActor<ActorPressTest.Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
+    RayActor<Adder> adder = Ray.createActor(ActorPressTest.Adder::new);
     PressureTestParameter pressureTestParameter = new PressureTestParameter();
     pressureTestParameter.setClientNum(clientNum);
     pressureTestParameter.setTotalQps(totalQps);
@@ -44,8 +44,8 @@ public class ActorPressTest extends RayBenchmarkTest {
   }
 
   @Override
-  public RayObject<RemoteResult<Integer>> rayCall(RayActor rayActor) {
-    return ((RayJavaActor<Adder>) rayActor).call(Adder::add, 10);
+  public RayObject<RemoteResult<Integer>> rayCall(BaseActor rayActor) {
+    return ((RayActor<Adder>) rayActor).call(Adder::add, 10);
   }
 
   @Override

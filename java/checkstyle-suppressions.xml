@@ -11,7 +11,7 @@
   <suppress checks="NoFinalizer" files="NativeRayActor.java"/>
   <suppress checks="AbbreviationAsWordInNameCheck" files="RayParameters.java"/>
   <suppress checks=".*" files="RayCall.java"/>
-  <suppress checks=".*" files="JavaActorCall.java"/>
+  <suppress checks=".*" files="ActorCall.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
   <suppress checks=".*" files="org[\\/]ray[\\/]runtime[\\/]generated[\\/]" />
 </suppressions>

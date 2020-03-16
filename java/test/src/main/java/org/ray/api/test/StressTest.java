@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.Ray;
-import org.ray.api.RayJavaActor;
+import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.id.ObjectId;
@@ -55,9 +55,9 @@ public class StressTest extends BaseTest {
 
   public static class Worker {
 
-    private RayJavaActor<Actor> actor;
+    private RayActor<Actor> actor;
 
-    public Worker(RayJavaActor<Actor> actor) {
+    public Worker(RayActor<Actor> actor) {
       this.actor = actor;
     }
 
@@ -77,10 +77,10 @@ public class StressTest extends BaseTest {
   @Test
   public void testSubmittingManyTasksToOneActor() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
-    RayJavaActor<Actor> actor = Ray.createActor(Actor::new);
+    RayActor<Actor> actor = Ray.createActor(Actor::new);
     List<ObjectId> objectIds = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
-      RayJavaActor<Worker> worker = Ray.createActor(Worker::new, actor);
+      RayActor<Worker> worker = Ray.createActor(Worker::new, actor);
       objectIds.add(worker.call(Worker::ping, 100).getId());
     }
 

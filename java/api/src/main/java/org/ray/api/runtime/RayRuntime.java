@@ -2,8 +2,8 @@ package org.ray.api.runtime;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
-import org.ray.api.RayJavaActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
@@ -83,7 +83,7 @@ public interface RayRuntime {
    * @param actor The actor to be killed.
    * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
    */
-  void killActor(RayActor actor, boolean noReconstruction);
+  void killActor(BaseActor actor, boolean noReconstruction);
 
   /**
    * Invoke a remote function.
@@ -103,7 +103,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject callActor(RayFunc func, RayJavaActor<?> actor, Object[] args);
+  RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args);
 
   /**
    * Create an actor on a remote node.
@@ -114,7 +114,7 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> RayJavaActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
+  <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
       ActorCreationOptions options);
 
   RuntimeContext getRuntimeContext();
