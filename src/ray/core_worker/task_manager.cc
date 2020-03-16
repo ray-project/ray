@@ -72,15 +72,22 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
-  absl::MutexLock lock(&mu_);
-  if (pending_tasks_.empty()) {
-    shutdown();
-  } else {
-    RAY_LOG(WARNING)
-        << "This worker is still managing " << pending_tasks_.size()
-        << " in flight tasks, waiting for them to finish before shutting down.";
+  bool has_pending_tasks = false;
+  {
+    absl::MutexLock lock(&mu_);
+    if (!pending_tasks_.empty()) {
+      has_pending_tasks = true;
+      RAY_LOG(WARNING)
+          << "This worker is still managing " << pending_tasks_.size()
+          << " in flight tasks, waiting for them to finish before shutting down.";
+    }
   }
-  shutdown_hook_ = shutdown;
+
+  if (has_pending_tasks) {
+    shutdown_hook_ = shutdown;
+  } else {
+    reference_counter_->DrainAndShutdown(shutdown);
+  }
 }
 
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
@@ -200,8 +207,9 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
 void TaskManager::ShutdownIfNeeded() {
   absl::MutexLock lock(&mu_);
   if (shutdown_hook_ && pending_tasks_.empty()) {
-    RAY_LOG(WARNING) << "All in flight tasks finished, shutting down worker.";
-    shutdown_hook_();
+    RAY_LOG(WARNING) << "All in flight tasks finished, worker will shut down after draining references.";
+    reference_counter_->DrainAndShutdown(shutdown_hook_);
+    shutdown_hook_ = nullptr;
   }
 }
 
