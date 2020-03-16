@@ -67,7 +67,7 @@ public class JobSchedulerImpl implements JobScheduler {
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(
                 taskId, executionGraphPb, jobConfig);
-            waits.add(worker.call("init", workerContextBytes));
+            waits.add(((RayPyActor)worker).call("init", workerContextBytes));
             break;
           default:
             throw new UnsupportedOperationException(
