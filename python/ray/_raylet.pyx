@@ -528,11 +528,14 @@ cdef CRayStatus task_execution_handler(
 cdef void async_plasma_callback(CObjectID object_id,
                                 int64_t data_size,
                                 int64_t metadata_size) with gil:
-    message = [tuple([ObjectID(object_id.Binary()), data_size, metadata_size])]
     core_worker = ray.worker.global_worker.core_worker
     event_handler = core_worker.get_plasma_event_handler()
     if event_handler is not None:
-        event_handler.process_notifications(message)
+        obj_id = ObjectID(object_id.Binary())
+        if data_size > 0 and obj_id:
+            # This must be asynchronous to allow objects to avoid blocking the IO thread.
+            event_handler._loop.call_soon_threadsafe(
+                event_handler._complete_future, obj_id)
 
 cdef CRayStatus check_signals() nogil:
     with gil:
@@ -859,13 +862,13 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
-    def kill_actor(self, ActorID actor_id):
+    def kill_actor(self, ActorID actor_id, c_bool no_reconstruction):
         cdef:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
             check_status(self.core_worker.get().KillActor(
-                  c_actor_id, True))
+                  c_actor_id, True, no_reconstruction))
 
     def resource_ids(self):
         cdef:

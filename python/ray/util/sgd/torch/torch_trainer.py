@@ -544,42 +544,28 @@ class TorchTrainer:
         return False
 
     @classmethod
-    def as_trainable(cls, **kwargs):
-        class TorchTrainable(Trainable):
-            _kwargs = kwargs
-            @classmethod
-            def default_resource_request(cls, config):
-                if "num_workers" in config:
-                    cls._kwargs["num_workers"] = config["num_workers"]
-                return Resources(
-                    cpu=0,
-                    gpu=0,
-                    extra_cpu=cls._kwargs["num_workers"],
-                    extra_gpu=int(
-                        cls._kwargs["use_gpu"]) * cls._kwargs["num_workers"])
+    def default_resource_request(cls, config):
+        return Resources(
+            cpu=0,
+            gpu=0,
+            extra_cpu=config["num_workers"],
+            extra_gpu=int(config["use_gpu"]) * config["num_workers"])
 
-            def _setup(self, config):
-                if "config" in self._kwargs:
-                    self._kwargs["config"].update(config)
-                else:
-                    self._kwargs["config"] = config
-                self._trainer = TorchTrainer(**self._kwargs)
+    def _setup(self, config):
+        self._trainer = TorchTrainer(**config)
 
-            def _train(self):
-                train_stats = self._trainer.train(profile=True)
-                validation_stats = self._trainer.validate(profile=True)
+    def _train(self):
+        train_stats = self._trainer.train()
+        validation_stats = self._trainer.validate()
 
-                train_stats.update(val=validation_stats)
-                return train_stats
+        train_stats.update(validation_stats)
+        return train_stats
 
-            def _save(self, checkpoint_dir):
-                return self._trainer.save(os.path.join(
-                    checkpoint_dir, "model.pth"))
+    def _save(self, checkpoint_dir):
+        return self._trainer.save(os.path.join(checkpoint_dir, "model.pth"))
 
-            def _restore(self, checkpoint_path):
-                return self._trainer.restore(checkpoint_path)
+    def _restore(self, checkpoint_path):
+        return self._trainer.restore(checkpoint_path)
 
-            def _stop(self):
-                self._trainer.shutdown()
-
-        return TorchTrainable
+    def _stop(self):
+        self._trainer.shutdown()

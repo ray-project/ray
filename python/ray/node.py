@@ -2,7 +2,6 @@ import atexit
 import collections
 import datetime
 import errno
-import json
 import os
 import logging
 import signal
@@ -66,8 +65,8 @@ class Node:
             self._register_shutdown_hooks()
 
         self.head = head
-        self.kernel_fate_share = (spawn_reaper
-                                  and ray.utils.detect_fate_sharing_support())
+        self.kernel_fate_share = bool(
+            spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
@@ -91,8 +90,7 @@ class Node:
         self._resource_spec = None
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = (json.loads(ray_params._internal_config)
-                        if ray_params._internal_config else None)
+        self._config = ray_params._internal_config
 
         if head:
             redis_client = None
@@ -620,9 +618,11 @@ class Node:
 
         if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
             self.start_gcs_server()
+        else:
+            self.start_raylet_monitor()
 
         self.start_monitor()
-        self.start_raylet_monitor()
+
         if self._ray_params.include_webui:
             self.start_dashboard(require_webui=True)
         elif self._ray_params.include_webui is None:

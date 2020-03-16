@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 def one_worker_100MiB(request):
     config = json.dumps({
         "distributed_ref_counting_enabled": 1,
-        "object_store_full_max_retries": 1,
+        "object_store_full_max_retries": 3,
+        "object_store_full_initial_delay_ms": 100,
     })
     yield ray.init(
         num_cpus=1,
@@ -707,40 +708,44 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB, use_ray_put):
 
     @ray.remote
     def return_an_id():
-        return [
-            put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-        ]
+        return put_object(
+            np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
 
     @ray.remote
     def recursive(ref, signal, max_depth, depth=0):
-        ray.get(ref[0])
+        inner_id = ray.get(ref[0])
         if depth == max_depth:
-            return ray.get(signal.wait.remote())
+            ray.get(signal.wait.remote())
+            return inner_id
         else:
             return recursive.remote(ref, signal, max_depth, depth + 1)
 
     max_depth = 5
     outer_oid = return_an_id.remote()
-    inner_oid_bytes = ray.get(outer_oid)[0].binary()
     signal = SignalActor.remote()
     head_oid = recursive.remote([outer_oid], signal, max_depth)
 
     # Remove the local reference.
-    del outer_oid
 
-    tail_oid = head_oid
+    outer_oid = head_oid
     for _ in range(max_depth):
-        tail_oid = ray.get(tail_oid)
+        outer_oid = ray.get(outer_oid)
 
-    # Check that the remote reference pins the object.
-    _fill_object_store_and_get(inner_oid_bytes)
+    # Fill the object store.
+    _fill_object_store_and_get(outer_oid, succeed=False)
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    ray.get(tail_oid)
+
+    # Check that the remote reference pins the object.
+    inner_oid = ray.get(outer_oid)
+    _fill_object_store_and_get(inner_oid)
+    inner_oid_bytes = inner_oid.binary()
 
     # Reference should be gone, check that returned ID gets evicted.
+    del head_oid
+    del outer_oid
+    del inner_oid
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
 
 

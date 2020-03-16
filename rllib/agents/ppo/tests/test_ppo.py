@@ -22,8 +22,13 @@ tf = try_import_tf()
 
 
 class TestPPO(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
 
-    ray.init()
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
 
     def test_ppo_compilation(self):
         """Test whether a PPOTrainer can be built with both frameworks."""
@@ -222,5 +227,6 @@ class TestPPO(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import unittest
-    unittest.main(verbosity=1)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

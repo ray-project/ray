@@ -12,25 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/lineage_cache.h"
+
 #include <list>
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
-
+#include "ray/common/test_util.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
-
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/lineage_cache.h"
-
-#include "ray/util/test_util.h"
 
 namespace ray {
 

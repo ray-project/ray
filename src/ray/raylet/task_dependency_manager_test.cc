@@ -12,18 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/task_dependency_manager.h"
+
+#include <boost/asio.hpp>
 #include <list>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include <boost/asio.hpp>
-
 #include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/raylet/task_dependency_manager.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 

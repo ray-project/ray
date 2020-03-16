@@ -74,9 +74,10 @@ class WorkerSet:
 
     def sync_weights(self):
         """Syncs weights of remote workers with the local worker."""
-        weights = ray.put(self.local_worker().get_weights())
-        for e in self.remote_workers():
-            e.set_weights.remote(weights)
+        if self.remote_workers():
+            weights = ray.put(self.local_worker().get_weights())
+            for e in self.remote_workers():
+                e.set_weights.remote(weights)
 
     def add_workers(self, num_workers):
         """Creates and add a number of remote workers to this worker set.
@@ -239,7 +240,7 @@ class WorkerSet:
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator
                                 if config["tf_session_args"] else None),
-            batch_steps=config["sample_batch_size"],
+            rollout_fragment_length=config["rollout_fragment_length"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
             preprocessor_pref=config["preprocessor_pref"],
