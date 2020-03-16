@@ -170,7 +170,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
   RAY_CHECK(instance_);
   if (instance_->options_.num_workers == 1) {
-    RAY_CHECK(instance_->global_worker_->GetWorkerID() == worker_id);
+    RAY_CHECK(instance_->global_worker_->worker_context_.GetWorkerID() == worker_id);
     return;
   }
   current_core_worker_ = instance_->GetWorker(worker_id);
@@ -186,7 +186,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
   auto worker = std::make_shared<CoreWorker>(options_, global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
-  RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
+  RAY_LOG(INFO) << "Worker " << worker->worker_context_.GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
   }
@@ -194,7 +194,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
   absl::MutexLock lock(&worker_map_mutex_);
   // TOCHECK
-  workers_.emplace(worker->GetWorkerID(), worker);
+  workers_.emplace(worker->worker_context_.GetWorkerID(), worker);
   return worker;
 }
 
@@ -211,8 +211,8 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   current_core_worker_.reset();
   {
     absl::MutexLock lock(&worker_map_mutex_);
-    workers_.erase(worker->GetWorkerID());
-    RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
+    workers_.erase(worker->worker_context_.GetWorkerID());
+    RAY_LOG(INFO) << "Removed worker " << worker->worker_context_.GetWorkerID();
   }
   if (global_worker_ == worker) {
     global_worker_ = nullptr;
@@ -231,20 +231,17 @@ void CoreWorkerProcess::StartExecutingTasks() {
   RAY_CHECK(instance_);
   RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER);
   if (instance_->options_.num_workers == 1) {
-    // CoreWorker has been initialized in constructor.
-    auto worker = instance_->CreateWorker();
     // Run the task loop in the current thread only if the number of workers is 1.
+    auto worker = instance_->CreateWorker();
     worker->StartExecutingTasks();
     instance_->RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
     for (int i = 0; i < instance_->options_.num_workers; i++) {
       worker_threads.emplace_back([]() {
-        while (true) {
-          auto worker = instance_->CreateWorker();
-          worker->StartExecutingTasks();
-          instance_->RemoveWorker(worker);
-        }
+        auto worker = instance_->CreateWorker();
+        worker->StartExecutingTasks();
+        instance_->RemoveWorker(worker);
       });
     }
     for (auto &thread : worker_threads) {
@@ -407,12 +404,6 @@ CoreWorker::CoreWorker(
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
-  }
-}
-
-CoreWorker::~CoreWorker() {
-  if (options_.log_dir != "") {
-    RayLog::ShutDownRayLog();
   }
 }
 
@@ -1565,6 +1556,10 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
     if (request.no_reconstruction()) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    }
+    if (options_.num_workers > 1) {
+      // TODO (kfstorm): Should we add some kind of check before sending the killing request?
+      RAY_LOG(ERROR) << "Killing an actor which is running in a worker process with multiple workers is not supported yet. The worker process will fail anyway, but you should try to create the Java actor with some dynamic options to make it being hosted with a dedicated worker process.";
     }
     if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();

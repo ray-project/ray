@@ -183,29 +183,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   CoreWorker(CoreWorker const &) = delete;
   void operator=(CoreWorker const &other) = delete;
 
-  virtual ~CoreWorker();
-
-  void Exit(bool intentional);
-
-  void Disconnect();
-
-  const WorkerID &GetWorkerID() const { return worker_context_.GetWorkerID(); }
-
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
-  raylet::RayletClient &GetRayletClient() { return *local_raylet_client_; }
-
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  void SetCurrentTaskId(const TaskID &task_id);
-
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
-
-  void SetActorId(const ActorID &actor_id);
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
@@ -535,13 +521,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
-// TOCHECK: move to the private section
-private:
-  /// Start receiving and executing tasks.
-  /// \return void.
-  void StartExecutingTasks();
 
-public:
+ public:
   /// Allocate the return objects for an executing task. The caller should write into the
   /// data buffers of the allocated buffers.
   ///
@@ -656,8 +637,20 @@ public:
   void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
+  void SetCurrentTaskId(const TaskID &task_id);
+
+  void SetActorId(const ActorID &actor_id);
+
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
+
+  /// Start receiving and executing tasks.
+  /// \return void.
+  void StartExecutingTasks();
+
+  void Exit(bool intentional);
+
+  void Disconnect();
 
   /// Shut down the worker completely.
   /// \return void.
