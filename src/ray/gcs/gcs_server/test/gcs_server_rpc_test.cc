@@ -129,10 +129,8 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  rpc::ActorCheckpointData GetActorCheckpoint(const std::string &actor_id,
-                                              const std::string &checkpoint_id) {
+  rpc::ActorCheckpointData GetActorCheckpoint(const std::string &checkpoint_id) {
     rpc::GetActorCheckpointRequest request;
-    request.set_actor_id(actor_id);
     request.set_checkpoint_id(checkpoint_id);
     rpc::ActorCheckpointData checkpoint_data;
     std::promise<bool> promise;
@@ -396,10 +394,11 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return job_table_data;
   }
 
-  rpc::ActorTableData GenActorTableData(const ActorID &actor_id) {
+  rpc::ActorTableData GenActorTableData(const JobID &job_id) {
     rpc::ActorTableData actor_table_data;
+    ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     actor_table_data.set_actor_id(actor_id.Binary());
-    actor_table_data.set_job_id(actor_id.JobId().Binary());
+    actor_table_data.set_job_id(job_id.Binary());
     actor_table_data.set_state(
         rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
     actor_table_data.set_max_reconstructions(1);
@@ -452,8 +451,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
 TEST_F(GcsServerTest, TestActorInfo) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
-  ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
-  rpc::ActorTableData actor_table_data = GenActorTableData(actor_id);
+  rpc::ActorTableData actor_table_data = GenActorTableData(job_id);
 
   // Register actor
   rpc::RegisterActorInfoRequest register_actor_info_request;
@@ -484,8 +482,7 @@ TEST_F(GcsServerTest, TestActorInfo) {
   rpc::AddActorCheckpointRequest add_actor_checkpoint_request;
   add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(checkpoint);
   ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
-  rpc::ActorCheckpointData checkpoint_result =
-      GetActorCheckpoint(actor_id.Binary(), checkpoint_id.Binary());
+  rpc::ActorCheckpointData checkpoint_result = GetActorCheckpoint(checkpoint_id.Binary());
   ASSERT_TRUE(checkpoint_result.actor_id() == actor_table_data.actor_id());
   ASSERT_TRUE(checkpoint_result.checkpoint_id() == checkpoint_id.Binary());
   rpc::ActorCheckpointIdData checkpoint_id_result =

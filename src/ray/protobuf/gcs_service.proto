@@ -87,8 +87,7 @@ message AddActorCheckpointReply {
 }
 
 message GetActorCheckpointRequest {
-  bytes actor_id = 1;
-  bytes checkpoint_id = 2;
+  bytes checkpoint_id = 1;
 }
 
 message GetActorCheckpointReply {

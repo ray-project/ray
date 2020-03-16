@@ -59,7 +59,7 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
                             const StatusCallback &callback) override;
 
   Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
+      const ActorCheckpointID &checkpoint_id,
       const OptionalItemCallback<ActorCheckpointData> &callback) override;
 
   Status AsyncGetCheckpointID(

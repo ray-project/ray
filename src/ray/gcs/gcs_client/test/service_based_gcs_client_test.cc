@@ -118,12 +118,11 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  rpc::ActorCheckpointData GetCheckpoint(const ActorID &actor_id,
-                                         const ActorCheckpointID &checkpoint_id) {
+  rpc::ActorCheckpointData GetCheckpoint(const ActorCheckpointID &checkpoint_id) {
     std::promise<bool> promise;
     rpc::ActorCheckpointData actor_checkpoint_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id, actor_id,
+        checkpoint_id,
         [&actor_checkpoint_data, &promise](
             Status status, const boost::optional<rpc::ActorCheckpointData> &result) {
           assert(result);
@@ -430,7 +429,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
   ASSERT_TRUE(AddCheckpoint(checkpoint));
 
   // Get Checkpoint
-  auto get_checkpoint_result = GetCheckpoint(actor_id, checkpoint_id);
+  auto get_checkpoint_result = GetCheckpoint(checkpoint_id);
   ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
 
   // Get CheckpointID
