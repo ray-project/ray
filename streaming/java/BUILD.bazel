@@ -107,6 +107,7 @@ define_java_module(
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
         "@ray_streaming_maven//:org_testng_testng",
+        "@maven//:org_apache_commons_commons_lang3",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -121,6 +122,7 @@ define_java_module(
         "@ray_streaming_maven//:org_msgpack_msgpack_core",
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
+        " @maven//:org_apache_commons_commons_lang3",
     ],
 )
 
