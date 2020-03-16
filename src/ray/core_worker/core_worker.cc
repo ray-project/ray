@@ -114,7 +114,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       global_worker_id_(
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
-              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil()))) {
+              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
   int pid = getpid();
 
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
@@ -126,7 +126,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     if (!global_worker_id_.IsNil()) {
       app_name << "-" << global_worker_id_;
     }
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, 30, options_.log_dir);
+    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
     if (options_.install_failure_signal_handler) {
       RayLog::InstallFailureSignalHandler();
     }
@@ -153,7 +153,7 @@ CoreWorkerProcess::~CoreWorkerProcess() {
     RAY_CHECK(workers_.empty());
   }
   if (options_.log_dir != "") {
-    RayLog::ShutDownRayLog(options_.install_failure_signal_handler);
+    RayLog::ShutDownRayLog();
   }
 }
 
@@ -201,19 +201,22 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
   absl::MutexLock lock(&worker_map_mutex_);
   // TOCHECK
-  // Store it in the map before calling `CoreWorker::Connect`. When tasks arrive, we can
+  // Store it in the map before starting the IO thread. When tasks arrive, we can
   // find the worker from the map.
   workers_.emplace(worker->GetWorkerID(), worker);
   // Once we register to Raylet, Raylet will start assigning tasks to this core worker.
-  // We need to make sure the registration happens after putting the worker instance into
+  // We need to make sure the IO thread runs after putting the worker instance into
   // the `workers_` map, otherwise some required fields was not initialized when the
   // first task arrived.
-  worker->Connect(rpc_server_port);
+  worker->io_thread_ = std::thread(&CoreWorker::RunIOService, worker.get());
   return worker;
 }
 
 void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
-  RAY_CHECK(worker->IsShutdown());
+  worker->io_thread_.join();
+  if (options_.worker_type == WorkerType::WORKER) {
+    RAY_CHECK(worker->task_execution_service_.stopped());
+  }
   if (global_worker_) {
     RAY_CHECK(global_worker_ == worker);
   } else {
@@ -244,7 +247,7 @@ void CoreWorkerProcess::StartExecutingTasks() {
     // CoreWorker has been initialized in constructor.
     auto worker = instance_->global_worker_;
     // Run the task loop in the current thread only if the number of workers is 1.
-    worker->Run();
+    worker->StartExecutingTasks();
     instance_->RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;
@@ -252,7 +255,7 @@ void CoreWorkerProcess::StartExecutingTasks() {
       worker_threads.emplace_back([]() {
         while (true) {
           auto worker = instance_->CreateWorker();
-          worker->Run();
+          worker->StartExecutingTasks();
           instance_->RemoveWorker(worker);
         }
       });
@@ -277,27 +280,26 @@ CoreWorker::CoreWorker(
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
-      task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
   if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
-    gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
+    gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
   } else {
-    gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(gcs_options);
+    gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(options_.gcs_options);
   }
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
   // Initialize profiler.
-  profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
+  profiler_ = std::make_shared<worker::Profiler>(worker_context_, options_.node_ip_address,
                                                  io_service_, gcs_client_);
 
   // Initialize task receivers.
-  if (worker_type_ == WorkerType::WORKER) {
-    RAY_CHECK(task_execution_callback_ != nullptr);
+  if (options_.worker_type == WorkerType::WORKER) {
+    RAY_CHECK(options_.task_execution_callback != nullptr);
     auto execute_task =
         std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
@@ -319,17 +321,17 @@ CoreWorker::CoreWorker(
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      node_ip_address, node_manager_port, *client_call_manager_);
+      options_.node_ip_address, options_.node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      io_service_, std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
-      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, &local_raylet_id, core_worker_server_.GetPort()));
+      io_service_, std::move(grpc_client), options_.raylet_socket, worker_context_.GetWorkerID(),
+      (options_.worker_type == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
+      options_.language, &local_raylet_id, core_worker_server_.GetPort()));
   connected_ = true;
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
-  rpc_address_.set_ip_address(node_ip_address);
+  rpc_address_.set_ip_address(options_.node_ip_address);
   rpc_address_.set_port(core_worker_server_.GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
@@ -341,7 +343,7 @@ CoreWorker::CoreWorker(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
 
-  if (worker_type_ == ray::WorkerType::WORKER) {
+  if (options_.worker_type == ray::WorkerType::WORKER) {
     death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
         RayConfig::instance().raylet_death_check_interval_milliseconds()));
     death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
@@ -351,10 +353,8 @@ CoreWorker::CoreWorker(
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
   internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
 
-  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
-
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
-      store_socket, local_raylet_client_, check_signals_,
+      options_.store_socket, local_raylet_client_, options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
       boost::bind(&CoreWorker::TriggerGlobalGC, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
@@ -362,8 +362,8 @@ CoreWorker::CoreWorker(
         RAY_LOG(DEBUG) << "Promoting object to plasma " << obj_id;
         RAY_CHECK_OK(Put(obj, /*contained_object_ids=*/{}, obj_id, /*pin_object=*/true));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
-      check_signals_));
+      options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
+      options_.check_signals));
 
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
@@ -382,10 +382,10 @@ CoreWorker::CoreWorker(
   // driver creates an object that is later evicted, we should notify the
   // user that we're unable to reconstruct the object, since we cannot
   // rerun the driver.
-  if (worker_type_ == WorkerType::DRIVER) {
+  if (options_.worker_type == WorkerType::DRIVER) {
     TaskSpecBuilder builder;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetDriverTaskSpec(task_id, language_, worker_context_.GetCurrentJobID(),
+    builder.SetDriverTaskSpec(task_id, options_.language, worker_context_.GetCurrentJobID(),
                               TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
                               GetCallerId(), rpc_address_);
 
@@ -424,14 +424,14 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() {
   io_service_.stop();
   io_thread_.join();
-  if (log_dir_ != "") {
+  if (options_.log_dir != "") {
     RayLog::ShutDownRayLog();
   }
 }
 
 void CoreWorker::Shutdown() {
   io_service_.stop();
-  if (worker_type_ == WorkerType::WORKER) {
+  if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
   }
 }
@@ -1276,7 +1276,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
 
-  status = task_execution_callback_(
+  status = options_.task_execution_callback(
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
 
@@ -1315,7 +1315,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
     reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
   }
-  if (ref_counting_enabled_) {
+  if (options_.ref_counting_enabled) {
     memory_store_->Delete(deleted);
   }
 
@@ -1571,7 +1571,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     if (request.no_reconstruction()) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     }
-    if (log_dir_ != "") {
+    if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();
     }
     exit(1);
@@ -1615,8 +1615,8 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
-  if (gc_collect_ != nullptr) {
-    gc_collect_();
+  if (options_.gc_collect != nullptr) {
+    options_.gc_collect();
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,

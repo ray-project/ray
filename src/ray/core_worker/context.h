@@ -26,7 +26,7 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const JobID &job_id);
+  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
   const WorkerType GetWorkerType() const;
 

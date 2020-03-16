@@ -189,6 +189,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void Disconnect();
 
+  const WorkerID &GetWorkerID() const { return worker_context_.GetWorkerID(); }
+
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
@@ -225,7 +227,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    if (ref_counting_enabled_) {
+    if (options_.ref_counting_enabled) {
       memory_store_->Delete(deleted);
     }
   }
@@ -879,9 +881,6 @@ public:
 
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
-
-  /// Task execution callback.
-  TaskExecutionCallback task_execution_callback_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
