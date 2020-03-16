@@ -664,10 +664,10 @@ public:
   void Shutdown();
 
   /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure();
+  void CheckForRayletFailure(const boost::system::error_code &error);
 
   /// Heartbeat for internal bookkeeping.
-  void InternalHeartbeat();
+  void InternalHeartbeat(const boost::system::error_code &error);
 
   ///
   /// Private methods related to task submission.

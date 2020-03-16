@@ -194,14 +194,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
   absl::MutexLock lock(&worker_map_mutex_);
   // TOCHECK
-  // Store it in the map before starting the IO thread. When tasks arrive, we can
-  // find the worker from the map.
   workers_.emplace(worker->GetWorkerID(), worker);
-  // Once we register to Raylet, Raylet will start assigning tasks to this core worker.
-  // We need to make sure the IO thread runs after putting the worker instance into
-  // the `workers_` map, otherwise some required fields was not initialized when the
-  // first task arrived.
-  worker->io_thread_ = std::thread(&CoreWorker::RunIOService, worker.get());
   return worker;
 }
 
@@ -340,12 +333,14 @@ CoreWorker::CoreWorker(
   if (options_.worker_type == ray::WorkerType::WORKER) {
     death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
         RayConfig::instance().raylet_death_check_interval_milliseconds()));
-    death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
+    death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
   }
 
   internal_timer_.expires_from_now(
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
+
+  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, options_.check_signals,
@@ -416,8 +411,6 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
-  io_service_.stop();
-  io_thread_.join();
   if (options_.log_dir != "") {
     RayLog::ShutDownRayLog();
   }
@@ -493,8 +486,12 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   }
 }
 
-void CoreWorker::CheckForRayletFailure() {
-// If the raylet fails, we will be reassigned to init (PID=1).
+void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
+  if (error == boost::asio::error::operation_aborted) {
+    return;
+  }
+
+  // If the raylet fails, we will be reassigned to init (PID=1).
 #ifdef _WIN32
 // TODO(mehrdadn): need a different solution for Windows.
 #else
@@ -509,10 +506,14 @@ void CoreWorker::CheckForRayletFailure() {
       death_check_timer_.expiry() +
       boost::asio::chrono::milliseconds(
           RayConfig::instance().raylet_death_check_interval_milliseconds()));
-  death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
+  death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this, _1));
 }
 
-void CoreWorker::InternalHeartbeat() {
+void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
+  if (error == boost::asio::error::operation_aborted) {
+    return;
+  }
+
   absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
@@ -520,7 +521,7 @@ void CoreWorker::InternalHeartbeat() {
   }
   internal_timer_.expires_at(internal_timer_.expiry() +
                              boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this, _1));
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
