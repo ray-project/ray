@@ -2252,9 +2252,12 @@ void NodeManager::AsyncResolveObjects(
   if (ray_get) {
     // TODO(ekl) using the assigned task id is a hack to handle unsubscription for
     // HandleDirectCallUnblocked.
-    task_dependency_manager_.SubscribeGetDependencies(
-        mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId(),
-        required_object_ids);
+    auto &task_id = mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId();
+    if (!task_id.IsNil()) {
+      task_dependency_manager_.SubscribeGetDependencies(
+          task_id,
+          required_object_ids);
+    }
   } else {
     task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
                                                        required_object_ids);
@@ -2456,6 +2459,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   }
 
   // Notify the task dependency manager that this task has finished execution.
+  task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
   task_dependency_manager_.TaskCanceled(task_id);
 
   // Unset the worker's assigned job Id if this is not an actor.
