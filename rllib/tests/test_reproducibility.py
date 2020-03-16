@@ -8,7 +8,7 @@ import gym
 
 
 class TestReproducibility(unittest.TestCase):
-    def testReproducingTrajectory(self):
+    def test_reproducing_trajectory(self):
         class PickLargest(gym.Env):
             def __init__(self):
                 self.observation_space = gym.spaces.Box(
@@ -61,4 +61,6 @@ class TestReproducibility(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

@@ -14,7 +14,6 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,21 +28,17 @@ public class MultiThreadingTest extends BaseTest {
   private static final int LOOP_COUNTER = 100;
   private static final int NUM_THREADS = 20;
 
-  @RayRemote
   static Integer echo(int num) {
     return num;
   }
 
-  @RayRemote
   public static class Echo {
 
-    @RayRemote
     public Integer echo(int num) {
       return num;
     }
   }
 
-  @RayRemote
   public static class ActorIdTester {
 
     private final ActorId actorId;
@@ -53,7 +48,6 @@ public class MultiThreadingTest extends BaseTest {
       Assert.assertNotEquals(actorId, ActorId.NIL);
     }
 
-    @RayRemote
     public ActorId getCurrentActorId() throws Exception {
       final Object[] result = new Object[1];
       Thread thread = new Thread(Ray.wrapRunnable(() -> {
@@ -86,7 +80,7 @@ public class MultiThreadingTest extends BaseTest {
     RayActor<Echo> echoActor = Ray.createActor(Echo::new);
     runTestCaseInMultipleThreads(() -> {
       int arg = random.nextInt();
-      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor, arg);
+      RayObject<Integer> obj = echoActor.call(Echo::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, LOOP_COUNTER);
 
@@ -101,7 +95,7 @@ public class MultiThreadingTest extends BaseTest {
       } catch (InterruptedException e) {
         LOGGER.warn("Got exception while sleeping.", e);
       }
-      RayObject<Integer> obj = Ray.call(Echo::echo, echoActor1, arg);
+      RayObject<Integer> obj = echoActor1.call(Echo::echo, arg);
       Assert.assertEquals(arg, (int) obj.get());
     }, 1);
 
@@ -137,7 +131,7 @@ public class MultiThreadingTest extends BaseTest {
   public void testGetCurrentActorId() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);
-    ActorId actorId = Ray.call(ActorIdTester::getCurrentActorId, actorIdTester).get();
+    ActorId actorId = actorIdTester.call(ActorIdTester::getCurrentActorId).get();
     Assert.assertEquals(actorId, actorIdTester.getId());
   }
 

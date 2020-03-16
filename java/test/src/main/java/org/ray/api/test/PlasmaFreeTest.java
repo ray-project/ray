@@ -5,14 +5,12 @@ import java.util.Arrays;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.TaskId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class PlasmaFreeTest extends BaseTest {
 
-  @RayRemote
   private static String hello() {
     return "hello";
   }
@@ -25,9 +23,14 @@ public class PlasmaFreeTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
     final boolean result = TestUtils.waitForCondition(() ->
-        TestUtils.getRuntime().getObjectStore()
-            .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0) == false, 50);
-    Assert.assertTrue(result);
+        !TestUtils.getRuntime().getObjectStore()
+          .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0), 50);
+    if (TestUtils.isSingleProcessMode()) {
+      Assert.assertTrue(result);
+    } else {
+      // The object will not be deleted under cluster mode.
+      Assert.assertFalse(result);
+    }
   }
 
   @Test

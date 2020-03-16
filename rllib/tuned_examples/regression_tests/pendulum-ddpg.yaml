@@ -7,4 +7,3 @@ pendulum-ddpg:
     config:
         use_huber: True
         clip_rewards: False
-        exploration_fraction: 0.1

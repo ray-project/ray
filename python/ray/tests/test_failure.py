@@ -329,11 +329,12 @@ def test_incorrect_method_calls(ray_start_regular):
 
 
 def test_worker_raising_exception(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_calls=2)
     def f():
         # This is the only reasonable variable we can set here that makes the
         # execute_task function fail after the task got executed.
-        ray.experimental.signal.reset = None
+        worker = ray.worker.global_worker
+        worker.function_actor_manager.increase_task_counter = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.
@@ -841,10 +842,15 @@ def test_raylet_crash_when_get(ray_start_regular):
         time.sleep(2)
         ray.worker._global_node.kill_raylet()
 
+    object_id = ray.put(None)
+    ray.internal.free(object_id)
+    while ray.worker.global_worker.core_worker.object_exists(object_id):
+        time.sleep(1)
+
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(ray.ObjectID.from_random())
+        ray.get(object_id)
     thread.join()
 
 
@@ -931,6 +937,47 @@ def test_fill_object_store_exception(shutdown_only):
 
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
+
+
+def test_fill_object_store_lru_fallback(shutdown_only):
+    ray.init(num_cpus=2, object_store_memory=10**8, lru_evict=True)
+
+    @ray.remote
+    def expensive_task():
+        return np.zeros((10**8) // 2, dtype=np.uint8)
+
+    oids = []
+    for _ in range(3):
+        oid = expensive_task.remote()
+        ray.get(oid)
+        oids.append(oid)
+
+    @ray.remote
+    class LargeMemoryActor:
+        def some_expensive_task(self):
+            return np.zeros(10**8 // 2, dtype=np.uint8)
+
+        def test(self):
+            return 1
+
+    actor = LargeMemoryActor.remote()
+    for _ in range(3):
+        oid = actor.some_expensive_task.remote()
+        ray.get(oid)
+        oids.append(oid)
+    # Make sure actor does not die
+    ray.get(actor.test.remote())
+
+    for _ in range(3):
+        oid = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
+        ray.get(oid)
+        oids.append(oid)
+
+    # NOTE: Needed to unset the config set by the lru_evict flag, for Travis.
+    ray._raylet.set_internal_config({
+        "object_pinning_enabled": 1,
+        "object_store_full_max_retries": 5,
+    })
 
 
 @pytest.mark.parametrize(

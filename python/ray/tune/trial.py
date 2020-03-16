@@ -226,10 +226,9 @@ class Trial:
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
             checkpoint_deleter(self._trainable_name(), self.runner))
-        checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
-        self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
 
         # Restoration fields
+        self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
 
@@ -258,14 +257,16 @@ class Trial:
     def checkpoint(self):
         """Returns the most recent checkpoint.
 
-        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
-        Otherwise, it is the most recent PERSISTENT checkpoint.
+        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
+        is returned.
         """
-        if self.status == Trial.PAUSED:
-            assert self.checkpoint_manager.newest_memory_checkpoint.value
-            return self.checkpoint_manager.newest_memory_checkpoint
+        if self.status == Trial.ERROR:
+            checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
-            return self.checkpoint_manager.newest_persistent_checkpoint
+            checkpoint = self.checkpoint_manager.newest_checkpoint
+        if checkpoint.value is None:
+            checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
+        return checkpoint
 
     @classmethod
     def generate_id(cls):

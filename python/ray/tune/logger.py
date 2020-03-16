@@ -203,7 +203,7 @@ class TBXLogger(Logger):
 
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if type(value) in VALID_SUMMARY_TYPES:
+            if type(value) in VALID_SUMMARY_TYPES and not np.isnan(value):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
@@ -231,7 +231,12 @@ class TBXLogger(Logger):
     def close(self):
         if self._file_writer is not None:
             if self.trial and self.trial.evaluated_params and self.last_result:
-                self._try_log_hparams(self.last_result)
+                scrubbed_result = {
+                    k: value
+                    for k, value in self.last_result.items()
+                    if type(value) in VALID_SUMMARY_TYPES
+                }
+                self._try_log_hparams(scrubbed_result)
             self._file_writer.close()
 
     def _try_log_hparams(self, result):

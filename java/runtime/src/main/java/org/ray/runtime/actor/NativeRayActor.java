@@ -64,10 +64,6 @@ public abstract class NativeRayActor implements RayActor, Externalizable {
     return Language.forNumber(nativeGetLanguage(nativeCoreWorkerPointer, actorId));
   }
 
-  public boolean isDirectCallActor() {
-    return nativeIsDirectCallActor(nativeCoreWorkerPointer, actorId);
-  }
-
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(toBytes());
@@ -117,9 +113,6 @@ public abstract class NativeRayActor implements RayActor, Externalizable {
   }
 
   private static native int nativeGetLanguage(
-      long nativeCoreWorkerPointer, byte[] actorId);
-
-  private static native boolean nativeIsDirectCallActor(
       long nativeCoreWorkerPointer, byte[] actorId);
 
   static native List<String> nativeGetActorCreationTaskFunctionDescriptor(

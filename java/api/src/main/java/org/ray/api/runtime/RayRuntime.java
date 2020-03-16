@@ -80,8 +80,9 @@ public interface RayRuntime {
    * Kill the actor immediately.
    *
    * @param actor The actor to be killed.
+   * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
    */
-  void killActor(RayActor<?> actor);
+  void killActor(RayActor<?> actor, boolean noReconstruction);
 
   /**
    * Invoke a remote function.
@@ -101,7 +102,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject call(RayFunc func, RayActor<?> actor, Object[] args);
+  RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args);
 
   /**
    * Create an actor on a remote node.

@@ -45,7 +45,8 @@ class Categorical(TFActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
-        temperature = max(0.0001, temperature)  # clamp for stability reasons
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+        self.n = inputs.shape[-1]
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)
@@ -102,11 +103,13 @@ class MultiCategorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return tf.math.argmax(self.inputs, axis=-1)
+        return tf.stack(
+            [cat.deterministic_sample() for cat in self.cats],
+            axis=1)
 
     @override(ActionDistribution)
     def logp(self, actions):
-        # If tensor is provided, unstack it into list
+        # If tensor is provided, unstack it into list.
         if isinstance(actions, tf.Tensor):
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
         logps = tf.stack(
@@ -139,6 +142,68 @@ class MultiCategorical(TFActionDistribution):
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
         return np.sum(action_space.nvec)
+
+
+class GumbelSoftmax(TFActionDistribution):
+    """GumbelSoftmax distr. (for differentiable sampling in discr. actions
+
+    The Gumbel Softmax distribution [1] (also known as the Concrete [2]
+    distribution) is a close cousin of the relaxed one-hot categorical
+    distribution, whose tfp implementation we will use here plus
+    adjusted `sample_...` and `log_prob` methods. See discussion at [0].
+
+    [0] https://stackoverflow.com/questions/56226133/
+    soft-actor-critic-with-discrete-action-space
+
+    [1] Categorical Reparametrization with Gumbel-Softmax (Jang et al, 2017):
+    https://arxiv.org/abs/1611.01144
+    [2] The Concrete Distribution: A Continuous Relaxation of Discrete Random
+    Variables (Maddison et al, 2017) https://arxiv.org/abs/1611.00712
+    """
+
+    @DeveloperAPI
+    def __init__(self, inputs, model=None, temperature=1.0):
+        """Initializes a GumbelSoftmax distribution.
+
+        Args:
+            temperature (float): Temperature parameter. For low temperatures,
+                the expected value approaches a categorical random variable.
+                For high temperatures, the expected value approaches a uniform
+                distribution.
+        """
+        assert temperature >= 0.0
+        self.dist = tfp.distributions.RelaxedOneHotCategorical(
+            temperature=temperature, logits=inputs)
+        super().__init__(inputs, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        # Return the dist object's prob values.
+        return self.dist._distribution.probs
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        # Override since the implementation of tfp.RelaxedOneHotCategorical
+        # yields positive values.
+        if x.shape != self.dist.logits.shape:
+            values = tf.one_hot(
+                x, self.dist.logits.shape.as_list()[-1], dtype=tf.float32)
+            assert values.shape == self.dist.logits.shape, (
+                values.shape, self.dist.logits.shape)
+
+        # [0]'s implementation (see line below) seems to be an approximation
+        # to the actual Gumbel Softmax density.
+        return -tf.reduce_sum(
+            -x * tf.nn.log_softmax(self.dist.logits, axis=-1), axis=-1)
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self):
+        return self.dist.sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return action_space.n
 
 
 class DiagGaussian(TFActionDistribution):
@@ -266,7 +331,8 @@ class SquashedGaussian(TFActionDistribution):
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
 
-    This is similar to DiagGaussian with standard deviation zero.
+    This is similar to DiagGaussian with standard deviation zero (thus only
+    requiring the "mean" values as NN output).
     """
 
     @override(ActionDistribution)

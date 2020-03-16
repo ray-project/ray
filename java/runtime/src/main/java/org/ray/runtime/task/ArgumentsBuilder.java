@@ -2,6 +2,7 @@ package org.ray.runtime.task;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
@@ -32,26 +33,22 @@ public class ArgumentsBuilder {
   /**
    * Convert real function arguments to task spec arguments.
    */
-  public static List<FunctionArg> wrap(Object[] args, Language language, boolean isDirectCall) {
+  public static List<FunctionArg> wrap(Object[] args, Language language) {
     List<FunctionArg> ret = new ArrayList<>();
     for (Object arg : args) {
       ObjectId id = null;
       NativeRayObject value = null;
       if (arg instanceof RayObject) {
-        if (isDirectCall) {
-          throw new IllegalArgumentException(
-              "Passing RayObject to a direct call actor is not supported.");
-        }
         id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
-        if (!isDirectCall && value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
+        if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
           RayRuntime runtime = Ray.internal();
           if (runtime instanceof RayMultiWorkerNativeRuntime) {
             runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
           }
           id = ((AbstractRayRuntime) runtime).getObjectStore()
-              .putRaw(value);
+            .putRaw(value);
           value = null;
         }
       }

@@ -98,7 +98,6 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         load_code_from_local=args.load_code_from_local,
-        use_pickle=args.use_pickle,
         _internal_config=json.dumps(internal_config),
     )
 

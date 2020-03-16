@@ -26,6 +26,7 @@ from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 
 tf = try_import_tf()
 
@@ -46,22 +47,26 @@ COMMON_CONFIG = {
     # model inference batching, which can improve performance for inference
     # bottlenecked workloads.
     "num_envs_per_worker": 1,
-    # Default sample batch size (unroll length). Batches of this size are
-    # collected from rollout workers until train_batch_size is met. When using
-    # multiple envs per worker, this is multiplied by num_envs_per_worker.
+    # Divide episodes into fragments of this many steps each during rollouts.
+    # Sample batches of this size are collected from rollout workers and
+    # combined into a larger batch of `train_batch_size` for learning.
     #
-    # For example, given sample_batch_size=100 and train_batch_size=1000:
-    #   1. RLlib will collect 10 batches of size 100 from the rollout workers.
-    #   2. These batches are concatenated and we perform an epoch of SGD.
+    # For example, given rollout_fragment_length=100 and train_batch_size=1000:
+    #   1. RLlib collects 10 fragments of 100 steps each from rollout workers.
+    #   2. These fragments are concatenated and we perform an epoch of SGD.
     #
-    # If we further set num_envs_per_worker=5, then the sample batches will be
-    # of size 5*100 = 500, and RLlib will only collect 2 batches per epoch.
+    # When using multiple envs per worker, the fragment size is multiplied by
+    # `num_envs_per_worker`. This is since we are collecting steps from
+    # multiple envs in parallel. For example, if num_envs_per_worker=5, then
+    # rollout workers will return experiences in chunks of 5*100 = 500 steps.
     #
-    # The exact workflow here can vary per algorithm. For example, PPO further
+    # The dataflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
-    "sample_batch_size": 200,
+    "rollout_fragment_length": 200,
+    # Deprecated; renamed to `rollout_fragment_length` in 0.8.4.
+    "sample_batch_size": DEPRECATED_VALUE,
     # Whether to rollout "complete_episodes" or "truncate_episodes" to
-    # `sample_batch_size` length unrolls. Episode truncation guarantees more
+    # `rollout_fragment_length` length unrolls. Episode truncation guarantees
     # evenly sized batches, but increases variance as the reward-to-go will
     # need to be estimated at truncation boundaries.
     "batch_mode": "truncate_episodes",
@@ -71,7 +76,7 @@ COMMON_CONFIG = {
     # algorithms can take advantage of trainer GPUs. This can be fractional
     # (e.g., 0.3 GPUs).
     "num_gpus": 0,
-    # Training batch size, if applicable. Should be >= sample_batch_size.
+    # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
     "train_batch_size": 200,
@@ -213,6 +218,9 @@ COMMON_CONFIG = {
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
+    # EXPERIMENTAL: use the execution plan based API impl of the algo. Can also
+    # be enabled by setting RLLIB_EXEC_API=1.
+    "use_exec_api": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -260,11 +268,11 @@ COMMON_CONFIG = {
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
     "remote_env_batch_wait_ms": 0,
-    # Minimum time per train iteration
+    # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,
+    "timesteps_per_iteration": 0,  # TODO(ekl) deprecate this
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
@@ -550,14 +558,11 @@ class Trainer(Trainable):
         else:
             self.env_creator = lambda env_config: None
 
-        # Merge the supplied config with the class default.
-        merged_config = copy.deepcopy(self._default_config)
-        merged_config = deep_update(merged_config, config,
-                                    self._allow_unknown_configs,
-                                    self._allow_unknown_subkeys,
-                                    self._override_all_subkeys_if_type_changes)
+        # Merge the supplied config with the class default, but store the
+        # user-provided one.
         self.raw_user_config = config
-        self.config = merged_config
+        self.config = Trainer.merge_trainer_configs(self._default_config,
+                                                    config)
 
         if self.config["normalize_actions"]:
             inner = self.env_creator
@@ -594,9 +599,12 @@ class Trainer(Trainable):
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
+                # Assert that user has not unset "in_evaluation".
+                assert "in_evaluation" not in extra_config or \
+                    extra_config["in_evaluation"] is True
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "batch_steps": 1,
+                    "rollout_fragment_length": 1,
                     "in_evaluation": True,
                 })
                 logger.debug(
@@ -613,7 +621,7 @@ class Trainer(Trainable):
     def _stop(self):
         if hasattr(self, "workers"):
             self.workers.stop()
-        if hasattr(self, "optimizer"):
+        if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
@@ -767,8 +775,7 @@ class Trainer(Trainable):
             preprocessed, update=False)
 
         # Figure out the current (sample) time step and pass it into Policy.
-        timestep = self.optimizer.num_steps_sampled \
-            if self._has_policy_optimizer() else None
+        self.global_vars["timestep"] += 1
 
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
@@ -778,7 +785,7 @@ class Trainer(Trainable):
             info,
             clip_actions=self.config["clip_actions"],
             explore=explore,
-            timestep=timestep)
+            timestep=self.global_vars["timestep"])
 
         if state or full_fetch:
             return result
@@ -878,6 +885,24 @@ class Trainer(Trainable):
                 "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
                 "The config of this agent is: {}".format(config))
 
+    @classmethod
+    def merge_trainer_configs(cls, config1, config2):
+        config1 = copy.deepcopy(config1)
+        # Error if trainer default has deprecated value.
+        if config1["sample_batch_size"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                "sample_batch_size", new="rollout_fragment_length", error=True)
+        # Warning if user override config has deprecated value.
+        if ("sample_batch_size" in config2
+                and config2["sample_batch_size"] != DEPRECATED_VALUE):
+            deprecation_warning(
+                "sample_batch_size", new="rollout_fragment_length")
+            config2["rollout_fragment_length"] = config2["sample_batch_size"]
+            del config2["sample_batch_size"]
+        return deep_update(config1, config2, cls._allow_unknown_configs,
+                           cls._allow_unknown_subkeys,
+                           cls._override_all_subkeys_if_type_changes)
+
     @staticmethod
     def _validate_config(config):
         if "policy_graphs" in config["multiagent"]:
@@ -913,19 +938,25 @@ class Trainer(Trainable):
         an error is raised.
         """
 
-        if not self._has_policy_optimizer():
+        if (not self._has_policy_optimizer()
+                and not hasattr(self, "execution_plan")):
             raise NotImplementedError(
                 "Recovery is not supported for this algorithm")
+        if self._has_policy_optimizer():
+            workers = self.optimizer.workers
+        else:
+            assert hasattr(self, "execution_plan")
+            workers = self.workers
 
         logger.info("Health checking all workers...")
         checks = []
-        for ev in self.optimizer.workers.remote_workers():
+        for ev in workers.remote_workers():
             _, obj_id = ev.sample_with_count.remote()
             checks.append(obj_id)
 
         healthy_workers = []
         for i, obj_id in enumerate(checks):
-            w = self.optimizer.workers.remote_workers()[i]
+            w = workers.remote_workers()[i]
             try:
                 ray_get_and_free(obj_id)
                 healthy_workers.append(w)
@@ -941,7 +972,13 @@ class Trainer(Trainable):
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
 
-        self.optimizer.reset(healthy_workers)
+        if self._has_policy_optimizer():
+            self.optimizer.reset(healthy_workers)
+        else:
+            assert hasattr(self, "execution_plan")
+            logger.warning("Recreating execution plan after failure")
+            workers.reset(healthy_workers)
+            self.train_exec_impl = self.execution_plan(workers, self.config)
 
     def _has_policy_optimizer(self):
         """Whether this Trainer has a PolicyOptimizer as `optimizer` property.

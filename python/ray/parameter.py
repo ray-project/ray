@@ -5,6 +5,8 @@ from packaging import version
 
 import ray.ray_constants as ray_constants
 
+logger = logging.getLogger(__name__)
+
 
 class RayParams:
     """A class used to store the parameters used by Ray.
@@ -77,9 +79,8 @@ class RayParams:
         autoscaling_config: path to autoscaling config file.
         include_java (bool): If True, the raylet backend can also support
             Java worker.
-        java_worker_options (str): The command options for Java worker.
+        java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
-        use_pickle: Whether data objects should be serialized with cloudpickle.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -120,7 +121,6 @@ class RayParams:
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 use_pickle=False,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -155,7 +155,6 @@ class RayParams:
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
-        self.use_pickle = use_pickle
         self._internal_config = _internal_config
         self._check_usage()
 
@@ -209,9 +208,6 @@ class RayParams:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
 
-        if self.use_pickle:
-            assert (version.parse(
-                np.__version__) >= version.parse("1.16.0")), (
-                    "numpy >= 1.16.0 required for use_pickle=True support. "
-                    "You can use ray.init(use_pickle=False) for older numpy "
-                    "versions, but this may be removed in future versions.")
+        if version.parse(np.__version__) < version.parse("1.16.0"):
+            logger.warning("Using ray with numpy < 1.16.0 will result in slow "
+                           "serialization. Upgrade numpy if using with ray.")
