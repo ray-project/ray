@@ -100,7 +100,8 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, actor_info_grpc_client_, )
 
   /// Get all actor data from GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo, actor_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo,
+                             actor_info_grpc_client_, )
 
   /// Register an actor to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo,
@@ -139,7 +140,8 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, node_info_grpc_client_, )
 
   /// Get all node's resources from GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResources, node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResources,
+                             node_info_grpc_client_, )
 
   /// Update resources of a node in GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, UpdateResources,

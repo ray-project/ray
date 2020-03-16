@@ -50,7 +50,9 @@ void DefaultActorInfoHandler::HandleGetAllActorInfo(
     const GetAllActorInfoRequest &request, GetAllActorInfoReply *reply,
     SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
-  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+  // TODO(ffbin): get all actor info.
+  Status status = Status::OK();
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   RAY_LOG(DEBUG) << "Finished getting all actor info.";
 }
 

@@ -100,7 +100,7 @@ class ActorInfoGcsServiceHandler {
 
   virtual void HandleGetAllActorInfo(const GetAllActorInfoRequest &request,
                                      GetAllActorInfoReply *reply,
-                                     SendReplyCallback send_reply_callback);
+                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
                                        RegisterActorInfoReply *reply,
@@ -181,7 +181,7 @@ class NodeInfoGcsServiceHandler {
 
   virtual void HandleGetAllResources(const GetAllResourcesRequest &request,
                                      GetAllResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback);
+                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
                                      UpdateResourcesReply *reply,

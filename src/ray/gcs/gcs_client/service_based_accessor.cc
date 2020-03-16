@@ -163,18 +163,21 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
   RAY_CHECK_OK(actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done));
 
   // Get actors from GCS Service.
+  std::promise<Status> promise;
   rpc::GetAllActorInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
-      request, [subscribe](const Status &status, const rpc::GetAllActorInfoReply &reply) {
+      request, [&promise, subscribe](const Status &status,
+                                     const rpc::GetAllActorInfoReply &reply) {
         std::vector<ActorTableData> actor_data_list =
             VectorFromProtobuf(reply.actor_data_list());
         for (auto &actor_data : actor_data_list) {
           subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
         }
+        promise.set_value(status);
       });
 
   RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
-  return Status::OK();
+  return promise.get_future().get();
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
@@ -189,18 +192,22 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
       actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done));
 
   // Get actor from GCS Service.
+  std::promise<Status> promise;
   rpc::GetActorInfoRequest request;
+  request.set_actor_id(actor_id.Binary());
   client_impl_->GetGcsRpcClient().GetActorInfo(
-      request, [subscribe](const Status &status, const rpc::GetActorInfoReply &reply) {
+      request,
+      [&promise, subscribe](const Status &status, const rpc::GetActorInfoReply &reply) {
         if (reply.has_actor_table_data()) {
           subscribe(ActorID::FromBinary(reply.actor_table_data().actor_id()),
                     reply.actor_table_data());
         }
+        promise.set_value(status);
       });
 
   RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
                  << actor_id;
-  return Status::OK();
+  return promise.get_future().get();
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
@@ -407,16 +414,18 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
   RAY_CHECK_OK(client_table.SubscribeToNodeChange(node_change_subscribe, done));
 
   // Get nodes from GCS Service.
-  auto callback = [subscribe](Status status,
-                              const std::vector<GcsNodeInfo> &node_info_list) {
+  std::promise<Status> promise;
+  auto callback = [&promise, subscribe](Status status,
+                                        const std::vector<GcsNodeInfo> &node_info_list) {
     for (auto &node_info : node_info_list) {
       subscribe(ClientID::FromBinary(node_info.node_id()), node_info);
     }
+    promise.set_value(status);
   };
-  auto status = AsyncGetAll(callback);
 
+  RAY_UNUSED(AsyncGetAll(callback));
   RAY_LOG(DEBUG) << "Finished subscribing node change.";
-  return status;
+  return promise.get_future().get();
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
@@ -529,9 +538,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
       resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done));
 
   // Get resources from GCS Service.
+  std::promise<Status> promise;
   rpc::GetAllResourcesRequest request;
   client_impl_->GetGcsRpcClient().GetAllResources(
-      request, [subscribe](const Status &status, const rpc::GetAllResourcesReply &reply) {
+      request, [&promise, subscribe](const Status &status,
+                                     const rpc::GetAllResourcesReply &reply) {
         std::vector<rpc::NodeResources> node_resources_list =
             VectorFromProtobuf(reply.resources_list());
         for (auto &node_resources : node_resources_list) {
@@ -545,10 +556,11 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
                                                   resources_map);
           subscribe(ClientID::FromBinary(node_resources.node_id()), notification);
         }
+        promise.set_value(status);
       });
 
   RAY_LOG(DEBUG) << "Finished subscribing node resources change.";
-  return Status::OK();
+  return promise.get_future().get();
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
@@ -841,17 +853,18 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
       object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done));
 
   // Get location set from GCS Service.
-  auto callback = [object_id, subscribe](Status status,
-                                         const std::vector<ObjectTableData> &locations) {
+  std::promise<Status> promise;
+  auto callback = [&promise, object_id, subscribe](
+                      Status status, const std::vector<ObjectTableData> &locations) {
     if (status.ok() && !locations.empty()) {
       ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD, locations);
       subscribe(object_id, notification);
     }
+    promise.set_value(status);
   };
-  auto status = AsyncGetLocations(object_id, callback);
-
+  RAY_UNUSED(AsyncGetLocations(object_id, callback));
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;
-  return status;
+  return promise.get_future().get();
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(

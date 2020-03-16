@@ -62,8 +62,9 @@ message GetAllActorInfoRequest {
 }
 
 message GetAllActorInfoReply {
+  GcsStatus status = 1;
   // Data of all actors.
-  repeated ActorTableData actor_data_list = 1;
+  repeated ActorTableData actor_data_list = 2;
 }
 
 message RegisterActorInfoRequest {
@@ -192,7 +193,8 @@ message NodeResources {
 }
 
 message GetAllResourcesReply {
-  repeated NodeResources resources_list = 1;
+  GcsStatus status = 1;
+  repeated NodeResources resources_list = 2;
 }
 
 message UpdateResourcesRequest {
