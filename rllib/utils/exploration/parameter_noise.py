@@ -29,6 +29,7 @@ class ParameterNoise(Exploration):
 
     def __init__(self,
                  action_space,
+                 policy_config,
                  *,
                  framework,
                  initial_stddev=1.0,
@@ -39,6 +40,7 @@ class ParameterNoise(Exploration):
 
         Args:
             action_space (Space): The gym action space used by the environment.
+            policy_config (dict): The Policy's config dict.
             framework (str): One of None, "tf", "torch".
             initial_stddev (float): The initial stddev to use for the noise.
             random_timesteps (int): The number of timesteps to act completely
@@ -70,7 +72,6 @@ class ParameterNoise(Exploration):
             if isinstance(self.action_space, Discrete):
                 sub_exploration = {
                     "type": "EpsilonGreedy",
-                    "action_space": self.action_space,
                     "epsilon_schedule": {
                         "type": "PiecewiseSchedule",
                         "endpoints": [(0, 1.0), (random_timesteps, 0.01)],
@@ -81,7 +82,14 @@ class ParameterNoise(Exploration):
             else:
                 raise NotImplementedError
 
-        self.sub_exploration = from_config(Exploration, sub_exploration)
+        self.sub_exploration = from_config(
+            Exploration,
+            sub_exploration,
+            framework=self.framework,
+            action_space=self.action_space,
+            **kwargs)
+        # Store the default setting for `explore`.
+        self.default_explore = policy_config["explore"]
 
     @override(Exploration)
     def before_forward_pass(self,
@@ -112,8 +120,9 @@ class ParameterNoise(Exploration):
 
         if self.framework == "tf" and not tf.executing_eagerly():
             return self._tf_before_forward_op(explore, model)
+        # `explore` matches `self.default_explore` TODO(sven) ???:
+        #  Revert noise, forward-pass, then re-apply noise.
         else:
-            # No exploration: Revert noise, forward-pass, then re-apply noise.
             if not explore:
                 self._remove_noise(model)
 
@@ -153,6 +162,13 @@ class ParameterNoise(Exploration):
                          environment,
                          episode,
                          tf_sess=None):
+        # If True, add noise here and leave it (for the episode) unless a
+        # compute_action call has `explore=False` (then we remove the noise,
+        # act and re-add it).
+        # If False, this logic is inversed.
+        if self.default_explore is False:
+            return
+
         # Build/execute the add-noise-op for tf.
         if self.framework == "tf":
             if tf.executing_eagerly():
@@ -170,6 +186,12 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def on_episode_end(self, policy, model, environment, episode,
                        tf_sess=None):
+
+        # If config["explore"]=False: No noise has been added at beginning of
+        # episode -> no reason to remove it here.
+        if self.default_explore is False:
+            return
+
         # Build/execute the remove-noise-op for tf.
         if self.framework == "tf" and not tf.executing_eagerly():
             tf_sess.run(self.remove_noise_op)
@@ -179,11 +201,13 @@ class ParameterNoise(Exploration):
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
-        # Adjust our stddev depending on the action (pi)-distance.
+        # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
         inputs, dist_class, _ = policy.compute_distribution_inputs(
-            sample_batch[SampleBatch.CUR_OBS],
-            # TODO(sven): Add other items from sample_batch here.
+            obs_batch=sample_batch[SampleBatch.CUR_OBS],
+            # TODO(sven): What about state-ins and seq-lens?
+            prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
             explore=False)
         # Categorical case (e.g. DQN).
         if dist_class is Categorical:
@@ -192,9 +216,11 @@ class ParameterNoise(Exploration):
             raise NotImplementedError
 
         inputs, dist_class, _ = policy.compute_distribution_inputs(
-            # TODO(sven): Add other items from sample_batch here.
-            sample_batch[SampleBatch.CUR_OBS],
-            explore=False)
+            obs_batch=sample_batch[SampleBatch.CUR_OBS],
+            # TODO(sven): What about state-ins and seq-lens?
+            prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
+            explore=True)
 
         new_stddev = 0.0
         # Categorical case (e.g. DQN).
@@ -206,8 +232,10 @@ class ParameterNoise(Exploration):
                 current_epsilon = tf_sess.run(current_epsilon)
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
-            new_stddev = self.stddev * (1.01
-                                        if pi_distance < delta else 1 / 1.01)
+            if pi_distance > delta:
+                new_stddev = self.stddev * 1.01
+            else:
+                new_stddev = self.stddev / 1.01
 
         # Set new stddev to calculated value.
         if tf_sess is not None:
@@ -218,14 +246,16 @@ class ParameterNoise(Exploration):
         return sample_batch
 
     def _tf_before_forward_op(self, explore, model):
-
-        # Exploration: Do nothing. Noise is in place.
+        # explore: Do nothing if noise is in place, otherwise, add noise.
         def true_fn():
-            return tf.no_op()
+            return tf.no_op() if self.default_explore else \
+                self._apply_noise(model)
 
-        # No exploration: Remove noise for upcoming forward-pass.
+        # No exploration: Remove noise (for upcoming forward-pass) if noise is
+        # in place, otherwise, do nothing.
         def false_fn():
-            return self._remove_noise(model)
+            return self._remove_noise(model) if self.default_explore else \
+                tf.no_op()
 
         return tf.cond(
             tf.constant(explore) if isinstance(explore, bool) else explore,
@@ -233,14 +263,16 @@ class ParameterNoise(Exploration):
             false_fn=false_fn)
 
     def _tf_after_forward_op(self, explore, model):
-
-        # Exploration: Do nothing. Noise was never removed.
+        # explore: Do nothing if noise is in place, otherwise, remove noise.
         def true_fn():
-            return tf.no_op()
+            return tf.no_op() if self.default_explore else \
+                self._remove_noise(model)
 
-        # No exploration: Re-apply previously removed noise.
+        # No exploration: Re-apply previously removed noise or do nothing
+        # (if noise was never applied).
         def false_fn():
-            return self._apply_noise(model)
+            return self._apply_noise(model) if self.default_explore else \
+                tf.no_op()
 
         return tf.cond(
             tf.constant(explore) if isinstance(explore, bool) else explore,
@@ -261,6 +293,12 @@ class ParameterNoise(Exploration):
             return self._apply_noise(model)
 
     def _apply_noise(self, model):
+        """
+        Adds the current action noise to the model parameters.
+
+        Args:
+            model (ModelV2): The Model object.
+        """
         # Build the apply-noise-op.
         if self.framework == "tf":
             add_noise_ops = list()
@@ -291,3 +329,7 @@ class ParameterNoise(Exploration):
             for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
                 torch.add_(var, -noise)
+
+    @override(Exploration)
+    def get_info(self):
+        return {"cur_stddev": self.stddev}

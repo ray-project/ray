@@ -20,7 +20,7 @@ class Random(Exploration):
     If explore=False, returns the greedy/max-likelihood action.
     """
 
-    def __init__(self, action_space, *, framework="tf", **kwargs):
+    def __init__(self, action_space, *, framework, **kwargs):
         """Initialize a Random Exploration object.
 
         Args:

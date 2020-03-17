@@ -23,9 +23,9 @@ class StochasticSampling(Exploration):
     def __init__(self,
                  action_space,
                  *,
+                 framework,
                  static_params=None,
                  time_dependent_params=None,
-                 framework="tf",
                  **kwargs):
         """Initializes a StochasticSampling Exploration object.
 
@@ -36,7 +36,7 @@ class StochasticSampling(Exploration):
             time_dependent_params (dict): Parameters to be evaluated based on
                 `timestep` and then passed into the action distribution
                 class' constructor.
-            framework (Optional[str]): One of None, "tf", "torch".
+            framework (str): One of None, "tf", "torch".
         """
         assert framework is not None
         super().__init__(action_space, framework=framework, **kwargs)

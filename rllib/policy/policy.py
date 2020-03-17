@@ -394,6 +394,7 @@ class Policy(metaclass=ABCMeta):
             Exploration,
             config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=action_space,
+            policy_config=config,
             num_workers=config.get("num_workers", 0),
             worker_index=config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))

@@ -118,6 +118,7 @@ class TestDQN(unittest.TestCase):
             config["use_pytorch"] = True if fw == "torch" else False
             # Chose ParameterNoise as exploration class.
             config["exploration_config"] = {"type": "ParameterNoise"}
+            config["explore"] = True
 
             eager_mode_ctx = eager_mode()
             if fw == "eager":
@@ -125,7 +126,8 @@ class TestDQN(unittest.TestCase):
             else:
                 assert not tf.executing_eagerly()
 
-            # DQN with ParameterNoise exploration.
+            # DQN with ParameterNoise exploration (config["explore"]=True).
+            # ----
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             policy = trainer.get_policy()
             weights_before = policy.get_weights()
@@ -141,7 +143,7 @@ class TestDQN(unittest.TestCase):
 
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
-            for _ in range(50):
+            for _ in range(25):
                 a = trainer.compute_action(obs, explore=False)
                 check(a, a_)
 
@@ -149,7 +151,7 @@ class TestDQN(unittest.TestCase):
             # However, this is only due to the underlying epsilon-greedy
             # exploration.
             actions = []
-            for _ in range(50):
+            for _ in range(25):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
 
@@ -161,7 +163,39 @@ class TestDQN(unittest.TestCase):
             check(weights_before[key][0][0],
                   weights_after_episode_end[key][0][0])
 
+            # DQN with ParameterNoise exploration (config["explore"]=False).
+            # ----
+            config["explore"] = False
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            policy = trainer.get_policy()
+            weights_before = policy.get_weights()
+            # Pseudo-start an episode and compare the weights before and after
+            # (they should be the same).
+            policy.exploration.on_episode_start(
+                policy, policy.model, None, None, tf_sess=policy._sess)
+            weights_after = policy.get_weights()
+            check(weights_before[key][0][0], weights_after[key][0][0])
+
+            # Setting explore=False or None should always return the same
+            # action.
+            a_ = trainer.compute_action(obs, explore=False)
+            for _ in range(10):
+                a = trainer.compute_action(obs, explore=None)
+                check(a, a_)
+                a = trainer.compute_action(obs, explore=False)
+                check(a, a_)
+
+            # Pseudo-end the episode and compare weights again.
+            # Make sure they are the original ones (no noise permanently
+            # applied throughout the episode).
+            policy.exploration.on_episode_end(
+                policy, policy.model, None, None, tf_sess=policy._sess)
+            weights_after_episode_end = policy.get_weights()
+            check(weights_before[key][0][0],
+                  weights_after_episode_end[key][0][0])
+
             # Switch off EpsilonGreedy underlying exploration.
+            # ----
             config["exploration_config"] = {
                 "type": "ParameterNoise",
                 "sub_exploration": {
@@ -170,6 +204,7 @@ class TestDQN(unittest.TestCase):
                     "initial_epsilon": 0.0,  # <- no randomness whatsoever
                 }
             }
+            config["explore"] = True
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Now, when we act - even with explore=True - we would expect
             # the same action for the same input (parameter noise is
@@ -178,7 +213,7 @@ class TestDQN(unittest.TestCase):
             policy.exploration.on_episode_start(
                 policy, policy.model, None, None, tf_sess=policy._sess)
             a_ = trainer.compute_action(obs)
-            for _ in range(50):
+            for _ in range(25):
                 a = trainer.compute_action(obs, explore=True)
                 check(a, a_)
 

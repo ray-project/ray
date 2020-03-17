@@ -24,13 +24,13 @@ class GaussianNoise(Exploration):
     def __init__(self,
                  action_space,
                  *,
+                 framework,
                  random_timesteps=1000,
                  stddev=0.1,
                  initial_scale=1.0,
                  final_scale=0.02,
                  scale_timesteps=10000,
                  scale_schedule=None,
-                 framework="tf",
                  **kwargs):
         """Initializes a GaussianNoise Exploration object.
 

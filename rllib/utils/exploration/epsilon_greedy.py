@@ -22,11 +22,12 @@ class EpsilonGreedy(Exploration):
 
     def __init__(self,
                  action_space,
+                 *,
+                 framework,
                  initial_epsilon=1.0,
                  final_epsilon=0.05,
                  epsilon_timesteps=int(1e5),
                  epsilon_schedule=None,
-                 framework="tf",
                  **kwargs):
         """Create an EpsilonGreedy exploration class.
 
