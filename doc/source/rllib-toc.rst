@@ -64,7 +64,7 @@ Environments
 * `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
 * `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
 
-   -  `External Application Clients <rllib-training.html#external-application-clients>`__
+   -  `External Application Clients <rllib-env.html#external-application-clients>`__
 
 * `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
