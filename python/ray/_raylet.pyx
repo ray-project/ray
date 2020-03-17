@@ -533,7 +533,8 @@ cdef void async_plasma_callback(CObjectID object_id,
     if event_handler is not None:
         obj_id = ObjectID(object_id.Binary())
         if data_size > 0 and obj_id:
-            # This must be asynchronous to allow objects to avoid blocking the IO thread.
+            # This must be asynchronous to allow objects to avoid blocking
+            # the IO thread.
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 

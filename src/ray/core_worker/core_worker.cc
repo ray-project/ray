@@ -202,10 +202,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
-        RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
-                       << spec.DebugString();
+        uint32_t delay = RayConfig::instance().task_retry_delay_ms();
+        RAY_LOG(ERROR) << "Will resubmit task after a " << delay
+                       << "ms delay: " << spec.DebugString();
         absl::MutexLock lock(&mutex_);
-        to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
+        to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
       }));
 
   // Create an entry for the driver task in the task table. This task is
