@@ -9,8 +9,8 @@ namespace ray {
 namespace gcs {
 
 static Status AsyncGetByKey(std::shared_ptr<RedisContext> redis_context,
-                       const std::string &key,
-                       const OptionalItemCallback<std::string> &callback) {
+                            const std::string &key,
+                            const OptionalItemCallback<std::string> &callback) {
   RAY_CHECK(callback != nullptr);
 
   std::vector<std::string> args = {"GET", key};
@@ -28,8 +28,8 @@ static Status AsyncGetByKey(std::shared_ptr<RedisContext> redis_context,
 }
 
 static Status AsyncDeleteKeys(std::shared_ptr<RedisContext> redis_context,
-                          const std::vector<std::string> &keys,
-                          const StatusCallback &callback) {
+                              const std::vector<std::string> &keys,
+                              const StatusCallback &callback) {
   std::vector<std::string> args = {"DEL"};
   args.insert(args.end(), keys.begin(), keys.end());
 
