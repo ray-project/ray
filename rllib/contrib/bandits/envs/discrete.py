@@ -4,7 +4,6 @@ import gym
 import numpy as np
 from gym import spaces
 
-
 DEFAULT_CONFIG_LINEAR = {
     "feature_dim": 8,
     "num_actions": 4,
@@ -65,10 +64,10 @@ class LinearDiscreteEnv(gym.Env):
         rewards += np.random.normal(scale=self.sigma, size=rewards.shape)
 
         reward = rewards[action]
-        self._current_context = None
-        self._done = True
-        return context, reward, self._done, {"regret": regret,
-                                             "opt_action": opt_action}
+        self._current_context = self._sample_context()
+        self._done = False
+        return self._current_context, reward, self._done, {"regret": regret,
+                                                           "opt_action": opt_action}
 
     def render(self, mode='human'):
         raise NotImplementedError
@@ -157,10 +156,10 @@ class WheelBanditEnv(gym.Env):
 
         regret = rewards[opt_action] - reward
 
-        self._current_context = None
-        self._done = True
-        return context, reward, self._done, {"regret": regret,
-                                             "opt_action": opt_action}
+        self._current_context = self._sample_context()
+        self._done = False
+        return self._current_context, reward, self._done, {"regret": regret,
+                                                           "opt_action": opt_action}
 
     def render(self, mode='human'):
         raise NotImplementedError

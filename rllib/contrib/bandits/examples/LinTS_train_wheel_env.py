@@ -5,7 +5,7 @@
 
 import numpy as np
 from matplotlib import pyplot as plt
-from ray.rllib.contrib.bandits.agents import LinTSTrainer
+from ray.rllib.contrib.bandits.agents.linear import LinTSTrainer
 from ray.rllib.contrib.bandits.envs import WheelBanditEnv
 
 
@@ -32,7 +32,7 @@ def plot_model_weights(means, covs):
 
 
 if __name__ == "__main__":
-    num_iter = 2000
+    num_iter = 20
     print("Running training for %s time steps" % num_iter)
     trainer = LinTSTrainer(env=WheelBanditEnv)
 

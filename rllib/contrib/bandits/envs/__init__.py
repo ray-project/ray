@@ -1,1 +1,2 @@
-from .synthetic import LinearDiscreteEnv, WheelBanditEnv
+from .discrete import LinearDiscreteEnv, WheelBanditEnv
+from .parametric import ParametricItemRecoEnv
