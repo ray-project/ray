@@ -472,7 +472,7 @@ class ReferenceCounter {
 
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
-  std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
+  std::function<void()> shutdown_hook_ GUARDED_BY(mutex_) = nullptr;
 };
 
 }  // namespace ray
