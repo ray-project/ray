@@ -309,9 +309,10 @@ For applications that are running entirely outside the Ray cluster (i.e., cannot
 
 .. image:: rllib-external.svg
 
-Try it yourself by launching a `cartpole_server.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, and connecting to it with any number of `cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__.
+Try it yourself by launching a `cartpole_server.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, and connecting to it with any number of clients (`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__):
 
 **Example 1: DQN server w/server-side inference**:
+
 .. code-block:: bash
 
     # Remove any server checkpoints.
@@ -323,15 +324,17 @@ Try it yourself by launching a `cartpole_server.py <https://github.com/ray-proje
     --- Starting policy server at localhost:9900
     ---
 
-    # To connect from other terminals:
+    # To connect and run rollouts from other terminals:
     >>> python rllib/examples/serving/cartpole_client.py
     Total reward: 10.0
     Total reward: 58.0
     ...
     Total reward: 200.0
+    ...
 
 
 **Example 2: PPO server w/client-side inference**:
+
 .. code-block:: bash
 
     # Remove any server checkpoints.
@@ -343,13 +346,19 @@ Try it yourself by launching a `cartpole_server.py <https://github.com/ray-proje
     --- Starting policy server at localhost:9900
     ---
 
-    # To connect from other terminals:
+    # To connect and run rollouts from other terminals:
     >>> python cartpole_client.py --use-connector
+    Querying server for new policy weights...
     Generating new batch of experiences.
     Total reward: 13.0
     Total reward: 11.0
     ...
     Sending batch of 1000 steps back to server.
+    Querying server for new policy weights...
+    ...
+    Total reward: 200.0
+
+For the best performance, when possible we recommend using ``ConnectorClient`` for client-side inference.
 
 Logging off-policy actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
