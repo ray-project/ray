@@ -102,6 +102,46 @@ struct CoreWorkerOptions {
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
+///
+/// To start a driver in the current process:
+///     CoreWorkerOptions options = {
+///         WorkerType::DRIVER,             // worker_type
+///         ...,                            // other arguments
+///         1,                              // num_workers
+///     };
+///     CoreWorkerProcess::Initialize(options);
+///
+/// To shutdown a driver in the current process:
+///     CoreWorkerProcess::Shutdown();
+///
+/// To start one or more workers in the current process:
+///     CoreWorkerOptions options = {
+///         WorkerType::WORKER,             // worker_type
+///         ...,                            // other arguments
+///         num_workers,                    // num_workers
+///     };
+///     CoreWorkerProcess::Initialize(options);
+///     ...                                 // Do other stuff
+///     CoreWorkerProcess::StartExecutingTasks();
+///
+/// To shutdown a worker in the current process, execute the code below in a thread
+/// associated to the worker. If you started more than one worker, you need to run the
+/// code below for each of the workers.
+///     CoreWorkerProcess::ShutdownCurrentWorker();
+///
+/// If more than 1 worker is started, only the threads which invoke the
+/// `task_execution_callback` will be automatically associated with the corresponding
+/// worker. If you started your own threads and you want to use core worker APIs in these
+/// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
+/// once in the new thread before calling core worker APIs, to associate the current
+/// thread with a worker. You can ontain the worker ID from the `worker_id` parameter of
+/// the `task_execution_callback` or with
+/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`.
+///
+/// If only 1 worker is started (either because the worker type is driver, or the
+/// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
+/// associated to the only worker. Then no need to call `SetCurrentThreadWorkerId` in
+/// your own threads.
 class CoreWorkerProcess {
  public:
   /// Initialize core workers at process level.
@@ -110,9 +150,11 @@ class CoreWorkerProcess {
   static void Initialize(const CoreWorkerOptions &options);
 
   /// Shutdown workers completely at process level.
+  /// This API is for driver only.
   static void Shutdown();
 
   /// Shutdown the core worker associated with the current thread.
+  /// This API is for worker only.
   static void ShutdownCurrentWorker();
 
   /// Get the core worker associated with the current thread.
@@ -127,9 +169,7 @@ class CoreWorkerProcess {
   static void SetCurrentThreadWorkerId(const WorkerID &worker_id);
 
   /// Start receiving and executing tasks.
-  /// Used by worker process only.
-  ///
-  /// \return void.
+  /// This API is for worker only.
   static void StartExecutingTasks();
 
   ~CoreWorkerProcess();
@@ -182,6 +222,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   CoreWorker(CoreWorker const &) = delete;
   void operator=(CoreWorker const &other) = delete;
+
+  const WorkerID &GetWorkerID() const { return worker_context_.GetWorkerID(); }
 
   WorkerType GetWorkerType() const { return options_.worker_type; }
 

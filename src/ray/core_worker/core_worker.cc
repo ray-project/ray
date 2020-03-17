@@ -180,7 +180,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
   RAY_CHECK(instance_);
   if (instance_->options_.num_workers == 1) {
-    RAY_CHECK(instance_->global_worker_->worker_context_.GetWorkerID() == worker_id);
+    RAY_CHECK(instance_->global_worker_->GetWorkerID() == worker_id);
     return;
   }
   current_core_worker_ = instance_->GetWorker(worker_id);
@@ -198,7 +198,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
   auto worker = std::make_shared<CoreWorker>(
       options_,
       global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
-  RAY_LOG(INFO) << "Worker " << worker->worker_context_.GetWorkerID() << " is created.";
+  RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
   }
@@ -206,7 +206,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
   absl::MutexLock lock(&worker_map_mutex_);
   // TOCHECK
-  workers_.emplace(worker->worker_context_.GetWorkerID(), worker);
+  workers_.emplace(worker->GetWorkerID(), worker);
   RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
 }
@@ -224,8 +224,8 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   current_core_worker_.reset();
   {
     absl::MutexLock lock(&worker_map_mutex_);
-    workers_.erase(worker->worker_context_.GetWorkerID());
-    RAY_LOG(INFO) << "Removed worker " << worker->worker_context_.GetWorkerID();
+    workers_.erase(worker->GetWorkerID());
+    RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
   }
   if (global_worker_ == worker) {
     global_worker_ = nullptr;
@@ -280,7 +280,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
-  RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
+  RAY_LOG(INFO) << "Initializing worker " << GetWorkerID();
   // Initialize gcs client.
   if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
     gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
@@ -323,7 +323,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket,
-      worker_context_.GetWorkerID(), (options_.worker_type == ray::WorkerType::WORKER),
+      GetWorkerID(), (options_.worker_type == ray::WorkerType::WORKER),
       worker_context_.GetCurrentJobID(), options_.language, &local_raylet_id,
       core_worker_server_.GetPort()));
   connected_ = true;
