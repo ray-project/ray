@@ -2254,9 +2254,7 @@ void NodeManager::AsyncResolveObjects(
     // HandleDirectCallUnblocked.
     auto &task_id = mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId();
     if (!task_id.IsNil()) {
-      task_dependency_manager_.SubscribeGetDependencies(
-          task_id,
-          required_object_ids);
+      task_dependency_manager_.SubscribeGetDependencies(task_id, required_object_ids);
     }
   } else {
     task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
