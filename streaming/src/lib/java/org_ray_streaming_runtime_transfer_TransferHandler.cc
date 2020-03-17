@@ -14,8 +14,7 @@ static std::shared_ptr<ray::LocalMemoryBuffer> JByteArrayToBuffer(JNIEnv *env,
 
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative(
-    JNIEnv *env, jobject this_obj, jlong core_worker_ptr, jobject async_func,
-    jobject sync_func) {
+    JNIEnv *env, jobject this_obj, jlong core_worker_ptr) {
   auto *writer_client =
       new WriterClient(reinterpret_cast<ray::CoreWorker *>(core_worker_ptr));
   return reinterpret_cast<jlong>(writer_client);
@@ -23,8 +22,7 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_createWriterClientNative
 
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
-    JNIEnv *env, jobject this_obj, jlong core_worker_ptr, jobject async_func,
-    jobject sync_func) {
+    JNIEnv *env, jobject this_obj, jlong core_worker_ptr) {
   auto *reader_client =
       new ReaderClient(reinterpret_cast<ray::CoreWorker *>(core_worker_ptr));
   return reinterpret_cast<jlong>(reader_client);

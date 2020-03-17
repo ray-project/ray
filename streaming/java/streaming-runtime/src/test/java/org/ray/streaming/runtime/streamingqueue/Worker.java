@@ -14,6 +14,7 @@ import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.transfer.ChannelID;
+import org.ray.streaming.runtime.transfer.ChannelInitialParameters;
 import org.ray.streaming.runtime.transfer.DataMessage;
 import org.ray.streaming.runtime.transfer.DataReader;
 import org.ray.streaming.runtime.transfer.DataWriter;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 
 public class Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
   protected TransferHandler transferHandler = null;
@@ -51,6 +53,7 @@ public class Worker {
 }
 
 class ReaderWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(ReaderWorker.class);
 
   private String name = null;
@@ -99,6 +102,9 @@ class ReaderWorker extends Worker {
     conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
+    ChannelInitialParameters.setJavaWriterFunctionDesc(
+        new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
+        new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
     dataReader = new DataReader(inputQueueList, fromActors, conf);
 
     // Should not GetBundle in RayCall thread
@@ -167,6 +173,7 @@ class ReaderWorker extends Worker {
 }
 
 class WriterWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(WriterWorker.class);
 
   private String name = null;
@@ -223,7 +230,9 @@ class WriterWorker extends Worker {
     conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
-
+    ChannelInitialParameters.setJavaReaderFunctionDesc(
+        new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
+        new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
     dataWriter = new DataWriter(this.outputQueueList, this.toActors, conf);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
       @Override
