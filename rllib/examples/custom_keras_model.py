@@ -104,7 +104,6 @@ if __name__ == "__main__":
 
     # Tests https://github.com/ray-project/ray/issues/7293
     def check_has_custom_metric(result):
-        print(result)
         r = result["result"]["info"]["learner"]
         if "default_policy" in r:
             r = r["default_policy"]
@@ -118,16 +117,17 @@ if __name__ == "__main__":
     tune.run(
         args.run,
         stop={"episode_reward_mean": args.stop},
-        config=dict(extra_config, **{
-            "log_level": "INFO",
-            "env": "BreakoutNoFrameskip-v4"
-            if args.use_vision_network else "CartPole-v0",
-            "num_gpus": 0,
-            "callbacks": {
-                "on_train_result": check_has_custom_metric,
-            },
-            "model": {
-                "custom_model": "keras_q_model"
-                if args.run == "DQN" else "keras_model"
-            },
-        }))
+        config=dict(
+            extra_config, **{
+                "log_level": "INFO",
+                "env": "BreakoutNoFrameskip-v4"
+                if args.use_vision_network else "CartPole-v0",
+                "num_gpus": 0,
+                "callbacks": {
+                    "on_train_result": check_has_custom_metric,
+                },
+                "model": {
+                    "custom_model": "keras_q_model"
+                    if args.run == "DQN" else "keras_model"
+                },
+            }))
