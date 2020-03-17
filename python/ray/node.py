@@ -14,6 +14,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
+import ray.utils
 from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory, try_to_symlink
 
@@ -82,7 +83,7 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir="/tmp/ray",
+            temp_dir=ray.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -313,7 +314,7 @@ class Node:
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name="/tmp/ray"):
+    def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
 
         Args:
@@ -326,6 +327,8 @@ class Node:
                 the same name, the returned name will look like
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
+        if directory_name is None:
+            directory_name = ray.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
