@@ -103,7 +103,7 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   /**
-   * @return Whole file content of `ActorCall.java`.
+   * @return Whole file content of `PyActorCall.java`.
    */
   private String generatePyActorCallDotJava() {
     sb = new StringBuilder();
@@ -342,4 +342,3 @@ public class RayCallGenerator extends BaseGenerator {
         Charset.defaultCharset());
   }
 }
-
