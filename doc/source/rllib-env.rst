@@ -298,14 +298,16 @@ In this setup, the appropriate rewards for training lower-level agents must be p
 
 See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__.
 
-Interfacing with External Agents
+External Agents and Applications
 --------------------------------
 
 In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time. This case also naturally arises with **external simulators** that run independently outside the control of RLlib, but may still want to leverage RLlib for training.
 
 RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
 
-ExternalEnv can be used to implement a simple REST policy `server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving>`__ that learns over time using RLlib. In this example RLlib runs with ``num_workers=0`` to avoid port allocation issues, but in principle this could be scaled by increasing ``num_workers``.
+For *external applications* that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib also provides two types of application connectors: one which runs inference server side, and one which offloads inference to the client for lower latency. To understand the difference between standard envs, external envs, and external applications, refer to the following figure:
+
+.. image:: rllib-external.svg
 
 Logging off-policy actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

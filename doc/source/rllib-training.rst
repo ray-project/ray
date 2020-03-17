@@ -913,15 +913,15 @@ Stack Traces
 
 You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
 
-REST API
---------
+External Application API
+------------------------
 
-In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents `interface <rllib-env.html#interfacing-with-external-agents>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents and applications `interfaces <rllib-env.html#external-agents-and-applications>`__.
 
 .. autoclass:: ray.rllib.utils.policy_client.PolicyClient
     :members:
 
-.. autoclass:: ray.rllib.utils.policy_server.PolicyServer
+.. autoclass:: ray.rllib.utils.connector_client.ConnectorClient
     :members:
 
 For a full client / server example that you can run, see the example `client script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__ and also the corresponding `server script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, here configured to serve a policy for the toy CartPole-v0 environment.

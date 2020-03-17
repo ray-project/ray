@@ -37,7 +37,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     env = gym.make("CartPole-v0")
     if args.use_connector:
-        client = ConnectorClient("http://localhost:9900", update_interval=5.0)
+        client = ConnectorClient("http://localhost:9900")
     else:
         client = PolicyClient("http://localhost:9900")
 

@@ -22,7 +22,12 @@ except ImportError:
 
 @PublicAPI
 class PolicyClient:
-    """REST client to interact with a RLlib policy server."""
+    """REST client to interact with a RLlib policy server.
+
+    Each method call to this client translates into a HTTP call to the
+    policy server. For a higher-performance client that performs inference
+    on the client side, see ConnectorClient.
+    """
 
     START_EPISODE = "START_EPISODE"
     GET_ACTION = "GET_ACTION"
