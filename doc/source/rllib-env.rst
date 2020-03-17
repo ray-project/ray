@@ -305,6 +305,18 @@ In many situations, it does not make sense for an environment to be "stepped" by
 
 RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
 
+Logging off-policy actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ExternalEnv provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
+
+.. seealso::
+
+    `Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with off-policy experience datasets.
+
+External Application Clients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib also provides two types of application connectors: ``PolicyClient``, which runs inference server side, and ``ConnectorClient``, which offloads inference to the client for lower latency. To understand the difference between standard envs, external envs, and external applications, refer to the following figure:
 
 .. image:: rllib-external.svg
@@ -357,24 +369,13 @@ Try it yourself by launching a `cartpole_server.py <https://github.com/ray-proje
     Querying server for new policy weights...
     ...
     Total reward: 200.0
+    ...
 
 For the best performance, when possible we recommend using ``ConnectorClient`` for client-side inference.
 
-Logging off-policy actions
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. note::
 
-ExternalEnv also provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
-
-Data ingest
-~~~~~~~~~~~
-
-The ``log_action`` API of ExternalEnv can be used to ingest data from offline logs. The pattern would be as follows: First, some policy is followed to produce experience data which is stored in some offline storage system. Then, RLlib creates a number of workers that use a ExternalEnv to read the logs in parallel and ingest the experiences. After a round of training completes, the new policy can be deployed to collect more experiences.
-
-Note that envs can read from different partitions of the logs based on the ``worker_index`` attribute of the `env context <https://github.com/ray-project/ray/blob/master/rllib/env/env_context.py>`__ passed into the environment constructor.
-
-.. seealso::
-
-    `Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with offline experience datasets.
+     ``ConnectorClient`` uses RLlib's offline data interface under the hood for performance. You can therefore think of the external application connector as implementing a type of "online experience dataset" generated on the fly by clients.
 
 Advanced Integrations
 ---------------------

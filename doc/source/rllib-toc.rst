@@ -63,6 +63,9 @@ Environments
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
 * `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
+
+   -  `External Application Clients <rllib-training.html#external-application-clients>`__
+
 * `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
 Models, Preprocessors, and Action Distributions
