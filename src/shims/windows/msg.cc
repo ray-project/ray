@@ -10,7 +10,7 @@
 
 int socketpair(int domain, int type, int protocol, int sv[2]) {
   if ((domain != AF_UNIX && domain != AF_INET) || type != SOCK_STREAM) {
-    return (int)INVALID_SOCKET;
+    return -1;
   }
   SOCKET sockets[2];
   int r = dumb_socketpair(sockets);
@@ -125,10 +125,10 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
       if (result == 0) {
         result = (*WSASendMsg)(sockfd, msg, flags, &nb, NULL, NULL) == 0
                      ? (ssize_t)(nb - sizeof(protocol_info))
-                     : 0;
+                     : -1;
       }
     }
-    if (result != 0 && target_process && !is_socket) {
+    if (result == -1 && target_process && !is_socket) {
       /* we failed to send the handle, and it needs cleaning up! */
       HANDLE duplicated_back = NULL;
       if (DuplicateHandle(target_process, *(HANDLE *)&protocol_info, GetCurrentProcess(),
@@ -171,16 +171,17 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
     if (result == 0) {
       result = (*WSARecvMsg)(sockfd, msg, &nb, NULL, NULL) == 0
                    ? (ssize_t)(nb - sizeof(protocol_info))
-                   : 0;
+                   : -1;
     }
-    if (result == 0) {
+    if (result != -1) {
       int *const pfd = (int *)CMSG_DATA(header);
       if (protocol_info.iSocketType == 0 && protocol_info.iProtocol == 0) {
         *pfd = *(int *)&protocol_info;
       } else {
         *pfd = WSASocket(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO,
-                         &protocol_info, 0, 0);
+                         &protocol_info, 0, WSA_FLAG_OVERLAPPED);
       }
+      header->cmsg_len = CMSG_LEN(sizeof(*pfd));
       header->cmsg_level = SOL_SOCKET;
       header->cmsg_type = SCM_RIGHTS;
     }
