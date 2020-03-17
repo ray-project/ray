@@ -43,13 +43,7 @@ using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
-typedef
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    boost::asio::local::stream_protocol
-#else
-    boost::asio::ip::tcp
-#endif
-        local_stream_protocol;
+typedef boost::asio::generic::stream_protocol local_stream_protocol;
 
 namespace ray {
 

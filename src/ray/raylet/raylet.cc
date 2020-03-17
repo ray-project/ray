@@ -68,13 +68,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),
-      acceptor_(main_service,
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-                local_stream_protocol::endpoint(socket_name)
-#else
-                parse_ip_tcp_endpoint(socket_name)
-#endif
-                    ),
+      acceptor_(main_service, parse_url_endpoint(socket_name)),
       socket_(main_service) {
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);

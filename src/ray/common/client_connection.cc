@@ -15,10 +15,12 @@
 #include "client_connection.h"
 
 #include <stdio.h>
+
 #include <boost/bind.hpp>
 #include <sstream>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/url.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -310,10 +312,8 @@ std::string ClientConnection<T>::RemoteEndpointInfo() {
 
 template <>
 std::string ClientConnection<remote_stream_protocol>::RemoteEndpointInfo() {
-  const auto &remote_endpoint =
-      ServerConnection<remote_stream_protocol>::socket_.remote_endpoint();
-  return remote_endpoint.address().to_string() + ":" +
-         std::to_string(remote_endpoint.port());
+  return endpoint_to_url(
+      ServerConnection<remote_stream_protocol>::socket_.remote_endpoint(), false);
 }
 
 template <class T>
@@ -353,12 +353,7 @@ std::string ServerConnection<T>::DebugString() const {
   return result.str();
 }
 
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-// We compile conditionally to prevent duplicate explicit instantiation error
-template class ServerConnection<local_stream_protocol>;
-template class ClientConnection<local_stream_protocol>;
-#endif
-template class ServerConnection<remote_stream_protocol>;
-template class ClientConnection<remote_stream_protocol>;
+template class ServerConnection<boost::asio::generic::stream_protocol>;
+template class ClientConnection<boost::asio::generic::stream_protocol>;
 
 }  // namespace ray

@@ -62,12 +62,7 @@ raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
   RAY_CHECK(!raylet_socket.empty());
   boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    local_stream_protocol::endpoint endpoint(raylet_socket);
-#else
-    local_stream_protocol::endpoint endpoint = parse_ip_tcp_endpoint(raylet_socket);
-#endif
-    if (!conn_.connect(endpoint, ec)) {
+    if (!conn_.connect(parse_url_endpoint(raylet_socket), ec)) {
       break;
     }
     if (num_attempts > 0) {

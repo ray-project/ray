@@ -218,15 +218,9 @@ class ClientConnection : public ServerConnection<T> {
   std::vector<uint8_t> read_message_;
 };
 
-typedef
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    boost::asio::local::stream_protocol
-#else
-    boost::asio::ip::tcp
-#endif
-        local_stream_protocol;
+typedef boost::asio::generic::stream_protocol local_stream_protocol;
 
-typedef boost::asio::ip::tcp remote_stream_protocol;
+typedef boost::asio::generic::stream_protocol remote_stream_protocol;
 
 using LocalServerConnection = ServerConnection<local_stream_protocol>;
 using TcpServerConnection = ServerConnection<remote_stream_protocol>;

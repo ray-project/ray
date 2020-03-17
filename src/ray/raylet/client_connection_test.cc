@@ -35,13 +35,16 @@ class ClientConnectionTest : public ::testing::Test {
   ClientConnectionTest()
       : io_service_(), in_(io_service_), out_(io_service_), error_message_type_(1) {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-    boost::asio::local::connect_pair(in_, out_);
+    boost::asio::local::stream_protocol::socket input(io_service_), output(io_service_);
+    boost::asio::local::connect_pair(input, output);
+    in_ = std::move(input);
+    out_ = std::move(output);
 #else
     boost::asio::detail::socket_type pair[2] = {boost::asio::detail::invalid_socket,
                                                 boost::asio::detail::invalid_socket};
-    RAY_CHECK(socketpair(AF_INET, SOCK_STREAM, 0, pair) == 0);
-    in_.assign(local_stream_protocol::v4(), pair[0]);
-    out_.assign(local_stream_protocol::v4(), pair[1]);
+    RAY_CHECK(socketpair(boost::asio::ip::tcp::v4().family(), SOCK_STREAM, 0, pair) == 0);
+    in_.assign(boost::asio::ip::tcp::v4(), pair[0]);
+    out_.assign(boost::asio::ip::tcp::v4(), pair[1]);
 #endif
   }
 
