@@ -73,6 +73,7 @@ if __name__ == "__main__":
             config=dict(
                 connector_config,
                 **{
+                    "log_level": "INFO",
                     # Use a single worker process to run the server.
                     "num_workers": 0,
                     # Configure the agent to run short iterations for debugging

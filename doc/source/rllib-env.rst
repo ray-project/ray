@@ -319,6 +319,7 @@ External Application Clients
 
 For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib also provides two types of application connectors: ``PolicyClient``, which runs inference server side, and ``ConnectorClient``, which offloads inference to the client for lower latency. To understand the difference between standard envs, external envs, and external applications, refer to the following figure:
 
+.. https://docs.google.com/drawings/d/1hJvT9bVGHVrGTbnCZK29BYQIcYNRbZ4Dr6FOPMJDjUs/edit
 .. image:: rllib-external.svg
 
 Try it yourself by launching a `cartpole_server.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, and connecting to it with any number of clients (`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__):

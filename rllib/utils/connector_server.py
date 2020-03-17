@@ -1,3 +1,4 @@
+import logging
 import six.moves.queue as queue
 import threading
 import traceback
@@ -9,6 +10,9 @@ import ray.cloudpickle as pickle
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.connector_client import ConnectorClient
+
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")  # TODO(ekl) this is needed for cartpole_server.py
 
 
 class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
@@ -77,9 +81,10 @@ class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
         handler = _make_handler(self.rollout_worker, self.samples_queue,
                                 self.metrics_queue)
         HTTPServer.__init__(self, (address, port), handler)
-        print("---")
-        print("--- Starting connector server at {}:{}".format(address, port))
-        print("---")
+        logger.info("---")
+        logger.info("--- Starting connector server at {}:{}".format(
+            address, port))
+        logger.info("---")
         thread = threading.Thread(name="server", target=self.serve_forever)
         thread.start()
 
@@ -106,13 +111,13 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             command = args["command"]
             response = {}
             if command == ConnectorClient.GET_WORKER_ARGS:
-                print("Sending worker creation args to client.")
+                logger.info("Sending worker creation args to client.")
                 response["worker_args"] = rollout_worker.creation_args()
             elif command == ConnectorClient.GET_WEIGHTS:
-                print("Sending worker weights to client.")
+                logger.info("Sending worker weights to client.")
                 response["weights"] = rollout_worker.get_weights()
             elif command == ConnectorClient.REPORT_SAMPLES:
-                print("Got sample batch of size {} from client.".format(
+                logger.info("Got sample batch of size {} from client.".format(
                     args["samples"].count))
                 samples_queue.put(args["samples"])
                 for rollout_metric in args["metrics"]:

@@ -7,6 +7,7 @@ For an example, run `examples/cartpole_server.py --use-connector` along
 with `examples/cartpole_client.py --use-connector`.
 """
 
+import logging
 import threading
 import time
 
@@ -15,6 +16,9 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.policy_client import PolicyClient
+
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")  # TODO(ekl) this is needed for cartpole_client.py
 
 
 @PublicAPI
@@ -44,7 +48,7 @@ class ConnectorClient(PolicyClient):
         self.update_interval = update_interval
         self.last_updated = 0
 
-        print("Querying server for rollout worker settings.")
+        logger.info("Querying server for rollout worker settings.")
         kwargs = self._send({
             "command": ConnectorClient.GET_WORKER_ARGS,
         })["worker_args"]
@@ -52,7 +56,7 @@ class ConnectorClient(PolicyClient):
         # Since the server acts as an input datasource, we have to reset the
         # input config to the default, which runs env rollouts.
         del kwargs["input_creator"]
-        print("Creating rollout worker with kwargs={}".format(kwargs))
+        logger.info("Creating rollout worker with kwargs={}".format(kwargs))
 
         if auto_wrap_env:
             real_creator = kwargs["env_creator"]
@@ -90,11 +94,11 @@ class ConnectorClient(PolicyClient):
     def _do_updates(self):
         assert self.inference_thread.is_alive()
         if time.time() - self.last_updated > self.update_interval:
-            print("Querying server for new policy weights.")
+            logger.info("Querying server for new policy weights.")
             weights = self._send({
                 "command": ConnectorClient.GET_WEIGHTS,
             })["weights"]
-            print("Updating rollout worker weights.")
+            logger.info("Updating rollout worker weights.")
             self.rollout_worker.set_weights(weights)
             self.last_updated = time.time()
 
@@ -135,10 +139,10 @@ class _InferenceThread(threading.Thread):
     def run(self):
         try:
             while True:
-                print("Generating new batch of experiences.")
+                logger.info("Generating new batch of experiences.")
                 samples = self.client.rollout_worker.sample()
                 metrics = self.client.rollout_worker.get_metrics()
-                print("Sending batch of {} steps back to server.".format(
+                logger.info("Sending batch of {} steps back to server.".format(
                     samples.count))
                 self.client._send({
                     "command": ConnectorClient.REPORT_SAMPLES,
@@ -146,4 +150,4 @@ class _InferenceThread(threading.Thread):
                     "metrics": metrics,
                 })
         except Exception as e:
-            print("Error: inference worker thread died!", e)
+            logger.info("Error: inference worker thread died!", e)
