@@ -56,10 +56,15 @@ RedisStoreClient::~RedisStoreClient() {}
 
 Status RedisStoreClient::Connect(std::shared_ptr<IOServicePool> io_service_pool) {
   io_service_pool_ = io_service_pool;
-  return redis_client_->Connect(io_service_pool->GetAll());
+  Status status = redis_client_->Connect(io_service_pool->GetAll());
+  RAY_LOG(INFO) << "RedisStoreClient Connect status " << status.ToString();
+  return status;
 }
 
-void RedisStoreClient::Disconnect() { redis_client_->Disconnect(); }
+void RedisStoreClient::Disconnect() {
+  redis_client_->Disconnect();
+  RAY_LOG(INFO) << "RedisStoreClient Disconnect.";
+}
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
                                   const std::string &value,
@@ -73,6 +78,7 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
                                   const StatusCallback &callback) {
   auto write_callback = [this, table_name, key, index, callback](Status status) {
     if (!status.ok()) {
+      // Run callback if failed.
       if (callback != nullptr) {
         callback(status);
       }
@@ -80,10 +86,11 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
     }
 
     // Write index to Redis.
-    std::string index_key = index + table_name + key;
-    status = DoPut(index_key, key, callback);
+    std::string index_table_key = index + table_name + key;
+    status = DoPut(index_table_key, key, callback);
 
     if (!status.ok()) {
+      // Run callback if failed.
       if (callback != nullptr) {
         callback(status);
       }
@@ -126,7 +133,8 @@ Status RedisStoreClient::AsyncGetByIndex(const std::string &table_name,
                                          const std::string &index,
                                          const MultiItemCallback<std::string> &callback) {
   RAY_CHECK(callback != nullptr);
-
+  // TODO(micafan) Confirm semantic of GetByIndex: get key or get value?
+  // The semantics of the current implementation is the former.
   auto range_executor =
       std::make_shared<RedisRangeOpExecutor>(redis_client_, table_name, index, callback);
   return range_executor->Run();
@@ -290,7 +298,7 @@ void RedisRangeOpExecutor::DoCallback() {
     }
   }
 
-  if (get_all_callback_) {
+  if (get_all_callback_ && !get_all_partial_result_.empty()) {
     RAY_CHECK(cursor_ != 0);
     // Callback with partial result.
     get_all_callback_(status_, /*has_more*/ true, get_all_partial_result_);
@@ -320,10 +328,12 @@ void RedisRangeOpExecutor::ProcessScanResult(const std::vector<std::string> &key
   DoMultiRead(keys);
 }
 
-void RedisRangeOpExecutor::DoParseKeys(const std::vector<std::string> &index_keys) {
+void RedisRangeOpExecutor::DoParseKeys(const std::vector<std::string> &index_table_keys) {
   if (get_by_index_callback_) {
-    for (const auto &index_key : index_keys) {
-      std::string data_key = index_key.substr(index_table_prefix_.length());
+    for (const auto &index_table_key : index_table_keys) {
+      // index_table_key contains three parts: index, table, data key (key of data).
+      std::string data_key = index_table_key.substr(index_table_prefix_.length());
+      RAY_CHECK(!data_key.empty());
       get_by_index_result_.emplace_back(data_key);
     }
   }
@@ -331,30 +341,33 @@ void RedisRangeOpExecutor::DoParseKeys(const std::vector<std::string> &index_key
   DoScan();
 }
 
-void RedisRangeOpExecutor::DoBatchDelete(const std::vector<std::string> &index_keys) {
+void RedisRangeOpExecutor::DoBatchDelete(
+    const std::vector<std::string> &index_table_keys) {
   if (delete_by_index_callback_) {
     std::shared_ptr<RedisRangeOpExecutor> self = shared_from_this();
 
-    std::vector<std::string> data_keys;
-    for (const auto &index_key : index_keys) {
-      std::string data_key = table_name_ + index_key.substr(index_table_prefix_.length());
-      data_keys.emplace_back(data_key);
+    std::vector<std::string> data_table_keys;
+    for (const auto &index_table_key : index_table_keys) {
+      // data_table_key contains two parts: table, data key (key of data).
+      std::string data_table_key =
+          table_name_ + index_table_key.substr(index_table_prefix_.length());
+      data_table_keys.emplace_back(data_table_key);
     }
 
     auto delete_callback = [self](Status status) { self->OnDeleteCallback(status); };
 
-    // Delete data.
+    // Delete data from data table.
     auto redis_context = redis_client_->GetPrimaryContext();
-    status_ = AsyncDeleteKeys(redis_context, data_keys, delete_callback);
+    status_ = AsyncDeleteKeys(redis_context, data_table_keys, delete_callback);
     ++pending_delete_count_;
     if (!status_.ok()) {
       OnFailed();
       return;
     }
 
-    // Delete index of data.
+    // Delete index from index table.
     redis_context = redis_client_->GetPrimaryContext();
-    status_ = AsyncDeleteKeys(redis_context, index_keys, delete_callback);
+    status_ = AsyncDeleteKeys(redis_context, index_table_keys, delete_callback);
     ++pending_delete_count_;
     if (!status_.ok()) {
       OnFailed();
@@ -363,18 +376,19 @@ void RedisRangeOpExecutor::DoBatchDelete(const std::vector<std::string> &index_k
   }
 }
 
-void RedisRangeOpExecutor::DoMultiRead(const std::vector<std::string> &data_keys) {
+void RedisRangeOpExecutor::DoMultiRead(const std::vector<std::string> &data_table_keys) {
   if (get_all_callback_) {
     std::shared_ptr<RedisRangeOpExecutor> self = shared_from_this();
     auto redis_context = redis_client_->GetPrimaryContext();
-    for (const auto &data_key : data_keys) {
-      auto read_callback = [self, data_key](Status status,
-                                            const boost::optional<std::string> &result) {
-        self->OnReadCallback(status, result, data_key);
+    for (const auto &data_table_key : data_table_keys) {
+      auto read_callback = [self, data_table_key](
+                               Status status,
+                               const boost::optional<std::string> &result) {
+        self->OnReadCallback(status, result, data_table_key);
       };
 
-      status_ = AsyncGetByKey(redis_context, data_key, read_callback);
-      pending_read_keys_.emplace(data_key);
+      status_ = AsyncGetByKey(redis_context, data_table_key, read_callback);
+      pending_read_keys_.emplace(data_table_key);
       if (!status_.ok()) {
         OnFailed();
         return;
@@ -388,7 +402,7 @@ void RedisRangeOpExecutor::DoMultiRead(const std::vector<std::string> &data_keys
 
 void RedisRangeOpExecutor::OnReadCallback(Status status,
                                           const boost::optional<std::string> &result,
-                                          const std::string &data_key) {
+                                          const std::string &data_table_key) {
   if (!status_.ok()) {
     return;
   }
@@ -401,12 +415,12 @@ void RedisRangeOpExecutor::OnReadCallback(Status status,
 
   if (result) {
     RAY_CHECK(get_all_callback_);
-    // Trim the prefix of key.
-    std::string trimed_key = data_key.substr(data_table_prefix_.length());
-    get_all_partial_result_.emplace_back(trimed_key, *result);
+    // Get data_key by trimming the table prefix from data_table_key.
+    std::string data_key = data_table_key.substr(data_table_prefix_.length());
+    get_all_partial_result_.emplace_back(data_key, *result);
   }
 
-  pending_read_keys_.erase(data_key);
+  pending_read_keys_.erase(data_table_key);
   if (pending_read_keys_.empty()) {
     DoCallback();
     DoScan();

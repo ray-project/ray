@@ -55,7 +55,8 @@ class RedisStoreClient : public StoreClient {
 /// 1. Get All Data with the same prefix from Redis (GetAll).
 /// 2. Get All Data Key with the same index from Redis (GetByIndex).
 /// 3. Delete Index and Data Key with the same index from Redis (DeleteByIndex).
-/// TODO(micafan) Consider encapsulating three different classes.
+/// TODO(micafan) Consider encapsulating three different classes:
+/// Scanner, MultiReader, BatchDeleter.
 class RedisRangeOpExecutor : public std::enable_shared_from_this<RedisRangeOpExecutor> {
  public:
   RedisRangeOpExecutor(std::shared_ptr<RedisClient> redis_client,
@@ -87,11 +88,11 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<RedisRangeOpExe
 
   void ProcessScanResult(const std::vector<std::string> &keys);
 
-  void DoParseKeys(const std::vector<std::string> &index_keys);
+  void DoParseKeys(const std::vector<std::string> &index_table_keys);
 
-  void DoBatchDelete(const std::vector<std::string> &index_keys);
+  void DoBatchDelete(const std::vector<std::string> &index_table_keys);
 
-  void DoMultiRead(const std::vector<std::string> &data_keys);
+  void DoMultiRead(const std::vector<std::string> &data_table_keys);
 
   void OnReadCallback(Status status, const boost::optional<std::string> &result,
                       const std::string &data_key);
@@ -117,7 +118,9 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<RedisRangeOpExe
   std::unordered_set<std::string> pending_read_keys_;
 
   int cursor_{-1};
+  // index && table_name
   std::string index_table_prefix_;
+  // table_name
   std::string data_table_prefix_;
   std::string match_pattern_;
 
