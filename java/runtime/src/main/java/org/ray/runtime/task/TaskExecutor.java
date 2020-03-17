@@ -4,10 +4,12 @@ import com.google.common.base.Preconditions;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
+import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayRuntimeInternal;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
@@ -27,7 +29,7 @@ public abstract class TaskExecutor<T extends ActorContext> {
 
   protected final RayRuntimeInternal runtime;
 
-  final ThreadLocal<T> actorContext = new ThreadLocal<>();
+  private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
 
   static class ActorContext {
 
@@ -49,11 +51,15 @@ public abstract class TaskExecutor<T extends ActorContext> {
   protected abstract T createActorContext();
 
   T getActorContext() {
-    return actorContext.get();
+    return actorContextMap.get(runtime.getWorkerContext().getCurrentWorkerId());
   }
 
   void setActorContext(T actorContext) {
-    this.actorContext.set(actorContext);
+    if (actorContext == null) {
+      // ConcurrentHashMap doesn't allow null values. So just return here.
+      return;
+    }
+    this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
   }
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
@@ -64,8 +70,13 @@ public abstract class TaskExecutor<T extends ActorContext> {
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
     LOGGER.debug("Executing task {}", taskId);
 
+    T actorContext = null;
     if (taskType == TaskType.ACTOR_CREATION_TASK) {
-      actorContext.set(createActorContext());
+      actorContext = createActorContext();
+      setActorContext(actorContext);
+    } else if (taskType == TaskType.ACTOR_TASK) {
+      actorContext = getActorContext();
+      Preconditions.checkNotNull(actorContext);
     }
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
@@ -81,10 +92,10 @@ public abstract class TaskExecutor<T extends ActorContext> {
       // Get local actor object and arguments.
       Object actor = null;
       if (taskType == TaskType.ACTOR_TASK) {
-        if (actorContext.get().actorCreationException != null) {
-          throw actorContext.get().actorCreationException;
+        if (actorContext.actorCreationException != null) {
+          throw actorContext.actorCreationException;
         }
-        actor = actorContext.get().currentActor;
+        actor = actorContext.currentActor;
       }
       Object[] args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.classLoader);
       // Execute the task.
@@ -114,7 +125,7 @@ public abstract class TaskExecutor<T extends ActorContext> {
       } else {
         // TODO (kfstorm): handle checkpoint in core worker.
         maybeLoadCheckpoint(result, runtime.getWorkerContext().getCurrentActorId());
-        actorContext.get().currentActor = result;
+        actorContext.currentActor = result;
       }
       LOGGER.debug("Finished executing task {}", taskId);
     } catch (Throwable e) {
@@ -127,7 +138,7 @@ public abstract class TaskExecutor<T extends ActorContext> {
               .serialize(new RayTaskException("Error executing task " + taskId, e)));
         }
       } else {
-        actorContext.get().actorCreationException = e;
+        actorContext.actorCreationException = e;
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);

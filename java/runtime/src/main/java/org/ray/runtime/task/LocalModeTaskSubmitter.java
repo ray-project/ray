@@ -20,6 +20,7 @@ import org.ray.api.BaseActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.TaskId;
+import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.runtime.RayRuntimeInternal;
@@ -253,13 +254,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   private void executeTask(TaskSpec taskSpec) {
+    ActorContext actorContext = null;
     if (taskSpec.getType() == TaskType.ACTOR_TASK) {
-      ActorContext actorContext = actorContexts.get(getActorId(taskSpec));
+      actorContext = actorContexts.get(getActorId(taskSpec));
       Preconditions.checkNotNull(actorContext);
-      taskExecutor.setActorContext(actorContext);
-    } else {
-      taskExecutor.setActorContext(null);
     }
+    taskExecutor.setActorContext(actorContext);
     List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
         .map(arg -> arg.id != null ?
             objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
@@ -267,8 +267,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         .collect(Collectors.toList());
     runtime.setIsContextSet(true);
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
-    final long numReturns = taskSpec.getType() == TaskType.NORMAL_TASK ?
-        taskSpec.getNumReturns() : (taskSpec.getNumReturns() - 1);
+    UniqueId workerId = actorContext != null
+        ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
+        : UniqueId.randomId();
+    ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
     List<NativeRayObject> returnObjects = taskExecutor
         .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
     if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {

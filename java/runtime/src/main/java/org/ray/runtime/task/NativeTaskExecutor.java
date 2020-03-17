@@ -51,17 +51,18 @@ public class NativeTaskExecutor extends TaskExecutor<NativeActorContext> {
     if (!(actor instanceof Checkpointable)) {
       return;
     }
+    NativeActorContext actorContext = getActorContext();
     CheckpointContext checkpointContext = new CheckpointContext(actorId,
-        ++actorContext.get().numTasksSinceLastCheckpoint,
-        System.currentTimeMillis() - actorContext.get().lastCheckpointTimestamp);
+        ++actorContext.numTasksSinceLastCheckpoint,
+        System.currentTimeMillis() - actorContext.lastCheckpointTimestamp);
     Checkpointable checkpointable = (Checkpointable) actor;
     if (!checkpointable.shouldCheckpoint(checkpointContext)) {
       return;
     }
-    actorContext.get().numTasksSinceLastCheckpoint = 0;
-    actorContext.get().lastCheckpointTimestamp = System.currentTimeMillis();
+    actorContext.numTasksSinceLastCheckpoint = 0;
+    actorContext.lastCheckpointTimestamp = System.currentTimeMillis();
     UniqueId checkpointId = new UniqueId(nativePrepareCheckpoint());
-    List<UniqueId> checkpointIds = actorContext.get().checkpointIds;
+    List<UniqueId> checkpointIds = actorContext.checkpointIds;
     checkpointIds.add(checkpointId);
     if (checkpointIds.size() > NUM_ACTOR_CHECKPOINTS_TO_KEEP) {
       ((Checkpointable) actor).checkpointExpired(actorId, checkpointIds.get(0));
@@ -75,9 +76,10 @@ public class NativeTaskExecutor extends TaskExecutor<NativeActorContext> {
     if (!(actor instanceof Checkpointable)) {
       return;
     }
-    actorContext.get().numTasksSinceLastCheckpoint = 0;
-    actorContext.get().lastCheckpointTimestamp = System.currentTimeMillis();
-    actorContext.get().checkpointIds = new ArrayList<>();
+    NativeActorContext actorContext = getActorContext();
+    actorContext.numTasksSinceLastCheckpoint = 0;
+    actorContext.lastCheckpointTimestamp = System.currentTimeMillis();
+    actorContext.checkpointIds = new ArrayList<>();
     List<Checkpoint> availableCheckpoints
         = runtime.getGcsClient().getCheckpointsForActor(actorId);
     if (availableCheckpoints.isEmpty()) {
