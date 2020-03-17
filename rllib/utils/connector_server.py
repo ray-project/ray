@@ -38,6 +38,24 @@ class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
 
     @PublicAPI
     def __init__(self, ioctx, address, port):
+        """Create a ConnectorServer.
+
+        This class implements rllib.offline.InputReader, and can be used with
+        any Trainer by configuring
+
+            {"num_workers": 0,
+             "input": lambda ioctx: ConnectorServer(ioctx, addr, port)}
+
+        Note that by setting num_workers: 0, the trainer will only create one
+        rollout worker / ConnectorServer. Clients can connect to the launched
+        server using rllib.utils.ConnectorClient.
+
+        Args:
+            ioctx (IOContext): IOContext provided by RLlib.
+            address (str): Server addr (e.g., "localhost").
+            port (int): Server port (e.g., 9900).
+        """
+
         self.rollout_worker = ioctx.worker
         self.samples_queue = queue.Queue()
         self.metrics_queue = queue.Queue()

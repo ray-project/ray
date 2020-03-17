@@ -30,6 +30,16 @@ class ConnectorClient(PolicyClient):
     REPORT_SAMPLES = "REPORT_SAMPLES"
 
     def __init__(self, address, auto_wrap_env=True, update_interval=10.0):
+        """Create a ConnectorClient.
+
+        Args:
+            address (str): Server address, e.g., "localhost:9900"
+            auto_wrap_env (bool): Whether to convert the given env into an
+                ExternalEnv type. Set this to false if you want to implement
+                the interface directly.
+            update_interval (float): Number of seconds to wait between pulling
+                new policy weights from the server.
+        """
         super().__init__(address)
         self.update_interval = update_interval
         self.last_updated = 0
