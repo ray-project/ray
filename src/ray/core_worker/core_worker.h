@@ -134,8 +134,7 @@ struct CoreWorkerOptions {
 /// worker. If you started your own threads and you want to use core worker APIs in these
 /// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
 /// once in the new thread before calling core worker APIs, to associate the current
-/// thread with a worker. You can ontain the worker ID from the `worker_id` parameter of
-/// the `task_execution_callback` or with
+/// thread with a worker. You can ontain the worker ID via
 /// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`.
 ///
 /// If only 1 worker is started (either because the worker type is driver, or the

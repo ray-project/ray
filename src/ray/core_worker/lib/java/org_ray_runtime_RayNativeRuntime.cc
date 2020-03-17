@@ -99,13 +99,13 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
       };
 
   ray::CoreWorkerOptions options = {
-      static_cast<ray::WorkerType>(workerMode),     // worker_type
-      ray::Language::JAVA,                          // langauge
-      JavaStringToNativeString(env, storeSocket),   // store_socket
-      JavaStringToNativeString(env, rayletSocket),  // raylet_socket
-      JavaByteArrayToId<ray::JobID>(env, jobId),    // job_id
-      ToGcsClientOptions(env, gcsClientOptions),    // gcs_options
-      JavaStringToNativeString(env, logDir),        // log_dir
+      static_cast<ray::WorkerType>(workerMode),      // worker_type
+      ray::Language::JAVA,                           // langauge
+      JavaStringToNativeString(env, storeSocket),    // store_socket
+      JavaStringToNativeString(env, rayletSocket),   // raylet_socket
+      JavaByteArrayToId<ray::JobID>(env, jobId),     // job_id
+      ToGcsClientOptions(env, gcsClientOptions),     // gcs_options
+      JavaStringToNativeString(env, logDir),         // log_dir
       // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
       false,                                         // install_failure_signal_handler
       JavaStringToNativeString(env, nodeIpAddress),  // node_ip_address
