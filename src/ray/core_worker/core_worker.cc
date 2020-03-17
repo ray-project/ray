@@ -1282,7 +1282,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   status = options_.task_execution_callback(
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
-      arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
+      arg_reference_ids, return_ids, return_objects);
 
   absl::optional<rpc::Address> caller_address(
       worker_context_.GetCurrentTask()->CallerAddress());

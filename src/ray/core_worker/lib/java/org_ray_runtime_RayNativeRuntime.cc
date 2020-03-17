@@ -57,8 +57,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWorke
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids,
-         std::vector<std::shared_ptr<ray::RayObject>> *results,
-         const ray::WorkerID &worker_id) {
+         std::vector<std::shared_ptr<ray::RayObject>> *results) {
         JNIEnv *env = local_env;
         if (!env) {
           // Attach the native thread to JVM.

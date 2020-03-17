@@ -493,8 +493,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
-        c_vector[shared_ptr[CRayObject]] *returns,
-        const CWorkerID &c_worker_id) nogil:
+        c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
         try:

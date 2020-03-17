@@ -61,7 +61,7 @@ struct CoreWorkerOptions {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids,
-      std::vector<std::shared_ptr<RayObject>> *results, const ray::WorkerID &worker_id)>;
+      std::vector<std::shared_ptr<RayObject>> *results)>;
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
