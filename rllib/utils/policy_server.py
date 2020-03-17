@@ -1,9 +1,9 @@
-import pickle
 import traceback
 
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
+import ray.cloudpickle as pickle
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.policy_client import PolicyClient
 

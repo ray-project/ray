@@ -1,6 +1,12 @@
-import logging
-import pickle
+"""REST client to interact with a policy server.
 
+Inference is done server side for each step. For higher performance, consider
+using connector_client.py instead.
+"""
+
+import logging
+
+import ray.cloudpickle as pickle
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)

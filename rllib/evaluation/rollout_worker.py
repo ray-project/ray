@@ -240,6 +240,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 to ensure each remote worker has unique exploration behavior.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
+        self._original_kwargs = locals().copy()
+        del self._original_kwargs["self"]
 
         global _global_worker
         _global_worker = self
@@ -785,6 +787,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     @DeveloperAPI
     def stop(self):
         self.async_env.stop()
+
+    @DeveloperAPI
+    def creation_args(self):
+        """Returns the args used to create this worker."""
+        return self._original_kwargs
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}
