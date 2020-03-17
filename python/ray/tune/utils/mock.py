@@ -1,11 +1,14 @@
 import os
 
+import ray.utils
+
 from ray.rllib.agents.mock import _MockTrainer
 from ray.tune import DurableTrainable
 from ray.tune.sync_client import get_sync_client
 from ray.tune.syncer import NodeSyncer
 
-MOCK_REMOTE_DIR = "/tmp/mock-tune-remote/"
+MOCK_REMOTE_DIR = os.path.join(ray.utils.get_user_temp_dir(),
+                               "mock-tune-remote") + os.sep
 # Sync and delete templates that operate on local directories.
 LOCAL_SYNC_TEMPLATE = "mkdir -p {target} && rsync -avz {source}/ {target}/"
 LOCAL_DELETE_TEMPLATE = "rm -rf {target}"

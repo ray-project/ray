@@ -268,7 +268,7 @@ def dashboard(cluster_config_file, cluster_name, port):
 @click.option(
     "--internal-config",
     default=None,
-    type=str,
+    type=json.loads,
     help="Do NOT use this. This is for debugging/development purposes ONLY.")
 @click.option(
     "--load-code-from-local",
@@ -912,7 +912,8 @@ def timeline(address):
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = "/tmp/ray-timeline-{}.json".format(time)
+    filename = os.path.join(ray.utils.get_user_temp_dir(),
+                            "ray-timeline-{}.json".format(time))
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))
