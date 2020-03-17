@@ -81,6 +81,7 @@ Status RedisClient::Connect(boost::asio::io_service &io_service) {
 
 Status RedisClient::Connect(std::vector<boost::asio::io_service &> io_services) {
   RAY_CHECK(!is_connected_);
+  RAY_CHECK(!io_services.empty());
 
   if (options_.server_ip_.empty()) {
     RAY_LOG(ERROR) << "Failed to connect, redis server address is empty.";

@@ -54,8 +54,7 @@ class RedisStoreClient : public StoreClient {
                             const StatusCallback &callback) override;
 
  private:
-  Status DoPut(const std::string &table_name, const std::string &key,
-               const std::string &value, const std::string &shard_key,
+  Status DoPut(const std::string &key, const std::string &value,
                const StatusCallback &callback);
 
   typedef ScanBatchCallback =
@@ -101,7 +100,11 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<CallbackItem> {
 
   void DoScan();
 
+  void DoCallback();
+
   void OnScanCallback(std::shared_ptr<CallbackReply> reply);
+
+  void ProcessScanResult(const std::vector<std::string> &keys);
 
   void DoParseKeys(const std::vector<std::string> &index_keys);
 
@@ -109,9 +112,7 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<CallbackItem> {
 
   void DoMultiRead(const std::vector<std::string> &data_keys);
 
-  void DoCallback();
-
-  std::vector<std::string> DedupeKeys(std::vector<std::string> keys);
+  std::vector<std::string> DedupeKeys(const std::vector<std::string> &keys);
 
  private:
   std::shared_ptr<RedisClient> redis_client_{nullptr};

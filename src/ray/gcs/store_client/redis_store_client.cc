@@ -33,9 +33,10 @@ static Status AsyncDelete(std::shared_ptr<RedisContext> redis_context,
   args.insert(args.end(), keys.begin(), keys.end());
 
   auto write_callback = [callback](std::shared_ptr<CallbackReply> reply) {
-    auto status = reply->ReadAsStatus();
+    int64_t deleted_count = reply->ReadAsInteger();
+    RAY_LOG(DEBUG) << "Delete done, total delete count " << deleted_count;
     if (callback != nullptr) {
-      callback(status);
+      callback(Status::OK());
     }
   };
 
@@ -52,6 +53,7 @@ RedisStoreClient::RedisStoreClient(const RedisStoreClientOptions &options) {
 RedisStoreClient::~RedisStoreClient() {}
 
 Status RedisStoreClient::Connect(std::shared_ptr<IOServicePool> io_service_pool) {
+  io_service_pool_ = io_service_pool;
   return redis_client->Connect(io_service_pool->GetAll());
 }
 
@@ -60,7 +62,8 @@ void RedisStoreClient::Disconnect() { redis_client->Disconnect(); }
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
                                   const std::string &value,
                                   const StatusCallback &callback) {
-  return DoPut(table_name, key, value, /*shard_key*/ key, callback);
+  std::string full_key = table_name + key;
+  return DoPut(full_key, value, callback);
 }
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
@@ -74,9 +77,9 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
       return;
     }
 
-    // Write index to redis.
-    std::string index_key = index + key;
-    status = AsyncPut(table_name, index_key, key, /*shard_key*/ index, callback);
+    // Write index to Redis.
+    std::string index_key = index + table_name + key;
+    status = DoPut(index_key, key, callback);
 
     if (!status.ok()) {
       if (callback != nullptr) {
@@ -85,16 +88,15 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
     }
   };
 
-  // Write key && value to redis.
-  Status status = DoPut(table_name, key, value, /*shard_key*/ key, write_callback);
+  // Write data to Redis.
+  std::string full_key = table_name + key;
+  Status status = DoPut(full_key, value, write_callback);
   return status;
 }
 
-Status RedisStoreClient::DoPut(const std::string &table_name, const std::string &key,
-                               const std::string &value, const std::string &shard_key,
+Status RedisStoreClient::DoPut(const std::string &key, const std::string &value,
                                const StatusCallback &callback) {
-  std::string full_key = table_name + key;
-  std::vector<std::string> args = {"SET", full_key, value};
+  std::vector<std::string> args = {"SET", key, value};
 
   auto write_callback = [callback](std::shared_ptr<CallbackReply> reply) {
     auto status = reply->ReadAsStatus();
@@ -103,8 +105,7 @@ Status RedisStoreClient::DoPut(const std::string &table_name, const std::string 
     }
   };
 
-  // Pick shard context by shard key.
-  auto shard_context = redis_client_->GetRedisContext(shard_key);
+  auto shard_context = redis_client_->GetPrimaryContext();
   Status status = shard_context->RunArgvAsync(args, write_callback);
 
   return status;
@@ -115,7 +116,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::stri
   RAY_CHECK(callback != nullptr);
 
   std::string full_key = table_name + key;
-  auto shard_context = redis_client_->GetRedisContext(key);
+  auto shard_context = redis_client_->GetPrimaryContext();
   return AsyncGet(shard_context, full_key, callback);
 }
 
@@ -124,11 +125,8 @@ Status RedisStoreClient::AsyncGetByIndex(const std::string &table_name,
                                          const MultiItemCallback<std::string> &callback) {
   RAY_CHECK(callback != nullptr);
 
-  std::string shard_key = index + table_name;
-
-  std::shared_ptr<RedisRangeOpExecutor> range_executor =
-      std::make_shared<RedisRangeOpExecutor>(redis_client_, table_name, index, shard_key,
-                                             callback);
+  auto range_executor =
+      std::make_shared<RedisRangeOpExecutor>(redis_client_, table_name, index, callback);
   return range_executor->Run();
 }
 
@@ -137,9 +135,8 @@ Status RedisStoreClient::AsyncGetAll(
     const ScanCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback != nullptr);
 
-  std::shared_ptr<RedisRangeOpExecutor> range_executor =
-      std::make_shared<RedisRangeOpExecutor>(redis_client_, table_name, table_name,
-                                             callback);
+  auto range_executor =
+      std::make_shared<RedisRangeOpExecutor>(redis_client_, table_name, callback);
   return range_executor->Run();
 }
 
@@ -149,25 +146,21 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
   std::string full_key = table_name + key;
 
   std::vector<std::string> args = {"DEL", full_key};
-  // Pick shard context by shard key.
-  auto shard_context = redis_client_->GetRedisContext(key);
+  auto shard_context = redis_client_->GetPrimaryContext();
   return AsyncDelete(shard_context, {full_key}, callback);
 }
 
 Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
                                             const std::string &index,
                                             const StatusCallback &callback) {
-  std::string shard_key = index + table_name;
-
   auto delete_callback = [callback](Status status) {
     if (callback) {
       callback(status);
     }
   };
 
-  std::shared_ptr<RedisRangeOpExecutor> range_executor =
-      std::make_shared<RedisRangeOpExecutor>(redis_client_, table_name, index, shard_key,
-                                             delete_callback);
+  auto range_executor = std::make_shared<RedisRangeOpExecutor>(redis_client_, table_name,
+                                                               index, delete_callback);
   return range_executor->Run();
 }
 
@@ -231,7 +224,8 @@ void RedisRangeOpExecutor::DoScan() {
   std::vector<std::string> args = {"SCAN",  std::to_string(cursor_),
                                    "MATCH", match_pattern_,
                                    "COUNT", std::to_string(batch_count)};
-  auto shard_context = redis_client_->GetRedisContext(index_table_prefix_);
+
+  auto shard_context = redis_client_->GetPrimaryContext();
   status_ = shard_context->RunArgvAsync(args, redis_callback);
   if (!status_.ok()) {
     OnFailed();
@@ -249,14 +243,9 @@ void RedisRangeOpExecutor::OnScanCallback(std::shared_ptr<CallbackReply> reply) 
 
   std::vector<std::string> keys;
   cursor_ = reply->ReadAsScanArray(&keys);
-  std::vector<std::string> deduped_keys = DedupeKeys(std::move(keys));
+  std::vector<std::string> deduped_keys = DedupeKeys(keys);
   if (!deduped_keys.empty()) {
-    // Parse data key from index key for operation: GetByIndex.
-    DoParseKeys();
-    // Delete data keys and index keys from Redis for operation: DeleteByIndex.
-    DoBatchDelete();
-    // Read data from Redis for operation: GetAll.
-    DoMultiRead();
+    ProcessScanResult(deduped_keys);
     return;
   }
 
@@ -307,15 +296,26 @@ void RedisRangeOpExecutor::DoCallback() {
   }
 }
 
-std::vector<std::string> RedisRangeOpExecutor::DedupeKeys(std::vector<std::string> keys) {
+std::vector<std::string> RedisRangeOpExecutor::DedupeKeys(
+    const std::vector<std::string> &keys) {
   std::vector<std::string> deduped_keys;
   for (auto &key : keys) {
     auto it = keys_returned_by_scan_.find(key);
     if (it == keys_returned_by_scan_.end()) {
-      deduped_keys.emplace_back(std::move(key));
+      deduped_keys.emplace_back(key);
+      keys_returned_by_scan_.emplace(key);
     }
   }
   return deduped_keys;
+}
+
+void RedisRangeOpExecutor::ProcessScanResult(const std::vector<std::string> &keys) {
+  // Parse data key from index key for operation: GetByIndex.
+  DoParseKeys();
+  // Delete data keys and index keys from Redis for operation: DeleteByIndex.
+  DoBatchDelete();
+  // Read data from Redis for operation: GetAll.
+  DoMultiRead();
 }
 
 void RedisRangeOpExecutor::DoParseKeys(const std::vector<std::string> &index_keys) {
@@ -341,7 +341,7 @@ void RedisRangeOpExecutor::DoBatchDelete(const std::vector<std::string> &index_k
     auto delete_callback = [self](Status status) { self->OnDeleteCallback(status); };
 
     // Delete data.
-    auto redis_context = redis_client_->GetRedisContext(data_table_prefix_);
+    auto redis_context = redis_client_->GetPrimaryContext();
     status_ = AsyncDelete(redis_context, data_keys, delete_callback);
     ++pending_delete_count_;
     if (!statsu_.ok()) {
@@ -350,7 +350,7 @@ void RedisRangeOpExecutor::DoBatchDelete(const std::vector<std::string> &index_k
     }
 
     // Delete index of data.
-    redis_context = redis_client_->GetRedisContext(index_table_prefix_);
+    redis_context = redis_client_->GetPrimaryContext();
     status_ = AsyncDelete(redis_context, index_keys, delete_callback);
     ++pending_delete_count_;
     if (!status_.ok()) {
@@ -362,11 +362,8 @@ void RedisRangeOpExecutor::DoBatchDelete(const std::vector<std::string> &index_k
 
 void RedisRangeOpExecutor::DoMultiRead(const std::vector<std::string> &data_keys) {
   if (get_all_callback_) {
-    RAY_LOG(DEBUG) << "Current pending_read_keys count " << pending_read_keys_.size()
-                   << " total keys_returned_by_scan count "
-                   << keys_returned_by_scan_.size();
-    // Pick shard context with shard key.
-    auto redis_context = redis_client_->GetRedisContext(data_table_prefix_);
+    std::shared_ptr<RedisRangeOpExecutor> self = shared_from_this();
+    auto redis_context = redis_client_->GetPrimaryContext();
     for (const auto &data_key : data_keys) {
       auto read_callback = [self, key](Status status,
                                        const boost::optional<Data> &result) {
@@ -380,6 +377,9 @@ void RedisRangeOpExecutor::DoMultiRead(const std::vector<std::string> &data_keys
         return;
       }
     }
+    RAY_LOG(DEBUG) << "Current pending_read_keys count " << pending_read_keys_.size()
+                   << " total keys_returned_by_scan count "
+                   << keys_returned_by_scan_.size();
   }
 }
 
