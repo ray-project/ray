@@ -478,7 +478,8 @@ class route:
     - The endpoint and backend are linked together
     - The handle is returned
 
-    Usage:
+    .. code-block:: python
+
         @serve.route("/path")
         def my_handler(flask_request):
             ...
