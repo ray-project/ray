@@ -3378,18 +3378,18 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     auto status = worker->rpc_client()->GetCoreWorkerStats(
         request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
-          if (!status.ok()) {
-            RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
-                             << status.ToString();
-          } else {
-            auto worker_stats = reply->add_workers_stats();
-            worker_stats->set_pid(worker->GetProcess().GetId());
-            worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
-            reply->set_num_workers(reply->num_workers() + 1);
+          auto worker_stats = reply->add_workers_stats();
+          worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          reply->set_num_workers(reply->num_workers() + 1);
+          if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
-            if (reply->num_workers() == all_workers.size()) {
-              send_reply_callback(Status::OK(), nullptr, nullptr);
-            }
+          } else {
+            RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
+                           << status.ToString();
+          }
+          if (reply->num_workers() == all_workers.size()) {
+            send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
     if (!status.ok()) {
