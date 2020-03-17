@@ -2,6 +2,7 @@ package org.ray.api.runtime;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -82,7 +83,7 @@ public interface RayRuntime {
    * @param actor The actor to be killed.
    * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
    */
-  void killActor(RayActor<?> actor, boolean noReconstruction);
+  void killActor(BaseActor actor, boolean noReconstruction);
 
   /**
    * Invoke a remote function.
