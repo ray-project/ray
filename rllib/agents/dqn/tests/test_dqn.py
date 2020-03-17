@@ -1,4 +1,5 @@
 import numpy as np
+from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.dqn as dqn
@@ -37,14 +38,14 @@ class TestDQN(unittest.TestCase):
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["eager", "tf", "torch"]:
+        for fw in ["tf", "eager", "torch"]:
             if fw == "torch":
                 continue
 
             print("framework={}".format(fw))
 
-            config["eager"] = True if fw == "eager" else False
-            config["use_pytorch"] = True if fw == "torch" else False
+            config["eager"] = fw == "eager"
+            config["use_pytorch"] = fw == "torch"
 
             # Default EpsilonGreedy setup.
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
@@ -104,11 +105,10 @@ class TestDQN(unittest.TestCase):
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
-        config["exploration_config"] = {"type": "ParameterNoise"}
         obs = np.array(0)
 
         # Test against all frameworks.
-        for fw in ["tf", "eager", "torch"]:
+        for fw in ["eager", "tf", "torch"]:
             if fw == "torch":
                 continue
 
@@ -116,20 +116,74 @@ class TestDQN(unittest.TestCase):
 
             config["eager"] = True if fw == "eager" else False
             config["use_pytorch"] = True if fw == "torch" else False
+            # Chose ParameterNoise as exploration class.
+            config["exploration_config"] = {"type": "ParameterNoise"}
+
+            eager_mode_ctx = eager_mode()
+            if fw == "eager":
+                eager_mode_ctx.__enter__()
+            else:
+                assert not tf.executing_eagerly()
 
             # DQN with ParameterNoise exploration.
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            policy = trainer.get_policy()
+            weights_before = policy.get_weights()
+            # Pseudo-start an episode and compare the weights before and after.
+            policy.exploration.on_episode_start(
+                policy, policy.model, None, None, tf_sess=policy._sess)
+            weights_after = policy.get_weights()
+            key = 0 if fw == "eager" else list(weights_before.keys())[0]
+            noise = policy.exploration.noise[0][0][0]
+            if fw == "tf":
+                noise = policy._sess.run(noise)
+            check(weights_before[key][0][0] + noise, weights_after[key][0][0])
+
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
             for _ in range(50):
                 a = trainer.compute_action(obs, explore=False)
                 check(a, a_)
 
-            # explore=None (default: explore) should return different actions.
+            # Explore=None (default: explore) should return different actions.
+            # However, this is only due to the underlying epsilon-greedy
+            # exploration.
             actions = []
             for _ in range(50):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+
+            # Pseudo-end the episode and compare weights again.
+            # Make sure they are the original ones.
+            policy.exploration.on_episode_end(
+                policy, policy.model, None, None, tf_sess=policy._sess)
+            weights_after_episode_end = policy.get_weights()
+            check(weights_before[key][0][0],
+                  weights_after_episode_end[key][0][0])
+
+            # Switch off EpsilonGreedy underlying exploration.
+            config["exploration_config"] = {
+                "type": "ParameterNoise",
+                "sub_exploration": {
+                    "type": "EpsilonGreedy",
+                    "action_space": trainer.get_policy().action_space,
+                    "initial_epsilon": 0.0,  # <- no randomness whatsoever
+                }
+            }
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            # Now, when we act - even with explore=True - we would expect
+            # the same action for the same input (parameter noise is
+            # deterministic).
+            policy = trainer.get_policy()
+            policy.exploration.on_episode_start(
+                policy, policy.model, None, None, tf_sess=policy._sess)
+            a_ = trainer.compute_action(obs)
+            for _ in range(50):
+                a = trainer.compute_action(obs, explore=True)
+                check(a, a_)
+
+            if fw == "eager":
+                eager_mode_ctx.__exit__(None, None, None)
 
 
 if __name__ == "__main__":

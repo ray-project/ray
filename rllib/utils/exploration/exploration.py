@@ -1,9 +1,7 @@
 from gym.spaces import Space
 from typing import Union
 
-from ray.rllib.env import BaseEnv
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
 
@@ -35,16 +33,16 @@ class Exploration:
         self.worker_index = worker_index
         self.framework = check_framework(framework)
 
-    def forward(self,
-                model: ModelV2,
-                obs_batch,
-                state_batches=None,
-                seq_lens=None,
-                **kwargs):
-        """Performs a forward pass through the given model.
-
-        Should be overridden to implement custom forward pass exploration
-        behavior.
+    def before_forward_pass(self,
+                            model: ModelV2,
+                            obs_batch,
+                            *,
+                            state_batches=None,
+                            seq_lens=None,
+                            timestep=None,
+                            explore=None,
+                            **kwargs):
+        """May be overridden to perform preparations before a forward pass.
 
         Args:
             model (ModelV2): The model object to use for the forward pass.
@@ -54,10 +52,17 @@ class Exploration:
             seq_lens: The sequence lengths for the RNN case.
             **kwargs: Forward compatibility kwargs.
         """
-        # Default behavior: Call the model with the given params.
-        return model({
-            SampleBatch.CUR_OBS: obs_batch
-        }, state_batches or [], seq_lens)
+        pass
+
+    def after_forward_pass(self,
+                           *,
+                           distribution_inputs,
+                           action_dist_class=None,
+                           model=None,
+                           timestep=None,
+                           explore=None,
+                           **kwargs):
+        pass
 
     def get_exploration_action(self,
                                distribution_inputs: TensorType,
@@ -91,25 +96,33 @@ class Exploration:
         """
         pass
 
-    def on_episode_start(self, environment: BaseEnv, episode: int,
-                         model: ModelV2):
+    def on_episode_start(self,
+                         policy,
+                         model,
+                         environment,
+                         episode,
+                         tf_sess=None):
         """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
+            policy (Policy): The Policy object that holds this Exploration.
+            model (ModelV2): The Model object.
             environment (BaseEnv): The environment object we are acting in.
             episode (int): The number of the episode that is starting.
-            model (ModelV2): The Model object.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
         """
         pass
 
-    def on_episode_end(self, environment: BaseEnv, episode: int,
-                       model: ModelV2):
+    def on_episode_end(self, policy, model, environment, episode,
+                       tf_sess=None):
         """Handles necessary exploration logic at the end of an episode.
 
         Args:
+            policy (Policy): The Policy object that holds this Exploration.
+            model (ModelV2): The Model object.
             environment (BaseEnv): The environment object we are acting in.
             episode (int): The number of the episode that is starting.
-            model (ModelV2): The Model object.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
         """
         pass
 
