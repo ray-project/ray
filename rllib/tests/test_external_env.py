@@ -124,7 +124,7 @@ class TestExternalEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
@@ -134,7 +134,7 @@ class TestExternalEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         for _ in range(3):
             batch = ev.sample()
@@ -144,7 +144,7 @@ class TestExternalEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy=MockPolicy,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="complete_episodes")
         for _ in range(3):
             batch = ev.sample()
@@ -157,7 +157,7 @@ class TestExternalEnv(unittest.TestCase):
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=BadPolicy,
             sample_async=True,
-            batch_steps=40,
+            rollout_fragment_length=40,
             batch_mode="truncate_episodes")
         self.assertRaises(Exception, lambda: ev.sample())
 
@@ -206,7 +206,7 @@ class TestExternalEnv(unittest.TestCase):
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy=MockPolicy,
             episode_horizon=20,
-            batch_steps=10,
+            rollout_fragment_length=10,
             batch_mode="complete_episodes")
         self.assertRaises(ValueError, lambda: ev.sample())
 

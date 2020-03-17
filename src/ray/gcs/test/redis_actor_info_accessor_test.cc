@@ -17,10 +17,11 @@
 #include <string>
 #include <thread>
 #include <vector>
+
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/test/accessor_test_base.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -166,7 +167,8 @@ TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
         --pending_count_;
       };
       ++pending_count_;
-      Status status = actor_accessor.AsyncGetCheckpoint(checkpoint_id, on_get_done);
+      Status status = actor_accessor.AsyncGetCheckpoint(
+          checkpoint_id, ActorID::FromBinary(checkpoint->actor_id()), on_get_done);
       RAY_CHECK_OK(status);
     }
   }

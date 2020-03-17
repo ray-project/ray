@@ -13,7 +13,7 @@ from ray.rllib.utils.experimental_dsl import (
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
     {
-        "sample_batch_size": 20,
+        "rollout_fragment_length": 20,
         "min_iter_time_s": 10,
         "sample_async": False,
 

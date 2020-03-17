@@ -14,11 +14,12 @@
 
 #include <unordered_map>
 #include <vector>
+
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/test/accessor_test_base.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 

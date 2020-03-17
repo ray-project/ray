@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from tensorflow.python.eager.context import eager_mode
 import unittest
 
@@ -188,5 +189,4 @@ class TestExplorations(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

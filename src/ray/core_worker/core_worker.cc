@@ -187,6 +187,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       store_socket, local_raylet_client_, check_signals_,
+      /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
       boost::bind(&CoreWorker::TriggerGlobalGC, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
@@ -514,11 +515,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
   // Erase any objects that were promoted to plasma from the results. These get
   // requests will be retried at the plasma store.
-  for (auto it = result_map.begin(); it != result_map.end(); it++) {
-    if (it->second->IsInPlasmaError()) {
-      RAY_LOG(DEBUG) << it->first << " in plasma, doing fetch-and-get";
-      plasma_object_ids.insert(it->first);
-      result_map.erase(it);
+  for (auto it = result_map.begin(); it != result_map.end();) {
+    auto current = it++;
+    if (current->second->IsInPlasmaError()) {
+      RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
+      plasma_object_ids.insert(current->first);
+      result_map.erase(current);
     }
   }
 
@@ -584,16 +586,19 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
                                absl::flat_hash_set<ObjectID> &memory_object_ids,
                                absl::flat_hash_set<ObjectID> &plasma_object_ids,
                                absl::flat_hash_set<ObjectID> &ready) {
-  for (const auto &mem_id : memory_object_ids) {
-    if (ready.find(mem_id) != ready.end()) {
+  for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
+    auto current = iter++;
+    const auto &mem_id = *current;
+    auto ready_iter = ready.find(mem_id);
+    if (ready_iter != ready.end()) {
       std::vector<std::shared_ptr<RayObject>> found;
       RAY_CHECK_OK(memory_store->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0,
                                      worker_context,
                                      /*remote_after_get=*/false, &found));
       if (found.size() == 1 && found[0]->IsInPlasmaError()) {
-        memory_object_ids.erase(mem_id);
-        ready.erase(mem_id);
         plasma_object_ids.insert(mem_id);
+        ready.erase(ready_iter);
+        memory_object_ids.erase(current);
       }
     }
   }
@@ -872,11 +877,12 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
-Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill) {
+Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
+                             bool no_reconstruction) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
   RAY_CHECK(actor_handle->IsDirectCallActor());
-  direct_actor_submitter_->KillActor(actor_id, force_kill);
+  direct_actor_submitter_->KillActor(actor_id, force_kill, no_reconstruction);
   return Status::OK();
 }
 
@@ -977,7 +983,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
             RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
-            RAY_CHECK_OK(KillActor(actor_id, /*intentional=*/true));
+            RAY_CHECK_OK(
+                KillActor(actor_id, /*force_kill=*/true, /*no_reconstruction=*/false));
           }
         }));
   }
@@ -1397,6 +1404,9 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
+    if (request.no_reconstruction()) {
+      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    }
     if (log_dir_ != "") {
       RayLog::ShutDownRayLog();
     }

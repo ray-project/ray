@@ -216,10 +216,11 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
-    const ActorCheckpointID &checkpoint_id,
+    const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
     const OptionalItemCallback<rpc::ActorCheckpointData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor checkpoint, checkpoint id = " << checkpoint_id;
   rpc::GetActorCheckpointRequest request;
+  request.set_actor_id(actor_id.Binary());
   request.set_checkpoint_id(checkpoint_id.Binary());
   client_impl_->GetGcsRpcClient().GetActorCheckpoint(
       request, [checkpoint_id, callback](const Status &status,
