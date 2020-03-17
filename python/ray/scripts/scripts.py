@@ -944,7 +944,7 @@ def stat(address):
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         reply = stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
+            node_manager_pb2.GetNodeStatsRequest(include_memory_info=False),
             timeout=2.0)
         print(reply)
 
