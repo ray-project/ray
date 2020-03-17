@@ -647,7 +647,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   promise.get_future().get();
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestGcsDetector) {
+TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TearDownTestCase();
 

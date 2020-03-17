@@ -258,8 +258,9 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
 /// Waiting time for each gcs service connection.
 RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
-/// The duration between detect gcs.
-RAY_CONFIG(int64_t, gcs_detect_timeout_milliseconds, 100)
+/// The interval at which the gcs server will check if redis has gone down.
+/// When this happens, gcs server will kill itself.
+RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.

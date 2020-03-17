@@ -12,26 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_DETECTOR_H
-#define RAY_GCS_DETECTOR_H
+#ifndef RAY_GCS_REDIS_FAILURE_DETECTOR_H
+#define RAY_GCS_REDIS_FAILURE_DETECTOR_H
 
 #include <boost/asio.hpp>
+#include "ray/gcs/redis_context.h"
 
 namespace ray {
 
 namespace gcs {
 class RedisGcsClient;
 
-/// GcsDetector is responsible for monitoring redis.
-class GcsDetector {
+/// GcsRedisFailureDetector is responsible for monitoring redis.
+class GcsRedisFailureDetector {
  public:
-  /// Create a GcsDetector.
+  /// Create a GcsRedisFailureDetector.
   ///
   /// \param io_service The event loop to run the monitor on.
-  /// \param gcs_client The client of gcs to access/pub/sub data.
-  explicit GcsDetector(boost::asio::io_service &io_service,
-                       std::shared_ptr<gcs::RedisGcsClient> gcs_client,
-                       std::function<void()> destroy_callback);
+  /// \param redis_context The redis context is used to ping redis.
+  /// \param callback Callback that will be called when redis is detected as not alive.
+  explicit GcsRedisFailureDetector(boost::asio::io_service &io_service,
+                                   std::shared_ptr<RedisContext> redis_context,
+                                   std::function<void()> callback);
 
  protected:
   /// Start to detect gcs.
@@ -47,8 +49,8 @@ class GcsDetector {
   void DetectRedis();
 
  private:
-  /// A client to the GCS, through which ping redis.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  /// A redis context is used to ping redis.
+  std::shared_ptr<RedisContext> redis_context_;
 
   /// A timer that ticks every gcs_detect_timeout_milliseconds.
   boost::asio::deadline_timer detect_timer_;
@@ -60,4 +62,4 @@ class GcsDetector {
 }  // namespace gcs
 }  // namespace ray
 
-#endif  // RAY_GCS_DETECTOR_H
+#endif  // RAY_GCS_REDIS_FAILURE_DETECTOR_H

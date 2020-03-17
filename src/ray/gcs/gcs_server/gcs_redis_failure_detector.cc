@@ -12,30 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_detector.h"
+#include "gcs_redis_failure_detector.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 namespace gcs {
 
-GcsDetector::GcsDetector(boost::asio::io_service &io_service,
-                         std::shared_ptr<gcs::RedisGcsClient> gcs_client,
-                         std::function<void()> callback)
-    : gcs_client_(std::move(gcs_client)),
+GcsRedisFailureDetector::GcsRedisFailureDetector(
+    boost::asio::io_service &io_service, std::shared_ptr<RedisContext> redis_context,
+    std::function<void()> callback)
+    : redis_context_(redis_context),
       detect_timer_(io_service),
       callback_(std::move(callback)) {
   Start();
 }
 
-void GcsDetector::Start() {
-  RAY_LOG(INFO) << "Starting gcs detector.";
+void GcsRedisFailureDetector::Start() {
+  RAY_LOG(INFO) << "Starting redis failure detector.";
   Tick();
 }
 
-void GcsDetector::DetectRedis() {
+void GcsRedisFailureDetector::DetectRedis() {
   redisReply *reply = reinterpret_cast<redisReply *>(
-      redisCommand(gcs_client_->primary_context()->sync_context(), "PING"));
+      redisCommand(redis_context_->sync_context(), "PING"));
   if (reply == nullptr || reply->type == REDIS_REPLY_NIL) {
     RAY_LOG(ERROR) << "Redis is inactive.";
     callback_();
@@ -45,20 +44,20 @@ void GcsDetector::DetectRedis() {
 }
 
 /// A periodic timer that checks for timed out clients.
-void GcsDetector::Tick() {
+void GcsRedisFailureDetector::Tick() {
   DetectRedis();
   ScheduleTick();
 }
 
-void GcsDetector::ScheduleTick() {
+void GcsRedisFailureDetector::ScheduleTick() {
   auto detect_period = boost::posix_time::milliseconds(
-      RayConfig::instance().gcs_detect_timeout_milliseconds());
+      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds());
   detect_timer_.expires_from_now(detect_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::system::errc::operation_canceled) {
       return;
     }
-    RAY_CHECK(!error) << "Detecting gcs failed with error: " << error.message();
+    RAY_CHECK(!error) << "Detecting redis failed with error: " << error.message();
     Tick();
   });
 }
