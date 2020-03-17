@@ -23,9 +23,7 @@ GcsRedisFailureDetector::GcsRedisFailureDetector(
     std::function<void()> callback)
     : redis_context_(redis_context),
       detect_timer_(io_service),
-      callback_(std::move(callback)) {
-  Start();
-}
+      callback_(std::move(callback)) {}
 
 void GcsRedisFailureDetector::Start() {
   RAY_LOG(INFO) << "Starting redis failure detector.";
@@ -33,7 +31,7 @@ void GcsRedisFailureDetector::Start() {
 }
 
 void GcsRedisFailureDetector::DetectRedis() {
-  redisReply *reply = reinterpret_cast<redisReply *>(
+  auto *reply = reinterpret_cast<redisReply *>(
       redisCommand(redis_context_->sync_context(), "PING"));
   if (reply == nullptr || reply->type == REDIS_REPLY_NIL) {
     RAY_LOG(ERROR) << "Redis is inactive.";

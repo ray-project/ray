@@ -43,6 +43,7 @@ void GcsServer::Start() {
   // Init gcs detector
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
       main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
+  gcs_redis_failure_detector_->Start();
 
   // Register rpc service.
   job_info_handler_ = InitJobInfoHandler();

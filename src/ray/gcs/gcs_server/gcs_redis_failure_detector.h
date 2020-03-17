@@ -35,10 +35,10 @@ class GcsRedisFailureDetector {
                                    std::shared_ptr<RedisContext> redis_context,
                                    std::function<void()> callback);
 
- protected:
-  /// Start to detect gcs.
+  /// Start detecting redis.
   void Start();
 
+ protected:
   /// A periodic timer that fires on every gcs detect period.
   void Tick();
 
@@ -50,6 +50,7 @@ class GcsRedisFailureDetector {
 
  private:
   /// A redis context is used to ping redis.
+  /// TODO(ffbin): We will use redis client later.
   std::shared_ptr<RedisContext> redis_context_;
 
   /// A timer that ticks every gcs_detect_timeout_milliseconds.
