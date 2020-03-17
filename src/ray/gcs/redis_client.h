@@ -4,7 +4,6 @@
 #include <map>
 #include <string>
 
-#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/asio.h"
 #include "ray/util/logging.h"
