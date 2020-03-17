@@ -86,7 +86,8 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
       string_reply_ = std::string(message->str, message->len);
       RAY_CHECK(!string_reply_.empty()) << "Empty message received on subscribe channel.";
     } else {
-      RAY_LOG(FATAL) << "This is not a pubsub reply: data=" << message_type->str;
+      // Array replies are used for scan or get.
+      ParseAsScanArray(redis_reply);
     }
     break;
   }
@@ -94,6 +95,33 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     RAY_LOG(WARNING) << "Encountered unexpected redis reply type: " << reply_type_;
   }
   }
+}
+
+void CallbackReply::ParseAsScanArray(redisReply *redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
+  const auto array_size = static_cast<size_t>(redis_reply->elements);
+  if (array_size == 2) {
+    auto *cursor_entry = redis_reply->element[0];
+    auto *array_entry = redis_reply->element[1];
+    if (REDIS_REPLY_ARRAY == array_entry->type) {
+      // Parse as a scan array
+      RAY_CHECK(REDIS_REPLY_STRING == cursor_entry->type);
+      std::string cursor_str(cursor_entry->str, cursor_entry->len);
+      next_scan_cursor_ = std::stoi(cursor_str);
+      const auto scan_array_size = array_entry->elements;
+      string_array_.reserve(scan_array_size);
+      for (size_t i = 0; i < scan_array_size; ++i) {
+        auto *entry = array_entry->element[i];
+        RAY_CHECK(REDIS_REPLY_STRING == entry->type)
+            << "Unexcepted type: " << entry->type;
+        string_array_.push_back(std::string(entry->str, entry->len));
+        RAY_LOG(DEBUG) << "Element index is " << i << ", element length is "
+                       << entry->len;
+      }
+      return;
+    }
+  }
+  RAY_LOG(FATAL) << "Unknown reply array, array_size " << array_size;
 }
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == reply_type_; }
@@ -116,6 +144,12 @@ std::string CallbackReply::ReadAsString() const {
 std::string CallbackReply::ReadAsPubsubData() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
   return string_reply_;
+}
+
+size_t CallbackReply::ReadAsScanArray(std::vector<std::string> *array) const {
+  RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
+  *array = string_array_;
+  return next_scan_cursor_;
 }
 
 // This is a global redis callback which will be registered for every

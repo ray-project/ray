@@ -53,7 +53,16 @@ class CallbackReply {
   /// Read this reply data as pub-sub data.
   std::string ReadAsPubsubData() const;
 
+  /// Read this reply data as a scan array.
+  ///
+  /// \param array The result array of scan.
+  /// \return size_t The next cursor for scan.
+  size_t ReadAsScanArray(std::vector<std::string> *array) const;
+
  private:
+  /// Parse redis reply as scan array.
+  void ParseAsScanArray(redisReply *redis_reply);
+
   /// Flag indicating the type of reply this represents.
   int reply_type_;
 
@@ -66,6 +75,13 @@ class CallbackReply {
   /// Reply data if reply_type_ is REDIS_REPLY_STRING or REDIS_REPLY_ARRAY.
   /// Note that REDIS_REPLY_ARRAY is only used for pub-sub data.
   std::string string_reply_;
+
+  /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
+  /// Represent the reply of StringArray or ScanArray.
+  std::vector<std::string> string_array_;
+
+  /// Represent the reply of SCanArray, means the next scan cursor for scan request.
+  size_t next_scan_cursor_{0};
 };
 
 /// Every callback should take in a vector of the results from the Redis
