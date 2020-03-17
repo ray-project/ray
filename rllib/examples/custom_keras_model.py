@@ -54,6 +54,9 @@ class MyKerasModel(TFModelV2):
     def value_function(self):
         return tf.reshape(self._value_out, [-1])
 
+    def metrics(self):
+        return {"foo": tf.constant(42.0)}
+
 
 class MyKerasQModel(DistributionalQModel):
     """Custom model for DQN."""
@@ -85,6 +88,9 @@ class MyKerasQModel(DistributionalQModel):
         model_out = self.base_model(input_dict["obs"])
         return model_out, state
 
+    def metrics(self):
+        return {"foo": tf.constant(42.0)}
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -99,6 +105,7 @@ if __name__ == "__main__":
         args.run,
         stop={"episode_reward_mean": args.stop},
         config={
+            "log_level": "INFO",
             "env": "BreakoutNoFrameskip-v4"
             if args.use_vision_network else "CartPole-v0",
             "num_gpus": 0,
