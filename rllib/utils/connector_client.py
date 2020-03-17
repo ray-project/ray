@@ -1,7 +1,10 @@
-"""REST client to interact with a policy server.
+"""REST client to interact with a ConnectorServer.
 
 Inference is done on the client side for each step using a locally cached
 policy from the server. The policy is periodically updated on a given interval.
+
+For an example, run `examples/cartpole_server.py --use-connector` along
+with `examples/cartpole_client.py --use-connector`.
 """
 
 import threading
@@ -12,31 +15,6 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.policy_client import PolicyClient
-
-
-class _InferenceThread(threading.Thread):
-    """Thread that handles experience generation (worker.sample() loop)."""
-
-    def __init__(self, client):
-        super().__init__()
-        self.daemon = True
-        self.client = client
-
-    def run(self):
-        try:
-            while True:
-                print("Generating new batch of experiences.")
-                samples = self.client.rollout_worker.sample()
-                metrics = self.client.rollout_worker.get_metrics()
-                print("Sending batch of {} steps back to server.".format(
-                    samples.count))
-                self.client._send({
-                    "command": ConnectorClient.REPORT_SAMPLES,
-                    "samples": samples,
-                    "metrics": metrics,
-                })
-        except Exception as e:
-            print("Error: inference worker thread died!", e)
 
 
 @PublicAPI
@@ -134,3 +112,28 @@ class ConnectorClient(PolicyClient):
     def end_episode(self, episode_id, observation):
         self._do_updates()
         return self.env.end_episode(episode_id, observation)
+
+
+class _InferenceThread(threading.Thread):
+    """Thread that handles experience generation (worker.sample() loop)."""
+
+    def __init__(self, client):
+        super().__init__()
+        self.daemon = True
+        self.client = client
+
+    def run(self):
+        try:
+            while True:
+                print("Generating new batch of experiences.")
+                samples = self.client.rollout_worker.sample()
+                metrics = self.client.rollout_worker.get_metrics()
+                print("Sending batch of {} steps back to server.".format(
+                    samples.count))
+                self.client._send({
+                    "command": ConnectorClient.REPORT_SAMPLES,
+                    "samples": samples,
+                    "metrics": metrics,
+                })
+        except Exception as e:
+            print("Error: inference worker thread died!", e)

@@ -12,11 +12,14 @@ from ray.rllib.utils.connector_client import ConnectorClient
 
 
 class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
-    """REST server for the application connector.
+    """REST server for the RLlib external application connector.
 
     This launches a multi-threaded server that listens on the specified host
     and port to serve policy requests and forward experiences to RLlib. For
     high performance experience collection, it implements InputReader.
+
+    For an example, run `examples/cartpole_server.py --use-connector` along
+    with `examples/cartpole_client.py --use-connector`.
 
     Examples:
         >>> pg = PGTrainer(
