@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_STORE_CLIENT_H
-#define RAY_GCS_STORE_CLIENT_H
+#ifndef RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
+#define RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
 
 #include <memory>
 #include <string>
@@ -9,6 +9,19 @@
 namespace ray {
 
 namespace gcs {
+
+class StoreClientOptions {
+ public:
+  StoreClientOptions(const std::string &ip, int port, const std::string &password)
+      : server_ip_(ip), server_port_(port), password_(password) {}
+
+  // Redis server ip.
+  std::string server_ip_;
+  // Redis server port.
+  int server_port_;
+  // Redis server password.
+  std::string password_;
+};
 
 /// \class StoreClient
 /// Abstract interface of the storage client.
@@ -96,8 +109,9 @@ class StoreClient {
                                     const StatusCallback &callback) = 0;
 
  protected:
-  StoreClient() {}
+  StoreClient(const StoreClientOptions &options) : options_(options) {}
 
+  StoreClientOptions options_;
   std::shared_ptr<IOServicePool> io_service_pool_;
 };
 
@@ -105,4 +119,4 @@ class StoreClient {
 
 }  // namespace ray
 
-#endif  // RAY_GCS_STORE_CLIENT_H
+#endif  // RAY_GCS_STORE_CLIENT_STORE_CLIENT_H

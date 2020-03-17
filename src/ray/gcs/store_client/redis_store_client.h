@@ -1,29 +1,19 @@
-#ifndef RAY_GCS_STORE_CLIENT_H
-#define RAY_GCS_STORE_CLIENT_H
+#ifndef RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
+#define RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H
 
+#include <memory>
+#include <unordered_set>
 #include "ray/gcs/redis_client.h"
+#include "ray/gcs/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
 
 namespace ray {
 
 namespace gcs {
 
-class RedisStoreClientOptions {
- public:
-  RedisStoreClientOptions(const std::string &ip, int port, const std::string &password)
-      : server_ip_(ip), server_port_(port), password_(password) {}
-
-  // Redis server ip.
-  std::string server_ip_;
-  // Redis server port.
-  int server_port_;
-  // Redis server password.
-  std::string password_;
-};
-
 class RedisStoreClient : public StoreClient {
  public:
-  RedisStoreClient(const RedisStoreClientOptions &options);
+  RedisStoreClient(const StoreClientOptions &options);
 
   virtual ~RedisStoreClient();
 
@@ -57,15 +47,6 @@ class RedisStoreClient : public StoreClient {
   Status DoPut(const std::string &key, const std::string &value,
                const StatusCallback &callback);
 
-  typedef ScanBatchCallback =
-      std::function<void(Status status, size_t cursor,
-                         const std::vector<std::pair<std::string, std::string>> &result)>;
-
-  Status DoScan(size_t cursor, const std::string &match_pattern,
-                const std::string &shard_key, const ScanBatchCallback &callback);
-
-  void OnScanCallback();
-
   std::shared_ptr<RedisClient> redis_client_;
 };
 
@@ -75,7 +56,7 @@ class RedisStoreClient : public StoreClient {
 /// 2. Get All Data Key with the same index from Redis (GetByIndex).
 /// 3. Delete Index and Data Key with the same index from Redis (DeleteByIndex).
 /// TODO(micafan) Consider encapsulating three different classes.
-class RedisRangeOpExecutor : public std::enable_shared_from_this<CallbackItem> {
+class RedisRangeOpExecutor : public std::enable_shared_from_this<RedisRangeOpExecutor> {
  public:
   RedisRangeOpExecutor(std::shared_ptr<RedisClient> redis_client,
                        const std::string &table_name, const std::string &index,
@@ -112,6 +93,11 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<CallbackItem> {
 
   void DoMultiRead(const std::vector<std::string> &data_keys);
 
+  void OnReadCallback(Status status, const boost::optional<std::string> &result,
+                      const std::string &data_key);
+
+  void OnDeleteCallback(Status status);
+
   std::vector<std::string> DedupeKeys(const std::vector<std::string> &keys);
 
  private:
@@ -143,4 +129,4 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<CallbackItem> {
 
 }  // namespace ray
 
-#endif  // RAY_GCS_STORE_CLIENT_H
+#endif  // RAY_GCS_STORE_CLIENT_REDIS_STORE_CLIENT_H

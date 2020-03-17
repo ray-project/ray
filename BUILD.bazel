@@ -915,6 +915,22 @@ cc_library(
 )
 
 cc_library(
+    name = "redis_store_client",
+    srcs = [
+        "src/ray/gcs/store_client/redis_store_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/store_client.h",
+        "src/ray/gcs/store_client/redis_store_client.h",
+    ],
+    copts = COPTS,
+    deps = [
+        "redis_client",
+    ],
+)
+
+cc_library(
     name = "gcs",
     srcs = glob(
         [
