@@ -237,8 +237,8 @@ public class RayCallGenerator extends BaseGenerator {
    * @param numParameters the number of parameters
    * @param forActor Build `actor.call` when true, otherwise build `Ray.callPy`.
    * @param forActorCreation Build `Ray.createPyActor` when true, otherwise build `Ray.callPy`.
-   * @param hasOptionsParam Add ActorCreationOptions if forActorCreation is true and hasOptionsParam is true;
-   *                        Add CallOptions if forActorCreation is false and hasOptionsParam is true;
+   * @param hasOptionsParam Add ActorCreationOptions if forActorCreation is true;
+   *                        Add CallOptions if forActorCreation is false;
    *                        No additional param if hasOptionsParam is false.
    */
   private void buildPyCalls(int numParameters, boolean forActor,
