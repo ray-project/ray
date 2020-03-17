@@ -204,6 +204,45 @@ def test_actor_reconstruction_without_task(ray_start_regular):
         timeout_ms=5000)
 
 
+def test_actor_caller_reconstruction(ray_start_regular):
+    """Test the caller of an actor is killed and then reconstructed."""
+
+    @ray.remote(max_reconstructions=1)
+    class ReconstructableActor:
+        """An actor that will be reconstructed at most once."""
+
+        def __init__(self, actor):
+            self.actor = actor
+
+        def increase(self):
+            return ray.get(self.actor.increase.remote())
+
+        def get_pid(self):
+            return os.getpid()
+    
+    @ray.remote(max_reconstructions=1)
+    class Actor:
+        """An actor that will be reconstructed at most once."""
+
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+    remote_actor = Actor.remote()
+    actor = ReconstructableActor.remote(remote_actor)
+    # Call increase 3 times
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+
+    # kill the actor.
+    kill_actor(actor)
+    
+    # Check that we can still call the actor.
+    assert ray.get(actor.increase.remote()) == 4
+
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     """Test actor reconstruction when node dies unexpectedly."""
     cluster = ray_start_cluster_head

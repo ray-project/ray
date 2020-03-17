@@ -84,6 +84,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id Actor ID.
   void DisconnectActor(const ActorID &actor_id, bool dead = false);
+  
+  /// Set actor creation timestamp (if this worker is an actor).
+  void SetActorCreationTimestamp();
 
  private:
   /// Push a task to a remote actor via the given client.
@@ -160,6 +163,9 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
+
+  /// Set the actor creation timestamp (if this worker is an actor).
+  int64_t actor_creation_timestamp_ms_ = 0; 
 
   friend class CoreWorkerTest;
 };
@@ -251,6 +257,13 @@ class BoundedExecutor {
   const int max_concurrency_;
   /// The underlying thread pool for running tasks.
   boost::asio::thread_pool pool_;
+};
+
+struct SchedulingQueueTag {
+  /// Worker ID for the caller.
+  WorkerID caller_worker_id;
+  /// Version for the caller.
+  int64_t caller_version = 0;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -457,7 +470,8 @@ class CoreWorkerDirectTaskReceiver {
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
+  std::unordered_map<TaskID,
+      std::pair<SchedulingQueueTag, std::unique_ptr<SchedulingQueue>>> scheduling_queue_;
 };
 
 }  // namespace ray

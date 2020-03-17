@@ -1101,6 +1101,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    SetActorCreationTimestamp();
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
@@ -1510,6 +1511,11 @@ void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &mess
 void CoreWorker::SetActorTitle(const std::string &title) {
   absl::MutexLock lock(&mutex_);
   actor_title_ = title;
+}
+
+void CoreWorker::SetActorCreationTimestamp() {
+  absl::MutexLock lock(&mutex_);
+  direct_actor_submitter_->SetActorCreationTimestamp();
 }
 
 }  // namespace ray
