@@ -89,7 +89,7 @@ class TrackSession:
         # TODO: Implement a batching mechanism for multiple calls to `log`
         #     within the same iteration.
         metrics_dict = metrics.copy()
-        metrics_dict.update({"trial_id": self.trial_info.trial_id})
+        metrics_dict.update({"trial_id": self.trial_id})
 
         # TODO: Move Trainable autopopulation to a util function
         metrics_dict.setdefault(TRAINING_ITERATION, self._iteration)
