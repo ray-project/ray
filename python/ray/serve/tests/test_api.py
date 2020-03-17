@@ -6,6 +6,23 @@ from ray import serve
 from ray.serve import BackendConfig
 import ray
 from ray.serve.constants import NO_ROUTE_KEY
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle
+
+
+def test_route_decorator(serve_instance):
+    @serve.route("/hello_world")
+    def hello_world(_):
+        return ""
+
+    assert isinstance(hello_world, RayServeHandle)
+
+    hello_world.scale(2)
+    assert serve.get_backend_config("hello_world:v0").num_replicas == 2
+
+    with pytest.raises(
+            RayServeException, match="method does not accept batching"):
+        hello_world.set_max_batch_size(2)
 
 
 def test_e2e(serve_instance):
