@@ -135,7 +135,7 @@ public class ClassLoaderTest extends BaseTest {
         FunctionDescriptor.class, Object[].class, ActorCreationOptions.class);
     createActorMethod.setAccessible(true);
     return (RayActor<?>) createActorMethod
-        .invoke(TestUtils.getRuntime(), functionDescriptor, new Object[0], null);
+        .invoke(TestUtils.getUnderlyingRuntime(), functionDescriptor, new Object[0], null);
   }
 
   private <T> RayObject<T> callActorFunction(RayActor<?> rayActor,
@@ -144,6 +144,6 @@ public class ClassLoaderTest extends BaseTest {
         RayActor.class, FunctionDescriptor.class, Object[].class, int.class);
     callActorFunctionMethod.setAccessible(true);
     return (RayObject<T>) callActorFunctionMethod
-        .invoke(TestUtils.getRuntime(), rayActor, functionDescriptor, args, numReturns);
+        .invoke(TestUtils.getUnderlyingRuntime(), rayActor, functionDescriptor, args, numReturns);
   }
 }

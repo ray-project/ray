@@ -157,6 +157,7 @@ public interface RayRuntime {
 
   /**
    * Wrap a {@link Runnable} with necessary context capture.
+   *
    * @param runnable The runnable to wrap.
    * @return The wrapped runnable.
    */
@@ -164,8 +165,9 @@ public interface RayRuntime {
 
   /**
    * Wrap a {@link Callable} with necessary context capture.
+   *
    * @param callable The callable to wrap.
    * @return The wrapped callable.
    */
-  Callable wrapCallable(Callable callable);
+  <T> Callable<T> wrapCallable(Callable<T> callable);
 }

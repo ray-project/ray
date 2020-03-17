@@ -91,10 +91,6 @@ public class RayConfig {
     }
   }
 
-  /**
-   * Number of threads that execute tasks.
-   */
-  public final int numberExecThreadsForDevRuntime;
 
   public final int numWorkersPerProcess;
 
@@ -217,9 +213,6 @@ public class RayConfig {
     } else {
       jobResourcePath = null;
     }
-
-    // Number of threads that execute tasks.
-    numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
 
     numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
 

@@ -44,7 +44,7 @@ public final class Ray extends RayCall {
   /**
    * Shutdown Ray runtime.
    */
-  public static void shutdown() {
+  public static synchronized void shutdown() {
     if (runtime != null) {
       runtime.shutdown();
       runtime = null;
@@ -137,6 +137,10 @@ public final class Ray extends RayCall {
     runtime.setAsyncContext(asyncContext);
   }
 
+  // TODO (kfstorm): no rollbackAsyncContext API.
+
+  // TODO (kfstorm): unify the `wrap*` methods.
+
   /**
    * If users want to use Ray API in their own threads, they should wrap their {@link Runnable}
    * objects with this method.
@@ -155,7 +159,7 @@ public final class Ray extends RayCall {
    * @param callable The callable to wrap.
    * @return The wrapped callable.
    */
-  public static Callable wrapCallable(Callable callable) {
+  public static <T> Callable<T> wrapCallable(Callable<T> callable) {
     return runtime.wrapCallable(callable);
   }
 
