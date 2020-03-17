@@ -191,10 +191,10 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
               RAY_CHECK(tracker->active_buffers_.contains(key));
               tracker->active_buffers_.erase(key);
             });
+        auto call_site = get_current_call_site_();
         {
           absl::MutexLock lock(&tracker->active_buffers_mutex_);
-          tracker->active_buffers_[std::make_pair(object_id, data.get())] =
-              get_current_call_site_();
+          tracker->active_buffers_[std::make_pair(object_id, data.get())] = call_site;
         }
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
