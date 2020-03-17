@@ -3,7 +3,7 @@ package org.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.ray.api.RayActor;
+import org.ray.api.BaseActor;
 import org.ray.api.id.ObjectId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
@@ -23,7 +23,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public RayActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+  public BaseActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
                               ActorCreationOptions options) {
     byte[] actorId = nativeCreateActor(functionDescriptor, args, options);
     return NativeRayActor.create(actorId, functionDescriptor.getLanguage());
@@ -31,7 +31,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
 
   @Override
   public List<ObjectId> submitActorTask(
-      RayActor actor, FunctionDescriptor functionDescriptor,
+      BaseActor actor, FunctionDescriptor functionDescriptor,
       List<FunctionArg> args, int numReturns, CallOptions options) {
     Preconditions.checkState(actor instanceof NativeRayActor);
     List<byte[]> returnIds = nativeSubmitActorTask(actor.getId().getBytes(),

@@ -6,15 +6,15 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
-import org.ray.api.RayActor;
+import org.ray.api.BaseActor;
 import org.ray.api.id.ActorId;
 import org.ray.runtime.generated.Common.Language;
 
 /**
- * RayActor abstract language-independent implementation for cluster mode. This is a wrapper class
- * for C++ ActorHandle.
+ * Abstract and language-independent implementation of actor handle for cluster mode. This is a
+ * wrapper class for C++ ActorHandle.
  */
-public abstract class NativeRayActor implements RayActor, Externalizable {
+public abstract class NativeRayActor implements BaseActor, Externalizable {
 
   /**
    * ID of the actor.
