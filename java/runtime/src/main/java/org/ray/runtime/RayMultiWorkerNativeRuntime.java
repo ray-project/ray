@@ -171,8 +171,8 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callPy(RayPyActor pyActor, String functionName, Object[] args) {
-    return getCurrentRuntime().callPy(pyActor, functionName, args);
+  public RayObject callPyActor(RayPyActor pyActor, String functionName, Object[] args) {
+    return getCurrentRuntime().callPyActor(pyActor, functionName, args);
   }
 
   @Override
