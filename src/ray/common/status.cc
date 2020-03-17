@@ -27,11 +27,11 @@
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
 #include "ray/common/status.h"
-#include <map>
 
 #include <assert.h>
 
 #include <boost/system/error_code.hpp>
+#include <map>
 
 namespace ray {
 

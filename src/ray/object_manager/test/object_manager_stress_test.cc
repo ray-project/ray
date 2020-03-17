@@ -20,10 +20,9 @@
 #include <thread>
 
 #include "gtest/gtest.h"
-
 #include "ray/common/status.h"
-
 #include "ray/object_manager/object_manager.h"
+#include "ray/util/filesystem.h"
 
 namespace ray {
 
@@ -89,7 +88,7 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   std::string StartStore(const std::string &id) {
-    std::string store_id = "/tmp/store";
+    std::string store_id = ray::JoinPaths(ray::GetUserTempDir(), "store");
     store_id = store_id + id;
     std::string store_pid = store_id + ".pid";
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
