@@ -3,7 +3,7 @@ package org.ray.api;
 /**
  * Handle of a Python actor.
  */
-public interface RayPyActor<A> extends RayActor, PyActorCall<A> {
+public interface RayPyActor extends RayActor, PyActorCall {
 
   /**
    * @return Module name of the Python actor class.

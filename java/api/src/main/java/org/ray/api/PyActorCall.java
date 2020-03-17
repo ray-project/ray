@@ -6,7 +6,7 @@ package org.ray.api;
  * This class provides type-safe interfaces for remote actor calls.
  **/
 @SuppressWarnings({"rawtypes", "unchecked"})
-interface PyActorCall<A> {
+interface PyActorCall {
 
   default RayObject call(String functionName) {
     Object[] args = new Object[]{};

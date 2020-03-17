@@ -116,7 +116,7 @@ public class RayCallGenerator extends BaseGenerator {
     newLine(" * This class provides type-safe interfaces for remote actor calls.");
     newLine(" **/");
     newLine("@SuppressWarnings({\"rawtypes\", \"unchecked\"})");
-    newLine("interface PyActorCall<A> {");
+    newLine("interface PyActorCall {");
     newLine("");
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
       buildPyCalls(i, true, false, false);
@@ -231,10 +231,15 @@ public class RayCallGenerator extends BaseGenerator {
   }
 
   /**
-   * Build the `Ray.callPyActor` or `Ray.createPyActor` methods.
+   * Build `Ray.callPy`, `Ray.createPyActor` and `actor.call` methods with
+   * the given number of parameters.
    *
-   * @param forActor Build actor api when true, otherwise build task api.
-   * @param forActorCreation Build `Ray.createPyActor` when true, otherwise build `Ray.callPyActor`.
+   * @param numParameters the number of parameters
+   * @param forActor Build `actor.call` when true, otherwise build `Ray.callPy`.
+   * @param forActorCreation Build `Ray.createPyActor` when true, otherwise build `Ray.callPy`.
+   * @param hasOptionsParam Add ActorCreationOptions if forActorCreation is true and hasOptionsParam is true;
+   *                        Add CallOptions if forActorCreation is false and hasOptionsParam is true;
+   *                        No additional param if hasOptionsParam is false.
    */
   private void buildPyCalls(int numParameters, boolean forActor,
       boolean forActorCreation, boolean hasOptionsParam) {
