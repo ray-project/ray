@@ -306,7 +306,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
   // Run the Redis command.
   Status status = redis_async_context_->RedisAsyncCommandArgv(
       reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-      reinterpret_cast<void *>(callback_index) args.size(), argv.data(), argc.data());
+      reinterpret_cast<void *>(callback_index), args.size(), argv.data(), argc.data());
   return status;
 }
 

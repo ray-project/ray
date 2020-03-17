@@ -15,6 +15,8 @@ class IOServicePool {
  public:
   IOServicePool(size_t io_service_num);
 
+  ~IOServicePool();
+
   void Run();
 
   void Stop();
@@ -22,27 +24,41 @@ class IOServicePool {
   /// Select io_service by round robin.
   ///
   /// \return io_service
-  boost::asio::io_service &Get();
+  boost::asio::io_service *Get();
 
   /// Select io_service by hash.
   ///
   /// \param hash Use this hash to pick a io_service.
   /// The same hash will alway get the same io_service.
   /// \return io_service
-  boost::asio::io_service &Get(size_t hash);
+  boost::asio::io_service *Get(size_t hash);
 
   /// Get all io_service.
   /// This is only use for RedisClient::Connect().
-  std::vector<boost::asio::io_service &> GetAll();
+  std::vector<boost::asio::io_service *> GetAll();
 
  private:
   size_t io_service_num_{0};
 
   std::vector<std::thread> threads_;
-  std::vector<boost::asio::io_service> io_services_;
+  std::vector<boost::asio::io_service *> io_services_;
 
   std::atomic<size_t> current_index_;
 };
+
+inline boost::asio::io_service *IOServicePool::Get() {
+  size_t index = ++current_index_ % io_service_num_;
+  return io_services_[index];
+}
+
+inline boost::asio::io_service *IOServicePool::Get(size_t hash) {
+  size_t index = hash % io_service_num_;
+  return io_services_[index];
+}
+
+inline std::vector<boost::asio::io_service *> IOServicePool::GetAll() {
+  return io_services_;
+}
 
 }  // namespace ray
 

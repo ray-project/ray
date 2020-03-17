@@ -74,12 +74,12 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
 RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {}
 
 Status RedisClient::Connect(boost::asio::io_service &io_service) {
-  std::vector<boost::asio::io_service &> io_services;
-  io_services.emplace_back(io_service);
+  std::vector<boost::asio::io_service *> io_services;
+  io_services.emplace_back(&io_service);
   return Connect(io_services);
 }
 
-Status RedisClient::Connect(std::vector<boost::asio::io_service &> io_services) {
+Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) {
   RAY_CHECK(!is_connected_);
   RAY_CHECK(!io_services.empty());
 
@@ -88,7 +88,7 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service &> io_services) 
     return Status::Invalid("Redis server address is invalid!");
   }
 
-  primary_context_ = std::make_shared<RedisContext>(io_services[0]);
+  primary_context_ = std::make_shared<RedisContext>(*io_services[0]);
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_, options_.server_port_,
                                          /*sharding=*/true,
@@ -108,14 +108,14 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service &> io_services) 
 
     for (size_t i = 0; i < addresses.size(); ++i) {
       size_t io_service_index = (i + 1) % io_services.size();
-      boost::asio::io_service &io_service = io_services[io_service_index];
+      boost::asio::io_service &io_service = *io_services[io_service_index];
       // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
                                                /*password=*/options_.password_));
     }
   } else {
-    shard_contexts_.push_back(std::make_shared<RedisContext>(io_services[0]));
+    shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
     RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_, options_.server_port_,
                                              /*sharding=*/true,
                                              /*password=*/options_.password_));
@@ -154,10 +154,9 @@ void RedisClient::Disconnect() {
 }
 
 std::shared_ptr<RedisContext> RedisClient::GetRedisContext(const std::string &shard_key) {
-  size_t hash = std::hash<std::string>(shard_key);
-  auto shard_contexts = redis_client->GetShardContexts();
-  size_t index = hash % shard_contexts.size();
-  return shard_contexts[index];
+  static std::hash<std::string> hash;
+  size_t index = hash(shard_key) % shard_contexts_.size();
+  return shard_contexts_[index];
 }
 
 }  // namespace gcs

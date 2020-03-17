@@ -334,7 +334,7 @@ void RedisRangeOpExecutor::DoBatchDelete(const std::vector<std::string> &index_k
     std::shared_ptr<RedisRangeOpExecutor> self = shared_from_this();
 
     for (const auto &index_key : index_keys) {
-      std::string data_key = index_key.substr(index_table_prefix_.length());
+      std::string data_key = table_name_ + index_key.substr(index_table_prefix_.length());
       data_keys.emplace_back(data_key);
     }
 

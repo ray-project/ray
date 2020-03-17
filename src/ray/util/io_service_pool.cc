@@ -4,43 +4,35 @@ namespace ray {
 
 IOServicePool::IOServicePool(size_t io_service_num) : io_service_num_(io_service_num) {}
 
+IOServicePool::~IOServicePool() {}
+
 void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {
-    io_services_.emplace_back(std::move(boost::asio::io_service()));
-    boost::asio::io_service &io_service = io_services_.back();
+    boost::asio::io_service *io_service = new boost::asio::io_service;
+    io_services_.emplace_back(io_service);
     threads_.emplace_back([io_service] {
-      boost::asio::io_service::work(io_service);
-      io_service.run();
+      boost::asio::io_service::work *worker =
+          new boost::asio::io_service::work(*io_service);
+      io_service->run();
+      delete worker;
     });
   }
 }
 
 void IOServicePool::Stop() {
-  for (auto &io_service : io_services_) {
-    io_service.stop();
+  for (auto io_service : io_services_) {
+    io_service->stop();
   }
 
   for (auto &thread : threads_) {
     thread.join();
   }
-}
+  threads_.clear();
 
-boost::asio::io_service &IOServicePool::Get() {
-  size_t index = ++current_index_ % io_service_num_;
-  return io_services_[index];
-}
-
-boost::asio::io_service &IOServicePool::Get(size_t hash) {
-  size_t index = hash % io_service_num_;
-  return io_services_[index];
-}
-
-std::vector<boost::asio::io_service &> IOServicePool::GetAll() {
-  std::vector<boost::asio::io_service &> io_services;
-  for (auto &io_service : io_services_) {
-    io_services.emplace_back(io_service);
+  for (auto io_service : io_services_) {
+    delete io_service;
   }
-  return io_services;
+  io_services_.clear();
 }
 
 }  // namespace ray

@@ -59,7 +59,7 @@ class RedisClient {
   // a event loop.
   /// Must be single-threaded io_service (get more information from RedisAsioClient).
   /// \return Status
-  Status Connect(std::vector<boost::asio::io_service &> io_services);
+  Status Connect(std::vector<boost::asio::io_service *> io_services);
 
   /// Disconnect with Redis. Non-thread safe.
   void Disconnect();
