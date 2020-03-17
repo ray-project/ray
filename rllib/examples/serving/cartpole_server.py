@@ -24,10 +24,7 @@ SERVER_PORT = 9900
 CHECKPOINT_FILE = "last_checkpoint.out"
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--use-dqn",
-    action="store_true",
-    help="Whether to use DQN instead of PPO.")
+parser.add_argument("--run", type=str, default="DQN")
 parser.add_argument(
     "--use-connector",
     action="store_true",
@@ -69,7 +66,7 @@ if __name__ == "__main__":
         env = "srv"
         connector_config = {}
 
-    if args.use_dqn:
+    if args.run == "DQN":
         # Example of using DQN (supports off-policy actions).
         trainer = DQNTrainer(
             env=env,
@@ -88,7 +85,7 @@ if __name__ == "__main__":
                     "learning_starts": 100,
                     "timesteps_per_iteration": 200,
                 }))
-    else:
+    elif args.run == "PPO":
         # Example of using PPO (does NOT support off-policy actions).
         trainer = PPOTrainer(
             env=env,
@@ -101,6 +98,8 @@ if __name__ == "__main__":
                     "sample_batch_size": 1000,
                     "train_batch_size": 4000,
                 }))
+    else:
+        raise ValueError("--run must be DQN or PPO")
 
     # Attempt to restore from checkpoint if possible.
     if os.path.exists(CHECKPOINT_FILE):
