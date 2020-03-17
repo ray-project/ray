@@ -58,7 +58,8 @@ if __name__ == "__main__":
         connector_config = {
             # Use the connector server to generate experiences.
             "input": (
-                lambda ioctx: ConnectorServer(ioctx, SERVER_ADDRESS, SERVER_PORT)
+                lambda ioctx: ConnectorServer( \
+                    ioctx, SERVER_ADDRESS, SERVER_PORT)
             ),
             # Disable OPE, since the rollouts are coming from online clients.
             "input_evaluation": [],
