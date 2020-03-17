@@ -603,7 +603,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         def track_train(config):
             tune.track.log(
-                name=tune.track.trial_name, trial_id=tune.track.trial_id)
+                name=tune.track.trial_name(), trial_id=tune.track.trial_id())
 
         analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
         trial = analysis.trials[0]
