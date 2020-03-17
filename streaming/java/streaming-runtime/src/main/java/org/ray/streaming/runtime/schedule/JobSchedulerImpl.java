@@ -3,6 +3,7 @@ package org.ray.streaming.runtime.schedule;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.BaseActor;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -57,7 +58,7 @@ public class JobSchedulerImpl implements JobScheduler {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {
         int taskId = executionTask.getTaskId();
-        RayActor worker = executionTask.getWorker();
+        BaseActor worker = executionTask.getWorker();
         switch (executionNode.getLanguage()) {
           case JAVA:
             RayActor<JobWorker> jobWorker = (RayActor<JobWorker>) worker;
@@ -67,8 +68,7 @@ public class JobSchedulerImpl implements JobScheduler {
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(
                 taskId, executionGraphPb, jobConfig);
-            waits.add(Ray.callPy((RayPyActor) worker,
-                "init", workerContextBytes));
+            waits.add(((RayPyActor)worker).call("init", workerContextBytes));
             break;
           default:
             throw new UnsupportedOperationException(

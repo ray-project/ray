@@ -7,7 +7,7 @@ import org.ray.api.RayPyActor;
 import org.ray.runtime.generated.Common.Language;
 
 /**
- * RayActor Python implementation for cluster mode.
+ * Python actor handle implementation for cluster mode.
  */
 public class NativeRayPyActor extends NativeRayActor implements RayPyActor {
 

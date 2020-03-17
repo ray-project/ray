@@ -106,7 +106,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_available_resources_(config.resource_config),
       worker_pool_(
           io_service, config.num_initial_workers, config.maximum_startup_concurrency,
-          gcs_client_, config.worker_commands,
+          gcs_client_, config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
@@ -2651,7 +2651,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
                    << actor_id;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id,
+        checkpoint_id, actor_id,
         [this, checkpoint_id, actor_id, new_actor_info, update_callback](
             Status status, const boost::optional<ActorCheckpointData> &checkpoint_data) {
           RAY_CHECK(checkpoint_data) << "Couldn't find checkpoint " << checkpoint_id

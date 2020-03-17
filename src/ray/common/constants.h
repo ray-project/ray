@@ -41,6 +41,6 @@ constexpr char kTaskTablePrefix[] = "TaskTable";
 constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_";
 
-constexpr char kWorkerNumWorkersPlaceholder[] = "RAY_WORKER_NUM_WORKERS_PLACEHOLDER";
+constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
 
 #endif  // RAY_CONSTANTS_H_
