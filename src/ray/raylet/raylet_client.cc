@@ -34,19 +34,19 @@
 
 using MessageType = ray::protocol::MessageType;
 
-static int read_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+namespace ray {
+
+static int read_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::read(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
 
-static int write_bytes(local_stream_protocol::socket &conn, void *cursor, size_t length) {
+static int write_bytes(local_stream_socket &conn, void *cursor, size_t length) {
   boost::system::error_code ec;
   size_t nread = boost::asio::write(conn, boost::asio::buffer(cursor, length), ec);
   return nread == length ? 0 : -1;
 }
-
-namespace ray {
 
 raylet::RayletConnection::RayletConnection(boost::asio::io_service &io_service,
                                            const std::string &raylet_socket,

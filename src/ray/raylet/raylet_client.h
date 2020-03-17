@@ -43,9 +43,10 @@ using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
-typedef boost::asio::generic::stream_protocol local_stream_protocol;
-
 namespace ray {
+
+typedef boost::asio::generic::stream_protocol local_stream_protocol;
+typedef boost::asio::basic_stream_socket<local_stream_protocol> local_stream_socket;
 
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
@@ -117,7 +118,7 @@ class RayletConnection {
 
  private:
   /// The Unix domain socket that connects to raylet.
-  local_stream_protocol::socket conn_;
+  local_stream_socket conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
