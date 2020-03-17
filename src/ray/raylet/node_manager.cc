@@ -3394,7 +3394,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
           }
         });
     if (!status.ok()) {
-      RAY_LOG(ERORR) << "Failed to send get core worker stats request: "
+      RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
                      << status.ToString();
     }
   }
