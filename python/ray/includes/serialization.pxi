@@ -169,7 +169,7 @@ cdef class MessagePackSerializer(object):
             # a message pack array. So, they can't be distinguished when unpacking.
             return msgpack.dumps(o, default=_default, use_bin_type=True, strict_types=True)
         except ValueError as ex:
-            # MessagePack can't handle recursive objects, so we serialize them by python serializer, e.g. pickle.
+            # msgpack can't handle recursive objects, so we serialize them by python serializer, e.g. pickle.
             return msgpack.dumps(_default(o), default=_default, use_bin_type=True, strict_types=True)
 
     @classmethod
@@ -185,7 +185,11 @@ cdef class MessagePackSerializer(object):
                 if cross_type is None:
                     raise Exception('Unrecognized ext type id: {}'.format(code))
                 return cross_type.__from_cross_data__(state)
-        return msgpack.loads(s, ext_hook=_ext_hook, raw=False)
+        try:
+            gc.disable() # Performance optimization for msgpack.
+            return msgpack.loads(s, ext_hook=_ext_hook, raw=False)
+        finally:
+            gc.enable()
 
 # See 'serialization.proto' for the memory layout in the Plasma buffer.
 def unpack_pickle5_buffers(Buffer buf, metadata):

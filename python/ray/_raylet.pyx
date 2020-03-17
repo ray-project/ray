@@ -92,6 +92,7 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.utils import decode
+import gc
 import msgpack
 
 cimport cpython
