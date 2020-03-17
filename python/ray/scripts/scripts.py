@@ -945,7 +945,7 @@ def stat(address):
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         reply = stub.GetNodeStats(
             node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
-            timeout=30.0)
+            timeout=2.0)
         print(reply)
 
 
