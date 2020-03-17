@@ -912,7 +912,8 @@ def timeline(address):
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = "/tmp/ray-timeline-{}.json".format(time)
+    filename = os.path.join(ray.utils.get_user_temp_dir(),
+                            "ray-timeline-{}.json".format(time))
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))

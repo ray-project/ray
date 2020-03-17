@@ -465,7 +465,8 @@ def test_pandas_parquet_serialization():
 
 def test_socket_dir_not_existing(shutdown_only):
     random_name = ray.ObjectID.from_random().hex()
-    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
+                                          "tests", random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
     ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
