@@ -7,9 +7,9 @@
 namespace ray {
 namespace api {
 
-RayRuntime *Ray::_impl = nullptr;
+RayRuntime *Ray::impl_ = nullptr;
 
-void Ray::Init() { _impl = &AbstractRayRuntime::DoInit(std::make_shared<RayConfig>()); }
+void Ray::Init() { impl_ = &AbstractRayRuntime::DoInit(std::make_shared<RayConfig>()); }
 
 }  // namespace api
 }  // namespace ray

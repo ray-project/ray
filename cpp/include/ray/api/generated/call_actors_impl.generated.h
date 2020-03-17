@@ -6,11 +6,11 @@ RayObject<R> Ray::Call(ActorFunc0<O, R> actorFunc, RayActor<O> &actor) {
   member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::Wrap(packer);
+  Serializer::Serialize(packer);
   remote_function_ptr_holder ptr;
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O>);
-  auto id = _impl->Call(ptr, actor.ID(), buffer);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(ActorexecFunction<R, O>);
+  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<R>(std::move(id));
 }
 
@@ -20,11 +20,11 @@ RayObject<R> Ray::Call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor, T1 ar
   member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::Wrap(packer, false, arg1);
+  Serializer::Serialize(packer, false, arg1);
   remote_function_ptr_holder ptr;
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1>);
-  auto id = _impl->Call(ptr, actor.ID(), buffer);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(ActorexecFunction<R, O, T1>);
+  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<R>(std::move(id));
 }
 
@@ -34,11 +34,11 @@ RayObject<R> Ray::Call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor,
   member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::Wrap(packer, true, arg1);
+  Serializer::Serialize(packer, true, arg1);
   remote_function_ptr_holder ptr;
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1>);
-  auto id = _impl->Call(ptr, actor.ID(), buffer);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(ActorexecFunction<R, O, T1>);
+  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<R>(std::move(id));
 }
 
@@ -49,11 +49,11 @@ RayObject<R> Ray::Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T
   member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::Wrap(packer, false, arg1, false, arg2);
+  Serializer::Serialize(packer, false, arg1, false, arg2);
   remote_function_ptr_holder ptr;
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
-  auto id = _impl->Call(ptr, actor.ID(), buffer);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(ActorexecFunction<R, O, T1, T2>);
+  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<R>(std::move(id));
 }
 
@@ -63,11 +63,11 @@ RayObject<R> Ray::Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor,
   member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::Wrap(packer, true, arg1, false, arg2);
+  Serializer::Serialize(packer, true, arg1, false, arg2);
   remote_function_ptr_holder ptr;
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
-  auto id = _impl->Call(ptr, actor.ID(), buffer);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(ActorexecFunction<R, O, T1, T2>);
+  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<R>(std::move(id));
 }
 
@@ -77,11 +77,11 @@ RayObject<R> Ray::Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T
   member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::Wrap(packer, false, arg1, true, arg2);
+  Serializer::Serialize(packer, false, arg1, true, arg2);
   remote_function_ptr_holder ptr;
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
-  auto id = _impl->Call(ptr, actor.ID(), buffer);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(ActorexecFunction<R, O, T1, T2>);
+  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<R>(std::move(id));
 }
 
@@ -91,10 +91,10 @@ RayObject<R> Ray::Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor,
   member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::Wrap(packer, true, arg1, true, arg2);
+  Serializer::Serialize(packer, true, arg1, true, arg2);
   remote_function_ptr_holder ptr;
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(actor_exec_function<R, O, T1, T2>);
-  auto id = _impl->Call(ptr, actor.ID(), buffer);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(ActorexecFunction<R, O, T1, T2>);
+  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<R>(std::move(id));
 }

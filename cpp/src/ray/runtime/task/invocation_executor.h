@@ -1,13 +1,13 @@
 #pragma once
 
-#include "task_spec.h"
-
+#include <ray/core.h>
 namespace ray {
 namespace api {
 
 class InvocationExecutor {
  public:
-  static void Execute(const TaskSpec &taskSpec, std::shared_ptr<msgpack::sbuffer> actor);
+  static void Execute(const TaskSpecification &taskSpec,
+                      std::shared_ptr<msgpack::sbuffer> actor);
 };
 }  // namespace api
 }  // namespace ray

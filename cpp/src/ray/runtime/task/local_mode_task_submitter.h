@@ -8,7 +8,6 @@
 #include <ray/core.h>
 #include "invocation_spec.h"
 #include "task_executer.h"
-#include "task_spec.h"
 #include "task_submitter.h"
 
 namespace ray {
@@ -26,13 +25,11 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
   ObjectID SubmitActorTask(const InvocationSpec &invocation);
 
  private:
-  std::queue<TaskSpec> _tasks;
+  std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actorContexts_;
 
-  std::unordered_map<ActorID, std::unique_ptr<ActorContext>> _actorContexts;
+  std::mutex actorContextsMutex_;
 
-  std::mutex _actorContextsMutex;
-
-  std::unique_ptr<boost::asio::thread_pool> _pool;
+  std::unique_ptr<boost::asio::thread_pool> pool_;
 
   ObjectID Submit(const InvocationSpec &invocation, TaskType type);
 

@@ -12,9 +12,9 @@ namespace api {
 
 class LocalModeObjectStore : public ObjectStore {
  private:
-  std::unordered_map<ObjectID, std::shared_ptr<msgpack::sbuffer>> _data;
+  std::unordered_map<ObjectID, std::shared_ptr<msgpack::sbuffer>> data_;
 
-  std::mutex _dataMutex;
+  std::mutex dataMutex_;
 
   WaitResult WaitInternal(const std::vector<ObjectID> &objects, int num_objects,
                           int64_t timeout_ms);

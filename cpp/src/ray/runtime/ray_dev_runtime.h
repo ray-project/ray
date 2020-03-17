@@ -14,8 +14,8 @@ class RayDevRuntime : public AbstractRayRuntime {
  private:
   RayDevRuntime(std::shared_ptr<RayConfig> config);
 
-  ActorID Create(remote_function_ptr_holder &fptr,
-                 std::shared_ptr<msgpack::sbuffer> args);
+  ActorID CreateActor(remote_function_ptr_holder &fptr,
+                      std::shared_ptr<msgpack::sbuffer> args);
 };
 
 }  // namespace api

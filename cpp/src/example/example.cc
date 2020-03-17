@@ -19,10 +19,10 @@ void handler(int sig) {
   exit(1);
 }
 
-int foo0() { return 1; }
-int foo(int x) { return x + 1; }
+int Foo0() { return 1; }
+int Foo(int x) { return x + 1; }
 
-int bar(int x, int y) { return x + y; }
+int Bar(int x, int y) { return x + y; }
 
 int main() {
   signal(SIGSEGV, handler);
@@ -36,11 +36,11 @@ int main() {
   auto obj = Ray::Put(123);
   auto getRsult = obj.Get();
 
-  auto r0 = Ray::Call(foo0);
-  auto r1 = Ray::Call(foo, 1);
-  auto r2 = Ray::Call(bar, 1, 2);
-  auto r3 = Ray::Call(Foo::foo_s, 3);
-  auto r4 = Ray::Call(Foo::bar_s, 3, 2);
+  auto r0 = Ray::Call(Foo0);
+  auto r1 = Ray::Call(Foo, 1);
+  auto r2 = Ray::Call(Bar, 1, 2);
+  auto r3 = Ray::Call(FooTest::Foo_s, 3);
+  auto r4 = Ray::Call(FooTest::Bar_s, 3, 2);
 
   int result0 = *(r0.Get());
   int result1 = *(r1.Get());
@@ -51,11 +51,11 @@ int main() {
   std::cout << "Ray::call with value results: " << result0 << " " << result1 << " "
             << result2 << " " << result3 << " " << result4 << " " << std::endl;
 
-  auto rt0 = Ray::Call(foo0);
-  auto rt1 = Ray::Call(foo, rt0);
-  auto rt2 = Ray::Call(bar, rt1, 1);
-  auto rt3 = Ray::Call(Foo::foo_s, 3);
-  auto rt4 = Ray::Call(Foo::bar_s, rt0, rt3);
+  auto rt0 = Ray::Call(Foo0);
+  auto rt1 = Ray::Call(Foo, rt0);
+  auto rt2 = Ray::Call(Bar, rt1, 1);
+  auto rt3 = Ray::Call(FooTest::Foo_s, 3);
+  auto rt4 = Ray::Call(FooTest::Bar_s, rt0, rt3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -66,13 +66,13 @@ int main() {
   std::cout << "Ray::call with reference results: " << return0 << " " << return1 << " "
             << return2 << " " << return3 << " " << return4 << " " << std::endl;
 
-  RayActor<Foo> actor = Ray::CreateActor(Foo::create);
-  auto rt5 = actor.Call(&Foo::foo, 1);
-  auto rt6 = actor.Call(&Foo::bar, 1, rt5);
-  auto rt7 = actor.Call(&Foo::add, 4);
-  auto rt8 = actor.Call(&Foo::add, 1);
-  auto rt9 = actor.Call(&Foo::add, 1);
-  auto rt10 = actor.Call(&Foo::add, rt9);
+  RayActor<FooTest> actor = Ray::CreateActor(FooTest::Create);
+  auto rt5 = actor.Call(&FooTest::Foo, 1);
+  auto rt6 = actor.Call(&FooTest::Bar, 1, rt5);
+  auto rt7 = actor.Call(&FooTest::Add, 4);
+  auto rt8 = actor.Call(&FooTest::Add, 1);
+  auto rt9 = actor.Call(&FooTest::Add, 1);
+  auto rt10 = actor.Call(&FooTest::Add, rt9);
 
   int return5 = *(rt5.Get());
   int return6 = *(rt6.Get());

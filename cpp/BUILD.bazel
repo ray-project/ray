@@ -16,7 +16,6 @@ cc_library(
         "//:core_worker_lib",
         "//:ray_common",
         "@msgpack",
-        "@plasma//:plasma_client",
     ],
 )
 

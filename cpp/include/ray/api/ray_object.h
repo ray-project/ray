@@ -26,10 +26,10 @@ class RayObject {
 
   bool operator==(const RayObject<T> &object) const;
 
-  MSGPACK_DEFINE(_id);
+  MSGPACK_DEFINE(id_);
 
  private:
-  ObjectID _id;
+  ObjectID id_;
 
   template <typename TO>
   std::shared_ptr<TO> DoGet() const;
@@ -49,17 +49,17 @@ RayObject<T>::RayObject() {}
 
 template <typename T>
 RayObject<T>::RayObject(const ObjectID &id) {
-  _id = id;
+  id_ = id;
 }
 
 template <typename T>
 RayObject<T>::RayObject(const ObjectID &&id) {
-  _id = std::move(id);
+  id_ = std::move(id);
 }
 
 template <typename T>
 const ObjectID &RayObject<T>::ID() const {
-  return _id;
+  return id_;
 }
 
 template <typename T>
@@ -75,7 +75,7 @@ inline std::shared_ptr<TO> RayObject<T>::DoGet() const {
 
 template <typename T>
 inline bool RayObject<T>::operator==(const RayObject<T> &object) const {
-  if (_id == object.ID()) {
+  if (id_ == object.ID()) {
     return true;
   } else {
     return false;

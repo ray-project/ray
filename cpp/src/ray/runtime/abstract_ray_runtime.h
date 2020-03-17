@@ -9,7 +9,6 @@
 #include <msgpack.hpp>
 #include "./object/object_store.h"
 #include "./task/task_executer.h"
-#include "./task/task_spec.h"
 #include "./task/task_submitter.h"
 
 namespace ray {
@@ -20,14 +19,14 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
  protected:
-  static std::unique_ptr<AbstractRayRuntime> _ins;
-  static std::once_flag isInited;
+  static std::unique_ptr<AbstractRayRuntime> ins_;
+  static std::once_flag isInited_;
 
-  std::shared_ptr<RayConfig> _config;
-  std::unique_ptr<WorkerContext> _worker;
-  std::unique_ptr<TaskSubmitter> _taskSubmitter;
-  std::unique_ptr<TaskExcuter> _taskExcuter;
-  std::unique_ptr<ObjectStore> _objectStore;
+  std::shared_ptr<RayConfig> config_;
+  std::unique_ptr<WorkerContext> worker_;
+  std::unique_ptr<TaskSubmitter> taskSubmitter_;
+  std::unique_ptr<TaskExcuter> taskExcuter_;
+  std::unique_ptr<ObjectStore> objectStore_;
 
  public:
   static AbstractRayRuntime &Init(std::shared_ptr<RayConfig> config);
@@ -49,22 +48,24 @@ class AbstractRayRuntime : public RayRuntime {
 
   ObjectID Call(remote_function_ptr_holder &fptr, std::shared_ptr<msgpack::sbuffer> args);
 
-  ActorID Create(remote_function_ptr_holder &fptr,
-                 std::shared_ptr<msgpack::sbuffer> args);
+  ActorID CreateActor(remote_function_ptr_holder &fptr,
+                      std::shared_ptr<msgpack::sbuffer> args);
 
-  ObjectID Call(const remote_function_ptr_holder &fptr, const ActorID &actor,
-                std::shared_ptr<msgpack::sbuffer> args);
+  ObjectID CallActor(const remote_function_ptr_holder &fptr, const ActorID &actor,
+                     std::shared_ptr<msgpack::sbuffer> args);
 
   ActorID GetNextActorID();
 
   const TaskID &GetCurrentTaskId();
+
+  const JobID &GetCurrentJobId();
 
   virtual ~AbstractRayRuntime(){};
 
  private:
   static AbstractRayRuntime &DoInit(std::shared_ptr<RayConfig> config);
 
-  void Execute(const TaskSpec &taskSpec);
+  void Execute(const TaskSpecification &taskSpec);
 };
 }  // namespace api
 }  // namespace ray

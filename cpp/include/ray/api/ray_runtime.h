@@ -34,10 +34,10 @@ class RayRuntime {
 
   virtual ObjectID Call(remote_function_ptr_holder &fptr,
                         std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual ActorID Create(remote_function_ptr_holder &fptr,
-                         std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual ObjectID Call(const remote_function_ptr_holder &fptr, const ActorID &actor,
-                        std::shared_ptr<msgpack::sbuffer> args) = 0;
+  virtual ActorID CreateActor(remote_function_ptr_holder &fptr,
+                              std::shared_ptr<msgpack::sbuffer> args) = 0;
+  virtual ObjectID CallActor(const remote_function_ptr_holder &fptr, const ActorID &actor,
+                             std::shared_ptr<msgpack::sbuffer> args) = 0;
 };
 }  // namespace api
 }  // namespace ray

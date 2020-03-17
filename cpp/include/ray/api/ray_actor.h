@@ -21,10 +21,10 @@ class RayActor {
 
 #include <ray/api/generated/actor_call.generated.h>
 
-  MSGPACK_DEFINE(_id);
+  MSGPACK_DEFINE(id_);
 
  private:
-  ActorID _id;
+  ActorID id_;
 };
 
 template <typename O>
@@ -32,17 +32,17 @@ RayActor<O>::RayActor() {}
 
 template <typename O>
 RayActor<O>::RayActor(const ActorID &id) {
-  _id = id;
+  id_ = id;
 }
 
 template <typename O>
 RayActor<O>::RayActor(const ActorID &&id) {
-  _id = std::move(id);
+  id_ = std::move(id);
 }
 
 template <typename O>
 const ActorID &RayActor<O>::ID() const {
-  return _id;
+  return id_;
 }
 
 #include <ray/api/generated/actor_call_impl.generated.h>

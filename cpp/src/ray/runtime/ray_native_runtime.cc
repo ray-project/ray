@@ -5,8 +5,8 @@ namespace ray {
 namespace api {
 
 RayNativeRuntime::RayNativeRuntime(std::shared_ptr<RayConfig> config) {
-  _config = config;
-  _worker =
+  config_ = config;
+  worker_ =
       std::unique_ptr<WorkerContext>(new WorkerContext(WorkerType::DRIVER, JobID::Nil()));
 }
 

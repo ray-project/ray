@@ -3,29 +3,29 @@
 #include <ray/api.h>
 #include <iostream>
 
-class Foo {
+class FooTest {
  public:
   int count;
 
   MSGPACK_DEFINE(count);
 
-  Foo() { count = 0; }
+  FooTest() { count = 0; }
 
-  static Foo *create() {
-    Foo *foo = new Foo();
-    return foo;
+  static FooTest *Create() {
+    FooTest *fooTest = new FooTest();
+    return fooTest;
   }
 
-  int foo(int x) { return x + 1; }
+  int Foo(int x) { return x + 1; }
 
-  int bar(int x, int y) { return x + y; }
+  int Bar(int x, int y) { return x + y; }
 
-  int add(int x) {
+  int Add(int x) {
     count += x;
     return count;
   }
 
-  static int foo_s(int x) { return x + 1; }
+  static int Foo_s(int x) { return x + 1; }
 
-  static int bar_s(int x, int y) { return x + y; }
+  static int Bar_s(int x, int y) { return x + y; }
 };
