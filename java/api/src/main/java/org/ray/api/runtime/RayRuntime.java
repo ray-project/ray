@@ -1,18 +1,22 @@
 package org.ray.api.runtime;
 
-import java.util.List;
-import java.util.concurrent.Callable;
 import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
+import org.ray.api.function.PyActorClass;
+import org.ray.api.function.PyActorMethod;
+import org.ray.api.function.PyRemoteFunction;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtimecontext.RuntimeContext;
+
+import java.util.List;
+import java.util.concurrent.Callable;
 
 /**
  * Base interface of a Ray runtime.
@@ -122,35 +126,33 @@ public interface RayRuntime {
   /**
    * Invoke a remote Python function.
    *
-   * @param moduleName Module name of the Python function.
-   * @param functionName Name of the Python function.
+   * @param pyRemoteFunction The Python function.
    * @param args Arguments of the function.
    * @param options The options for this call.
    * @return The result object.
    */
-  RayObject callPy(String moduleName, String functionName, Object[] args, CallOptions options);
+  RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote Python function on an actor.
    *
    * @param pyActor A handle to the actor.
-   * @param functionName Name of the actor method.
+   * @param pyActorMethod The actor method.
    * @param args Arguments of the function.
    * @return The result object.
    */
-  RayObject callPyActor(RayPyActor pyActor, String functionName, Object[] args);
+  RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object[] args);
 
   /**
    * Create a Python actor on a remote node.
    *
-   * @param moduleName Module name of the Python actor class.
-   * @param className Name of the Python actor class.
+   * @param pyActorClass The Python actor class.
    * @param args Arguments of the actor constructor.
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  RayPyActor createPyActor(String moduleName, String className, Object[] args,
-      ActorCreationOptions options);
+  RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
+                         ActorCreationOptions options);
 
   Object getAsyncContext();
 
