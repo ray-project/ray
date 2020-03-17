@@ -25,6 +25,7 @@ from ray._raylet cimport (
     FunctionDescriptor,
 )
 
+# TOCHECK: remove
 from ray.includes.libcoreworker cimport CCoreWorker
 
 cimport ray.streaming.includes.libstreaming as libstreaming
@@ -56,7 +57,9 @@ cdef class ReaderClient:
                   FunctionDescriptor async_func,
                   FunctionDescriptor sync_func):
         cdef:
-            CCoreWorker *core_worker = worker.core_worker
+            # TOCHECK: fix
+            # CCoreWorker *core_worker = worker.core_worker
+            CCoreWorker *core_worker = NULL
             CRayFunction async_native_func
             CRayFunction sync_native_func
         async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)
@@ -95,7 +98,9 @@ cdef class WriterClient:
                   FunctionDescriptor async_func,
                   FunctionDescriptor sync_func):
         cdef:
-            CCoreWorker *core_worker = worker.core_worker
+            # TOCHECK: fix
+            # CCoreWorker *core_worker = worker.core_worker
+            CCoreWorker *core_worker = NULL
             CRayFunction async_native_func
             CRayFunction sync_native_func
         async_native_func = CRayFunction(LANGUAGE_PYTHON, async_func.descriptor)

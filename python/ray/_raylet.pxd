@@ -17,7 +17,7 @@ from ray.includes.common cimport (
     CBuffer,
     CRayObject
 )
-from ray.includes.libcoreworker cimport CCoreWorker
+from ray.includes.libcoreworker cimport CFiberEvent
 from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID
@@ -72,10 +72,6 @@ cdef class ActorID(BaseID):
 
 cdef class CoreWorker:
     cdef:
-        # Always access the C++ CoreWorker through this pointer instead of
-        # CCoreWorkerProcess.GetCoreWorker(). Because the C++ CoreWorker will
-        # stay alive until the Python CoreWorker object is garbage collected.
-        CCoreWorker *core_worker
         object async_thread
         object async_event_loop
         object plasma_event_handler
@@ -87,6 +83,7 @@ cdef class CoreWorker:
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
+    cdef yield_current_fiber(self, CFiberEvent &fiber_event)
 
 cdef class FunctionDescriptor:
     cdef:
