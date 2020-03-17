@@ -190,7 +190,7 @@ requires = [
     "aiohttp",
     "google",
     "grpcio",
-    "msgpack",
+    "msgpack >= 0.6.0, < 1.0.0",
 ]
 
 setup(

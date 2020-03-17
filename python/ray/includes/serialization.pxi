@@ -159,14 +159,18 @@ cdef class MessagePackSerializer(object):
         def _default(obj):
             cross_typeid = getattr(obj, '__cross_typeid__', None)
             if cross_typeid is not None:
-                state = msgpack.dumps(o.__to_cross_data__(), use_bin_type=True)
+                state = msgpack.dumps(obj.__to_cross_data__(), use_bin_type=True)
                 return msgpack.ExtType(kCrossLanguageTypeExtensionId, [cross_typeid, state])
             if python_serializer is not None:
                 return msgpack.ExtType(kLanguageSpecificTypeExtensionId, msgpack.dumps(python_serializer(obj)))
             return obj
-        # If we let strict_types is False, then whether list or tuple will be packed to
-        # a message pack array. So, they can't be distinguished when unpacking.
-        return msgpack.dumps(o, default=_default, use_bin_type=True, strict_types=True)
+        try:
+            # If we let strict_types is False, then whether list or tuple will be packed to
+            # a message pack array. So, they can't be distinguished when unpacking.
+            return msgpack.dumps(o, default=_default, use_bin_type=True, strict_types=True)
+        except ValueError as ex:
+            # MessagePack can't handle recursive objects, so we serialize them by python serializer, e.g. pickle.
+            return msgpack.dumps(_default(o), default=_default, use_bin_type=True, strict_types=True)
 
     @classmethod
     def loads(cls, s, python_deserializer=None):
