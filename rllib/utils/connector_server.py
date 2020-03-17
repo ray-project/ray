@@ -16,7 +16,7 @@ class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
 
     This launches a multi-threaded server that listens on the specified host
     and port to serve policy requests and forward experiences to RLlib. For
-    high performance experience collection, it implements InputReader. 
+    high performance experience collection, it implements InputReader.
 
     Examples:
         >>> pg = PGTrainer(
@@ -36,8 +36,25 @@ class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
     @PublicAPI
     def __init__(self, ioctx, address, port):
         self.rollout_worker = ioctx.worker
-        self.queue = queue.Queue()
-        handler = _make_handler(self.rollout_worker, self.queue)
+        self.samples_queue = queue.Queue()
+        self.metrics_queue = queue.Queue()
+
+        def get_metrics():
+            completed = []
+            while True:
+                try:
+                    completed.append(self.metrics_queue.get_nowait())
+                except queue.Empty:
+                    break
+            return completed
+
+        # Forwards client-reported rewards directly into the local rollout
+        # worker. This is a bit of a hack since it is patching the get_metrics
+        # function of the sampler.
+        self.rollout_worker.sampler.get_metrics = get_metrics
+
+        handler = _make_handler(self.rollout_worker, self.samples_queue,
+                                self.metrics_queue)
         HTTPServer.__init__(self, (address, port), handler)
         print("---")
         print("--- Starting connector server at {}:{}".format(address, port))
@@ -47,10 +64,10 @@ class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
 
     @override(InputReader)
     def next(self):
-        return self.queue.get()
+        return self.samples_queue.get()
 
 
-def _make_handler(rollout_worker, queue):
+def _make_handler(rollout_worker, samples_queue, metrics_queue):
     class Handler(SimpleHTTPRequestHandler):
         def do_POST(self):
             content_len = int(self.headers.get("Content-Length"), 0)
@@ -76,7 +93,9 @@ def _make_handler(rollout_worker, queue):
             elif command == ConnectorClient.REPORT_SAMPLES:
                 print("Got sample batch of size {} from client.".format(
                     args["samples"].count))
-                queue.put(args["samples"])
+                samples_queue.put(args["samples"])
+                for rollout_metric in args["metrics"]:
+                    metrics_queue.put(rollout_metric)
             else:
                 raise Exception("Unknown command: {}".format(command))
             return response

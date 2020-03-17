@@ -25,6 +25,10 @@ CHECKPOINT_FILE = "last_checkpoint.out"
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
+    "--use-dqn",
+    action="store_true",
+    help="Whether to use DQN instead of PPO.")
+parser.add_argument(
     "--use-connector",
     action="store_true",
     help="Whether to use the application connector API (this is faster).")
@@ -64,35 +68,38 @@ if __name__ == "__main__":
         env = "srv"
         connector_config = {}
 
-    # We use DQN since it supports off-policy actions, but you can choose and
-    # configure any agent.
-#    trainer = DQNTrainer(
-#        env=env,
-#        config=dict(connector_config, **{
-#            # Use a single worker process to run the server.
-#            "num_workers": 0,
-#            # Configure the agent to run short iterations for debugging
-#            "exploration_config": {
-#                "type": "EpsilonGreedy",
-#                "initial_epsilon": 1.0,
-#                "final_epsilon": 0.02,
-#                "epsilon_timesteps": 100,
-#            },
-#            "learning_starts": 100,
-#            "timesteps_per_iteration": 200,
-#        }))
-
-    trainer = PPOTrainer(
-        env=env,
-        config=dict(
-            connector_config,
-            **{
-                # Use a single worker process to run the server.
-                "num_workers": 0,
-                # Configure the agent to run short iterations for debugging
-                "sample_batch_size": 1000,
-                "train_batch_size": 4000,
-            }))
+    if args.use_dqn:
+        # Example of using DQN (supports off-policy actions).
+        trainer = DQNTrainer(
+            env=env,
+            config=dict(
+                connector_config,
+                **{
+                    # Use a single worker process to run the server.
+                    "num_workers": 0,
+                    # Configure the agent to run short iterations for debugging
+                    "exploration_config": {
+                        "type": "EpsilonGreedy",
+                        "initial_epsilon": 1.0,
+                        "final_epsilon": 0.02,
+                        "epsilon_timesteps": 100,
+                    },
+                    "learning_starts": 100,
+                    "timesteps_per_iteration": 200,
+                }))
+    else:
+        # Example of using PPO (does NOT support off-policy actions).
+        trainer = PPOTrainer(
+            env=env,
+            config=dict(
+                connector_config,
+                **{
+                    # Use a single worker process to run the server.
+                    "num_workers": 0,
+                    # Configure the agent to run short iterations for debugging
+                    "sample_batch_size": 1000,
+                    "train_batch_size": 4000,
+                }))
 
     # Attempt to restore from checkpoint if possible.
     if os.path.exists(CHECKPOINT_FILE):

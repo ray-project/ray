@@ -1336,6 +1336,22 @@ py_test(
     args = ["--num-cpus=4"]
 )
 
+sh_test(
+    name = "examples/serving/test_simple",
+    tags = ["examples", "examples_S", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_connector.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "examples/serving/test_connector",
+    tags = ["examples", "examples_C", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_connector.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
 py_test(
     name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],

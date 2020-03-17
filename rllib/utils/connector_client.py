@@ -27,12 +27,13 @@ class _InferenceThread(threading.Thread):
             while True:
                 print("Generating new batch of experiences.")
                 samples = self.client.rollout_worker.sample()
-                print(
-                    "Sending batch of {} steps back to server.".format(
-                        samples.count))
+                metrics = self.client.rollout_worker.get_metrics()
+                print("Sending batch of {} steps back to server.".format(
+                    samples.count))
                 self.client._send({
                     "command": ConnectorClient.REPORT_SAMPLES,
                     "samples": samples,
+                    "metrics": metrics,
                 })
         except Exception as e:
             print("Error: inference worker thread died!", e)
@@ -41,7 +42,7 @@ class _InferenceThread(threading.Thread):
 @PublicAPI
 class ConnectorClient(PolicyClient):
     """RLlib connector client to use with the ConnectorServer.
-    
+
     This implements the same interface as PolicyClient but with higher
     performance by caching the policy client side.
     """
@@ -73,9 +74,8 @@ class ConnectorClient(PolicyClient):
 
                 class ExternalEnvWrapper(ExternalEnv):
                     def __init__(self, real_env):
-                        ExternalEnv.__init__(
-                            self, real_env.action_space,
-                            real_env.observation_space)
+                        ExternalEnv.__init__(self, real_env.action_space,
+                                             real_env.observation_space)
 
                     def run(self):
                         # Since we are calling methods on this class in the
