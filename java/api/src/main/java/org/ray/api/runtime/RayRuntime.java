@@ -137,7 +137,7 @@ public interface RayRuntime {
    * @param args Arguments of the function.
    * @return The result object.
    */
-  RayObject callPy(RayPyActor pyActor, String functionName, Object[] args);
+  RayObject callPyActor(RayPyActor pyActor, String functionName, Object[] args);
 
   /**
    * Create a Python actor on a remote node.
