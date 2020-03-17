@@ -46,7 +46,7 @@ if __name__ == "__main__":
         trainer.train()
 
     info = trainer.train()
-    print(info["info"]["learner"])
+    print(info["learner"])
 
     # Get model parameters
     means = [model.arms[i].theta.numpy() for i in range(5)]
