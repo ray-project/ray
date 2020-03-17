@@ -82,6 +82,8 @@ message WorkerStats {
   bool is_driver = 2;
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 3;
+  // Error string if fetching core worker stats failed.
+  string fetch_error = 4;
 }
 
 message GetNodeStatsReply {

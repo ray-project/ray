@@ -3387,6 +3387,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
           } else {
             RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
                            << status.ToString();
+            worker_stats->set_fetch_error(status.ToString());
           }
           if (reply->num_workers() == all_workers.size()) {
             send_reply_callback(Status::OK(), nullptr, nullptr);
