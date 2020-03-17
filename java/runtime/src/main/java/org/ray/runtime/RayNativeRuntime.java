@@ -84,7 +84,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     int numWorkersPerProcess =
         rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
-    nativeInitCoreWorkerProcess(rayConfig.workerMode.getNumber(),
+    nativeInitialize(rayConfig.workerMode.getNumber(),
         rayConfig.nodeIp, rayConfig.getNodeManagerPort(), rayConfig.objectStoreSocketName,
         rayConfig.rayletSocketName,
         (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
@@ -95,7 +95,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     workerContext = new NativeWorkerContext();
     objectStore = new NativeObjectStore(workerContext);
     taskSubmitter = new NativeTaskSubmitter();
-    registerWorker();
+    // TOCHECK: implement this in core worker
+    // registerWorker();
 
     LOGGER.info("RayNativeRuntime started with store {}, raylet {}",
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
@@ -103,7 +104,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public void shutdown() {
-    nativeDestroyCoreWorkerProcess();
+    nativeShutdown();
     if (null != manager) {
       manager.cleanup();
       manager = null;
@@ -175,14 +176,14 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
   }
 
-  private static native void nativeInitCoreWorkerProcess(int workerMode, String ndoeIpAddress,
+  private static native void nativeInitialize(int workerMode, String ndoeIpAddress,
       int nodeManagerPort, String storeSocket, String rayletSocket, byte[] jobId,
       GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
       String logDir, Map<String, String> rayletConfigParameters);
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 
-  private static native void nativeDestroyCoreWorkerProcess();
+  private static native void nativeShutdown();
 
   private static native void nativeSetResource(String resourceName, double capacity, byte[] nodeId);
 

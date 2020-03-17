@@ -24,7 +24,7 @@ extern "C" {
 #endif
 
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_object_NativeRayObject_2(
+Java_org_ray_runtime_object_NativeObjectStore_nativePut__Lorg_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jobject obj) {
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(ray_object != nullptr);
@@ -35,7 +35,7 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_objec
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_object_NativeRayObject_2(
+Java_org_ray_runtime_object_NativeObjectStore_nativePut___3BLorg_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jbyteArray objectId, jobject obj) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);

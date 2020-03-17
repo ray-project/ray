@@ -115,14 +115,12 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
               : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
-  int pid = getpid();
-
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (options_.log_dir != "") {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
-             << WorkerTypeString(options_.worker_type) << "-" << pid;
+             << WorkerTypeString(options_.worker_type);
     if (!global_worker_id_.IsNil()) {
       app_name << "-" << global_worker_id_;
     }
@@ -138,7 +136,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     RAY_CHECK(options_.num_workers == 1);
   }
 
-  RAY_LOG(INFO) << "Constructing CoreWorkerProcess, pid: " << pid;
+  RAY_LOG(INFO) << "Constructing CoreWorkerProcess, pid: " << getpid();
 
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
@@ -229,14 +227,6 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
   }
   if (global_worker_ == worker) {
     global_worker_ = nullptr;
-  }
-}
-
-void CoreWorkerProcess::SetCurrentThreadCoreWorker(std::shared_ptr<CoreWorker> worker) {
-  if (options_.num_workers == 1) {
-    RAY_CHECK(worker == global_worker_);
-  } else {
-    current_core_worker_ = worker;
   }
 }
 

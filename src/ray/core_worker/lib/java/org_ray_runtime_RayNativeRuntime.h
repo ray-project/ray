@@ -23,11 +23,11 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_runtime_RayNativeRuntime
- * Method:    nativeInitCoreWorkerProcess
+ * Method:    nativeInitialize
  * Signature:
  * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
  */
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWorkerProcess(
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jbyteArray, jobject, jint,
     jstring, jobject);
 
@@ -41,11 +41,11 @@ Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, jo
 
 /*
  * Class:     org_ray_runtime_RayNativeRuntime
- * Method:    nativeDestroyCoreWorkerProcess
+ * Method:    nativeShutdown
  * Signature: ()V
  */
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorkerProcess(JNIEnv *, jclass);
+Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *, jclass);
 
 /*
  * Class:     org_ray_runtime_RayNativeRuntime

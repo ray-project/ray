@@ -184,8 +184,6 @@ class CoreWorkerProcess {
 
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
 
-  void SetCurrentThreadCoreWorker(std::shared_ptr<CoreWorker> worker);
-
   /// The global instance.
   static std::unique_ptr<CoreWorkerProcess> instance_;
 

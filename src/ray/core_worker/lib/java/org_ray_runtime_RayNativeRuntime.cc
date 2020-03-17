@@ -37,7 +37,7 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWorkerProcess(
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
     jstring storeSocket, jstring rayletSocket, jbyteArray jobId, jobject gcsClientOptions,
     jint numWorkersPerProcess, jstring logDir, jobject rayletConfigParameters) {
@@ -128,13 +128,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(JNIEnv *env, jclass o) {
+Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env, jclass o) {
   ray::CoreWorkerProcess::Shutdown();
-}
-
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_RayNativeRuntime_nativeStopCoreWorker(JNIEnv *env, jclass) {
-  ray::CoreWorkerProcess::ShutdownCurrentWorker();
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
@@ -148,18 +143,18 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
-    JNIEnv *env, jclass, jbyteArray workerId) {
-  const auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
-  ray::CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
-}
-
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeKillActor(
     JNIEnv *env, jclass, jbyteArray actorId, jboolean noReconstruction) {
   auto status = ray::CoreWorkerProcess::GetCoreWorker().KillActor(
       JavaByteArrayToId<ActorID>(env, actorId),
       /*force_kill=*/true, noReconstruction);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
+    JNIEnv *env, jclass, jbyteArray workerId) {
+  const auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
+  ray::CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
 }
 
 #ifdef __cplusplus
