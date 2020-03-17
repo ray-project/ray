@@ -77,7 +77,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // access the task.
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
     request->set_caller_version(actor_creation_timestamp_ms_);
-  
+
     absl::MutexLock lock(&mu_);
 
     auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
@@ -350,10 +350,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     tag.caller_worker_id = caller_worker_id;
     tag.caller_version = caller_version;
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::make_pair(tag,
-                std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                   task_main_io_service_, *waiter_,
-                                   worker_context_))));
+        task_spec.CallerId(),
+        std::make_pair(tag, std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                task_main_io_service_, *waiter_, worker_context_))));
     it = result.first;
   }
   it->second.second->Add(request.sequence_number(), request.client_processed_up_to(),

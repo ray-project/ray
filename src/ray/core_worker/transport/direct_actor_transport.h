@@ -84,7 +84,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id Actor ID.
   void DisconnectActor(const ActorID &actor_id, bool dead = false);
-  
+
   /// Set actor creation timestamp (if this worker is an actor).
   void SetActorCreationTimestamp();
 
@@ -165,7 +165,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   /// Set the actor creation timestamp (if this worker is an actor).
-  int64_t actor_creation_timestamp_ms_ = 0; 
+  int64_t actor_creation_timestamp_ms_ = 0;
 
   friend class CoreWorkerTest;
 };
@@ -471,7 +471,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID,
-      std::pair<SchedulingQueueTag, std::unique_ptr<SchedulingQueue>>> scheduling_queue_;
+                     std::pair<SchedulingQueueTag, std::unique_ptr<SchedulingQueue>>>
+      scheduling_queue_;
 };
 
 }  // namespace ray

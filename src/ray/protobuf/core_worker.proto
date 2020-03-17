@@ -114,7 +114,7 @@ message PushTaskRequest {
   // This is set to the timestamp when the actor is created, so it can
   // be used to differentiate which is the new reconstructed actor.
   // For non-actor workers it's set to 0.
-  int64 caller_version = 7; 
+  int64 caller_version = 7;
 }
 
 message PushTaskReply {

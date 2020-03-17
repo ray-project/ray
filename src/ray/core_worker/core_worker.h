@@ -836,8 +836,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;
 
-
-
   friend class CoreWorkerTest;
 };
 
