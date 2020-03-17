@@ -17,15 +17,18 @@ class Exploration:
     """
 
     def __init__(self, action_space: Space, *, framework: str,
-                 num_workers: int, worker_index: int):
+                 policy_config: dict = None,
+                 num_workers: int = 0, worker_index: int = 0):
         """
         Args:
             action_space (Space): The action space in which to explore.
+            framework (str): One of "tf" or "torch".
+            policy_config (Optional[dict]): An optional policy config dict.
             num_workers (int): The overall number of workers used.
             worker_index (int): The index of the worker using this class.
-            framework (str): One of "tf" or "torch".
         """
         self.action_space = action_space
+        self.policy_config = policy_config
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = check_framework(framework)
