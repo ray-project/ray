@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """Example of training with a policy server. Copy this file for your use case.
 
 To try this out, in two separate shells run:

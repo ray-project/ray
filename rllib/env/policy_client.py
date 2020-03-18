@@ -183,42 +183,41 @@ class PolicyClient:
 
         (self.rollout_worker,
          self.inference_thread) = create_embedded_rollout_worker(
-             kwargs, self._send, verbose=True)
+             kwargs, self._send)
         self.env = self.rollout_worker.env
 
     def _update_local_policy(self):
         assert self.inference_thread.is_alive()
         if time.time() - self.last_updated > self.update_interval:
             logger.info("Querying server for new policy weights.")
-            weights = self._send({
+            resp = self._send({
                 "command": PolicyClient.GET_WEIGHTS,
-            })["weights"]
-            logger.info("Updating rollout worker weights.")
-            self.rollout_worker.set_weights(weights)
+            })
+            weights = resp["weights"]
+            global_vars = resp["global_vars"]
+            logger.info("Updating rollout worker weights and global vars {}.".format(global_vars))
+            self.rollout_worker.set_weights(weights, global_vars)
             self.last_updated = time.time()
 
 
 class _LocalInferenceThread(threading.Thread):
     """Thread that handles experience generation (worker.sample() loop)."""
 
-    def __init__(self, rollout_worker, send_fn, verbose=False):
+    def __init__(self, rollout_worker, send_fn):
         super().__init__()
         self.daemon = True
         self.rollout_worker = rollout_worker
         self.send_fn = send_fn
-        self.verbose = verbose
 
     def run(self):
         try:
             while True:
-                if self.verbose:
-                    logger.info("Generating new batch of experiences.")
+                logger.debug("Generating new batch of experiences.")
                 samples = self.rollout_worker.sample()
                 metrics = self.rollout_worker.get_metrics()
-                if self.verbose:
-                    logger.info(
-                        "Sending batch of {} steps back to server.".format(
-                            samples.count))
+                logger.debug(
+                    "Sending batch of {} steps back to server.".format(
+                        samples.count))
                 self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,
@@ -263,13 +262,12 @@ def auto_wrap_external(real_env_creator):
     return wrapped_creator
 
 
-def create_embedded_rollout_worker(kwargs, send_fn, verbose=False):
+def create_embedded_rollout_worker(kwargs, send_fn):
     """Create a local rollout worker and a thread that samples from it.
 
     Arguments:
         kwargs (dict): args for the RolloutWorker constructor.
         send_fn (fn): function to send a JSON request to the server.
-        verbose (bool): print verbose logging messages.
     """
 
     # Since the server acts as an input datasource, we have to reset the
@@ -280,7 +278,6 @@ def create_embedded_rollout_worker(kwargs, send_fn, verbose=False):
     kwargs["env_creator"] = auto_wrap_external(real_env_creator)
 
     rollout_worker = RolloutWorker(**kwargs)
-    inference_thread = _LocalInferenceThread(
-        rollout_worker, send_fn, verbose=verbose)
+    inference_thread = _LocalInferenceThread(rollout_worker, send_fn)
     inference_thread.start()
     return rollout_worker, inference_thread

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """Example of running a policy server. Copy this file for your use case.
 
 To try this out, in two separate shells run:
@@ -16,7 +18,7 @@ from ray.tune.logger import pretty_print
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
-CHECKPOINT_FILE = "last_checkpoint.out"
+CHECKPOINT_FILE = "last_checkpoint_%s.out"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")
@@ -48,7 +50,7 @@ if __name__ == "__main__":
                         "type": "EpsilonGreedy",
                         "initial_epsilon": 1.0,
                         "final_epsilon": 0.02,
-                        "epsilon_timesteps": 100,
+                        "epsilon_timesteps": 1000,
                     },
                     "learning_starts": 100,
                     "timesteps_per_iteration": 200,
@@ -66,9 +68,11 @@ if __name__ == "__main__":
     else:
         raise ValueError("--run must be DQN or PPO")
 
+    checkpoint_path = CHECKPOINT_FILE.format(args.run)
+
     # Attempt to restore from checkpoint if possible.
-    if os.path.exists(CHECKPOINT_FILE):
-        checkpoint_path = open(CHECKPOINT_FILE).read()
+    if os.path.exists(checkpoint_path):
+        checkpoint_path = open(checkpoint_path).read()
         print("Restoring from checkpoint path", checkpoint_path)
         trainer.restore(checkpoint_path)
 
@@ -77,5 +81,5 @@ if __name__ == "__main__":
         print(pretty_print(trainer.train()))
         checkpoint_path = trainer.save()
         print("Last checkpoint", checkpoint_path)
-        with open(CHECKPOINT_FILE, "w") as f:
+        with open(checkpoint_path, "w") as f:
             f.write(checkpoint_path)

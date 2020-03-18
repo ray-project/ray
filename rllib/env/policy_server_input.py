@@ -98,16 +98,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
 
 def _make_handler(rollout_worker, samples_queue, metrics_queue):
-    def report_data(data):
-        batch = data["samples"]
-        batch.decompress_if_needed()
-        samples_queue.put(batch)
-        for rollout_metric in data["metrics"]:
-            metrics_queue.put(rollout_metric)
-
     # Only used in remote inference mode. We must create a new rollout worker
-    # since the original worker doesn't have the env properly wrapped in an
-    # ExternalEnv interface.
+    # then since the original worker doesn't have the env properly wrapped in
+    # an ExternalEnv interface.
     child_rollout_worker = None
     inference_thread = None
     lock = threading.Lock()
@@ -122,6 +115,20 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
                 (child_rollout_worker,
                  inference_thread) = create_embedded_rollout_worker(
                      rollout_worker.creation_args(), report_data)
+                child_rollout_worker.set_weights(rollout_worker.get_weights())
+
+    def report_data(data):
+        nonlocal child_rollout_worker
+
+        batch = data["samples"]
+        batch.decompress_if_needed()
+        samples_queue.put(batch)
+        for rollout_metric in data["metrics"]:
+            metrics_queue.put(rollout_metric)
+
+        if child_rollout_worker is not None:
+            child_rollout_worker.set_weights(rollout_worker.get_weights(), rollout_worker.get_global_vars())
+
 
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
@@ -149,6 +156,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             elif command == PolicyClient.GET_WEIGHTS:
                 logger.info("Sending worker weights to client.")
                 response["weights"] = rollout_worker.get_weights()
+                response["global_vars"] = rollout_worker.get_global_vars()
             elif command == PolicyClient.REPORT_SAMPLES:
                 logger.info("Got sample batch of size {} from client.".format(
                     args["samples"].count))

@@ -281,6 +281,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
         self.last_batch = None
+        self.global_vars = None
         self._fake_sampler = _fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
@@ -771,6 +772,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     @DeveloperAPI
     def set_global_vars(self, global_vars):
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+        self.global_vars = global_vars
+
+    @DeveloperAPI
+    def get_global_vars(self):
+        return self.global_vars
 
     @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
