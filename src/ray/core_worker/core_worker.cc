@@ -202,10 +202,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
-        RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
-                       << spec.DebugString();
+        uint32_t delay = RayConfig::instance().task_retry_delay_ms();
+        RAY_LOG(ERROR) << "Will resubmit task after a " << delay
+                       << "ms delay: " << spec.DebugString();
         absl::MutexLock lock(&mutex_);
-        to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
+        to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
       }));
 
   // Create an entry for the driver task in the task table. This task is
@@ -515,11 +516,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
   // Erase any objects that were promoted to plasma from the results. These get
   // requests will be retried at the plasma store.
-  for (auto it = result_map.begin(); it != result_map.end(); it++) {
-    if (it->second->IsInPlasmaError()) {
-      RAY_LOG(DEBUG) << it->first << " in plasma, doing fetch-and-get";
-      plasma_object_ids.insert(it->first);
-      result_map.erase(it);
+  for (auto it = result_map.begin(); it != result_map.end();) {
+    auto current = it++;
+    if (current->second->IsInPlasmaError()) {
+      RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
+      plasma_object_ids.insert(current->first);
+      result_map.erase(current);
     }
   }
 
@@ -585,16 +587,19 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
                                absl::flat_hash_set<ObjectID> &memory_object_ids,
                                absl::flat_hash_set<ObjectID> &plasma_object_ids,
                                absl::flat_hash_set<ObjectID> &ready) {
-  for (const auto &mem_id : memory_object_ids) {
-    if (ready.find(mem_id) != ready.end()) {
+  for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
+    auto current = iter++;
+    const auto &mem_id = *current;
+    auto ready_iter = ready.find(mem_id);
+    if (ready_iter != ready.end()) {
       std::vector<std::shared_ptr<RayObject>> found;
       RAY_CHECK_OK(memory_store->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0,
                                      worker_context,
                                      /*remote_after_get=*/false, &found));
       if (found.size() == 1 && found[0]->IsInPlasmaError()) {
-        memory_object_ids.erase(mem_id);
-        ready.erase(mem_id);
         plasma_object_ids.insert(mem_id);
+        ready.erase(ready_iter);
+        memory_object_ids.erase(current);
       }
     }
   }

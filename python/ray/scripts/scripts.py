@@ -268,7 +268,7 @@ def dashboard(cluster_config_file, cluster_name, port):
 @click.option(
     "--internal-config",
     default=None,
-    type=str,
+    type=json.loads,
     help="Do NOT use this. This is for debugging/development purposes ONLY.")
 @click.option(
     "--load-code-from-local",
