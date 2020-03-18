@@ -51,8 +51,7 @@ def add_advantages(policy,
                               policy.config["use_critic"])
 
 
-def model_value_predictions(policy, input_dict, state_batches, model,
-                            action_dist):
+def model_value_predictions(policy, input_dict, state_batches, model):
     return {SampleBatch.VF_PREDS: model.value_function()}
 
 

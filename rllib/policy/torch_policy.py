@@ -82,24 +82,31 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
-            # Forward pass through our exploration object.
-            model_out, state_out = self.exploration.forward(
-                self.model,
-                input_dict,
-                state_batches,
-                self._convert_to_tensor([1]),
+            self.exploration.before_forward_pass(
+                model=self.model,
+                obs_batch=input_dict[SampleBatch.CUR_OBS],
+                state_batches=state_batches,
+                seq_lens=self._convert_to_tensor([1]),
+                timestep=timestep,
+                explore=explore)
+            dist_inputs, state_out = self.model(
+                self._input_dict, self._state_in, self._seq_lens)
+            self.exploration.after_forward_pass(
+                distribution_inputs=dist_inputs,
+                action_dist_class=self.dist_class,
+                model=self.model,
+                timestep=timestep,
                 explore=explore)
 
-            action_dist = None
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    model_out, self.dist_class, self.model,
+                    dist_inputs, self.dist_class, self.model,
                     timestep if timestep is not None else
                     self.global_timestep, explore)
             input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,
-                                                     self.model, action_dist)
+                                                     self.model)
             if logp is not None:
                 logp = convert_to_non_torch_type(logp)
                 extra_action_out.update({
@@ -224,16 +231,13 @@ class TorchPolicy(Policy):
     def extra_action_out(self,
                          input_dict,
                          state_batches,
-                         model,
-                         action_dist=None):
+                         model):
         """Returns dict of extra info to include in experience batch.
 
         Arguments:
             input_dict (dict): Dict of model input tensors.
             state_batches (list): List of state tensors.
             model (TorchModelV2): Reference to the model.
-            action_dist (Distribution): Torch Distribution object to get
-                log-probs (e.g. for already sampled actions).
         """
         return {}
 

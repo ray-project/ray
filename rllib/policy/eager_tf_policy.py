@@ -369,6 +369,7 @@ def build_eager_tf_policy(name,
                                         prev_action_batch=None,
                                         prev_reward_batch=None,
                                         explore=True,
+                                        timestep=None,
                                         is_training=True):
             if tf.executing_eagerly():
                 n = len(obs_batch)
@@ -390,16 +391,23 @@ def build_eager_tf_policy(name,
                     is_training=is_training)
             # Forward pass through our exploration object.
             else:
+                self.exploration.before_forward_pass(
+                    model=self.model,
+                    obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+                    state_batches=self._state_in,
+                    seq_lens=self._seq_lens,
+                    timestep=timestep,
+                    explore=explore)
+                dist_inputs, state_out = self.model(
+                    self._input_dict, self._state_in, self._seq_lens)
                 dist_class = self.dist_class
-                dist_inputs, state_out = self.exploration.forward(
-                    self.model,
-                    obs_batch=obs_batch,
-                    state_batches=state_batches,
-                    seq_lens=seq_lens,
-                    prev_action_batch=prev_action_batch,
-                    prev_reward_batch=prev_reward_batch,
-                    explore=explore,
-                    is_training=is_training)
+                self.exploration.after_forward_pass(
+                    distribution_inputs=dist_inputs,
+                    action_dist_class=dist_class,
+                    model=self.model,
+                    timestep=timestep,
+                    explore=explore)
+
             return dist_inputs, dist_class, state_out
 
         @override(Policy)
@@ -407,14 +415,11 @@ def build_eager_tf_policy(name,
                                     actions,
                                     obs_batch,
                                     state_batches=None,
+                                    seq_lens=None,
                                     prev_action_batch=None,
-                                    prev_reward_batch=None,
-                                    explore=None):
+                                    prev_reward_batch=None):
 
-            explore = explore if explore is not None else \
-                self.config["explore"]
-
-            seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
+            seq_lens = seq_lens or tf.ones(len(obs_batch), dtype=tf.int32)
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
@@ -434,11 +439,12 @@ def build_eager_tf_policy(name,
                     input_dict,
                     state_batches,
                     seq_lens,
-                    explore=explore)
+                    explore=False)
             else:
-                dist_inputs, _ = self.model(input_dict, state_batches,
-                                            seq_lens)
+                dist_inputs, _ = self.model(
+                    input_dict, state_batches, seq_lens)
                 dist_class = self.dist_class
+
             action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(actions)
 
