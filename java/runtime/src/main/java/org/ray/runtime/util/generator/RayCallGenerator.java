@@ -268,10 +268,10 @@ public class RayCallGenerator extends BaseGenerator {
       paramPrefix += "PyActorClass pyActorClass";
       funcArgs += "pyActorClass";
     } else if (forActor) {
-      paramPrefix += "PyActorMethod pyActorMethod";
+      paramPrefix += "PyActorMethod<R> pyActorMethod";
       funcArgs += "pyActorMethod";
     } else {
-      paramPrefix += "PyRemoteFunction pyRemoteFunction";
+      paramPrefix += "PyRemoteFunction<R> pyRemoteFunction";
       funcArgs += "pyRemoteFunction";
     }
     if (numParameters > 0) {
@@ -296,14 +296,15 @@ public class RayCallGenerator extends BaseGenerator {
       }
     }
 
-    String returnType = !forActorCreation ? "RayObject" : "RayPyActor";
+    String genericType = "<R>";
+    String returnType = !forActorCreation ? "RayObject<R>" : "RayPyActor";
     String funcName = forActorCreation ? "createActor" : "call";
     String internalCallFunc = forActorCreation ? "createActor" :
         forActor ? "callActor" : "call";
     funcArgs += ", args";
     // Method signature.
     newLine(1, String.format(
-        "%s %s %s(%s%s) {", modifiers,
+        "%s %s %s %s(%s%s) {", modifiers, genericType,
         returnType, funcName, paramPrefix + paramList, optionsParam
     ));
     // Method body.

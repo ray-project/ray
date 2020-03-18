@@ -10,32 +10,32 @@ import org.ray.api.function.PyActorMethod;
 @SuppressWarnings({"rawtypes", "unchecked"})
 interface PyActorCall {
 
-  default RayObject call(PyActorMethod pyActorMethod) {
+  default <R> RayObject<R> call(PyActorMethod<R> pyActorMethod) {
     Object[] args = new Object[]{};
     return Ray.internal().callActor((RayPyActor)this, pyActorMethod, args);
   }
 
-  default RayObject call(PyActorMethod pyActorMethod, Object obj0) {
+  default <R> RayObject<R> call(PyActorMethod<R> pyActorMethod, Object obj0) {
     Object[] args = new Object[]{obj0};
     return Ray.internal().callActor((RayPyActor)this, pyActorMethod, args);
   }
 
-  default RayObject call(PyActorMethod pyActorMethod, Object obj0, Object obj1) {
+  default <R> RayObject<R> call(PyActorMethod<R> pyActorMethod, Object obj0, Object obj1) {
     Object[] args = new Object[]{obj0, obj1};
     return Ray.internal().callActor((RayPyActor)this, pyActorMethod, args);
   }
 
-  default RayObject call(PyActorMethod pyActorMethod, Object obj0, Object obj1, Object obj2) {
+  default <R> RayObject<R> call(PyActorMethod<R> pyActorMethod, Object obj0, Object obj1, Object obj2) {
     Object[] args = new Object[]{obj0, obj1, obj2};
     return Ray.internal().callActor((RayPyActor)this, pyActorMethod, args);
   }
 
-  default RayObject call(PyActorMethod pyActorMethod, Object obj0, Object obj1, Object obj2, Object obj3) {
+  default <R> RayObject<R> call(PyActorMethod<R> pyActorMethod, Object obj0, Object obj1, Object obj2, Object obj3) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3};
     return Ray.internal().callActor((RayPyActor)this, pyActorMethod, args);
   }
 
-  default RayObject call(PyActorMethod pyActorMethod, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
+  default <R> RayObject<R> call(PyActorMethod<R> pyActorMethod, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
     return Ray.internal().callActor((RayPyActor)this, pyActorMethod, args);
   }
