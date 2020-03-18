@@ -1,7 +1,7 @@
 package org.ray.api.function;
 
 /**
- * A class for creating Python actor.
+ * A class that represents a Python actor class.
  */
 public class PyActorClass {
   public String moduleName;
