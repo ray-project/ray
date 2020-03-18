@@ -42,15 +42,11 @@ class PolicyClient:
     END_EPISODE = "END_EPISODE"
 
     @PublicAPI
-    def __init__(self,
-                 address,
-                 inference_mode="local",
-                 auto_wrap_env=True,
-                 update_interval=10.0):
+    def __init__(self, address, inference_mode="local", update_interval=10.0):
         self.address = address
         if inference_mode == "local":
             self.local = True
-            self._setup_local_rollout_worker(auto_wrap_env, update_interval)
+            self._setup_local_rollout_worker(update_interval)
         elif inference_mode == "remote":
             self.local = False
         else:
@@ -187,7 +183,7 @@ class PolicyClient:
 
         (self.rollout_worker,
          self.inference_thread) = create_embedded_rollout_worker(
-             kwargs, self._send)
+             kwargs, self._send, verbose=True)
         self.env = self.rollout_worker.env
 
     def _update_local_policy(self):
@@ -205,20 +201,24 @@ class PolicyClient:
 class _LocalInferenceThread(threading.Thread):
     """Thread that handles experience generation (worker.sample() loop)."""
 
-    def __init__(self, rollout_worker, send_fn):
+    def __init__(self, rollout_worker, send_fn, verbose=False):
         super().__init__()
         self.daemon = True
         self.rollout_worker = rollout_worker
         self.send_fn = send_fn
+        self.verbose = verbose
 
     def run(self):
         try:
             while True:
-                logger.info("Generating new batch of experiences.")
-                samples = self.client.rollout_worker.sample()
-                metrics = self.client.rollout_worker.get_metrics()
-                logger.info("Sending batch of {} steps back to server.".format(
-                    samples.count))
+                if self.verbose:
+                    logger.info("Generating new batch of experiences.")
+                samples = self.rollout_worker.sample()
+                metrics = self.rollout_worker.get_metrics()
+                if self.verbose:
+                    logger.info(
+                        "Sending batch of {} steps back to server.".format(
+                            samples.count))
                 self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,
@@ -229,7 +229,11 @@ class _LocalInferenceThread(threading.Thread):
 
 
 def auto_wrap_external(real_env_creator):
-    """Wrap an environment in the ExternalEnv interface if needed."""
+    """Wrap an environment in the ExternalEnv interface if needed.
+
+    Args:
+        real_env_creator (fn): Create an env given the env_config.
+    """
 
     def wrapped_creator(env_config):
         real_env = real_env_creator(env_config)
@@ -246,7 +250,7 @@ def auto_wrap_external(real_env_creator):
 
             class ExternalEnvWrapper(external_cls):
                 def __init__(self, real_env):
-                    super().__init__(self, real_env.action_space,
+                    super().__init__(real_env.action_space,
                                      real_env.observation_space)
 
                 def run(self):
@@ -259,8 +263,14 @@ def auto_wrap_external(real_env_creator):
     return wrapped_creator
 
 
-def create_embedded_rollout_worker(kwargs, send_fn):
-    """Create a local rollout worker and a thread that samples from it."""
+def create_embedded_rollout_worker(kwargs, send_fn, verbose=False):
+    """Create a local rollout worker and a thread that samples from it.
+
+    Arguments:
+        kwargs (dict): args for the RolloutWorker constructor.
+        send_fn (fn): function to send a JSON request to the server.
+        verbose (bool): print verbose logging messages.
+    """
 
     # Since the server acts as an input datasource, we have to reset the
     # input config to the default, which runs env rollouts.
@@ -270,6 +280,7 @@ def create_embedded_rollout_worker(kwargs, send_fn):
     kwargs["env_creator"] = auto_wrap_external(real_env_creator)
 
     rollout_worker = RolloutWorker(**kwargs)
-    inference_thread = _LocalInferenceThread(rollout_worker, send_fn)
+    inference_thread = _LocalInferenceThread(
+        rollout_worker, send_fn, verbose=verbose)
     inference_thread.start()
     return rollout_worker, inference_thread

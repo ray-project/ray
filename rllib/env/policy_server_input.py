@@ -8,7 +8,8 @@ from socketserver import ThreadingMixIn
 
 import ray.cloudpickle as pickle
 from ray.rllib.offline.input_reader import InputReader
-from ray.rllib.env.policy_client import PolicyClient
+from ray.rllib.env.policy_client import PolicyClient, \
+    create_embedded_rollout_worker
 from ray.rllib.utils.annotations import override, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -85,10 +86,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         handler = _make_handler(self.rollout_worker, self.samples_queue,
                                 self.metrics_queue)
         HTTPServer.__init__(self, (address, port), handler)
-        logger.info("---")
-        logger.info("--- Starting connector server at {}:{}".format(
-            address, port))
-        logger.info("---")
+        logger.info("")
+        logger.info("Starting connector server at {}:{}".format(address, port))
+        logger.info("")
         thread = threading.Thread(name="server", target=self.serve_forever)
         thread.start()
 
@@ -98,7 +98,32 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
 
 def _make_handler(rollout_worker, samples_queue, metrics_queue):
+    def report_data(data):
+        samples_queue.put(data["samples"])
+        for rollout_metric in data["metrics"]:
+            metrics_queue.put(rollout_metric)
+
+    # Only used in remote inference mode. We create a child rollout worker
+    # since we have to wrap the env in an external env.
+    child_rollout_worker = None
+    inference_thread = None
+    lock = threading.Lock()
+
+    def setup_child_rollout_worker():
+        nonlocal lock
+        nonlocal child_rollout_worker
+        nonlocal inference_thread
+
+        with lock:
+            if child_rollout_worker is None:
+                (child_rollout_worker,
+                 inference_thread) = create_embedded_rollout_worker(
+                     rollout_worker.creation_args(), report_data)
+
     class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+
         def do_POST(self):
             content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
@@ -114,6 +139,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         def execute_command(self, args):
             command = args["command"]
             response = {}
+            # Local inference commands:
             if command == PolicyClient.GET_WORKER_ARGS:
                 logger.info("Sending worker creation args to client.")
                 response["worker_args"] = rollout_worker.creation_args()
@@ -123,11 +149,27 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             elif command == PolicyClient.REPORT_SAMPLES:
                 logger.info("Got sample batch of size {} from client.".format(
                     args["samples"].count))
-                samples_queue.put(args["samples"])
-                for rollout_metric in args["metrics"]:
-                    metrics_queue.put(rollout_metric)
+                report_data(args)
+            # Remote inference commands:
+            elif command == PolicyClient.START_EPISODE:
+                setup_child_rollout_worker()
+                response["episode_id"] = (
+                    child_rollout_worker.env.start_episode(
+                        args["episode_id"], args["training_enabled"]))
+            elif command == PolicyClient.GET_ACTION:
+                response["action"] = child_rollout_worker.env.get_action(
+                    args["episode_id"], args["observation"])
+            elif command == PolicyClient.LOG_ACTION:
+                child_rollout_worker.env.log_action(
+                    args["episode_id"], args["observation"], args["action"])
+            elif command == PolicyClient.LOG_RETURNS:
+                child_rollout_worker.env.log_returns(
+                    args["episode_id"], args["reward"], args["info"])
+            elif command == PolicyClient.END_EPISODE:
+                child_rollout_worker.env.end_episode(args["episode_id"],
+                                                     args["observation"])
             else:
-                raise Exception("Unknown command: {}".format(command))
+                raise ValueError("Unknown command: {}".format(command))
             return response
 
     return Handler
