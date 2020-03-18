@@ -141,17 +141,18 @@ public class ReferenceCountingTest extends BaseTest {
 
   public void testBasicNestedIds() {
     RayObject<byte[]> inner = Ray.put(new byte[40 * 1024 * 1024]);
+    ObjectId innerId = inner.getId();
+    checkRefCounts(ImmutableMap.of(innerId, new long[] {1, 0}));
+
     RayObject<List<RayObject<byte[]>>> outer = Ray.put(Collections.singletonList(inner));
+    checkRefCounts(ImmutableMap.of(innerId, new long[] {2, 0},
+            outer.getId(), new long[] {1, 0}));
 
-    byte[] innerObjecrIdBytes = inner.getId().getBytes();
-    inner = null;
-    System.gc();
+    ((RayObjectImpl) inner).removeLocalReference();
+    checkRefCounts(ImmutableMap.of(innerId, new long[] {1, 0},
+            outer.getId(), new long[] {1, 0}));
 
-    for (int i = 0; i < 100; i++) {
-      Ray.put(new byte[40 * 1024 * 1024]);
-    }
-
-    inner = new RayObjectImpl<>(new ObjectId(innerObjecrIdBytes));
+    inner = new RayObjectImpl<>(innerId);
     Assert.assertNotNull(inner.get());
   }
 }
