@@ -99,12 +99,15 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
 def _make_handler(rollout_worker, samples_queue, metrics_queue):
     def report_data(data):
-        samples_queue.put(data["samples"])
+        batch = data["samples"]
+        batch.decompress_if_needed()
+        samples_queue.put(batch)
         for rollout_metric in data["metrics"]:
             metrics_queue.put(rollout_metric)
 
-    # Only used in remote inference mode. We create a child rollout worker
-    # since we have to wrap the env in an external env.
+    # Only used in remote inference mode. We must create a new rollout worker
+    # since the original worker doesn't have the env properly wrapped in an
+    # ExternalEnv interface.
     child_rollout_worker = None
     inference_thread = None
     lock = threading.Lock()
@@ -153,19 +156,24 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             # Remote inference commands:
             elif command == PolicyClient.START_EPISODE:
                 setup_child_rollout_worker()
+                assert inference_thread.is_alive()
                 response["episode_id"] = (
                     child_rollout_worker.env.start_episode(
                         args["episode_id"], args["training_enabled"]))
             elif command == PolicyClient.GET_ACTION:
+                assert inference_thread.is_alive()
                 response["action"] = child_rollout_worker.env.get_action(
                     args["episode_id"], args["observation"])
             elif command == PolicyClient.LOG_ACTION:
+                assert inference_thread.is_alive()
                 child_rollout_worker.env.log_action(
                     args["episode_id"], args["observation"], args["action"])
             elif command == PolicyClient.LOG_RETURNS:
+                assert inference_thread.is_alive()
                 child_rollout_worker.env.log_returns(
                     args["episode_id"], args["reward"], args["info"])
             elif command == PolicyClient.END_EPISODE:
+                assert inference_thread.is_alive()
                 child_rollout_worker.env.end_episode(args["episode_id"],
                                                      args["observation"])
             else:
