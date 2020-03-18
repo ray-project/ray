@@ -121,6 +121,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             Exploration, {
                 "type": "EpsilonGreedy",
                 "action_space": Discrete(2),
+                "framework": "tf",
                 "num_workers": 0,
                 "worker_index": 0,
             })

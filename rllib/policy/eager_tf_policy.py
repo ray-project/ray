@@ -443,8 +443,8 @@ def build_eager_tf_policy(name,
                     seq_lens=seq_lens,
                     explore=False)
             else:
-                dist_inputs, _ = self.model(
-                    input_dict, state_batches, seq_lens)
+                dist_inputs, _ = self.model(input_dict, state_batches,
+                                            seq_lens)
                 dist_class = self.dist_class
 
             action_dist = dist_class(dist_inputs, self.model)

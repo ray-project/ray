@@ -129,19 +129,18 @@ class TorchPolicy(Policy):
                 seq_lens=self._convert_to_tensor([1]),
                 timestep=timestep,
                 explore=explore)
-            dist_inputs, state_out = self.model(
-                {
-                    SampleBatch.CUR_OBS: obs_batch,
-                    SampleBatch.PREV_ACTIONS: prev_action_batch,
-                    SampleBatch.PREV_REWARDS: prev_reward_batch
-                }, state_batches, [1])
+            dist_inputs, state_out = self.model({
+                SampleBatch.CUR_OBS: obs_batch,
+                SampleBatch.PREV_ACTIONS: prev_action_batch,
+                SampleBatch.PREV_REWARDS: prev_reward_batch
+            }, state_batches, [1])
             self.exploration.after_forward_pass(
                 distribution_inputs=dist_inputs,
                 action_dist_class=self.dist_class,
                 model=self.model,
                 timestep=timestep,
                 explore=explore)
-    
+
             return dist_inputs, self.dist_class, state_out
 
     @override(Policy)
@@ -256,10 +255,7 @@ class TorchPolicy(Policy):
            return processing info."""
         return {}
 
-    def extra_action_out(self,
-                         input_dict,
-                         state_batches,
-                         model):
+    def extra_action_out(self, input_dict, state_batches, model):
         """Returns dict of extra info to include in experience batch.
 
         Arguments:

@@ -137,12 +137,16 @@ def build_q_losses(policy, model, dist_class, train_batch):
 
 
 def _compute_q_values(policy, model, obs, explore):
-    model_out, _ = policy.exploration.forward(
-        model,
-        obs,
-        state_batches=[],
-        explore=explore,
-        is_training=policy._get_is_training_placeholder())
+    policy.exploration.before_forward_pass(model, obs, explore=explore)
+    model_out, _ = model({
+        SampleBatch.CUR_OBS: obs,
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
+    policy.exploration.after_forward_pass(
+        distribution_inputs=model_out,
+        action_dist_class=None,
+        model=model,
+        explore=explore)
 
     return model.get_q_values(model_out)
 

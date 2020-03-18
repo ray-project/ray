@@ -44,7 +44,6 @@ class DistributionalQModel(TFModelV2):
             v_min (float): min value support for distributional DQN
             v_max (float): max value support for distributional DQN
             sigma0 (float): initial value of noisy nets
-            #parameter_noise (bool): enable layer norm for param noise
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the Q head. Those layers for forward()
