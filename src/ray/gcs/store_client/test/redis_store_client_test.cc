@@ -111,12 +111,11 @@ TEST_F(RedisStoreClientTest, AsyncGetAllTest) {
 
           auto map_it = key_to_value_.find(item.first);
           RAY_CHECK(map_it != key_to_value_.end());
-
-          --pending_count_;
         }
         if (!has_more) {
           RAY_CHECK(received_keys.size() == key_to_value_.size());
         }
+        pending_count_ -= result.size();
       };
 
   pending_count_ += key_to_value_.size();
