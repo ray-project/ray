@@ -76,15 +76,55 @@ class TorchPolicy(Policy):
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
             })
+            prev_batches = {}
             if prev_action_batch:
-                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+                prev_batches["prev_action_batch"] = prev_action_batch
             if prev_reward_batch:
-                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+                prev_batches["prev_reward_batch"] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
+            dist_inputs, dist_class, state_out = \
+                self.compute_distribution_inputs(
+                    obs_batch=obs_batch,
+                    state_batches=state_batches,
+                    explore=explore,
+                    timestep=timestep,
+                    is_training=False,
+                    **prev_batches)
+            # Get the exploration action from the forward results.
+            action, logp = self.exploration.get_exploration_action(
+                dist_inputs,
+                self.dist_class,
+                self.model,
+                timestep=timestep
+                if timestep is not None else self.global_timestep,
+                explore=explore)
+
+            input_dict[SampleBatch.ACTIONS] = action
+
+            extra_action_out = self.extra_action_out(input_dict, state_batches,
+                                                     self.model)
+            if logp is not None:
+                logp = convert_to_non_torch_type(logp)
+                extra_action_out.update({
+                    ACTION_PROB: np.exp(logp),
+                    ACTION_LOGP: logp
+                })
+            return convert_to_non_torch_type((action, state_out,
+                                              extra_action_out))
+
+    def compute_distribution_inputs(self,
+                                    obs_batch,
+                                    state_batches=None,
+                                    prev_action_batch=None,
+                                    prev_reward_batch=None,
+                                    explore=True,
+                                    timestep=None,
+                                    is_training=True):
+        with torch.no_grad():
             self.exploration.before_forward_pass(
                 model=self.model,
-                obs_batch=input_dict[SampleBatch.CUR_OBS],
+                obs_batch=obs_batch,
                 state_batches=state_batches,
                 seq_lens=self._convert_to_tensor([1]),
                 timestep=timestep,
@@ -97,24 +137,8 @@ class TorchPolicy(Policy):
                 model=self.model,
                 timestep=timestep,
                 explore=explore)
-
-            actions, logp = \
-                self.exploration.get_exploration_action(
-                    dist_inputs, self.dist_class, self.model,
-                    timestep if timestep is not None else
-                    self.global_timestep, explore)
-            input_dict[SampleBatch.ACTIONS] = actions
-
-            extra_action_out = self.extra_action_out(input_dict, state_batches,
-                                                     self.model)
-            if logp is not None:
-                logp = convert_to_non_torch_type(logp)
-                extra_action_out.update({
-                    ACTION_PROB: np.exp(logp),
-                    ACTION_LOGP: logp
-                })
-            return convert_to_non_torch_type((actions, state_out,
-                                              extra_action_out))
+    
+            return dist_inputs, self.dist_class, state_out
 
     @override(Policy)
     def compute_log_likelihoods(self,
