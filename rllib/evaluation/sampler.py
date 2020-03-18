@@ -309,7 +309,8 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         # Call each policy's Exploration.on_episode_start method.
         for p in policies.values():
             p.exploration.on_episode_start(
-                p, p.model, base_env, episode, tf_sess=p._sess)
+                p, p.model,
+                environment=base_env, episode=episode, tf_sess=p._sess)
         # Call custom on_episode_start callback.
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
@@ -500,7 +501,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
                 p.exploration.on_episode_end(
-                    p, p.model, base_env, episode, tf_sess=p._sess)
+                    p, p.model,
+                    environment=base_env, episode=episode, tf_sess=p._sess)
             # Call custom on_episode_end callback.
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
