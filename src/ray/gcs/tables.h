@@ -738,6 +738,8 @@ class ActorTable : public Log<ActorID, ActorTableData> {
 };
 
 /// Raw actor table.
+/// This table is only used for GCS-based actor management. And when completely migrate to
+/// GCS service, the old actor table could be removed.
 class RawActorTable : public Table<ActorID, ActorTableData> {
  public:
   RawActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,

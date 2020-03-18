@@ -80,10 +80,11 @@ class CallbackReply {
   /// Reply data if reply_type_ is REDIS_REPLY_STATUS.
   Status status_reply_;
 
-  /// Reply data if reply_type_ is REDIS_REPLY_STRING or REDIS_REPLY_ARRAY.
-  /// Note that REDIS_REPLY_ARRAY is only used for pub-sub data.
+  /// Reply data if reply_type_ is REDIS_REPLY_STRING.
   std::string string_reply_;
 
+  /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
+  /// Note this is used when get actor table data.
   std::vector<std::string> string_array_reply_;
 };
 

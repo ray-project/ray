@@ -748,7 +748,7 @@ Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
 
 std::vector<ActorID> SyncGetAllActorID(redisContext *redis_context,
                                        const std::string &table_prefix) {
-  std::vector<ActorID> actor_id_list;
+  std::unordered_set<ActorID> actor_id_set;
   size_t cursor = 0;
   do {
     auto r = redisCommand(redis_context, "SCAN %d match %s* count 100", cursor,
@@ -773,10 +773,13 @@ std::vector<ActorID> SyncGetAllActorID(redisContext *redis_context,
       // prefix of `ACTOR`, so we should check the length of the key to filter them.
       if (id_with_prefix.size() == table_prefix.size() + ActorID::Size()) {
         auto id = ActorID::FromBinary(id_with_prefix.substr(table_prefix.size()));
-        actor_id_list.emplace_back(id);
+        actor_id_set.emplace(id);
       }
     }
   } while (cursor != 0);
+  std::vector<ActorID> actor_id_list;
+  actor_id_list.reserve(actor_id_set.size());
+  actor_id_list.insert(actor_id_list.end(), actor_id_set.begin(), actor_id_set.end());
   return actor_id_list;
 }
 

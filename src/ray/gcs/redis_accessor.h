@@ -70,8 +70,7 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
 
  protected:
   virtual std::vector<ActorID> GetAllActorID() const;
-  virtual Status GetActorData(const ActorID &actor_id,
-                              ActorTableData *actor_table_data) const;
+  virtual Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const;
 
  private:
   /// Add checkpoint id to GCS asynchronously.
@@ -129,8 +128,7 @@ class RedisRawActorInfoAccessor : public RedisActorInfoAccessor {
 
  protected:
   std::vector<ActorID> GetAllActorID() const override;
-  Status GetActorData(const ActorID &actor_id,
-                      ActorTableData *actor_table_data) const override;
+  Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const override;
 
  private:
   typedef SubscriptionExecutor<ActorID, ActorTableData, RawActorTable>

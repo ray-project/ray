@@ -29,8 +29,8 @@ std::vector<ActorID> RedisActorInfoAccessor::GetAllActorID() const {
   return client_impl_->actor_table().GetAllActorID();
 }
 
-Status RedisActorInfoAccessor::GetActorData(const ActorID &actor_id,
-                                            ActorTableData *actor_table_data) const {
+Status RedisActorInfoAccessor::Get(const ActorID &actor_id,
+                                   ActorTableData *actor_table_data) const {
   return client_impl_->actor_table().Get(actor_id, actor_table_data);
 }
 
@@ -40,7 +40,7 @@ Status RedisActorInfoAccessor::GetAll(
   auto actor_id_list = GetAllActorID();
   actor_table_data_list->resize(actor_id_list.size());
   for (size_t i = 0; i < actor_id_list.size(); ++i) {
-    RAY_CHECK_OK(GetActorData(actor_id_list[i], &(*actor_table_data_list)[i]));
+    RAY_CHECK_OK(Get(actor_id_list[i], &(*actor_table_data_list)[i]));
   }
   return Status::OK();
 }
@@ -224,8 +224,8 @@ std::vector<ActorID> RedisRawActorInfoAccessor::GetAllActorID() const {
   return client_impl_->raw_actor_table().GetAllActorID();
 }
 
-Status RedisRawActorInfoAccessor::GetActorData(const ActorID &actor_id,
-                                               ActorTableData *actor_table_data) const {
+Status RedisRawActorInfoAccessor::Get(const ActorID &actor_id,
+                                      ActorTableData *actor_table_data) const {
   return client_impl_->raw_actor_table().Get(actor_id, actor_table_data);
 }
 
