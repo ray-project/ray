@@ -2,12 +2,10 @@ package org.ray.api.test;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
-
 import org.apache.commons.io.FileUtils;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;

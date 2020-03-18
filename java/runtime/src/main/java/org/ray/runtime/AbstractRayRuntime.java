@@ -101,7 +101,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
+  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;

@@ -220,11 +220,11 @@ public class RayCallGenerator extends BaseGenerator {
       newLine(2, String.format("Object[] args = new Object[]{%s};", args));
 
       // 5) Construct the third line.
-      String callFuncArgs = "f, ";
+      String callFuncArgs = "";
       if (forActor) {
         callFuncArgs += "(RayActor) this, ";
       }
-      callFuncArgs += "args, ";
+      callFuncArgs += "f, args, ";
       callFuncArgs += forActor ? "" : hasOptionsParam ? "options, " : "null, ";
       callFuncArgs = callFuncArgs.substring(0, callFuncArgs.length() - 2);
       newLine(2, String.format("%sRay.internal().%s(%s);",

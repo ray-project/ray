@@ -111,12 +111,12 @@ public interface RayRuntime {
   /**
    * Invoke a remote function on an actor.
    *
-   * @param func The remote function to run, it must be a method of the given actor.
    * @param actor A handle to the actor.
+   * @param func The remote function to run, it must be a method of the given actor.
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args);
+  RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args);
 
   /**
    * Invoke a remote Python function on an actor.
