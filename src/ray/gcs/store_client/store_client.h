@@ -12,8 +12,12 @@ namespace gcs {
 
 class StoreClientOptions {
  public:
-  StoreClientOptions(const std::string &ip, int port, const std::string &password)
-      : server_ip_(ip), server_port_(port), password_(password) {}
+  StoreClientOptions(const std::string &ip, int port, const std::string &password,
+                     bool is_test_client = false)
+      : server_ip_(ip),
+        server_port_(port),
+        password_(password),
+        is_test_client_(is_test_client) {}
 
   // Redis server ip.
   std::string server_ip_;
@@ -21,6 +25,9 @@ class StoreClientOptions {
   int server_port_;
   // Redis server password.
   std::string password_;
+
+  // Whether this client is used for tests.
+  bool is_test_client_{false};
 };
 
 /// \class StoreClient

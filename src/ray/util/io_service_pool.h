@@ -40,7 +40,7 @@ class IOServicePool {
  private:
   size_t io_service_num_{0};
 
-  std::vector<std::thread> threads_;
+  std::vector<std::thread *> threads_;
   std::vector<boost::asio::io_service *> io_services_;
 
   std::atomic<size_t> current_index_;

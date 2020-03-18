@@ -26,16 +26,16 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
 
     InitStoreClient();
     Status status = store_client_->Connect(io_service_pool_);
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
 
     GenTestData();
   }
 
   virtual void TearDown() {
     store_client_->Disconnect();
-    store_client_.reset();
-
     io_service_pool_->Stop();
+
+    store_client_.reset();
     io_service_pool_.reset();
 
     key_to_value_.clear();

@@ -40,8 +40,6 @@ class RedisClient {
  public:
   RedisClient(const RedisClientOptions &options);
 
-  virtual ~RedisClient();
-
   /// Connect to Redis. Non-thread safe.
   /// Call this function before calling other functions.
   ///

@@ -49,7 +49,7 @@ static Status AsyncDeleteKeys(std::shared_ptr<RedisContext> redis_context,
 RedisStoreClient::RedisStoreClient(const StoreClientOptions &options)
     : StoreClient(options) {
   RedisClientOptions redis_client_options(options_.server_ip_, options_.server_port_,
-                                          options_.password_);
+                                          options_.password_, options_.is_test_client_);
   redis_client_.reset(new RedisClient(redis_client_options));
 }
 
@@ -64,7 +64,7 @@ Status RedisStoreClient::Connect(std::shared_ptr<IOServicePool> io_service_pool)
 
 void RedisStoreClient::Disconnect() {
   redis_client_->Disconnect();
-  RAY_LOG(INFO) << "RedisStoreClient Disconnect.";
+  RAY_LOG(INFO) << "RedisStoreClient disconnected.";
 }
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
@@ -212,6 +212,8 @@ RedisRangeOpExecutor::RedisRangeOpExecutor(
   match_pattern_ = data_table_prefix_ + "*";
 }
 
+RedisRangeOpExecutor::~RedisRangeOpExecutor() {}
+
 Status RedisRangeOpExecutor::Run() {
   DoScan();
   return Status::OK();
@@ -276,6 +278,7 @@ void RedisRangeOpExecutor::OnDone() {
 }
 
 void RedisRangeOpExecutor::DoCallback() {
+  RAY_LOG(DEBUG) << "DoCallback status " << status_.ToString() << " cursor " << cursor_;
   if (!status_.ok() || cursor_ == 0) {
     // If failed/done, run the callback.
     if (get_by_index_callback_) {
@@ -317,6 +320,9 @@ std::vector<std::string> RedisRangeOpExecutor::DedupeKeys(
       keys_returned_by_scan_.emplace(key);
     }
   }
+  RAY_LOG(DEBUG) << "DedupeKeys current scan return key count " << keys.size()
+                 << " deduped_keys count " << deduped_keys.size()
+                 << " total scan return key count " << keys_returned_by_scan_.size();
   return deduped_keys;
 }
 
@@ -337,9 +343,9 @@ void RedisRangeOpExecutor::DoParseKeys(const std::vector<std::string> &index_tab
       RAY_CHECK(!data_key.empty());
       get_by_index_result_.emplace_back(data_key);
     }
+    // Trigger next scan.
+    DoScan();
   }
-  // Trigger next scan.
-  DoScan();
 }
 
 void RedisRangeOpExecutor::DoBatchDelete(
@@ -388,8 +394,8 @@ void RedisRangeOpExecutor::DoMultiRead(const std::vector<std::string> &data_tabl
         self->OnReadCallback(status, result, data_table_key);
       };
 
-      status_ = AsyncGetByKey(redis_context, data_table_key, read_callback);
       pending_read_keys_.emplace(data_table_key);
+      status_ = AsyncGetByKey(redis_context, data_table_key, read_callback);
       if (!status_.ok()) {
         OnFailed();
         return;
@@ -397,7 +403,8 @@ void RedisRangeOpExecutor::DoMultiRead(const std::vector<std::string> &data_tabl
     }
     RAY_LOG(DEBUG) << "Current pending_read_keys count " << pending_read_keys_.size()
                    << " total keys_returned_by_scan count "
-                   << keys_returned_by_scan_.size();
+                   << keys_returned_by_scan_.size() << " get_all_partial_result count "
+                   << get_all_partial_result_.size();
   }
 }
 
@@ -423,6 +430,9 @@ void RedisRangeOpExecutor::OnReadCallback(Status status,
 
   pending_read_keys_.erase(data_table_key);
   if (pending_read_keys_.empty()) {
+    RAY_LOG(DEBUG) << "OnReadCallback pending_read_keys count "
+                   << pending_read_keys_.size() << " get_all_partial_result count "
+                   << get_all_partial_result_.size();
     DoCallback();
     DoScan();
   }

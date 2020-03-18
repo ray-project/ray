@@ -12,7 +12,7 @@ class RedisStoreClientTest : public StoreClientTestBase {
   virtual ~RedisStoreClientTest() {}
 
   void InitStoreClient() override {
-    StoreClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "");
+    StoreClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
     store_client_ = std::make_shared<RedisStoreClient>(options);
   }
 };
@@ -113,6 +113,9 @@ TEST_F(RedisStoreClientTest, AsyncGetAllTest) {
           RAY_CHECK(map_it != key_to_value_.end());
 
           --pending_count_;
+        }
+        if (!has_more) {
+          RAY_CHECK(received_keys.size() == key_to_value_.size());
         }
       };
 

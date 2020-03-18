@@ -1,4 +1,5 @@
 #include "ray/util/io_service_pool.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -10,13 +11,15 @@ void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {
     boost::asio::io_service *io_service = new boost::asio::io_service;
     io_services_.emplace_back(io_service);
-    threads_.emplace_back([io_service] {
-      boost::asio::io_service::work *worker =
-          new boost::asio::io_service::work(*io_service);
+
+    threads_.emplace_back(new std::thread([io_service] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(*io_service));
       io_service->run();
-      delete worker;
-    });
+    }));
   }
+
+  RAY_LOG(INFO) << "IOServicePool is running.";
 }
 
 void IOServicePool::Stop() {
@@ -25,7 +28,8 @@ void IOServicePool::Stop() {
   }
 
   for (auto &thread : threads_) {
-    thread.join();
+    thread->join();
+    delete thread;
   }
   threads_.clear();
 
@@ -33,6 +37,8 @@ void IOServicePool::Stop() {
     delete io_service;
   }
   io_services_.clear();
+
+  RAY_LOG(INFO) << "IOServicePool is stopped.";
 }
 
 }  // namespace ray

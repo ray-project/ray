@@ -124,7 +124,7 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
   Attach();
 
   is_connected_ = true;
-  RAY_LOG(DEBUG) << "RedisClient connected.";
+  RAY_LOG(INFO) << "RedisClient connected.";
 
   return Status::OK();
 }
@@ -150,7 +150,7 @@ void RedisClient::Attach() {
 void RedisClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
-  RAY_LOG(DEBUG) << "RedisClient disconnected.";
+  RAY_LOG(INFO) << "RedisClient disconnected.";
 }
 
 std::shared_ptr<RedisContext> RedisClient::GetRedisContext(const std::string &shard_key) {
