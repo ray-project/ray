@@ -396,17 +396,16 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
-  auto java_contained_ids = env->GetObjectField(java_obj, java_native_ray_object_contained_object_ids);
+
+  auto java_contained_ids = env->GetObjectField(java_obj,
+          java_native_ray_object_contained_object_ids);
   std::vector<ray::ObjectID> contained_object_ids;
   JavaListToNativeVector<ray::ObjectID>(
           env, java_contained_ids, &contained_object_ids, [](JNIEnv *env, jobject id) {
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
-  auto java_contained_object_ids = env->GetObjectField(java_obj,
-          java_native_ray_object_contained_object_ids);
-  // TODO: Support nested IDs for Java.
-  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
-                                          std::vector<ray::ObjectID>());
+  return std::make_shared<ray::RayObject>(
+          data_buffer, metadata_buffer, contained_object_ids);
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.
