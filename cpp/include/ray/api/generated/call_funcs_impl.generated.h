@@ -3,86 +3,37 @@
 // 0 args
 template <typename R>
 RayObject<R> Ray::Call(Func0<R> func) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(ExecFunction<R>);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
+  return CallInternal<R>(func, ExecFunction<R>);
 }
 
 // 1 args
 template <typename R, typename T1>
 RayObject<R> Ray::Call(Func1<R, T1> func, T1 arg1) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, false, arg1);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(ExecFunction<R, T1>);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
+  return CallInternal<R>(func, ExecFunction<R, T1>, arg1);
 }
 
 template <typename R, typename T1>
 RayObject<R> Ray::Call(Func1<R, T1> func, RayObject<T1> &arg1) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, true, arg1);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(ExecFunction<R, T1>);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
+  return CallInternal<R>(func, ExecFunction<R, T1>, arg1);
 }
 
 // 2 args
 template <typename R, typename T1, typename T2>
 RayObject<R> Ray::Call(Func2<R, T1, T2> func, T1 arg1, T2 arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, false, arg1, false, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(ExecFunction<R, T1, T2>);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
+  return CallInternal<R>(func, ExecFunction<R, T1, T2>, arg1, arg2);
 }
 
 template <typename R, typename T1, typename T2>
 RayObject<R> Ray::Call(Func2<R, T1, T2> func, RayObject<T1> &arg1, T2 arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, true, arg1, false, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(ExecFunction<R, T1, T2>);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
+  return CallInternal<R>(func, ExecFunction<R, T1, T2>, arg1, arg2);
 }
 
 template <typename R, typename T1, typename T2>
 RayObject<R> Ray::Call(Func2<R, T1, T2> func, T1 arg1, RayObject<T2> &arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, false, arg1, true, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(ExecFunction<R, T1, T2>);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
+  return CallInternal<R>(func, ExecFunction<R, T1, T2>, arg1, arg2);
 }
 
 template <typename R, typename T1, typename T2>
 RayObject<R> Ray::Call(Func2<R, T1, T2> func, RayObject<T1> &arg1, RayObject<T2> &arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, true, arg1, true, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(ExecFunction<R, T1, T2>);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
+  return CallInternal<R>(func, ExecFunction<R, T1, T2>, arg1, arg2);
 }

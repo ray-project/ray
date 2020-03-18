@@ -3,89 +3,44 @@
 // 0 args
 template <typename R>
 RayActor<R> Ray::CreateActor(CreateFunc0<R> createFunc) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(CreateActorexecFunction<R *>);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(id);
+  return CreateActorInternal<R>(createFunc, CreateActorexecFunction<R *>);
 }
 
 // 1 args
 template <typename R, typename T1>
 RayActor<R> Ray::CreateActor(CreateFunc1<R, T1> createFunc, T1 arg1) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, false, arg1);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(CreateActorexecFunction<R *, T1>);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(id);
+  return CreateActorInternal<R>(createFunc, CreateActorexecFunction<R *, T1>, arg1);
 }
 
 template <typename R, typename T1>
 RayActor<R> Ray::CreateActor(CreateFunc1<R, T1> createFunc, RayObject<T1> &arg1) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, true, arg1);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(CreateActorexecFunction<R *, T1>);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(id);
+  return CreateActorInternal<R>(createFunc, CreateActorexecFunction<R *, T1>, arg1);
 }
 
 // 2 args
 template <typename R, typename T1, typename T2>
 RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, T1 arg1, T2 arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, false, arg1, false, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(CreateActorexecFunction<R *, T1, T2>);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(id);
+  return CreateActorInternal<R>(createFunc, CreateActorexecFunction<R *, T1, T2>, arg1,
+                                arg2);
 }
 
 template <typename R, typename T1, typename T2>
 RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, RayObject<T1> &arg1,
                              T2 arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, true, arg1, false, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(CreateActorexecFunction<R *, T1, T2>);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(id);
+  return CreateActorInternal<R>(createFunc, CreateActorexecFunction<R *, T1, T2>, arg1,
+                                arg2);
 }
 
 template <typename R, typename T1, typename T2>
 RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, T1 arg1,
                              RayObject<T2> &arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, false, arg1, true, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(CreateActorexecFunction<R *, T1, T2>);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(id);
+  return CreateActorInternal<R>(createFunc, CreateActorexecFunction<R *, T1, T2>, arg1,
+                                arg2);
 }
 
 template <typename R, typename T1, typename T2>
 RayActor<R> Ray::CreateActor(CreateFunc2<R, T1, T2> createFunc, RayObject<T1> &arg1,
                              RayObject<T2> &arg2) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, true, arg1, true, arg2);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(createFunc);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(CreateActorexecFunction<R *, T1, T2>);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(id);
+  return CreateActorInternal<R>(createFunc, CreateActorexecFunction<R *, T1, T2>, arg1,
+                                arg2);
 }
