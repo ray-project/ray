@@ -393,13 +393,16 @@ def build_eager_tf_policy(name,
             else:
                 self.exploration.before_forward_pass(
                     model=self.model,
-                    obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                    state_batches=self._state_in,
-                    seq_lens=self._seq_lens,
+                    obs_batch=obs_batch,
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
                     timestep=timestep,
                     explore=explore)
-                dist_inputs, state_out = self.model(
-                    self._input_dict, self._state_in, self._seq_lens)
+                dist_inputs, state_out = self.model({
+                    SampleBatch.CUR_OBS: obs_batch,
+                    SampleBatch.PREV_ACTIONS: prev_action_batch,
+                    SampleBatch.PREV_REWARDS: prev_reward_batch,
+                }, state_batches, seq_lens)
                 dist_class = self.dist_class
                 self.exploration.after_forward_pass(
                     distribution_inputs=dist_inputs,
@@ -415,11 +418,10 @@ def build_eager_tf_policy(name,
                                     actions,
                                     obs_batch,
                                     state_batches=None,
-                                    seq_lens=None,
                                     prev_action_batch=None,
                                     prev_reward_batch=None):
 
-            seq_lens = seq_lens or tf.ones(len(obs_batch), dtype=tf.int32)
+            seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
@@ -436,9 +438,9 @@ def build_eager_tf_policy(name,
                 dist_inputs, dist_class, _ = forward_fn(
                     self,
                     self.model,
-                    input_dict,
-                    state_batches,
-                    seq_lens,
+                    input_dict[SampleBatch.CUR_OBS],
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
                     explore=False)
             else:
                 dist_inputs, _ = self.model(

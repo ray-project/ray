@@ -76,21 +76,21 @@ class TorchPolicy(Policy):
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
             })
-            prev_batches = {}
             if prev_action_batch:
-                prev_batches["prev_action_batch"] = prev_action_batch
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
             if prev_reward_batch:
-                prev_batches["prev_reward_batch"] = prev_reward_batch
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
             dist_inputs, dist_class, state_out = \
                 self.compute_distribution_inputs(
-                    obs_batch=obs_batch,
+                    obs_batch=input_dict[SampleBatch.CUR_OBS],
                     state_batches=state_batches,
+                    prev_action_batch=input_dict[SampleBatch.PREV_ACTIONS],
+                    prev_reward_batch=input_dict[SampleBatch.PREV_REWARDS],
                     explore=explore,
                     timestep=timestep,
-                    is_training=False,
-                    **prev_batches)
+                    is_training=False)
             # Get the exploration action from the forward results.
             action, logp = self.exploration.get_exploration_action(
                 dist_inputs,
@@ -130,7 +130,11 @@ class TorchPolicy(Policy):
                 timestep=timestep,
                 explore=explore)
             dist_inputs, state_out = self.model(
-                self._input_dict, self._state_in, self._seq_lens)
+                {
+                    SampleBatch.CUR_OBS: obs_batch,
+                    SampleBatch.PREV_ACTIONS: prev_action_batch,
+                    SampleBatch.PREV_REWARDS: prev_reward_batch
+                }, state_batches, [1])
             self.exploration.after_forward_pass(
                 distribution_inputs=dist_inputs,
                 action_dist_class=self.dist_class,
