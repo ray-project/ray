@@ -1337,18 +1337,18 @@ py_test(
 )
 
 sh_test(
-    name = "examples/serving/test_simple",
-    tags = ["examples", "examples_S", "exclusive"],
+    name = "examples/serving/test_local_inference",
+    tags = ["examples", "examples_L", "exclusive"],
     size = "medium",
-    srcs = ["examples/serving/test_connector.sh"],
+    srcs = ["examples/serving/test_local_inference.sh"],
     data = glob(["examples/serving/*.py"]),
 )
 
 sh_test(
-    name = "examples/serving/test_connector",
-    tags = ["examples", "examples_C", "exclusive"],
+    name = "examples/serving/test_remote_inference",
+    tags = ["examples", "examples_R", "exclusive"],
     size = "medium",
-    srcs = ["examples/serving/test_connector.sh"],
+    srcs = ["examples/serving/test_remote_inference.sh"],
     data = glob(["examples/serving/*.py"]),
 )
 

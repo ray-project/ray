@@ -10,7 +10,7 @@ else
     basedir="rllib/examples/serving"  # In bazel.
 fi
 
-(python $basedir/cartpole_server.py --run=PPO --use-connector 2>&1 | grep -v 200) &
+(python $basedir/cartpole_server.py --run=PPO 2>&1 | grep -v 200) &
 pid=$!
 
 echo "Waiting for server to start"
@@ -19,5 +19,5 @@ while ! curl localhost:9900; do
 done
 
 sleep 2
-python $basedir/cartpole_client.py --stop-at-reward=100 --use-connector
+python $basedir/cartpole_client.py --stop-at-reward=100 --local-inference
 kill $pid

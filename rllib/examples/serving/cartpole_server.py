@@ -2,22 +2,17 @@
 
 To try this out, in two separate shells run:
     $ python cartpole_server.py
-    $ python cartpole_client.py
+    $ python cartpole_client.py [--local-inference]
 """
 
 import argparse
 import os
-from gym import spaces
-import numpy as np
 
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.utils.policy_server import PolicyServer
-from ray.rllib.utils.connector_server import ConnectorServer
+from ray.rllib.utils.policy_server_input import PolicyServerInput
 from ray.tune.logger import pretty_print
-from ray.tune.registry import register_env
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
@@ -25,58 +20,30 @@ CHECKPOINT_FILE = "last_checkpoint.out"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")
-parser.add_argument(
-    "--use-connector",
-    action="store_true",
-    help="Whether to use the application connector API (this is faster).")
-
-
-class CartpoleServing(ExternalEnv):
-    def __init__(self):
-        ExternalEnv.__init__(
-            self, spaces.Discrete(2),
-            spaces.Box(low=-10, high=10, shape=(4, ), dtype=np.float32))
-
-    def run(self):
-        print("---")
-        print("--- Starting policy server at {}:{}".format(
-            SERVER_ADDRESS, SERVER_PORT))
-        print("---")
-        server = PolicyServer(self, SERVER_ADDRESS, SERVER_PORT)
-        server.serve_forever()
-
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    if args.use_connector:
-        env = "CartPole-v0"
-        connector_config = {
-            # Use the connector server to generate experiences.
-            "input": (
-                lambda ioctx: ConnectorServer( \
-                    ioctx, SERVER_ADDRESS, SERVER_PORT)
-            ),
-            # Disable OPE, since the rollouts are coming from online clients.
-            "input_evaluation": [],
-        }
-    else:
-        register_env("srv", lambda _: CartpoleServing())
-        env = "srv"
-        connector_config = {}
+    env = "CartPole-v0"
+    connector_config = {
+        # Use the connector server to generate experiences.
+        "input": (
+            lambda ioctx: PolicyServerInput( \
+                ioctx, SERVER_ADDRESS, SERVER_PORT)
+        ),
+        # Use a single worker process to run the server.
+        "num_workers": 0,
+        # Disable OPE, since the rollouts are coming from online clients.
+        "input_evaluation": [],
+    }
 
     if args.run == "DQN":
         # Example of using DQN (supports off-policy actions).
         trainer = DQNTrainer(
             env=env,
             config=dict(
-                connector_config,
-                **{
-                    "log_level": "INFO",
-                    # Use a single worker process to run the server.
-                    "num_workers": 0,
-                    # Configure the agent to run short iterations for debugging
+                connector_config, **{
                     "exploration_config": {
                         "type": "EpsilonGreedy",
                         "initial_epsilon": 1.0,
@@ -85,17 +52,14 @@ if __name__ == "__main__":
                     },
                     "learning_starts": 100,
                     "timesteps_per_iteration": 200,
+                    "log_level": "INFO",
                 }))
     elif args.run == "PPO":
         # Example of using PPO (does NOT support off-policy actions).
         trainer = PPOTrainer(
             env=env,
             config=dict(
-                connector_config,
-                **{
-                    # Use a single worker process to run the server.
-                    "num_workers": 0,
-                    # Configure the agent to run short iterations for debugging
+                connector_config, **{
                     "sample_batch_size": 1000,
                     "train_batch_size": 4000,
                 }))

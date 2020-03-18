@@ -15,23 +15,27 @@ logger = logging.getLogger(__name__)
 logger.setLevel("INFO")  # TODO(ekl) this is needed for cartpole_server.py
 
 
-class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
-    """REST server for the RLlib external application connector.
+class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
+    """REST policy server that acts as an offline data source.
 
     This launches a multi-threaded server that listens on the specified host
     and port to serve policy requests and forward experiences to RLlib. For
     high performance experience collection, it implements InputReader.
 
-    For an example, run `examples/cartpole_server.py --use-connector` along
-    with `examples/cartpole_client.py --use-connector`.
+    For an example, run `examples/cartpole_server.py` along
+    with `examples/cartpole_client.py [--local-inference].
 
     Examples:
         >>> pg = PGTrainer(
-        ...     env="CartPole-v0", config={"input": ConnectorServer})
+        ...     env="CartPole-v0", config={
+        ...         "input": lambda ioctx:
+        ...             PolicyServerInput(ioctx, addr, port),
+        ...         "num_workers": 0,  # Run just 1 server, in the trainer.
+        ...     }
         >>> while True:
                 pg.train()
 
-        >>> client = ConnectorClient("localhost:9900")
+        >>> client = PolicyClient("localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()
         >>> action = client.get_action(eps_id, obs)
         >>> ...
@@ -42,17 +46,17 @@ class ConnectorServer(ThreadingMixIn, HTTPServer, InputReader):
 
     @PublicAPI
     def __init__(self, ioctx, address, port):
-        """Create a ConnectorServer.
+        """Create a PolicyServerInput.
 
         This class implements rllib.offline.InputReader, and can be used with
         any Trainer by configuring
 
             {"num_workers": 0,
-             "input": lambda ioctx: ConnectorServer(ioctx, addr, port)}
+             "input": lambda ioctx: PolicyServerInput(ioctx, addr, port)}
 
         Note that by setting num_workers: 0, the trainer will only create one
-        rollout worker / ConnectorServer. Clients can connect to the launched
-        server using rllib.utils.ConnectorClient.
+        rollout worker / PolicyServerInput. Clients can connect to the launched
+        server using rllib.utils.PolicyClient.
 
         Args:
             ioctx (IOContext): IOContext provided by RLlib.
