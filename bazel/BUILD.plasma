@@ -137,6 +137,48 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "plasma_server_upstream",
+    srcs = [
+        "cpp/src/plasma/common.cc",
+        "cpp/src/plasma/fling.cc",
+        "cpp/src/plasma/io.cc",
+        "cpp/src/plasma/plasma.cc",
+        "cpp/src/plasma/protocol.cc",
+        "cpp/src/plasma/events.cc",
+    ],
+    hdrs = [
+        "cpp/src/plasma/thirdparty/dlmalloc.c",
+        "cpp/src/plasma/common.h",
+        "cpp/src/plasma/common_generated.h",
+        "cpp/src/plasma/compat.h",
+        "cpp/src/plasma/events.h",
+        "cpp/src/plasma/external_store.h",
+        "cpp/src/plasma/fling.h",
+        "cpp/src/plasma/io.h",
+        "cpp/src/plasma/malloc.h",
+        "cpp/src/plasma/plasma.h",
+        "cpp/src/plasma/plasma_generated.h",
+        "cpp/src/plasma/protocol.h",
+    ],
+    copts = COPTS,
+    defines = select({
+        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
+        "//conditions:default": [],
+    }),
+    linkopts = LINKOPTS,
+    strip_include_prefix = "cpp/src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":arrow",
+        ":common_fbs",
+        ":plasma_fbs",
+        "@com_github_google_glog//:glog",
+        "@com_github_ray_project_ray//:platform_shims",
+        ":ae",
+    ],
+)
+
 cc_binary(
     name = "libplasma_java.so",
     srcs = [
@@ -216,6 +258,7 @@ flatbuffer_cc_library(
     srcs = ["cpp/src/plasma/common.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "cpp/src/plasma/",
+    visibility = ["//visibility:public"],
 )
 
 flatbuffer_cc_library(
@@ -224,6 +267,7 @@ flatbuffer_cc_library(
     flatc_args = FLATC_ARGS,
     includes = ["cpp/src/plasma/common.fbs"],
     out_prefix = "cpp/src/plasma/",
+    visibility = ["//visibility:public"],
 )
 
 exports_files(["cpp/src/plasma/common.fbs"])

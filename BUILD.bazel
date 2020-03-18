@@ -275,13 +275,6 @@ cc_library(
     ],
 )
 
-
-FLATC_ARGS = [
-    "--gen-object-api",
-    "--gen-mutable",
-    "--scoped-enums",
-]
-
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -752,23 +745,6 @@ cc_test(
     ],
 )
 
-
-flatbuffer_cc_library(
-    name = "common_fbs",
-    srcs = ["src/ray/plasma/common.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/plasma/",
-)
-
-
-flatbuffer_cc_library(
-    name = "plasma_fbs",
-    srcs = ["src/ray/plasma/plasma.fbs"],
-    includes=["src/ray/plasma/common.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/plasma/",
-)
-
 cc_library(
     name = "ray_plasma_store",
     srcs = glob(
@@ -783,7 +759,6 @@ cc_library(
     hdrs = glob(
         [
             "src/ray/plasma/*.h",
-            "src/ray/plasma/thirdparty/dlmalloc.c",
         ],
     ),
     copts = COPTS  + ["-I@plasma//:cpp/src/"],
@@ -800,8 +775,9 @@ cc_library(
         "@com_google_googletest//:gtest",
         "@plasma//:ae",
         "@plasma//:arrow",
-        ":common_fbs",
-        ":plasma_fbs",
+        "@plasma//:plasma_server_upstream",
+        "@plasma//:common_fbs",
+        "@plasma//:plasma_fbs",
     ],
 )
 
@@ -1159,6 +1135,12 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
 
 flatbuffer_cc_library(
     name = "node_manager_fbs",
