@@ -3299,14 +3299,9 @@ void NodeManager::FlushObjectsToFree() {
   last_free_objects_at_ms_ = current_time_ms();
 }
 
-void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
+void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &driver : worker_pool_.GetAllDrivers()) {
-    auto worker_stats = reply->add_workers_stats();
-    worker_stats->set_pid(driver->GetProcess().GetId());
-    worker_stats->set_is_driver(true);
-  }
   // NOTE(sang): Currently reporting only infeasible/ready ActorCreationTask
   // because Ray dashboard only renders actorCreationTask as of Feb 3 2020.
   // TODO(sang): Support dashboard for non-ActorCreationTask.
@@ -3371,31 +3366,136 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
   auto all_workers = worker_pool_.GetAllWorkers();
+  absl::flat_hash_set<WorkerID> driver_ids;
+  for (auto driver : worker_pool_.GetAllDrivers()) {
+    all_workers.push_back(driver);
+    driver_ids.insert(driver->WorkerId());
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
+    request.set_include_memory_info(node_stats_request.include_memory_info());
     auto status = worker->rpc_client()->GetCoreWorkerStats(
-        request, [reply, worker, all_workers, send_reply_callback](
+        request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
-          if (!status.ok()) {
-            RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
-                             << status.ToString();
-          } else {
-            auto worker_stats = reply->add_workers_stats();
-            worker_stats->set_pid(worker->GetProcess().GetId());
-            worker_stats->set_is_driver(false);
-            reply->set_num_workers(reply->num_workers() + 1);
+          auto worker_stats = reply->add_workers_stats();
+          worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          reply->set_num_workers(reply->num_workers() + 1);
+          if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
-            if (reply->num_workers() == all_workers.size()) {
-              send_reply_callback(Status::OK(), nullptr, nullptr);
-            }
+          } else {
+            RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
+                           << status.ToString();
+            worker_stats->set_fetch_error(status.ToString());
+          }
+          if (reply->num_workers() == all_workers.size()) {
+            send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
     if (!status.ok()) {
-      RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
-                       << status.ToString();
+      RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
+                     << status.ToString();
     }
   }
+}
+
+std::string FormatMemoryInfo(
+    std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> node_stats) {
+  // First pass to compute object sizes.
+  absl::flat_hash_map<ObjectID, int64_t> object_sizes;
+  for (const auto &reply : node_stats) {
+    for (const auto &worker_stats : reply->workers_stats()) {
+      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
+        if (object_ref.object_size() > 0) {
+          object_sizes[obj_id] = object_ref.object_size();
+        }
+      }
+    }
+  }
+
+  std::ostringstream builder;
+  builder
+      << "----------------------------------------------------------------------------"
+         "-------------------------\n";
+  builder
+      << " Object ID                                Reference Type       Object Size  "
+         " Reference Creation Site\n";
+  builder
+      << "============================================================================"
+         "=========================\n";
+
+  // Second pass builds the summary string for each node.
+  for (const auto &reply : node_stats) {
+    for (const auto &worker_stats : reply->workers_stats()) {
+      bool pid_printed = false;
+      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
+            object_ref.submitted_task_ref_count() == 0 &&
+            object_ref.contained_in_owned_size() == 0) {
+          continue;
+        }
+        if (!pid_printed) {
+          if (worker_stats.is_driver()) {
+            builder << "; driver pid=" << worker_stats.pid() << "\n";
+          } else {
+            builder << "; worker pid=" << worker_stats.pid() << "\n";
+          }
+          pid_printed = true;
+        }
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
+        builder << obj_id.Hex() << "  ";
+        // TODO(ekl) we could convey more information about the reference status.
+        if (object_ref.pinned_in_memory()) {
+          builder << "PINNED_IN_MEMORY     ";
+        } else if (object_ref.submitted_task_ref_count() > 0) {
+          builder << "USED_BY_PENDING_TASK ";
+        } else if (object_ref.local_ref_count() > 0) {
+          builder << "LOCAL_REFERENCE      ";
+        } else if (object_ref.contained_in_owned_size() > 0) {
+          builder << "CAPTURED_IN_OBJECT   ";
+        } else {
+          builder << "UNKNOWN_STATUS       ";
+        }
+        builder << std::right << std::setfill(' ') << std::setw(11);
+        if (object_sizes.contains(obj_id)) {
+          builder << object_sizes[obj_id];
+        } else {
+          builder << "          ?";
+        }
+        builder << "   " << object_ref.call_site();
+        builder << "\n";
+      }
+    }
+  }
+  builder
+      << "----------------------------------------------------------------------------"
+         "-------------------------\n";
+
+  return builder.str();
+}
+
+void NodeManager::HandleFormatGlobalMemoryInfo(
+    const rpc::FormatGlobalMemoryInfoRequest &request,
+    rpc::FormatGlobalMemoryInfoReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> replies;
+
+  auto local_request = std::make_shared<rpc::GetNodeStatsRequest>();
+  auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
+  local_request->set_include_memory_info(true);
+
+  // TODO(ekl): for (const auto &entry : remote_node_manager_clients_) {}
+  // to handle remote nodes
+
+  HandleGetNodeStats(*local_request, local_reply.get(),
+                     [local_request, local_reply, replies, reply, send_reply_callback](
+                         Status status, std::function<void()> success,
+                         std::function<void()> failure) mutable {
+                       replies.push_back(local_reply);
+                       reply->set_memory_summary(FormatMemoryInfo(replies));
+                       send_reply_callback(Status::OK(), nullptr, nullptr);
+                     });
 }
 
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
