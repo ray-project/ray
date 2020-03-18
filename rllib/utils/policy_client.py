@@ -4,6 +4,7 @@ import logging
 import pickle
 
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,8 @@ class PolicyClient:
 
     @PublicAPI
     def __init__(self, address):
+        deprecation_warning(
+            "rllib.utils.PolicyServer", new="rllib.env.PolicyServerInput")
         self._address = address
 
     @PublicAPI

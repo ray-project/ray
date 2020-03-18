@@ -8,6 +8,7 @@ from socketserver import ThreadingMixIn
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.policy_client import PolicyClient
+from ray.rllib.utils.deprecation import deprecation_warning
 
 
 @PublicAPI
@@ -16,6 +17,8 @@ class PolicyServer(ThreadingMixIn, HTTPServer):
 
     @PublicAPI
     def __init__(self, external_env, address, port):
+        deprecation_warning(
+            "rllib.utils.PolicyClient", new="rllib.env.PolicyClient")
         handler = _make_handler(external_env)
         HTTPServer.__init__(self, (address, port), handler)
 
