@@ -25,6 +25,26 @@ namespace gcs {
 RedisActorInfoAccessor::RedisActorInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), actor_sub_executor_(client_impl_->actor_table()) {}
 
+std::vector<ActorID> RedisActorInfoAccessor::GetAllActorID() const {
+  return client_impl_->actor_table().GetAllActorID();
+}
+
+Status RedisActorInfoAccessor::GetActorData(const ActorID &actor_id,
+                                            ActorTableData *actor_table_data) const {
+  return client_impl_->actor_table().Get(actor_id, actor_table_data);
+}
+
+Status RedisActorInfoAccessor::GetAll(
+    std::vector<ActorTableData> *actor_table_data_list) {
+  RAY_CHECK(actor_table_data_list);
+  auto actor_id_list = GetAllActorID();
+  actor_table_data_list->resize(actor_id_list.size());
+  for (size_t i = 0; i < actor_id_list.size(); ++i) {
+    RAY_CHECK_OK(GetActorData(actor_id_list[i], &(*actor_table_data_list)[i]));
+  }
+  return Status::OK();
+}
+
 Status RedisActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
@@ -194,6 +214,80 @@ Status RedisActorInfoAccessor::AsyncAddCheckpointID(
 
   ActorCheckpointIdTable &cp_id_table = client_impl_->actor_checkpoint_id_table();
   return cp_id_table.AddCheckpointId(actor_id.JobId(), actor_id, checkpoint_id, on_done);
+}
+
+RedisRawActorInfoAccessor::RedisRawActorInfoAccessor(RedisGcsClient *client_impl)
+    : RedisActorInfoAccessor(client_impl),
+      raw_actor_sub_executor_(client_impl_->raw_actor_table()) {}
+
+std::vector<ActorID> RedisRawActorInfoAccessor::GetAllActorID() const {
+  return client_impl_->raw_actor_table().GetAllActorID();
+}
+
+Status RedisRawActorInfoAccessor::GetActorData(const ActorID &actor_id,
+                                               ActorTableData *actor_table_data) const {
+  return client_impl_->raw_actor_table().Get(actor_id, actor_table_data);
+}
+
+Status RedisRawActorInfoAccessor::AsyncGet(
+    const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                            const ActorTableData &data) { callback(Status::OK(), data); };
+
+  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id) {
+    if (callback != nullptr) {
+      callback(Status::Invalid("Get actor failed."), boost::none);
+    }
+  };
+
+  return client_impl_->raw_actor_table().Lookup(JobID::Nil(), actor_id, on_done,
+                                                on_failure);
+}
+
+Status RedisRawActorInfoAccessor::AsyncRegister(
+    const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
+  auto on_register_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                                     const ActorTableData &data) {
+    if (callback != nullptr) {
+      callback(Status::OK());
+    }
+  };
+  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
+  return client_impl_->raw_actor_table().Add(JobID::Nil(), actor_id, data_ptr,
+                                             on_register_done);
+}
+
+Status RedisRawActorInfoAccessor::AsyncUpdate(
+    const ActorID &actor_id, const std::shared_ptr<ActorTableData> &data_ptr,
+    const StatusCallback &callback) {
+  auto on_update_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                                   const ActorTableData &data) {
+    if (callback != nullptr) {
+      callback(Status::OK());
+    }
+  };
+  return client_impl_->raw_actor_table().Add(JobID::Nil(), actor_id, data_ptr,
+                                             on_update_done);
+}
+
+Status RedisRawActorInfoAccessor::AsyncSubscribeAll(
+    const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return raw_actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+}
+
+Status RedisRawActorInfoAccessor::AsyncSubscribe(
+    const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return raw_actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
+}
+
+Status RedisRawActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
+                                                   const StatusCallback &done) {
+  return raw_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
 }
 
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)

@@ -729,6 +729,29 @@ class ActorTable : public Log<ActorID, ActorTableData> {
     pubsub_channel_ = TablePubsub::ACTOR_PUBSUB;
     prefix_ = TablePrefix::ACTOR;
   }
+
+  /// Get all actor id synchronously.
+  std::vector<ActorID> GetAllActorID();
+
+  /// Get actor table data by actor id synchronously.
+  Status Get(const ActorID &actor_id, ActorTableData *actor_table_data);
+};
+
+/// Raw actor table.
+class RawActorTable : public Table<ActorID, ActorTableData> {
+ public:
+  RawActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                RedisGcsClient *client)
+      : Table(contexts, client) {
+    pubsub_channel_ = TablePubsub::ACTOR_PUBSUB;
+    prefix_ = TablePrefix::ACTOR;
+  }
+
+  /// Get all actor id synchronously.
+  std::vector<ActorID> GetAllActorID();
+
+  /// Get actor table data by actor id synchronously.
+  Status Get(const ActorID &actor_id, ActorTableData *actor_table_data);
 };
 
 class WorkerFailureTable : public Table<WorkerID, WorkerFailureData> {

@@ -79,6 +79,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// The following xxx_table methods implement the Accessor interfaces.
   /// Implements the Actors() interface.
   ActorTable &actor_table();
+  RawActorTable &raw_actor_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
   /// Implements the Jobs() interface.
@@ -114,6 +115,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
+  std::unique_ptr<RawActorTable> raw_actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;

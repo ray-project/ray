@@ -62,10 +62,13 @@ class CallbackReply {
   ///
   /// Note that this will return an empty string if
   /// the type of this reply is `nil` or `status`.
-  std::string ReadAsString() const;
+  const std::string &ReadAsString() const;
 
   /// Read this reply data as pub-sub data.
-  std::string ReadAsPubsubData() const;
+  const std::string &ReadAsPubsubData() const;
+
+  /// Read this reply data as a string array.
+  const std::vector<std::string> &ReadAsStringArray() const;
 
  private:
   /// Flag indicating the type of reply this represents.
@@ -80,6 +83,8 @@ class CallbackReply {
   /// Reply data if reply_type_ is REDIS_REPLY_STRING or REDIS_REPLY_ARRAY.
   /// Note that REDIS_REPLY_ARRAY is only used for pub-sub data.
   std::string string_reply_;
+
+  std::vector<std::string> string_array_reply_;
 };
 
 /// Every callback should take in a vector of the results from the Redis
@@ -167,6 +172,12 @@ class RedisContext {
                                          const TablePrefix prefix,
                                          const TablePubsub pubsub_channel,
                                          int log_length = -1);
+
+  /// Run an arbitrary Redis command synchronously.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return CallbackReply(The reply from redis).
+  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
 
   /// Run an operation on some table key.
   ///

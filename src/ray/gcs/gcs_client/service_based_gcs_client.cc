@@ -50,7 +50,12 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
                                               *client_call_manager_, get_server_address));
 
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
-  actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
+  if (getenv("RAY_GCS_SERVICE_ACTOR_MANAGEMENT_ENABLED") != nullptr) {
+    RAY_CHECK(getenv("RAY_GCS_SERVICE_ENABLED") != nullptr);
+    actor_accessor_.reset(new ServiceBasedRawActorInfoAccessor(this));
+  } else {
+    actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
+  }
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
   task_accessor_.reset(new ServiceBasedTaskInfoAccessor(this));
   object_accessor_.reset(new ServiceBasedObjectInfoAccessor(this));

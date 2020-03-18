@@ -36,6 +36,8 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
 
   virtual ~RedisActorInfoAccessor() {}
 
+  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
+
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
@@ -66,6 +68,11 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
 
+ protected:
+  virtual std::vector<ActorID> GetAllActorID() const;
+  virtual Status GetActorData(const ActorID &actor_id,
+                              ActorTableData *actor_table_data) const;
+
  private:
   /// Add checkpoint id to GCS asynchronously.
   ///
@@ -76,7 +83,7 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
                               const ActorCheckpointID &checkpoint_id,
                               const StatusCallback &callback);
 
- private:
+ protected:
   RedisGcsClient *client_impl_{nullptr};
   // Use a random ClientID for actor subscription. Because:
   // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
@@ -86,9 +93,49 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
   // TODO(micafan): Remove this random id, once GCS becomes a service.
   ClientID subscribe_id_{ClientID::FromRandom()};
 
+ private:
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
+};
+
+/// \class RedisRawActorInfoAccessor
+/// `RedisRawActorInfoAccessor` is an implementation of `ActorInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisRawActorInfoAccessor : public RedisActorInfoAccessor {
+ public:
+  explicit RedisRawActorInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisRawActorInfoAccessor() {}
+
+  Status AsyncGet(const ActorID &actor_id,
+                  const OptionalItemCallback<ActorTableData> &callback) override;
+
+  Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
+                       const StatusCallback &callback) override;
+
+  Status AsyncUpdate(const ActorID &actor_id,
+                     const std::shared_ptr<ActorTableData> &data_ptr,
+                     const StatusCallback &callback) override;
+
+  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                           const StatusCallback &done) override;
+
+  Status AsyncSubscribe(const ActorID &actor_id,
+                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                        const StatusCallback &done) override;
+
+  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
+
+ protected:
+  std::vector<ActorID> GetAllActorID() const override;
+  Status GetActorData(const ActorID &actor_id,
+                      ActorTableData *actor_table_data) const override;
+
+ private:
+  typedef SubscriptionExecutor<ActorID, ActorTableData, RawActorTable>
+      ActorSubscriptionExecutor;
+  ActorSubscriptionExecutor raw_actor_sub_executor_;
 };
 
 /// \class RedisJobInfoAccessor
