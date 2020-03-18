@@ -1,13 +1,10 @@
-"""Example of querying a policy server. Copy this file for your use case.
+"""Example of training with a policy server. Copy this file for your use case.
 
 To try this out, in two separate shells run:
-    $ python cartpole_server.py [--use-connector]
-    $ python cartpole_client.py [--use-connector]
+    $ python cartpole_server.py --run=[PPO|DQN]
+    $ python cartpole_client.py [--local-inference]
 
-To enable the application connector, pass the --use-connector flag to both the
-client and server. The application connector provides much higher performance
-training by caching the policy on the client and executing inference there.
-Note that this incurs more computational cost on the client.
+Local inference mode offloads inference to the client for better performance.
 """
 
 import argparse

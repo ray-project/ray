@@ -10,9 +10,7 @@ import time
 
 import ray.cloudpickle as pickle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.env.external_multi_agent_env import \
-    ExternalMultiAgentEnv
+from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -178,7 +176,7 @@ class PolicyClient:
         parsed = pickle.loads(response.content)
         return parsed
 
-    def _setup_local_rollout_worker(self, auto_wrap_env, update_interval):
+    def _setup_local_rollout_worker(self, update_interval):
         self.update_interval = update_interval
         self.last_updated = 0
 
@@ -187,43 +185,10 @@ class PolicyClient:
             "command": PolicyClient.GET_WORKER_ARGS,
         })["worker_args"]
 
-        # Since the server acts as an input datasource, we have to reset the
-        # input config to the default, which runs env rollouts.
-        del kwargs["input_creator"]
-        logger.info("Creating rollout worker with kwargs={}".format(kwargs))
-
-        if auto_wrap_env:
-            real_creator = kwargs["env_creator"]
-
-            def wrap_env(env_config):
-                real_env = real_creator(env_config)
-
-                class ExternalEnvWrapper(ExternalEnv):
-                    def __init__(self, real_env):
-                        ExternalEnv.__init__(self, real_env.action_space,
-                                             real_env.observation_space)
-
-                    def run(self):
-                        # Since we are calling methods on this class in the
-                        # client, run doesn't need to do anything.
-                        time.sleep(999999)
-
-                return ExternalEnvWrapper(real_env)
-
-            kwargs["env_creator"] = wrap_env
-
-        self.rollout_worker = RolloutWorker(**kwargs)
-        self.inference_thread = _LocalInferenceThread(self)
-        self.inference_thread.start()
+        (self.rollout_worker,
+         self.inference_thread) = create_embedded_rollout_worker(
+             kwargs, self._send)
         self.env = self.rollout_worker.env
-
-        if not (isinstance(self.env, ExternalEnv)
-                or isinstance(self.env, ExternalMultiAgentEnv)):
-            raise ValueError(
-                "You must specify an ExternalEnv or ExternalMultiAgentEnv "
-                "class when using a policy client. If you want "
-                "this client to automatically wrap your env in an "
-                "ExternalEnv interface, pass auto_wrap_env=True.")
 
     def _update_local_policy(self):
         assert self.inference_thread.is_alive()
@@ -240,10 +205,11 @@ class PolicyClient:
 class _LocalInferenceThread(threading.Thread):
     """Thread that handles experience generation (worker.sample() loop)."""
 
-    def __init__(self, client):
+    def __init__(self, rollout_worker, send_fn):
         super().__init__()
         self.daemon = True
-        self.client = client
+        self.rollout_worker = rollout_worker
+        self.send_fn = send_fn
 
     def run(self):
         try:
@@ -253,10 +219,57 @@ class _LocalInferenceThread(threading.Thread):
                 metrics = self.client.rollout_worker.get_metrics()
                 logger.info("Sending batch of {} steps back to server.".format(
                     samples.count))
-                self.client._send({
+                self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,
                     "metrics": metrics,
                 })
         except Exception as e:
             logger.info("Error: inference worker thread died!", e)
+
+
+def auto_wrap_external(real_env_creator):
+    """Wrap an environment in the ExternalEnv interface if needed."""
+
+    def wrapped_creator(env_config):
+        real_env = real_env_creator(env_config)
+        if not (isinstance(real_env, ExternalEnv)
+                or isinstance(real_env, ExternalMultiAgentEnv)):
+            logger.info(
+                "The env you specified is not a type of ExternalEnv. "
+                "Attempting to convert it automatically to ExternalEnv.")
+
+            if isinstance(real_env, MultiAgentEnv):
+                external_cls = MultiAgentEnv
+            else:
+                external_cls = ExternalEnv
+
+            class ExternalEnvWrapper(external_cls):
+                def __init__(self, real_env):
+                    super().__init__(self, real_env.action_space,
+                                     real_env.observation_space)
+
+                def run(self):
+                    # Since we are calling methods on this class in the
+                    # client, run doesn't need to do anything.
+                    time.sleep(999999)
+
+            return ExternalEnvWrapper(real_env)
+
+    return wrapped_creator
+
+
+def create_embedded_rollout_worker(kwargs, send_fn):
+    """Create a local rollout worker and a thread that samples from it."""
+
+    # Since the server acts as an input datasource, we have to reset the
+    # input config to the default, which runs env rollouts.
+    del kwargs["input_creator"]
+    logger.info("Creating rollout worker with kwargs={}".format(kwargs))
+    real_env_creator = kwargs["env_creator"]
+    kwargs["env_creator"] = auto_wrap_external(real_env_creator)
+
+    rollout_worker = RolloutWorker(**kwargs)
+    inference_thread = _LocalInferenceThread(rollout_worker, send_fn)
+    inference_thread.start()
+    return rollout_worker, inference_thread
