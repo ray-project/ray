@@ -30,7 +30,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)        \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)       \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)
+  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -68,6 +69,10 @@ class NodeManagerServiceHandler {
 
   virtual void HandleGlobalGC(const GlobalGCRequest &request, GlobalGCReply *reply,
                               SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
+                                            FormatGlobalMemoryInfoReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

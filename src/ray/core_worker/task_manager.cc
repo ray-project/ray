@@ -26,7 +26,8 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 void TaskManager::AddPendingTask(const TaskID &caller_id,
                                  const rpc::Address &caller_address,
-                                 const TaskSpecification &spec, int max_retries) {
+                                 const TaskSpecification &spec,
+                                 const std::string &call_site, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
@@ -67,7 +68,8 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     // the inner IDs. Note that this RPC can be received *before* the
     // PushTaskReply.
     reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
-                                       /*inner_ids=*/{}, caller_id, caller_address);
+                                       /*inner_ids=*/{}, caller_id, caller_address,
+                                       call_site, -1);
   }
 }
 
@@ -114,6 +116,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
+    reference_counter_->UpdateObjectSize(object_id, return_object.size());
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.
