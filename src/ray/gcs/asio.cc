@@ -48,8 +48,7 @@ void RedisAsioClient::operate() {
 }
 
 void RedisAsioClient::handle_read(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block)
-      << error_code.message();
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
   read_in_progress_ = false;
   redis_async_context_.RedisAsyncHandleRead();
 

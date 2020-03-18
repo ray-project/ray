@@ -61,7 +61,7 @@ class StoreClient {
   ///
   /// \param table_name The name of the table to be write.
   /// \param key The key that will be write to the table.
-  /// \param index The index value map to the key that will be write to the table.
+  /// \param index The index of the key that will be write to the index table.
   /// \param value The value of the key that will be write to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
@@ -81,7 +81,7 @@ class StoreClient {
   /// Get data by index from table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
-  /// \param key The key that will be read from the table.
+  /// \param index The index of the keys which will be read from table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
   virtual Status AsyncGetByIndex(const std::string &table_name, const std::string &index,

@@ -931,6 +931,7 @@ cc_library(
     ],
 )
 
+# TODO(micafan) Remove dependency to Redis Module.
 cc_test(
     name = "redis_store_client_test",
     srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],

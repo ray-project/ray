@@ -133,6 +133,7 @@ int main(int argc, char **argv) {
   RAY_CHECK(argc == 4);
   ray::REDIS_SERVER_EXEC_PATH = argv[1];
   ray::REDIS_CLIENT_EXEC_PATH = argv[2];
+  // TODO(micafan) Remove dependency to Redis Module.
   ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }
