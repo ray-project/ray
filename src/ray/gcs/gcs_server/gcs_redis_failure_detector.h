@@ -23,7 +23,12 @@ namespace ray {
 namespace gcs {
 class RedisGcsClient;
 
-/// GcsRedisFailureDetector is responsible for monitoring redis.
+/// GcsRedisFailureDetector is responsible for monitoring redis and binding GCS server and
+/// redis life cycle together. GCS client subscribes to redis messages and it cannot sense
+/// whether the redis is inactive unless we go to ping redis voluntarily. But there are
+/// many GCS clients, if they all Ping redis, the redis load will be high. So we ping
+/// redis on GCS server and GCS client can sense whether redis is normal through RPC
+/// connection with GCS server.
 class GcsRedisFailureDetector {
  public:
   /// Create a GcsRedisFailureDetector.
