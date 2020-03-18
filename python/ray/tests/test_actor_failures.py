@@ -241,6 +241,7 @@ def test_actor_caller_reconstruction(ray_start_regular):
         ray.get(actor.increase.remote())
 
     # kill the actor.
+    # TODO(zhijunfu): use ray.kill instead.
     kill_actor(actor)
     
     # Check that we can still call the actor.

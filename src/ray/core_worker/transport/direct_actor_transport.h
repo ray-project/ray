@@ -262,8 +262,8 @@ class BoundedExecutor {
 struct SchedulingQueueTag {
   /// Worker ID for the caller.
   WorkerID caller_worker_id;
-  /// Version for the caller.
-  int64_t caller_version = 0;
+  /// Timestamp for the caller, which is used as a version.
+  int64_t caller_creation_timestamp_ms = 0;
 };
 
 /// Used to ensure serial order of task execution per actor handle.

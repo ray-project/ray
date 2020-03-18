@@ -325,8 +325,11 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it != scheduling_queue_.end()) {
     if (it->second.first.caller_worker_id != caller_worker_id) {
-      if (it->second.first.caller_version < caller_version) {
-        // The new request has a newer version, remove the existing one.
+      // We received a request with the same caller ID, but from a different worker,
+      // this indicates the caller (actor) is reconstructed.
+      if (it->second.first.caller_creation_timestamp_ms < caller_version) {
+        // The new request has a newer caller version, then remove the old entry
+        // from scheduling queue since it's invalid now.
         RAY_LOG(INFO) << "Remove existing scheduling queue for caller "
                       << task_spec.CallerId() << " after receiving a "
                       << "request from a different worker ID with a newer "
@@ -335,11 +338,15 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         scheduling_queue_.erase(task_spec.CallerId());
         it = scheduling_queue_.end();
       } else {
+        // The existing caller has the newer version, this indicates the request
+        // is from an old caller, which might be possible when network has problems.
+        // In this case fail this request.
         RAY_LOG(WARNING) << "Ingoring request from an old caller because "
                          << "it has a smaller timestamp, old worker ID: "
                          << caller_worker_id << ", current worker ID"
                          << it->second.first.caller_worker_id;
-        // Ignore request with an old caller version.
+        // Fail request with an old caller version.
+        reject_callback();
         return;
       }
     }
@@ -348,7 +355,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   if (it == scheduling_queue_.end()) {
     SchedulingQueueTag tag;
     tag.caller_worker_id = caller_worker_id;
-    tag.caller_version = caller_version;
+    tag.caller_creation_timestamp_ms = caller_version;
     auto result = scheduling_queue_.emplace(
         task_spec.CallerId(),
         std::make_pair(tag, std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
