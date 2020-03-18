@@ -15,8 +15,6 @@ public class BinaryFileUtil {
 
   public static final String GCS_SERVER_BINARY_NAME = "gcs_server";
 
-  public static final String PLASMA_STORE_SERVER_BINARY_NAME = "plasma_store_server";
-
   public static final String RAYLET_BINARY_NAME = "raylet";
 
   public static final String REDIS_MODULE_LIBRARY_NAME = "libray_redis_module.so";
