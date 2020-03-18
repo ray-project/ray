@@ -280,15 +280,15 @@ def _compute_q_values(policy, model, obs, explore):
     config = policy.config
 
     policy.exploration.before_forward_pass(model, obs, explore=explore)
-    model_out, state = model({SampleBatch.CUR_OBS: obs}, [], None)
+    model_out, state = model({
+        SampleBatch.CUR_OBS: obs,
+        "is_training": policy._get_is_training_placeholder(),
+    }, [], None)
     policy.exploration.after_forward_pass(
         distribution_inputs=model_out,
         action_dist_class=None,
         model=model,
         explore=explore)
-
-    # TODO(sven): why is this needed? Noisy layers?
-    #  is_training=policy._get_is_training_placeholder()
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,
