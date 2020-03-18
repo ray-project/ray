@@ -86,10 +86,50 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
   return true;
 }
 
+void ReferenceCounter::AddObjectRefStats(
+    const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+    rpc::CoreWorkerStats *stats) const {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &ref : object_id_refs_) {
+    auto ref_proto = stats->add_object_refs();
+    ref_proto->set_object_id(ref.first.Binary());
+    ref_proto->set_call_site(ref.second.call_site);
+    ref_proto->set_object_size(ref.second.object_size);
+    ref_proto->set_local_ref_count(ref.second.local_ref_count);
+    ref_proto->set_submitted_task_ref_count(ref.second.submitted_task_ref_count);
+    auto it = pinned_objects.find(ref.first);
+    if (it != pinned_objects.end()) {
+      ref_proto->set_pinned_in_memory(true);
+      // If some info isn't available, fallback to getting it from the pinned info.
+      if (ref.second.object_size <= 0) {
+        ref_proto->set_object_size(it->second.first);
+      }
+      if (ref.second.call_site.empty()) {
+        ref_proto->set_call_site(it->second.second);
+      }
+    }
+    for (const auto &obj_id : ref.second.contained_in_owned) {
+      ref_proto->add_contained_in_owned(obj_id.Binary());
+    }
+  }
+  // Also include any unreferenced objects that are pinned in memory.
+  for (const auto &entry : pinned_objects) {
+    if (object_id_refs_.find(entry.first) == object_id_refs_.end()) {
+      auto ref_proto = stats->add_object_refs();
+      ref_proto->set_object_id(entry.first.Binary());
+      ref_proto->set_object_size(entry.second.first);
+      ref_proto->set_call_site(entry.second.second);
+      ref_proto->set_pinned_in_memory(true);
+    }
+  }
+}
+
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const std::vector<ObjectID> &inner_ids,
                                       const TaskID &owner_id,
-                                      const rpc::Address &owner_address) {
+                                      const rpc::Address &owner_address,
+                                      const std::string &call_site,
+                                      const int64_t object_size) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
@@ -97,7 +137,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
-  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
+  object_id_refs_.emplace(object_id,
+                          Reference(owner_id, owner_address, call_site, object_size));
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -105,12 +146,21 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
+void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    it->second.object_size = object_size;
+  }
+}
+
+void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
+                                         const std::string &call_site) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
-    it = object_id_refs_.emplace(object_id, Reference()).first;
+    it = object_id_refs_.emplace(object_id, Reference(call_site, -1)).first;
   }
   it->second.local_ref_count++;
   RAY_LOG(DEBUG) << "Add local reference " << object_id;

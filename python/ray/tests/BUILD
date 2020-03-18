@@ -23,6 +23,14 @@ py_test(
 )
 
 py_test(
+    name = "test_memstat",
+    size = "small",
+    srcs = ["test_memstat.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_iter",
     size = "medium",
     srcs = ["test_iter.py"],

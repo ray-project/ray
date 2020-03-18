@@ -74,6 +74,11 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
 RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
 
+/// Whether to record the creation sites of object references. This adds more
+/// information to `ray memstat`, but introduces a little extra overhead when
+/// creating object references.
+RAY_CONFIG(bool, record_ref_creation_sites, true)
+
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
