@@ -83,6 +83,8 @@ class DynamicTFPolicy(TFPolicy):
             obs_include_prev_action_reward (bool): whether to include the
                 previous action and reward in the model input
         """
+        self.observation_space = obs_space
+        self.action_space = action_space
         self.config = config
         self.framework = "tf"
         self._loss_fn = loss_fn
@@ -183,8 +185,8 @@ class DynamicTFPolicy(TFPolicy):
                 seq_lens=self._seq_lens,
                 timestep=timestep,
                 explore=explore)
-            dist_inputs, state_out = self.model(self._input_dict,
-                                                self._state_in, self._seq_lens)
+            dist_inputs, self._state_out = self.model(
+                self._input_dict, self._state_in, self._seq_lens)
             self.exploration.after_forward_pass(
                 distribution_inputs=dist_inputs,
                 action_dist_class=dist_class,
