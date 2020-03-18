@@ -16,9 +16,13 @@ class Exploration:
     implemented exploration schema.
     """
 
-    def __init__(self, action_space: Space, *, framework: str,
+    def __init__(self,
+                 action_space: Space,
+                 *,
+                 framework: str,
                  policy_config: dict = None,
-                 num_workers: int = 0, worker_index: int = 0):
+                 num_workers: int = 0,
+                 worker_index: int = 0):
         """
         Args:
             action_space (Space): The action space in which to explore.
@@ -158,25 +162,6 @@ class Exploration:
             tf_sess (Optional[tf.Session]): An optional tf.Session object.
         """
         return sample_batch
-
-    def get_loss_exploration_term(self,
-                                  model_output: TensorType,
-                                  model: ModelV2,
-                                  action_dist: type,
-                                  action_sample: TensorType = None):
-        """Returns an extra loss term to be added to a loss.
-
-        Args:
-            model_output (TensorType): The Model's output Tensor(s).
-            model (ModelV2): The Model object.
-            action_dist: The ActionDistribution object resulting from
-                `model_output`. TODO: Or the class?
-            action_sample (TensorType): An optional action sample.
-
-        Returns:
-            TensorType: The extra loss term to add to the loss.
-        """
-        pass  # TODO(sven): implement for some example Exploration class.
 
     def get_info(self):
         """Returns a description of the current exploration state.
