@@ -8,8 +8,8 @@ from socketserver import ThreadingMixIn
 
 import ray.cloudpickle as pickle
 from ray.rllib.offline.input_reader import InputReader
+from ray.rllib.env.policy_client import PolicyClient
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.policy_client import PolicyClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")  # TODO(ekl) this is needed for cartpole_server.py

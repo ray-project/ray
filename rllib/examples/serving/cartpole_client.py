@@ -13,7 +13,7 @@ Note that this incurs more computational cost on the client.
 import argparse
 import gym
 
-from ray.rllib.utils.policy_client import PolicyClient
+from ray.rllib.env.policy_client import PolicyClient
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

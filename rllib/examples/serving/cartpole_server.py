@@ -11,7 +11,7 @@ import os
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.utils.policy_server_input import PolicyServerInput
+from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.tune.logger import pretty_print
 
 SERVER_ADDRESS = "localhost"

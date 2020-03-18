@@ -9,6 +9,10 @@ import threading
 import time
 
 import ray.cloudpickle as pickle
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.env.external_env import ExternalEnv
+from ray.rllib.env.external_multi_agent_env import \
+    ExternalMultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -70,7 +74,7 @@ class PolicyClient:
         """
 
         if self.local:
-            self._do_updates()
+            self._update_local_policy()
             return self.env.start_episode(episode_id, training_enabled)
 
         return self._send({
@@ -92,7 +96,7 @@ class PolicyClient:
         """
 
         if self.local:
-            self._do_updates()
+            self._update_local_policy()
             return self.env.get_action(episode_id, observation)
 
         return self._send({
@@ -112,7 +116,7 @@ class PolicyClient:
         """
 
         if self.local:
-            self._do_updates()
+            self._update_local_policy()
             return self.env.log_action(episode_id, observation, action)
 
         self._send({
@@ -136,7 +140,7 @@ class PolicyClient:
         """
 
         if self.local:
-            self._do_updates()
+            self._update_local_policy()
             return self.env.log_returns(episode_id, reward, info)
 
         self._send({
@@ -156,7 +160,7 @@ class PolicyClient:
         """
 
         if self.local:
-            self._do_updates()
+            self._update_local_policy()
             return self.env.end_episode(episode_id, observation)
 
         self._send({
@@ -187,11 +191,6 @@ class PolicyClient:
         # input config to the default, which runs env rollouts.
         del kwargs["input_creator"]
         logger.info("Creating rollout worker with kwargs={}".format(kwargs))
-
-        from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        from ray.rllib.env.external_env import ExternalEnv
-        from ray.rllib.env.external_multi_agent_env import \
-            ExternalMultiAgentEnv
 
         if auto_wrap_env:
             real_creator = kwargs["env_creator"]
