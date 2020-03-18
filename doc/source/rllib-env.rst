@@ -317,8 +317,37 @@ ExternalEnv provides a ``self.log_action()`` call to support off-policy actions.
 External Application Clients
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides a ``PolicyServerInput`` data input class that can be connected to over the network using a ``PolicyClient``.
-Clients can operate in either *local inference* or *remote inference* modes. In local inference mode, copies of the policy are downloaded from the server and cached locally for a configurable period of time. This allows actions to be computed by the client without requiring a network round trip each time. In remote inference mode, each computed action requires a network call to the server.
+For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides the ``PolicyServerInput`` application connector, which can be connected to over the network using ``PolicyClient`` instances.
+
+You can configure any Trainer to launch a policy server with the following config:
+
+.. code-block:: python
+
+    trainer_config = {
+        # An environment class is still required, but it doesn't need to be runnable.
+        # You only need to define its action and observation space attributes.
+        "env": YOUR_ENV_STUB,
+
+        # Use the policy server to generate experiences.
+        "input": (
+            lambda ioctx: PolicyServerInput( \
+                ioctx, SERVER_ADDRESS, SERVER_PORT)
+        ),
+        # Use the existing trainer process to run the server.
+        "num_workers": 0,
+        # Disable OPE, since the rollouts are coming from online clients.
+        "input_evaluation": [],
+    }
+
+Clients can then connect in either *local* or *remote* inference mode. In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time. This allows actions to be computed by the client without requiring a network round trip each time. In remote inference mode, each computed action requires a network call to the server.
+
+Example:
+
+.. code-block:: python
+
+    client = PolicyClient("http://localhost:9900", inference_mode="local")
+    episode_id = client.start_episode()
+    ...
 
 To understand the difference between standard envs, external envs, and connecting with a ``PolicyClient``, refer to the following figure:
 
@@ -326,8 +355,6 @@ To understand the difference between standard envs, external envs, and connectin
 .. image:: rllib-external.svg
 
 Try it yourself by launching a `cartpole_server.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, and connecting to it with any number of clients (`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__):
-
-**Example: PPO server w/clients in different inference modes**:
 
 .. code-block:: bash
 
@@ -358,11 +385,7 @@ Try it yourself by launching a `cartpole_server.py <https://github.com/ray-proje
     Total reward: 200.0
     ...
 
-For the best performance, when possible we recommend using ``inference_mode="local"`` for the best performance.
-
-.. note::
-
-     ``PolicyServerInput`` uses RLlib's offline data interface under the hood for performance. You can therefore think of the external application connector as implementing a type of "online experience dataset" generated on the fly by clients.
+For the best performance, when possible we recommend using ``inference_mode="local"`` when possible.
 
 Advanced Integrations
 ---------------------
