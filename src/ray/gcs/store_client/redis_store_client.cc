@@ -3,6 +3,7 @@
 #include <functional>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
