@@ -317,14 +317,17 @@ ExternalEnv provides a ``self.log_action()`` call to support off-policy actions.
 External Application Clients
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides the ``PolicyClient`` application connector. To understand the difference between standard envs, external envs, and external applications, refer to the following figure:
+For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides a ``PolicyServerInput`` data input class that can be connected to over the network using a ``PolicyClient``.
+Clients can operate in either *local inference* or *remote inference* modes. In local inference mode, copies of the policy are downloaded from the server and cached locally for a configurable period of time. This allows actions to be computed by the client without requiring a network round trip each time. In remote inference mode, each computed action requires a network call to the server.
+
+To understand the difference between standard envs, external envs, and connecting with a ``PolicyClient``, refer to the following figure:
 
 .. https://docs.google.com/drawings/d/1hJvT9bVGHVrGTbnCZK29BYQIcYNRbZ4Dr6FOPMJDjUs/edit
 .. image:: rllib-external.svg
 
 Try it yourself by launching a `cartpole_server.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, and connecting to it with any number of clients (`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__):
 
-**Example 1: DQN server w/remote inference**:
+**Example: PPO server w/clients in different inference modes**:
 
 .. code-block:: bash
 
@@ -342,19 +345,24 @@ Try it yourself by launching a `cartpole_server.py <https://github.com/ray-proje
     Total reward: 200.0
     ...
 
-    # To connect from a client with inference_mode="local".
+    # To connect from a client with inference_mode="local" (faster).
     >>> python rllib/examples/serving/cartpole_client.py --inference-mode=local
-    Total reward: 10.0
-    Total reward: 58.0
+    Querying server for new policy weights.
+    Generating new batch of experiences.
+    Total reward: 13.0
+    Total reward: 11.0
+    ...
+    Sending batch of 1000 steps back to server.
+    Querying server for new policy weights.
     ...
     Total reward: 200.0
     ...
 
-For the best performance, when possible we recommend using ``ConnectorClient`` for client-side inference.
+For the best performance, when possible we recommend using ``inference_mode="local"`` for the best performance.
 
 .. note::
 
-     ``ConnectorClient`` uses RLlib's offline data interface under the hood for performance. You can therefore think of the external application connector as implementing a type of "online experience dataset" generated on the fly by clients.
+     ``PolicyServerInput`` uses RLlib's offline data interface under the hood for performance. You can therefore think of the external application connector as implementing a type of "online experience dataset" generated on the fly by clients.
 
 Advanced Integrations
 ---------------------

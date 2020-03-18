@@ -214,12 +214,11 @@ class _LocalInferenceThread(threading.Thread):
     def run(self):
         try:
             while True:
-                logger.debug("Generating new batch of experiences.")
+                logger.info("Generating new batch of experiences.")
                 samples = self.rollout_worker.sample()
                 metrics = self.rollout_worker.get_metrics()
-                logger.debug(
-                    "Sending batch of {} steps back to server.".format(
-                        samples.count))
+                logger.info("Sending batch of {} steps back to server.".format(
+                    samples.count))
                 self.send_fn({
                     "command": PolicyClient.REPORT_SAMPLES,
                     "samples": samples,
