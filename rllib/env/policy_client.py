@@ -43,6 +43,15 @@ class PolicyClient:
 
     @PublicAPI
     def __init__(self, address, inference_mode="local", update_interval=10.0):
+        """Create a PolicyClient instance.
+
+        Args:
+            address (str): Server to connect to (e.g., "localhost:9090").
+            inference_mode (str): Whether to use 'local' or 'remote' policy
+                inference for computing actions.
+            update_interval (float): If using 'local' inference mode, the
+                policy is refreshed after this many seconds have passed.
+        """
         self.address = address
         if inference_mode == "local":
             self.local = True
