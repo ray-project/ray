@@ -916,7 +916,7 @@ You can use the ``ray stack`` command to dump the stack traces of all the Python
 External Application API
 ------------------------
 
-In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external applications interface `(full documentation) <rllib-env.html#external-agents-and-applications>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if it were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external applications interface `(full documentation) <rllib-env.html#external-agents-and-applications>`__.
 
 .. autoclass:: ray.rllib.env.policy_client.PolicyClient
     :members:
