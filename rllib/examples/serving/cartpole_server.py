@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 """Example of running a policy server. Copy this file for your use case.
 
 To try this out, in two separate shells run:

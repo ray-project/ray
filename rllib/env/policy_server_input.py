@@ -127,8 +127,8 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
             metrics_queue.put(rollout_metric)
 
         if child_rollout_worker is not None:
-            child_rollout_worker.set_weights(rollout_worker.get_weights(), rollout_worker.get_global_vars())
-
+            child_rollout_worker.set_weights(rollout_worker.get_weights(),
+                                             rollout_worker.get_global_vars())
 
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):

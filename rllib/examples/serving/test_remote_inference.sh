@@ -10,7 +10,7 @@ else
     basedir="rllib/examples/serving"  # In bazel.
 fi
 
-(python $basedir/cartpole_server.py --run=PPO 2>&1 | grep -v 200) &
+(python $basedir/cartpole_server.py --run=DQN 2>&1 | grep -v 200) &
 pid=$!
 
 echo "Waiting for server to start"

@@ -195,7 +195,9 @@ class PolicyClient:
             })
             weights = resp["weights"]
             global_vars = resp["global_vars"]
-            logger.info("Updating rollout worker weights and global vars {}.".format(global_vars))
+            logger.info(
+                "Updating rollout worker weights and global vars {}.".format(
+                    global_vars))
             self.rollout_worker.set_weights(weights, global_vars)
             self.last_updated = time.time()
 
