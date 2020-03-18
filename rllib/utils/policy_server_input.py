@@ -9,7 +9,7 @@ from socketserver import ThreadingMixIn
 import ray.cloudpickle as pickle
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.connector_client import ConnectorClient
+from ray.rllib.utils.policy_client import PolicyClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")  # TODO(ekl) this is needed for cartpole_server.py
@@ -114,13 +114,13 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         def execute_command(self, args):
             command = args["command"]
             response = {}
-            if command == ConnectorClient.GET_WORKER_ARGS:
+            if command == PolicyClient.GET_WORKER_ARGS:
                 logger.info("Sending worker creation args to client.")
                 response["worker_args"] = rollout_worker.creation_args()
-            elif command == ConnectorClient.GET_WEIGHTS:
+            elif command == PolicyClient.GET_WEIGHTS:
                 logger.info("Sending worker weights to client.")
                 response["weights"] = rollout_worker.get_weights()
-            elif command == ConnectorClient.REPORT_SAMPLES:
+            elif command == PolicyClient.REPORT_SAMPLES:
                 logger.info("Got sample batch of size {} from client.".format(
                     args["samples"].count))
                 samples_queue.put(args["samples"])

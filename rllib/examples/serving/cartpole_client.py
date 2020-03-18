@@ -14,15 +14,14 @@ import argparse
 import gym
 
 from ray.rllib.utils.policy_client import PolicyClient
-from ray.rllib.utils.connector_client import ConnectorClient
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--no-train", action="store_true", help="Whether to disable training.")
 parser.add_argument(
-    "--use-connector",
+    "--local-inference",
     action="store_true",
-    help="Whether to use the application connector API (this is faster).")
+    help="Whether to use the local inference mode for the client.")
 parser.add_argument(
     "--off-policy",
     action="store_true",
@@ -36,10 +35,9 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
     env = gym.make("CartPole-v0")
-    if args.use_connector:
-        client = ConnectorClient("http://localhost:9900")
-    else:
-        client = PolicyClient("http://localhost:9900")
+    client = PolicyClient(
+        "http://localhost:9900",
+        inference_mode="local" if args.local_inference else "remote")
 
     eid = client.start_episode(training_enabled=not args.no_train)
     obs = env.reset()
