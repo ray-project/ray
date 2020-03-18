@@ -722,7 +722,7 @@ std::string ClusterResourceScheduler::DebugString(void) const {
 
 void ClusterResourceScheduler::InitResourceInstances(
     double total, bool unit_instances,
-    ResourceInstanceCapacities *instance_list /* return */) {
+    ResourceInstanceCapacities *instance_list) {
   if (unit_instances) {
     size_t num_instances = static_cast<size_t>(total);
     instance_list->total.resize(num_instances);
@@ -765,7 +765,7 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
 
 std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
     std::vector<double> available,
-    ResourceInstanceCapacities *resource_instances /* return */) {
+    ResourceInstanceCapacities *resource_instances) {
   std::vector<double> overflow(available.size(), 0.);  
   for (size_t i = 0; i < available.size(); i++) {
     resource_instances->available[i] = resource_instances->available[i] + available[i];
@@ -780,7 +780,7 @@ std::vector<double> ClusterResourceScheduler::AddAvailableResourceInstances(
 
 std::vector<double> ClusterResourceScheduler::SubtractAvailableResourceInstances(
     std::vector<double> available,
-    ResourceInstanceCapacities *resource_instances /* return */) {
+    ResourceInstanceCapacities *resource_instances) {
   RAY_CHECK(available.size() == resource_instances->available.size());
 
   std::vector<double> underflow(available.size(), 0.);      
@@ -796,7 +796,7 @@ std::vector<double> ClusterResourceScheduler::SubtractAvailableResourceInstances
 
 bool ClusterResourceScheduler::AllocateResourceInstances(
     double demand, bool soft, std::vector<double> &available,
-    std::vector<double> *allocation /* return */) {
+    std::vector<double> *allocation) {
   allocation->resize(available.size());
   double remaining_demand = demand;
 
@@ -887,7 +887,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
 
 bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     const TaskRequest &task_req, 
-    std::shared_ptr<TaskResourceInstances> task_allocation /* return */) {
+    std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);  
   if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
@@ -1002,7 +1002,7 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
 
 bool ClusterResourceScheduler::AllocateTaskResources(
     int64_t node_id, const TaskRequest &task_req, 
-    std::shared_ptr<TaskResourceInstances> task_allocation /* return */) {
+    std::shared_ptr<TaskResourceInstances> task_allocation) {
 
   if (node_id == local_node_id_) {
     RAY_CHECK(task_allocation != nullptr);
@@ -1020,7 +1020,7 @@ bool ClusterResourceScheduler::AllocateTaskResources(
 
 bool ClusterResourceScheduler::AllocateLocalTaskResources(
     const std::unordered_map<std::string, double> &task_resources, 
-    std::shared_ptr<TaskResourceInstances> task_allocation /* return */) {
+    std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);    
   TaskRequest task_request = 
       ResourceMapToTaskRequest(string_to_int_map_, task_resources);
@@ -1052,10 +1052,7 @@ void ClusterResourceScheduler::AllocateRemoteTaskResources(
 }
 
 void ClusterResourceScheduler::FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation) {
-  if (task_allocation == nullptr) {
-    return;
-  }
-  if (task_allocation->IsEmpty()) {
+  if (task_allocation == nullptr || task_allocation->IsEmpty()) {
     return;
   }
   FreeTaskResourceInstances(task_allocation);

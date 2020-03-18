@@ -74,7 +74,7 @@ class Worker {
   void WorkerLeaseGranted(const std::string &address, int port);
 
   // Setter, geter, and clear methods  for allocated_instances_.
-  void SetAllocatedInstances(std::shared_ptr<TaskResourceInstances> allocated_instances) { 
+  void SetAllocatedInstances(std::shared_ptr<TaskResourceInstances> &allocated_instances) { 
       allocated_instances_ = allocated_instances;
   };                            
 
@@ -82,7 +82,7 @@ class Worker {
   
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
-  void SetLifetimeAllocatedInstances(std::shared_ptr<TaskResourceInstances> allocated_instances) { 
+  void SetLifetimeAllocatedInstances(std::shared_ptr<TaskResourceInstances> &allocated_instances) { 
     lifetime_allocated_instances_ = allocated_instances;
   };                                                   
   

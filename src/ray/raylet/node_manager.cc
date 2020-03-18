@@ -1436,7 +1436,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
         std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-        if (worker == nullptr) {
+        if (!worker) {
           RAY_LOG(ERROR) << "Lost worker for wait request " << client;
         } else {
           worker->DirectActorCallArgWaitComplete(tag);
@@ -1532,23 +1532,20 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 
 void NodeManager::DispatchScheduledTasksToWorkers() {
   RAY_CHECK(new_scheduler_enabled_);
-  size_t queue_size = tasks_to_dispatch_.size(); 
 
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
-  // blocking where a task which cannot be dispatches because
+  // blocking where a task which cannot be dispatched because
   // there are not enough available resources blocks other
   // tasks from being dispatched.
-  while (queue_size > 0) { 
+  for (size_t queue_size = tasks_to_dispatch_.size(); queue_size > 0; queue_size--) { 
     auto task = tasks_to_dispatch_.front(); 
     auto reply = task.first;
     auto spec = task.second.GetTaskSpecification();
-
     tasks_to_dispatch_.pop_front(); 
-    queue_size--; 
 
     std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
-    if (worker == nullptr) {
+    if (!worker) {
       // No worker available to schedule this task. 
       // Put the task back in the dispatch queue.
       tasks_to_dispatch_.push_front(task); 
@@ -1669,9 +1666,9 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   }
 
   if (new_scheduler_enabled_) {
-    auto task_specs = task.GetTaskSpecification();
+    auto task_spec = task.GetTaskSpecification();
     auto work = std::make_pair(
-        [this, task_specs, reply, send_reply_callback](
+        [this, task_spec, reply, send_reply_callback](
             std::shared_ptr<Worker> worker, ClientID spillback_to, std::string address,
             int port) {
           if (worker != nullptr) {
@@ -1685,7 +1682,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 // TODO (Ion): Fix handling floating point errors, maybe by moving to integers.               
 #define ZERO_CAPACITY 1.0e-5
             std::shared_ptr<TaskResourceInstances> allocated_resources;
-            if (task_specs.IsActorCreationTask()) {
+            if (task_spec.IsActorCreationTask()) {
               allocated_resources = worker->GetLifetimeAllocatedInstances();                                                   
             } else {
               allocated_resources = worker->GetAllocatedInstances();                                                   
