@@ -69,7 +69,7 @@ public class JobSchedulerImpl implements JobScheduler {
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(
                 taskId, executionGraphPb, jobConfig);
-            waits.add(((RayPyActor)worker).call(new PyActorMethod("init", byte[].class),
+            waits.add(((RayPyActor)worker).call(new PyActorMethod("init", Object.class),
                 workerContextBytes));
             break;
           default:
