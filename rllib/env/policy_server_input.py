@@ -57,7 +57,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
         Note that by setting num_workers: 0, the trainer will only create one
         rollout worker / PolicyServerInput. Clients can connect to the launched
-        server using rllib.utils.PolicyClient.
+        server using rllib.env.PolicyClient.
 
         Args:
             ioctx (IOContext): IOContext provided by RLlib.
