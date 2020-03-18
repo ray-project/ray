@@ -14,9 +14,10 @@ DEFAULT_CONFIG_LINEAR = {
 class LinearDiscreteEnv(gym.Env):
     """Samples data from linearly parameterized arms.
 
-      The reward for context X and arm i is given by X^T * theta_i, for some latent
-      set of parameters {theta_i : i = 1, ..., k}. The beta's are sampled uniformly
-      at random, the contexts are Gaussian, and Gaussian noise is added to the rewards.
+      The reward for context X and arm i is given by X^T * theta_i, for some
+      latent set of parameters {theta_i : i = 1, ..., k}. The betas are sampled
+      uniformly at random, the contexts are Gaussian, and Gaussian noise is
+      added to the rewards.
 
     """
 
@@ -30,9 +31,11 @@ class LinearDiscreteEnv(gym.Env):
         self.sigma = self.config["reward_noise_std"]
 
         self.action_space = spaces.Discrete(self.num_actions)
-        self.observation_space = spaces.Box(low=-10, high=10, shape=(self.feature_dim,))
+        self.observation_space = spaces.Box(
+            low=-10, high=10, shape=(self.feature_dim, ))
 
-        self.thetas = np.random.uniform(-1, 1, (self.num_actions, self.feature_dim))
+        self.thetas = np.random.uniform(-1, 1,
+                                        (self.num_actions, self.feature_dim))
         self.thetas /= np.linalg.norm(self.thetas, axis=1, keepdims=True)
 
         self._elapsed_steps = 0
@@ -40,7 +43,7 @@ class LinearDiscreteEnv(gym.Env):
         self._done = False
 
     def _sample_context(self):
-        return np.random.normal(scale=1 / 3, size=(self.feature_dim,))
+        return np.random.normal(scale=1 / 3, size=(self.feature_dim, ))
 
     def reset(self):
         self._current_context = self._sample_context()
@@ -48,8 +51,10 @@ class LinearDiscreteEnv(gym.Env):
         return self._current_context
 
     def step(self, action):
-        assert self._elapsed_steps is not None, "Cannot call env.step() before calling reset()"
-        assert self._done is False, "Episode has ended. Please call env.reset() first"
+        assert self._elapsed_steps is not None,\
+            "Cannot call env.step() beforecalling reset()"
+        assert self._done is False,\
+            "Episode has ended. Please call env.reset() first"
         assert action < self.num_actions, "Invalid action."
 
         action = int(action)
@@ -66,10 +71,12 @@ class LinearDiscreteEnv(gym.Env):
         reward = rewards[action]
         self._current_context = self._sample_context()
         self._done = False
-        return self._current_context, reward, self._done, {"regret": regret,
-                                                           "opt_action": opt_action}
+        return self._current_context, reward, self._done, {
+            "regret": regret,
+            "opt_action": opt_action
+        }
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         raise NotImplementedError
 
 
@@ -83,7 +90,9 @@ DEFAULT_CONFIG_WHEEL = {
 
 
 class WheelBanditEnv(gym.Env):
-    """Wheel bandit environment for 2D contexts (see https://arxiv.org/abs/1802.09127)."""
+    """Wheel bandit environment for 2D contexts
+    (see https://arxiv.org/abs/1802.09127).
+    """
 
     feature_dim = 2
     num_actions = 5
@@ -100,7 +109,8 @@ class WheelBanditEnv(gym.Env):
         self.std = self.config["std"]
 
         self.action_space = spaces.Discrete(self.num_actions)
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(self.feature_dim,))
+        self.observation_space = spaces.Box(
+            low=-1, high=1, shape=(self.feature_dim, ))
 
         self.means = [self.mu_1] + 4 * [self.mu_2]
         self._elapsed_steps = 0
@@ -119,13 +129,17 @@ class WheelBanditEnv(gym.Env):
         return self._current_context
 
     def step(self, action):
-        assert self._elapsed_steps is not None, "Cannot call env.step() before calling reset()"
-        assert self._done is False, "Episode has ended. Please call env.reset() first"
+        assert self._elapsed_steps is not None,\
+            "Cannot call env.step() before calling reset()"
+        assert self._done is False,\
+            "Episode has ended. Please call env.reset() first"
 
         action = int(action)
         self._elapsed_steps += 1
-        opt_action = None
-        rewards = [np.random.normal(self.means[j], self.std) for j in range(self.num_actions)]
+        rewards = [
+            np.random.normal(self.means[j], self.std)
+            for j in range(self.num_actions)
+        ]
         context = self._current_context
         r_big = np.random.normal(self.mu_3, self.std)
 
@@ -158,8 +172,10 @@ class WheelBanditEnv(gym.Env):
 
         self._current_context = self._sample_context()
         self._done = False
-        return self._current_context, reward, self._done, {"regret": regret,
-                                                           "opt_action": opt_action}
+        return self._current_context, reward, self._done, {
+            "regret": regret,
+            "opt_action": opt_action
+        }
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         raise NotImplementedError

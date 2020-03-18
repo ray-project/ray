@@ -1,11 +1,10 @@
-"""
-    Example of using Linear Thompson Sampling on WheelBandit environment.
+""" Example of using Linear Thompson Sampling on WheelBandit environment.
     For more information on WheelBandit, see https://arxiv.org/abs/1802.09127 .
 """
 
 import numpy as np
 from matplotlib import pyplot as plt
-from ray.rllib.contrib.bandits.agents.linear import LinTSTrainer
+from ray.rllib.contrib.bandits.agents import LinTSTrainer
 from ray.rllib.contrib.bandits.envs import WheelBanditEnv
 
 
@@ -13,7 +12,7 @@ def plot_model_weights(means, covs):
     fmts = ["bo", "ro", "yx", "k+", "gx"]
     labels = [f"arm{i}" for i in range(5)]
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6, 4))
 
     ax.set_title("Weights distributions of arms")
 
@@ -21,13 +20,10 @@ def plot_model_weights(means, covs):
         x, y = np.random.multivariate_normal(means[i] / 30, covs[i], 5000).T
         ax.plot(x, y, fmts[i], label=labels[i])
 
-    # plt.axis('equal')
-    ax.set_aspect('equal')
-    ax.grid(True, which='both')
-    ax.axhline(y=0, color='k')
-    ax.axvline(x=0, color='k')
-    fig.set_size_inches(4, 4)
-    ax.legend(loc='best')
+    ax.grid(True, which="both")
+    ax.axhline(y=0, color="k")
+    ax.axvline(x=0, color="k")
+    ax.legend(loc="best")
     plt.show()
 
 

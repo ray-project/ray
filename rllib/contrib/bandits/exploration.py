@@ -15,11 +15,13 @@ class ThompsonSampling(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         if self.framework == "torch":
-            return self._get_torch_exploration_action(distribution_inputs, explore, model)
+            return self._get_torch_exploration_action(distribution_inputs,
+                                                      explore, model)
         else:
             raise NotImplementedError
 
-    def _get_torch_exploration_action(self, distribution_inputs, explore, model):
+    def _get_torch_exploration_action(self, distribution_inputs, explore,
+                                      model):
         if explore:
             return distribution_inputs.argmax(dim=1), None
         else:
@@ -36,11 +38,13 @@ class UCB(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         if self.framework == "torch":
-            return self._get_torch_exploration_action(distribution_inputs, explore, model)
+            return self._get_torch_exploration_action(distribution_inputs,
+                                                      explore, model)
         else:
             raise NotImplementedError
 
-    def _get_torch_exploration_action(self, distribution_inputs, explore, model):
+    def _get_torch_exploration_action(self, distribution_inputs, explore,
+                                      model):
         if explore:
             return distribution_inputs.argmax(dim=1), None
         else:
