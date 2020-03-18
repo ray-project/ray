@@ -51,7 +51,6 @@ public abstract class ObjectStore {
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     NativeRayObject serialized = ObjectSerializer.serialize(object);
-    serialized.setContainedObjectIds(RayObjectImpl.getAndClearContainedObjectIds());
     return putRaw(serialized);
   }
 

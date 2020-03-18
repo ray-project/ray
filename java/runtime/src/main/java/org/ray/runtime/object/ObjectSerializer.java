@@ -77,7 +77,9 @@ public class ObjectSerializer {
       return new NativeRayObject(Serializer.encode(object),
           TASK_EXECUTION_EXCEPTION_META);
     } else {
-      return new NativeRayObject(Serializer.encode(object), null);
+      NativeRayObject nativeRayObject = new NativeRayObject(Serializer.encode(object), null);
+      nativeRayObject.setContainedObjectIds(RayObjectImpl.getAndClearContainedObjectIds());
+      return nativeRayObject;
     }
   }
 }
