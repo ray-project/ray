@@ -3,7 +3,7 @@
 
 To try this out, in two separate shells run:
     $ python cartpole_server.py
-    $ python cartpole_client.py [--local-inference]
+    $ python cartpole_client.py --inference-mode=local|remote
 """
 
 import argparse

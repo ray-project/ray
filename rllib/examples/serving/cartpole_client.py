@@ -3,7 +3,7 @@
 
 To try this out, in two separate shells run:
     $ python cartpole_server.py --run=[PPO|DQN]
-    $ python cartpole_client.py [--local-inference]
+    $ python cartpole_client.py --inference-mode=local|remote
 
 Local inference mode offloads inference to the client for better performance.
 """
@@ -17,9 +17,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--no-train", action="store_true", help="Whether to disable training.")
 parser.add_argument(
-    "--local-inference",
-    action="store_true",
-    help="Whether to use the local inference mode for the client.")
+    "--inference-mode",
+    type=str,
+    required=True,
+    choices=["local", "remote"])
 parser.add_argument(
     "--off-policy",
     action="store_true",
@@ -35,7 +36,7 @@ if __name__ == "__main__":
     env = gym.make("CartPole-v0")
     client = PolicyClient(
         "http://localhost:9900",
-        inference_mode="local" if args.local_inference else "remote")
+        inference_mode=args.inference_mode)
 
     eid = client.start_episode(training_enabled=not args.no_train)
     obs = env.reset()

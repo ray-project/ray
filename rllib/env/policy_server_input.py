@@ -24,7 +24,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     high performance experience collection, it implements InputReader.
 
     For an example, run `examples/cartpole_server.py` along
-    with `examples/cartpole_client.py [--local-inference].
+    with `examples/cartpole_client.py --inference-mode=local|remote`.
 
     Examples:
         >>> pg = PGTrainer(

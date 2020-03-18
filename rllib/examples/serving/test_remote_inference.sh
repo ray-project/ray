@@ -19,6 +19,6 @@ while ! curl localhost:9900; do
 done
 
 sleep 2
-python $basedir/cartpole_client.py --stop-at-reward=100
+python $basedir/cartpole_client.py --stop-at-reward=100 --inference-mode=remote
 kill $pid
 

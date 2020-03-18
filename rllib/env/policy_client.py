@@ -274,6 +274,7 @@ def create_embedded_rollout_worker(kwargs, send_fn):
 
     # Since the server acts as an input datasource, we have to reset the
     # input config to the default, which runs env rollouts.
+    kwargs = kwargs.copy()
     del kwargs["input_creator"]
     logger.info("Creating rollout worker with kwargs={}".format(kwargs))
     real_env_creator = kwargs["env_creator"]

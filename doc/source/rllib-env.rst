@@ -317,57 +317,35 @@ ExternalEnv provides a ``self.log_action()`` call to support off-policy actions.
 External Application Clients
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib also provides two types of application connectors: ``PolicyClient``, which runs inference server side, and ``ConnectorClient``, which offloads inference to the client for lower latency. To understand the difference between standard envs, external envs, and external applications, refer to the following figure:
+For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides the ``PolicyClient`` application connector. To understand the difference between standard envs, external envs, and external applications, refer to the following figure:
 
 .. https://docs.google.com/drawings/d/1hJvT9bVGHVrGTbnCZK29BYQIcYNRbZ4Dr6FOPMJDjUs/edit
 .. image:: rllib-external.svg
 
 Try it yourself by launching a `cartpole_server.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, and connecting to it with any number of clients (`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__):
 
-**Example 1: DQN server w/server-side inference**:
+**Example 1: DQN server w/remote inference**:
 
 .. code-block:: bash
 
-    # Remove any server checkpoints.
-    >>> rm -f last_checkpoint.out
-
     # Start the server by running:
-    >>> python rllib/examples/serving/cartpole_server.py --run=DQN
-    ---
-    --- Starting policy server at localhost:9900
-    ---
+    >>> python rllib/examples/serving/cartpole_server.py --run=PPO
+    --
+    -- Starting policy server at localhost:9900
+    --
 
-    # To connect and run rollouts from other terminals:
-    >>> python rllib/examples/serving/cartpole_client.py
+    # To connect from a client with inference_mode="remote".
+    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=remote
     Total reward: 10.0
     Total reward: 58.0
     ...
     Total reward: 200.0
     ...
 
-
-**Example 2: PPO server w/client-side inference**:
-
-.. code-block:: bash
-
-    # Remove any server checkpoints.
-    >>> rm -f last_checkpoint.out
-
-    # Start the server by running:
-    >>> python cartpole_server.py --run=PPO --use-connector
-    ---
-    --- Starting policy server at localhost:9900
-    ---
-
-    # To connect and run rollouts from other terminals:
-    >>> python cartpole_client.py --use-connector
-    Querying server for new policy weights...
-    Generating new batch of experiences.
-    Total reward: 13.0
-    Total reward: 11.0
-    ...
-    Sending batch of 1000 steps back to server.
-    Querying server for new policy weights...
+    # To connect from a client with inference_mode="local".
+    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=local
+    Total reward: 10.0
+    Total reward: 58.0
     ...
     Total reward: 200.0
     ...
