@@ -64,4 +64,25 @@ def trial_dir():
     return _session.logdir
 
 
-__all__ = ["TrackSession", "session", "log", "trial_dir", "init", "shutdown"]
+def trial_name():
+    """Trial name for the corresponding trial of this Trainable.
+
+    This is not set if not using Tune.
+    """
+    _session = get_session()
+    return _session.trial_name
+
+
+def trial_id():
+    """Trial id for the corresponding trial of this Trainable.
+
+    This is not set if not using Tune.
+    """
+    _session = get_session()
+    return _session.trial_id
+
+
+__all__ = [
+    "TrackSession", "session", "log", "trial_dir", "init", "shutdown",
+    "trial_name", "trial_id"
+]
