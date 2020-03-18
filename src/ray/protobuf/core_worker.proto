@@ -85,6 +85,8 @@ message ReturnObject {
   bytes metadata = 4;
   // ObjectIDs that were nested in data. This is only set for inlined objects.
   repeated bytes nested_inlined_ids = 5;
+  // Size of this object.
+  int64 size = 6;
 }
 
 message PushTaskRequest {
@@ -182,6 +184,9 @@ message KillActorReply {
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 2;
 }
 
 message GetCoreWorkerStatsReply {
