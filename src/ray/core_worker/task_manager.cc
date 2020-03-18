@@ -215,7 +215,9 @@ void TaskManager::ShutdownIfNeeded() {
     }
   }
   // Do not hold the lock when calling into the reference counter.
-  reference_counter_->DrainAndShutdown(shutdown_hook);
+  if (shutdown_hook != nullptr) {
+    reference_counter_->DrainAndShutdown(shutdown_hook);
+  }
 }
 
 void TaskManager::OnTaskDependenciesInlined(
