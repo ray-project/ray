@@ -17,10 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--no-train", action="store_true", help="Whether to disable training.")
 parser.add_argument(
-    "--inference-mode",
-    type=str,
-    required=True,
-    choices=["local", "remote"])
+    "--inference-mode", type=str, required=True, choices=["local", "remote"])
 parser.add_argument(
     "--off-policy",
     action="store_true",
@@ -35,8 +32,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     env = gym.make("CartPole-v0")
     client = PolicyClient(
-        "http://localhost:9900",
-        inference_mode=args.inference_mode)
+        "http://localhost:9900", inference_mode=args.inference_mode)
 
     eid = client.start_episode(training_enabled=not args.no_train)
     obs = env.reset()
