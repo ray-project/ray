@@ -1,7 +1,6 @@
 import errno
 import logging
 import os
-import tree
 
 import numpy as np
 import ray
@@ -493,7 +492,7 @@ class TFPolicy(Policy):
 
         # build output signatures
         output_signature = self._extra_output_signature_def()
-        for i, a in enumerate(tree.flatten(self._sampled_action)):
+        for i, a in enumerate(tf.nest.flatten(self._sampled_action)):
             output_signature["actions_{}".format(i)] = \
                 tf.saved_model.utils.build_tensor_info(a)
 

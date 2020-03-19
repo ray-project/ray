@@ -1,8 +1,13 @@
-import tree
-
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
+
+try:
+    import tree
+except (ImportError, ModuleNotFoundError):
+    raise ModuleNotFoundError(
+        "Module `dm-tree` is not installed! Run a `pip install dm-tree` on "
+        "your command line to fix this problem.")
 
 
 def sequence_mask(lengths, maxlen, dtype=None):
