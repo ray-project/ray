@@ -265,7 +265,7 @@ class SchedulingQueue {
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<ObjectID> &dependencies = {}) {
-    if (seq_no == -1) {
+    if (seq_no == -1) {  // This applies to direct task submissions
       accept_request();  // A seq_no of -1 means no ordering constraint.
       return;
     }
