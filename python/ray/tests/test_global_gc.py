@@ -112,6 +112,7 @@ def test_global_gc_when_full(shutdown_only):
 
         # Remote workers.
         actors = [GarbageHolder.remote() for _ in range(2)]
+        assert all(ray.get([a.has_garbage.remote() for a in actors]))
 
         # GC should be triggered for all workers, including the local driver,
         # when a remote task tries to put a return value that doesn't fit in
