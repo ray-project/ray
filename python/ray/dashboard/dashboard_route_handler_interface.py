@@ -2,7 +2,6 @@ import aiohttp
 
 from abc import ABC, abstractmethod
 
-
 class BaseDashboardRouteHandler(ABC):
     """Collection of routes that should be implemented for dashboard."""
 

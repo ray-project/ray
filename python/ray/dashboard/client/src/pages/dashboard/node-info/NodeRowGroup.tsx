@@ -8,12 +8,12 @@ import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
 import { NodeInfoResponse, RayletInfoResponse } from "../../../api";
-import { makeNodeCPU, makeWorkerCPU } from "./features/CPU";
+import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";
 import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
 import { NodeHost, WorkerHost } from "./features/Host";
 import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
-import { makeNodeRAM, makeWorkerRAM } from "./features/RAM";
+import { NodeRAM, WorkerRAM } from "./features/RAM";
 import { NodeReceived, WorkerReceived } from "./features/Received";
 import { NodeSent, WorkerSent } from "./features/Sent";
 import { NodeUptime, WorkerUptime } from "./features/Uptime";
@@ -97,14 +97,8 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
       { NodeFeature: NodeWorkers, WorkerFeature: WorkerWorkers },
       { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
-      {
-        NodeFeature: makeNodeCPU(setIframeDialog),
-        WorkerFeature: makeWorkerCPU(setIframeDialog)
-      },
-      {
-        NodeFeature: makeNodeRAM(setIframeDialog),
-        WorkerFeature: makeWorkerRAM(setIframeDialog)
-      },
+      { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
+      { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
       { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
       { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
       { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },

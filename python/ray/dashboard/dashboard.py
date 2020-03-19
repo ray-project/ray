@@ -122,10 +122,10 @@ async def json_response(is_dev, result=None, error=None,
 
 
 class DashboardController(BaseDashboardController):
-    def __init__(self, redis_address, redis_password, update_frequency=1.0):
+    def __init__(self, redis_address, redis_password):
         self.node_stats = NodeStats(redis_address, redis_password)
-        self.raylet_stats = RayletStats(redis_address, update_frequency,
-                                        redis_password)
+        self.raylet_stats = RayletStats(redis_address,
+                                        redis_password=redis_password)
         if Analysis is not None:
             self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
         self.is_hosted = False
@@ -373,72 +373,9 @@ class HostedDashboardHandler:
         self.dashboard_client.start_exporting_metrics()
         return self.dashboard_client.hosted_dashboard_url
 
-    async def is_hosted(self, req) -> aiohttp.web.Response:
-        is_hosted = self.dashboard_controller.is_hosted
-        return await json_response(
-            self.is_dev, result={"is_hosted": is_hosted})
-
-    async def to_hosted(self, req) -> aiohttp.web.Response:
-        return aiohttp.web.Response(
-            text="""
-<html>
-<head>
-    <title> Ray Hosted Dashboard </title>
-    <style>
-    body {
-        font-family: noto sans,sans-serif;
-        padding: 25px;
-    }
-    button {
-    background-color: #0099e6;
-color: white;
-font-size: x-large;
-border: none;
-padding: 3px 6px;
-border-radius: 5%;
-    }
-    </style>
-</head>
-<body>
-    <h1>
-    Ray Hosted Dashboard Terms and Conditions
-    </h1>
-
-    <h2> 📜 📜 📜 </h2>
-    <p> Please agree to our EULA. </p>
-
-    <button id="agreed"> Agree </id>
-
-    <script type="text/javascript">
-        document.getElementById("agreed").onclick = function () {
-            location.href = "/to_hosted_agreed";
-        };
-    </script>
-
-</body>
-</html>
-""",
-            content_type="text/html")
-
     async def enable_hosted_dashboard(self, req) -> aiohttp.web.Response:
         url = self._enable_hosted_dashboard()
         return await json_response(self.is_dev, {"url": url})
-
-    async def to_hosted_redirect(self, req) -> aiohttp.web.Response:
-        dashboard_url = self._enable_hosted_dashboard()
-        if "http://" not in dashboard_url:
-            dashboard_url = "http://" + dashboard_url
-        raise aiohttp.web.HTTPFound(dashboard_url)
-
-    async def grafana_iframe(self, req) -> aiohttp.web.Response:
-        if not self.dashboard_controller.is_hosted:
-            return self.get_forbidden(req)
-
-        iframe_div = self.dashboard_controller.get_grafana_iframe({
-            "pid": req.query.get("pid"),
-            "metric": req.query.get("metric")
-        })
-        return await json_response(self.is_dev, {"frame_html": iframe_div})
 
     async def get_hosted_dashboard_url(self, req) -> aiohttp.web.Response:
         url = self.dashboard_client.hosted_dashboard_url
@@ -448,10 +385,6 @@ border-radius: 5%;
 def setup_hosted_dashboard_routes(app: aiohttp.web.Application,
                                   handler: HostedDashboardHandler):
     """Routes that require dynamically changing class attributes."""
-    app.router.add_get("/api/is_hosted", handler.is_hosted)
-    app.router.add_get("/to_hosted", handler.to_hosted)
-    app.router.add_get("/to_hosted_agreed", handler.to_hosted_redirect)
-    app.router.add_get("/api/grafana_iframe", handler.grafana_iframe)
     app.router.add_get("/api/enable_hostsed_dashboard",
                        handler.enable_hosted_dashboard)
     app.router.add_get("/api/hosted_dashboard_url",
@@ -547,7 +480,6 @@ class Dashboard:
         self.dashboard_controller = DashboardController(
             redis_address, redis_password)
 
-        self.hosted_dashboard_addr = hosted_dashboard_addr
         self.dashboard_client = None
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
@@ -561,10 +493,10 @@ class Dashboard:
             self.dashboard_controller, is_dev=self.is_dev)
 
         # Setup Metrics exporting service if necessary.
-        if self.hosted_dashboard_addr:
+        if hosted_dashboard_addr:
             self.hosted_dashboard_handler = HostedDashboardHandler(
                 self.dashboard_controller,
-                self.hosted_dashboard_addr,
+                hosted_dashboard_addr,
                 self.dashboard_id,
                 is_dev=self.is_dev)
             setup_hosted_dashboard_routes(self.app,
@@ -849,12 +781,11 @@ class NodeStats(threading.Thread):
 
 
 class RayletStats(threading.Thread):
-    def __init__(self, redis_address, update_frequency, redis_password=None):
+    def __init__(self, redis_address, redis_password=None):
         self.nodes_lock = threading.Lock()
         self.nodes = []
         self.stubs = {}
         self.reporter_stubs = {}
-        self.update_frequency = update_frequency
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
 
@@ -957,7 +888,7 @@ class RayletStats(threading.Thread):
     def run(self):
         counter = 0
         while True:
-            time.sleep(self.update_frequency)
+            time.sleep(1.0)
             replies = {}
 
             try:
@@ -997,18 +928,8 @@ class TuneCollector(threading.Thread):
         self._data_lock = threading.Lock()
         self._reload_interval = reload_interval
         self._available = False
-
-        if not os.path.exists(self._logdir):
-            try:
-                logger.info("Create a directory at {}".format(self._logdir))
-                os.mkdir(self._logdir)
-            except OSError as e:
-                logger.warning(e)
-                raise FileNotFoundError(
-                    "Log directory {} does not exist. "
-                    "Please create the directory to use Tune "
-                    "collector".format(self._logdir))
-
+        
+        os.makedirs(self._logdir, exist_ok=True)
         super().__init__()
 
     def get_stats(self):

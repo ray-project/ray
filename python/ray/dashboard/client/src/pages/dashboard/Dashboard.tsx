@@ -49,7 +49,6 @@ class Dashboard extends React.Component<
     typeof mapDispatchToProps
 > {
   timeoutId = 0;
-  state = { isHosted: false };
 
   refreshNodeAndRayletInfo = async () => {
     try {
@@ -57,17 +56,14 @@ class Dashboard extends React.Component<
         nodeInfo,
         rayletInfo,
         tuneAvailability,
-        isHosted
       ] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
-        getTuneAvailability(),
-        getIsHosted()
+        getTuneAvailability()
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
       this.props.setTuneAvailability({ tuneAvailability });
       this.props.setError(null);
-      this.setState({ isHosted: isHosted.is_hosted });
     } catch (error) {
       this.props.setError(error.toString());
     } finally {
@@ -104,9 +100,7 @@ class Dashboard extends React.Component<
     const SelectedComponent = tabs[tab].component;
     return (
       <div className={classes.root}>
-        <Typography variant="h5">
-          {this.state.isHosted ? "Anyscale Hosted Dashboard" : "Ray Dashboard"}
-        </Typography>
+        <Typography variant="h5">Ray Dashboard</Typography>
         <Tabs
           className={classes.tabs}
           indicatorColor="primary"

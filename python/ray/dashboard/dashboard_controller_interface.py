@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 
-
 class BaseDashboardController(ABC):
     """Perform data fetching and other actions required by Dashboard
 

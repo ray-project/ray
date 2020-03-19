@@ -17,16 +17,6 @@ proto_library(
     visibility = ["//java:__subpackages__"],
 )
 
-proto_library(
-    name = "dashboard_proto",
-    srcs = ["src/ray/protobuf/dashboard.proto"]
-)
-
-python_grpc_compile(
-    name = "dashboard_py_proto",
-    deps = [":dashboard_proto"],
-)
-
 cc_proto_library(
     name = "common_cc_proto",
     deps = [":common_proto"],
@@ -1278,7 +1268,6 @@ filegroup(
         "common_py_proto",
         "core_worker_py_proto",
         "gcs_py_proto",
-        "dashboard_py_proto",
         "node_manager_py_proto",
         "reporter_py_proto",
     ],
@@ -1358,8 +1347,6 @@ genrule(
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/gcs_pb2.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/dashboard_pb2.py" &&
-        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/dashboard_pb2_grpc.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py" &&

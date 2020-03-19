@@ -166,9 +166,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               label: "UsedLocalObjectMemory",
               value: actor.usedObjectStoreMemory.toLocaleString()
             },
-            // https://github.com/ray-project/ray/pull/6709/files
-            // chages internal structure, and currentTaskFuncDesc
-            // causes errors.
             // {
             //   label: "Task",
             //   value: actor.currentTaskFuncDesc.join(".")

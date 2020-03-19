@@ -56,15 +56,10 @@ if __name__ == "__main__":
         "--hosted-dashboard-addr",
         required=False,
         type=str,
-        # TODO(simon): change to ray.io address
-        # default="54.200.58.116:9081",
-        default="127.0.0.1:9081",
+        default=None,
         help="Specify the address where user dashboard will be hosted.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
-
-    # TODO(sang): Remove this.
-    hosted_addr_override = os.environ.get("RAY_HOSTED_ADDR")
 
     try:
         dashboard = Dashboard(
@@ -72,8 +67,7 @@ if __name__ == "__main__":
             args.port,
             args.redis_address,
             args.temp_dir,
-            hosted_dashboard_addr=hosted_addr_override
-            or args.hosted_dashboard_addr,
+            hosted_dashboard_addr=args.hosted_dashboard_addr
             redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:
