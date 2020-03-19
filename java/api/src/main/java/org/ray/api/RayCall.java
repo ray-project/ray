@@ -3915,72 +3915,72 @@ class RayCall {
     return Ray.internal().call(pyRemoteFunction, args, options);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass) {
+  public static RayPyActor createActor(PyActorClass pyActorClass) {
     Object[] args = new Object[]{};
     return Ray.internal().createActor(pyActorClass, args, null);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, ActorCreationOptions options) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, ActorCreationOptions options) {
     Object[] args = new Object[]{};
     return Ray.internal().createActor(pyActorClass, args, options);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0) {
     Object[] args = new Object[]{obj0};
     return Ray.internal().createActor(pyActorClass, args, null);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, ActorCreationOptions options) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, ActorCreationOptions options) {
     Object[] args = new Object[]{obj0};
     return Ray.internal().createActor(pyActorClass, args, options);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1) {
     Object[] args = new Object[]{obj0, obj1};
     return Ray.internal().createActor(pyActorClass, args, null);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, ActorCreationOptions options) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, ActorCreationOptions options) {
     Object[] args = new Object[]{obj0, obj1};
     return Ray.internal().createActor(pyActorClass, args, options);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2) {
     Object[] args = new Object[]{obj0, obj1, obj2};
     return Ray.internal().createActor(pyActorClass, args, null);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, ActorCreationOptions options) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, ActorCreationOptions options) {
     Object[] args = new Object[]{obj0, obj1, obj2};
     return Ray.internal().createActor(pyActorClass, args, options);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3};
     return Ray.internal().createActor(pyActorClass, args, null);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, ActorCreationOptions options) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, ActorCreationOptions options) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3};
     return Ray.internal().createActor(pyActorClass, args, options);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
     return Ray.internal().createActor(pyActorClass, args, null);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, ActorCreationOptions options) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, ActorCreationOptions options) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
     return Ray.internal().createActor(pyActorClass, args, options);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
     return Ray.internal().createActor(pyActorClass, args, null);
   }
 
-  public static <R> RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5, ActorCreationOptions options) {
+  public static RayPyActor createActor(PyActorClass pyActorClass, Object obj0, Object obj1, Object obj2, Object obj3, Object obj4, Object obj5, ActorCreationOptions options) {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4, obj5};
     return Ray.internal().createActor(pyActorClass, args, options);
   }

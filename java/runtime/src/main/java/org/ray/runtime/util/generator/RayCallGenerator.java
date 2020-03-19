@@ -296,7 +296,7 @@ public class RayCallGenerator extends BaseGenerator {
       }
     }
 
-    String genericType = "<R>";
+    String genericType = forActorCreation ? "" : " <R>";
     String returnType = !forActorCreation ? "RayObject<R>" : "RayPyActor";
     String funcName = forActorCreation ? "createActor" : "call";
     String internalCallFunc = forActorCreation ? "createActor" :
@@ -304,7 +304,7 @@ public class RayCallGenerator extends BaseGenerator {
     funcArgs += ", args";
     // Method signature.
     newLine(1, String.format(
-        "%s %s %s %s(%s%s) {", modifiers, genericType,
+        "%s%s %s %s(%s%s) {", modifiers, genericType,
         returnType, funcName, paramPrefix + paramList, optionsParam
     ));
     // Method body.
