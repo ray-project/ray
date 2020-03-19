@@ -603,9 +603,11 @@ class LocalIterator(Generic[T]):
 
     def _build_once(self):
         if self.built_iterator is None:
+            print("build iter 1")
             it = iter(self.base_iterator(self.timeout))
             for fn in self.local_transforms:
                 it = fn(it)
+            print("build iter 2")
 
             # This sets the iterator context during iterator execution, and
             # clears it after so that multiple iterators can be used at a time.
