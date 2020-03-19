@@ -610,17 +610,23 @@ class LocalIterator(Generic[T]):
             # This sets the iterator context during iterator execution, and
             # clears it after so that multiple iterators can be used at a time.
             def set_restore_context(it):
+                print("set_restore_context: start")
                 if hasattr(self.thread_local, "metrics"):
                     prev_metrics = self.thread_local.metrics
                 else:
                     prev_metrics = None
+                print("set_restore_context: prev metrics", prev_metrics)
                 self.thread_local.metrics = self.metrics
                 try:
+                    print("set_restore_context: start for loop")
                     for item in it:
                         self.thread_local.metrics = prev_metrics
+                        print("set_restore_context: restore to prev")
                         yield item
+                        print("set_restore_context: restore to self")
                         self.thread_local.metrics = self.metrics
                 finally:
+                    print("set_restore_context: exit for loop")
                     self.thread_local.metrics = prev_metrics
 
             it = set_restore_context(it)
