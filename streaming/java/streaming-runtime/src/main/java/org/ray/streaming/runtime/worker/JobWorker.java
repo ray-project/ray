@@ -2,6 +2,7 @@ package org.ray.streaming.runtime.worker;
 
 import java.io.Serializable;
 import java.util.Map;
+import org.ray.api.Ray;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -59,7 +60,6 @@ public class JobWorker implements Serializable {
         Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
     if (channelType.equals(Config.NATIVE_CHANNEL)) {
       transferHandler = new TransferHandler(
-          /*TOCHECK: getNativeCoreWorker()*/ 0,
           new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),
           new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessageSync", "([B)[B"),
           new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessage", "([B)V"),

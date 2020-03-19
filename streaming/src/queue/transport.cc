@@ -28,10 +28,11 @@ void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(
       std::move(buffer), meta, std::vector<ObjectID>(), true)));
 
-  STREAMING_CHECK(core_worker_ != nullptr);
+  // TOCHECK: Is there a better place to set it?
+  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id_);
   std::vector<std::shared_ptr<RayObject>> results;
-  ray::Status st =
-      core_worker_->SubmitActorTask(peer_actor_id_, function, args, options, &return_ids);
+  ray::Status st = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      peer_actor_id_, function, args, options, &return_ids);
   if (!st.ok()) {
     STREAMING_LOG(ERROR) << "SubmitActorTask failed. " << st;
   }
@@ -49,8 +50,11 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
   std::vector<ObjectID> return_ids;
   SendInternal(buffer, function, TASK_OPTION_RETURN_NUM_1, return_ids);
 
+  // TOCHECK: Is there a better place to set it?
+  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id_);
   std::vector<std::shared_ptr<RayObject>> results;
-  Status get_st = core_worker_->Get(return_ids, timeout_ms, &results);
+  Status get_st =
+      CoreWorkerProcess::GetCoreWorker().Get(return_ids, timeout_ms, &results);
   if (!get_st.ok()) {
     STREAMING_LOG(ERROR) << "Get fail.";
     return nullptr;
