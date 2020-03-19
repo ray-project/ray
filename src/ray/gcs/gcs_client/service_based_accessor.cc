@@ -263,12 +263,12 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
   return Status::OK();
 }
 
-ServiceBasedRawActorInfoAccessor::ServiceBasedRawActorInfoAccessor(
+ServiceBasedNewActorInfoAccessor::ServiceBasedNewActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : ServiceBasedActorInfoAccessor(client_impl),
       raw_actor_sub_executor_(client_impl->GetRedisGcsClient().raw_actor_table()) {}
 
-Status ServiceBasedRawActorInfoAccessor::AsyncSubscribeAll(
+Status ServiceBasedNewActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing register or update operations of actors.";
@@ -279,7 +279,7 @@ Status ServiceBasedRawActorInfoAccessor::AsyncSubscribeAll(
   return status;
 }
 
-Status ServiceBasedRawActorInfoAccessor::AsyncSubscribe(
+Status ServiceBasedNewActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
@@ -292,7 +292,7 @@ Status ServiceBasedRawActorInfoAccessor::AsyncSubscribe(
   return status;
 }
 
-Status ServiceBasedRawActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
+Status ServiceBasedNewActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                           const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id;
   auto status = raw_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);

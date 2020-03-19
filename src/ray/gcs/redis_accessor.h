@@ -98,14 +98,14 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
   ActorSubscriptionExecutor actor_sub_executor_;
 };
 
-/// \class RedisRawActorInfoAccessor
-/// `RedisRawActorInfoAccessor` is an implementation of `ActorInfoAccessor`
+/// \class RedisNewActorInfoAccessor
+/// `RedisNewActorInfoAccessor` is an implementation of `ActorInfoAccessor`
 /// that uses Redis as the backend storage.
-class RedisRawActorInfoAccessor : public RedisActorInfoAccessor {
+class RedisNewActorInfoAccessor : public RedisActorInfoAccessor {
  public:
-  explicit RedisRawActorInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisNewActorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisRawActorInfoAccessor() {}
+  virtual ~RedisNewActorInfoAccessor() {}
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
@@ -131,7 +131,7 @@ class RedisRawActorInfoAccessor : public RedisActorInfoAccessor {
   Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const override;
 
  private:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, RawActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, NewActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor raw_actor_sub_executor_;
 };

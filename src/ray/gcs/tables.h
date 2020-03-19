@@ -737,12 +737,12 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   Status Get(const ActorID &actor_id, ActorTableData *actor_table_data);
 };
 
-/// Raw actor table.
+/// New actor table.
 /// This table is only used for GCS-based actor management. And when completely migrate to
 /// GCS service, the old actor table could be removed.
-class RawActorTable : public Table<ActorID, ActorTableData> {
+class NewActorTable : public Table<ActorID, ActorTableData> {
  public:
-  RawActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+  NewActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                 RedisGcsClient *client)
       : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::ACTOR_PUBSUB;

@@ -104,11 +104,11 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Sequencer<ActorID> sequencer_;
 };
 
-class ServiceBasedRawActorInfoAccessor : public ServiceBasedActorInfoAccessor {
+class ServiceBasedNewActorInfoAccessor : public ServiceBasedActorInfoAccessor {
  public:
-  explicit ServiceBasedRawActorInfoAccessor(ServiceBasedGcsClient *client_impl);
+  explicit ServiceBasedNewActorInfoAccessor(ServiceBasedGcsClient *client_impl);
 
-  virtual ~ServiceBasedRawActorInfoAccessor() = default;
+  virtual ~ServiceBasedNewActorInfoAccessor() = default;
 
   Status AsyncSubscribeAll(
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
@@ -121,7 +121,7 @@ class ServiceBasedRawActorInfoAccessor : public ServiceBasedActorInfoAccessor {
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
 
  private:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, RawActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, NewActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor raw_actor_sub_executor_;
 };

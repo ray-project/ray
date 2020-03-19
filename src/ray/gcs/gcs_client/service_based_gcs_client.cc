@@ -52,7 +52,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   if (getenv("RAY_GCS_SERVICE_ACTOR_MANAGEMENT_ENABLED") != nullptr) {
     RAY_CHECK(getenv("RAY_GCS_SERVICE_ENABLED") != nullptr);
-    actor_accessor_.reset(new ServiceBasedRawActorInfoAccessor(this));
+    actor_accessor_.reset(new ServiceBasedNewActorInfoAccessor(this));
   } else {
     actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   }

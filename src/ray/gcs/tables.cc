@@ -807,12 +807,12 @@ Status ActorTable::Get(const ray::ActorID &actor_id,
   return Status::OK();
 }
 
-std::vector<ActorID> RawActorTable::GetAllActorID() {
+std::vector<ActorID> NewActorTable::GetAllActorID() {
   auto redis_context = client_->primary_context()->sync_context();
   return SyncGetAllActorID(redis_context, TablePrefix_Name(prefix_));
 }
 
-Status RawActorTable::Get(const ray::ActorID &actor_id,
+Status NewActorTable::Get(const ray::ActorID &actor_id,
                           ray::rpc::ActorTableData *actor_table_data) {
   RAY_CHECK(actor_table_data != nullptr);
   auto key = TablePrefix_Name(prefix_) + actor_id.Binary();
