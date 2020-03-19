@@ -256,7 +256,7 @@ void RedisRangeOpExecutor::OnScanCallback(std::shared_ptr<CallbackReply> reply) 
 
   std::vector<std::string> keys;
   cursor_ = reply->ReadAsScanArray(&keys);
-  std::vector<std::string> deduped_keys = DedupeKeys(keys);
+  std::vector<std::string> deduped_keys = DeduplicateKeys(keys);
   if (!deduped_keys.empty()) {
     ProcessScanResult(deduped_keys);
     return;
@@ -310,7 +310,7 @@ void RedisRangeOpExecutor::DoCallback() {
   }
 }
 
-std::vector<std::string> RedisRangeOpExecutor::DedupeKeys(
+std::vector<std::string> RedisRangeOpExecutor::DeduplicateKeys(
     const std::vector<std::string> &keys) {
   std::vector<std::string> deduped_keys;
   for (auto &key : keys) {
@@ -320,7 +320,7 @@ std::vector<std::string> RedisRangeOpExecutor::DedupeKeys(
       keys_returned_by_scan_.emplace(key);
     }
   }
-  RAY_LOG(DEBUG) << "DedupeKeys current scan return key count " << keys.size()
+  RAY_LOG(DEBUG) << "DeduplicateKeys current scan return key count " << keys.size()
                  << " deduped_keys count " << deduped_keys.size()
                  << " total scan return key count " << keys_returned_by_scan_.size();
   return deduped_keys;

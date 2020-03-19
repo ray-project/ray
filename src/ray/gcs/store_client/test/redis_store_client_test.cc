@@ -130,10 +130,8 @@ TEST_F(RedisStoreClientTest, AsyncGetAllTest) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::REDIS_SERVER_EXEC_PATH = argv[1];
   ray::REDIS_CLIENT_EXEC_PATH = argv[2];
-  // TODO(micafan) Remove dependency to Redis Module.
-  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

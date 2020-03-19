@@ -13,8 +13,7 @@ void IOServicePool::Run() {
     io_services_.emplace_back(io_service);
 
     threads_.emplace_back(new std::thread([io_service] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*io_service));
+      boost::asio::io_service::work work(*io_service);
       io_service->run();
     }));
   }

@@ -19,11 +19,11 @@ class StoreClientOptions {
         password_(password),
         is_test_client_(is_test_client) {}
 
-  // Redis server ip.
+  // Server ip.
   std::string server_ip_;
-  // Redis server port.
+  // Server port.
   int server_port_;
-  // Redis server password.
+  // Server password.
   std::string password_;
 
   // Whether this client is used for tests.

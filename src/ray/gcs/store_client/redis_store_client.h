@@ -99,7 +99,7 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<RedisRangeOpExe
 
   void OnDeleteCallback(Status status);
 
-  std::vector<std::string> DedupeKeys(const std::vector<std::string> &keys);
+  std::vector<std::string> DeduplicateKeys(const std::vector<std::string> &keys);
 
  private:
   std::shared_ptr<RedisClient> redis_client_{nullptr};
