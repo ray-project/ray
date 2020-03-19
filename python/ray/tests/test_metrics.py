@@ -300,6 +300,8 @@ def test_raylet_pending_tasks(shutdown_only):
         def __init__(self):
             self.a = [ActorRequiringGPU.remote() for i in range(4)]
 
+    # If we do not get ParentActor actor handler, reference counter will
+    # terminate ParentActor.
     parent_actor = ParentActor.remote()
     assert parent_actor is not None
 
