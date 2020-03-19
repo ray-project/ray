@@ -84,7 +84,8 @@ def train_example(num_workers=1,
         use_gpu=use_gpu,
         backend="nccl" if use_gpu else "gloo",
         scheduler_step_freq="epoch",
-        use_fp16=use_fp16)
+        use_fp16=use_fp16,
+        tqdm=True)
     pbar = trange(num_epochs, unit="epoch")
     for i in pbar:
         info = {"num_steps": 1} if test_mode else {}

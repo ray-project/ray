@@ -8,8 +8,7 @@ import ray
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,
-                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP,
-                                          BATCH_LOGS_RATE_LIMIT)
+                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 amp = None
 
@@ -80,8 +79,6 @@ class TrainingOperator:
         self._use_fp16 = use_fp16
         self.global_step = 0
 
-        self._last_batch_logs_send = 0
-
         if type(self) is TrainingOperator:
             for component in (models, schedulers, optimizers):
                 if _is_multiple(component):
@@ -92,19 +89,8 @@ class TrainingOperator:
         self.timers = TimerCollection()
         self.setup(config)
 
-    def _set_batch_logs_reporter(self, r):
-        self._batch_logs_reporter = r
-
-    def _send_setup_info(self, data):
-        return ray.get(self._batch_logs_reporter._send_setup.remote(data))
-
-    def _send_batch_logs(self, data):
-        cur_time = time.monotonic()
-        if cur_time - self._last_batch_logs_send < BATCH_LOGS_RATE_LIMIT:
-            return
-
-        self._last_batch_logs_send = cur_time
-        return ray.get(self._batch_logs_reporter._send.remote(data))
+    def set_reporters(self, reporters):
+        self.reporters = reporters
 
     def _set_timers(self, timers):
         """Passes in the timers from the Runner."""
@@ -158,15 +144,10 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
-        self._last_batch_logs_send = 0
-        metric_meters = AverageMeterCollection()
+        for r in self.reporters:
+            r.on_epoch_begin(info, self)
 
-        if self.world_rank == 0:
-            tqdm_setup = {
-                "packet_type": "tqdm_setup",
-                "loader_len": len(self.train_loader)
-            }
-            self._send_setup_info(tqdm_setup)
+        metric_meters = AverageMeterCollection()
 
         self.model.train()
         for batch_idx, batch in enumerate(iterator):
@@ -177,13 +158,8 @@ class TrainingOperator:
             batch_info.update(info)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
-            if self.world_rank == 0:
-                pbar_metrics = self.make_progress_bar_metrics(metrics)
-                self._send_batch_logs({
-                    "packet_type": "batch_logs",
-                    "batch_idx": batch_info["batch_idx"],
-                    "pbar_metrics": pbar_metrics
-                })
+            for r in self.reporters:
+                r.on_batch_end(batch_info, metrics, self)
 
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
@@ -196,11 +172,6 @@ class TrainingOperator:
             self.scheduler.step()
 
         return metric_meters.summary()
-
-    def make_progress_bar_metrics(self, metrics):
-        return {
-            "loss": metrics["train_loss"]
-        }
 
     def train_batch(self, batch, batch_info):
         """Computes loss and updates the model over one batch.

@@ -4,9 +4,9 @@ import logging
 import numbers
 import tempfile
 import time
+import asyncio
 import torch
 import torch.distributed as dist
-from tqdm import tqdm
 
 import ray
 
@@ -15,11 +15,11 @@ from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
-from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
+from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import (VALID_SCHEDULER_STEP,
                                           BATCH_LOGS_RATE_LIMIT)
-from ray.util.sgd.torch.batch_logs_reporter import _BatchLogsReporter
+from ray.util.sgd.torch.tqdm_handler import TqdmHandler
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -149,6 +149,7 @@ class TorchTrainer:
             use_gpu=False,
             backend="auto",
             use_fp16=False,
+            tqdm=False,
             apex_args=None,
             scheduler_step_freq="batch",
             num_replicas=None,
@@ -220,6 +221,10 @@ class TorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
+        self.handlers = []
+        if tqdm:
+            self.handlers.append(TqdmHandler())
+
         _validate_scheduler_step_freq(scheduler_step_freq)
         self.scheduler_step_freq = scheduler_step_freq
 
@@ -270,11 +275,13 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq,
                 )
             ]
-            self.batch_reporter = _BatchLogsReporter.remote()
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
             # Get setup tasks in order to throw errors on failure
-            ray.get(self.workers[0].setup.remote(self.batch_reporter))
+            ray.get(self.workers[0].setup.remote())
+            ray.get(self.workers[0].set_reporters.remote([
+                h.create_reporter() for h in self.handlers
+            ]))
         else:
             # Generate actor class
             Runner = ray.remote(
@@ -295,7 +302,6 @@ class TorchTrainer:
                     scheduler_step_freq=self.scheduler_step_freq)
                 for i in range(num_workers)
             ]
-            self.batch_reporter = _BatchLogsReporter.remote()
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
 
@@ -305,10 +311,12 @@ class TorchTrainer:
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(address, i, len(self.workers),
-                                    self.batch_reporter)
+                worker.setup.remote(address, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
             ])
+            ray.get([w.set_reporters.remote([
+                h.create_reporter() for h in self.handlers
+            ]) for w in self.workers])
 
     def train(self,
               num_steps=None,
@@ -365,37 +373,13 @@ class TorchTrainer:
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers(checkpoint=checkpoint)
 
-        batch_pbar = None
-
-        def batch_logs_handler(packet):
-            nonlocal batch_pbar
-
-            if packet["packet_type"] == "tqdm_setup":
-                n = num_steps
-                if n is None:
-                    n = packet["loader_len"]
-
-                desc = ""
-                if info is not None and "epoch_idx" in info:
-                    if "num_epochs" in info:
-                        desc = "{}/{}e".format(info["epoch_idx"] + 1,
-                                               info["num_epochs"])
-                    else:
-                        desc = "{}e".format(info["epoch_idx"] + 1)
-
-                batch_pbar = tqdm(
-                    total=n, desc=desc, unit="batch", leave=False)
-                return
-
-            if packet["packet_type"] == "batch_logs":
-                batch_pbar.n = packet["batch_idx"] + 1
-                batch_pbar.set_postfix(packet["pbar_metrics"])
+        for h in self.handlers:
+            h.record_train_info(info, num_steps)
 
         success, worker_stats = self._train_epoch(
             num_steps=num_steps,
             profile=profile,
-            info=info,
-            batch_logs_handler=batch_logs_handler)
+            info=info)
         # Fault handling
         for i in range(max_retries):
             if success:
@@ -445,6 +429,9 @@ class TorchTrainer:
         ]
 
         unfinished = worker_trains
+        if not self.handlers:
+            return check_for_failure(unfinished)
+
         try:
             while len(unfinished) > 0:
                 finished, unfinished = ray.wait(
@@ -453,15 +440,13 @@ class TorchTrainer:
                 # throw errors on agent failure
                 finished = ray.get(finished)
 
-                if batch_logs_handler is not None:
-                    setup_read = ray.get(
-                        self.batch_reporter._read_setup.remote())
-                    if setup_read["new_data"]:
-                        batch_logs_handler(setup_read["data"])
-
-                    log_read = ray.get(self.batch_reporter._read.remote())
-                    if log_read["new_data"]:
-                        batch_logs_handler(log_read["data"])
+                futures = [h.update() for h in self.handlers]
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                loop.run_until_complete(asyncio.wait(futures))
+                loop.close()
 
             return True, worker_trains
         except RayActorError as exc:
