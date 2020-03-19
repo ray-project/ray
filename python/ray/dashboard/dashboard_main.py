@@ -67,7 +67,7 @@ if __name__ == "__main__":
             args.port,
             args.redis_address,
             args.temp_dir,
-            hosted_dashboard_addr=args.hosted_dashboard_addr
+            hosted_dashboard_addr=args.hosted_dashboard_addr,
             redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:

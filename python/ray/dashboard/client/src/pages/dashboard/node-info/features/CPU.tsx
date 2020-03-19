@@ -39,11 +39,6 @@ export const ClusterCPU: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-type setIframeDialogType = (
-  pid: number | "All",
-  metric: "cpu" | "memory"
-) => void;
-
 export const NodeCPU: NodeFeatureComponent = ({ node }) => (
   <div style={{ minWidth: 60 }}>
     <UsageBar percent={node.cpu} text={`${node.cpu.toFixed(1)}%`} />

@@ -9,8 +9,7 @@ import { connect } from "react-redux";
 import {
   getNodeInfo,
   getRayletInfo,
-  getTuneAvailability,
-  getIsHosted
+  getTuneAvailability
 } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";

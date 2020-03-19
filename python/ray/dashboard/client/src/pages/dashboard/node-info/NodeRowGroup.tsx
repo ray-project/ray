@@ -58,7 +58,6 @@ interface Props {
   };
   setLogDialog: (hostname: string, pid: number | null) => void;
   setErrorDialog: (hostname: string, pid: number | null) => void;
-  setIframeDialog: (pid: number | "All", metric: "cpu" | "memory") => void;
   initialExpanded: boolean;
 }
 
@@ -88,8 +87,7 @@ class NodeRowGroup extends React.Component<
       logCounts,
       errorCounts,
       setLogDialog,
-      setErrorDialog,
-      setIframeDialog
+      setErrorDialog
     } = this.props;
     const { expanded } = this.state;
 
