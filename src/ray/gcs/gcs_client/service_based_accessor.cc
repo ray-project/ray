@@ -870,8 +870,9 @@ Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
   return Status::OK();
 }
 
-Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info) {
+Status ServiceBasedWorkerInfoAccessor::AsyncRegisterWorker(
+    rpc::WorkerType worker_type, const WorkerID &worker_id,
+    const std::unordered_map<std::string, std::string> &worker_info) {
   // TOCHECK: Support this.
   return Status::OK();
 }

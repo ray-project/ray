@@ -568,7 +568,8 @@ class WorkerInfoAccessor {
   /// \param worker_id The ID of the worker.
   /// \param worker_info The information of the worker.
   /// \return Status.
-  virtual Status AsyncRegisterWorker(rpc::WorkerType worker_type, const WorkerID &worker_id,
+  virtual Status AsyncRegisterWorker(
+      rpc::WorkerType worker_type, const WorkerID &worker_id,
       const std::unordered_map<std::string, std::string> &worker_info) = 0;
 
  protected:

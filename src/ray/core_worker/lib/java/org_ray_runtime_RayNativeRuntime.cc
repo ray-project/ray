@@ -39,9 +39,9 @@ extern "C" {
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
     JNIEnv *env, jclass, jint workerMode, jstring nodeIpAddress, jint nodeManagerPort,
-    jstring driverName,
-    jstring storeSocket, jstring rayletSocket, jbyteArray jobId, jobject gcsClientOptions,
-    jint numWorkersPerProcess, jstring logDir, jobject rayletConfigParameters) {
+    jstring driverName, jstring storeSocket, jstring rayletSocket, jbyteArray jobId,
+    jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
+    jobject rayletConfigParameters) {
   auto raylet_config = JavaMapToNativeMap<std::string, std::string>(
       env, rayletConfigParameters,
       [](JNIEnv *env, jobject java_key) {

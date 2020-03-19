@@ -1242,16 +1242,9 @@ def connect(node,
         node.redis_password,
     )
     worker.core_worker = ray._raylet.CoreWorker(
-        (mode == SCRIPT_MODE),
-        node.plasma_store_socket_name,
-        node.raylet_socket_name,
-        job_id,
-        gcs_options,
-        node.get_logs_dir_path(),
-        node.node_ip_address,
-        node.node_manager_port,
-        driver_name
-    )
+        (mode == SCRIPT_MODE), node.plasma_store_socket_name,
+        node.raylet_socket_name, job_id, gcs_options, node.get_logs_dir_path(),
+        node.node_ip_address, node.node_manager_port, driver_name)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(

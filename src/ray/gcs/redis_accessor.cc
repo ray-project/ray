@@ -659,8 +659,9 @@ Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
   return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
 }
 
-Status RedisWorkerInfoAccessor::AsyncRegisterWorker(rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info) {
+Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
+    rpc::WorkerType worker_type, const WorkerID &worker_id,
+    const std::unordered_map<std::string, std::string> &worker_info) {
   std::vector<std::string> args;
   args.emplace_back("HMSET");
   if (worker_type == rpc::WorkerType::DRIVER) {

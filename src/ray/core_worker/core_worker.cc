@@ -464,9 +464,7 @@ void CoreWorker::RunIOService() {
   io_service_.run();
 }
 
-const WorkerID &CoreWorker::GetWorkerID() const {
-  return worker_context_.GetWorkerID();
-}
+const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
@@ -507,7 +505,8 @@ void CoreWorker::RegisterToGcs() {
     // TOCHECK: How to fill `stdout_file` and `stderr_file` for a worker?
   }
 
-  RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id, worker_info));
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id,
+                                                          worker_info));
 }
 
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {
