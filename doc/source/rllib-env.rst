@@ -347,6 +347,9 @@ Example:
     client = PolicyClient("http://localhost:9900", inference_mode="local")
     episode_id = client.start_episode()
     ...
+    action = client.get_action(episode_id, cur_obs)
+    ...
+    client.end_episode(episode_id, last_obs)
 
 To understand the difference between standard envs, external envs, and connecting with a ``PolicyClient``, refer to the following figure:
 
