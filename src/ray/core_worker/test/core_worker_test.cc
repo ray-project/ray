@@ -32,6 +32,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/util/filesystem.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -149,7 +150,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + ObjectID::FromRandom().Hex();
+    std::string store_socket_name =
+        ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable + " -m 10000000 -s " +
                                  store_socket_name +
@@ -171,7 +173,8 @@ class CoreWorkerTest : public ::testing::Test {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           int port, std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + ObjectID::FromRandom().Hex();
+    std::string raylet_socket_name =
+        ray::JoinPaths(ray::GetUserTempDir(), "raylet" + ObjectID::FromRandom().Hex());
     std::string ray_start_cmd = raylet_executable;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
@@ -204,8 +207,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartRayletMonitor(std::string redis_address) {
-    std::string raylet_monitor_pid =
-        "/tmp/raylet_monitor" + ObjectID::FromRandom().Hex() + ".pid";
+    std::string raylet_monitor_pid = ray::JoinPaths(
+        ray::GetUserTempDir(), "raylet_monitor" + ObjectID::FromRandom().Hex() + ".pid");
     std::string raylet_monitor_start_cmd = raylet_monitor_executable;
     raylet_monitor_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -225,8 +228,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartGcsServer(std::string redis_address) {
-    std::string gcs_server_pid =
-        "/tmp/gcs_server" + ObjectID::FromRandom().Hex() + ".pid";
+    std::string gcs_server_pid = ray::JoinPaths(
+        ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex() + ".pid");
     std::string gcs_server_start_cmd = gcs_server_executable;
     gcs_server_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")

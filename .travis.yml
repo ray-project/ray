@@ -377,6 +377,3 @@ deploy:
       all_branches: true
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
-cache:
-  directories:
-    - $HOME/ray-bazel-cache

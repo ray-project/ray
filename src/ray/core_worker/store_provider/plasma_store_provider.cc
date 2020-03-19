@@ -25,11 +25,18 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals, bool evict_if_full,
-    std::function<void()> on_store_full)
+    std::function<void()> on_store_full,
+    std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
       check_signals_(check_signals),
       evict_if_full_(evict_if_full),
       on_store_full_(on_store_full) {
+  if (get_current_call_site != nullptr) {
+    get_current_call_site_ = get_current_call_site;
+  } else {
+    get_current_call_site_ = []() { return "<no callsite callback>"; };
+  }
+  buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
@@ -110,7 +117,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
       } else {
         RAY_LOG(ERROR) << "Failed to put object " << object_id << " after "
                        << (max_retries + 1) << " attempts. Plasma store status:\n"
-                       << MemoryUsageString();
+                       << MemoryUsageString() << "\n---\n"
+                       << "--- Tip: Use the `ray memory` command to list active objects "
+                          "in the cluster."
+                       << "\n---\n";
       }
     } else if (plasma::IsPlasmaObjectExists(plasma_status)) {
       RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
@@ -171,7 +181,21 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       std::shared_ptr<PlasmaBuffer> data = nullptr;
       std::shared_ptr<PlasmaBuffer> metadata = nullptr;
       if (plasma_results[i].data && plasma_results[i].data->size()) {
-        data = std::make_shared<PlasmaBuffer>(plasma_results[i].data);
+        // We track the set of active data buffers in active_buffers_. On destruction,
+        // the buffer entry will be removed from the set via callback.
+        std::shared_ptr<BufferTracker> tracker = buffer_tracker_;
+        data = std::make_shared<PlasmaBuffer>(
+            plasma_results[i].data, [tracker, object_id](PlasmaBuffer *this_buffer) {
+              absl::MutexLock lock(&tracker->active_buffers_mutex_);
+              auto key = std::make_pair(object_id, this_buffer);
+              RAY_CHECK(tracker->active_buffers_.contains(key));
+              tracker->active_buffers_.erase(key);
+            });
+        auto call_site = get_current_call_site_();
+        {
+          absl::MutexLock lock(&tracker->active_buffers_mutex_);
+          tracker->active_buffers_[std::make_pair(object_id, data.get())] = call_site;
+        }
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
         metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
@@ -350,6 +374,23 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
   std::lock_guard<std::mutex> guard(store_client_mutex_);
   return store_client_.DebugString();
+}
+
+absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
+CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> used;
+  absl::MutexLock lock(&buffer_tracker_->active_buffers_mutex_);
+  for (const auto &entry : buffer_tracker_->active_buffers_) {
+    auto it = used.find(entry.first.first);
+    if (it != used.end()) {
+      // Prefer to keep entries that have non-empty callsites.
+      if (!it->second.second.empty()) {
+        continue;
+      }
+    }
+    used[entry.first.first] = std::make_pair(entry.first.second->Size(), entry.second);
+  }
+  return used;
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(

@@ -84,6 +84,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The raylet config list of this node.
+  std::unordered_map<std::string, std::string> raylet_config;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -593,6 +595,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a `GlobalGC` request.
   void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `FormatGlobalMemoryInfo`` request.
+  void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
+                                    rpc::FormatGlobalMemoryInfoReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();

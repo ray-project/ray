@@ -72,7 +72,12 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// cluster and all objects that contain it are also out of scope. If this flag
 /// is off and object_pinning_enabled is turned on, then an object will not be
 /// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
+
+/// Whether to record the creation sites of object references. This adds more
+/// information to `ray memstat`, but introduces a little extra overhead when
+/// creating object references.
+RAY_CONFIG(bool, record_ref_creation_sites, true)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -86,7 +91,7 @@ RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_timeout_milliseconds.
-RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -262,3 +267,6 @@ RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
 /// Duration to sleep after failing to put an object in plasma because it is full.
 /// This will be exponentially increased for each retry.
 RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+
+/// Duration to wait between retries for failed tasks.
+RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)

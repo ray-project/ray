@@ -10,7 +10,7 @@ import com.typesafe.config.ConfigValue;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -67,7 +67,7 @@ public class RayConfig {
 
   public String rayletSocketName;
   private int nodeManagerPort;
-  public final List<String> rayletConfigParameters;
+  public final Map<String, String> rayletConfigParameters;
 
   public final String jobResourcePath;
   public final String pythonWorkerCommand;
@@ -204,11 +204,11 @@ public class RayConfig {
     }
 
     // Raylet parameters.
-    rayletConfigParameters = new ArrayList<>();
+    rayletConfigParameters = new HashMap<>();
     Config rayletConfig = config.getConfig("ray.raylet.config");
     for (Map.Entry<String, ConfigValue> entry : rayletConfig.entrySet()) {
-      String parameter = entry.getKey() + "," + entry.getValue().unwrapped();
-      rayletConfigParameters.add(parameter);
+      Object value = entry.getValue().unwrapped();
+      rayletConfigParameters.put(entry.getKey(), value == null ? "" : value.toString());
     }
 
     // Job resource path.
