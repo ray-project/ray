@@ -634,7 +634,7 @@ cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address, node_manager_port):
+                  node_ip_address, node_manager_port, driver_name):
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
         options.worker_type = (
@@ -648,6 +648,7 @@ cdef class CoreWorker:
         options.install_failure_signal_handler = True
         options.node_ip_address = node_ip_address.encode("utf-8")
         options.node_manager_port = node_manager_port
+        options.driver_name = driver_name
         options.task_execution_callback = task_execution_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect

@@ -25,11 +25,11 @@ extern "C" {
  * Class:     org_ray_runtime_RayNativeRuntime
  * Method:    nativeInitialize
  * Signature:
- * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
+ * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLorg/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;Ljava/util/Map;)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
-    JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jbyteArray, jobject, jint,
-    jstring, jobject);
+    JNIEnv *, jclass, jint, jstring, jint, jstring, jstring, jstring, jbyteArray, jobject,
+    jint, jstring, jobject);
 
 /*
  * Class:     org_ray_runtime_RayNativeRuntime

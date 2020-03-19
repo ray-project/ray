@@ -85,8 +85,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
     nativeInitialize(rayConfig.workerMode.getNumber(),
-        rayConfig.nodeIp, rayConfig.getNodeManagerPort(), rayConfig.objectStoreSocketName,
-        rayConfig.rayletSocketName,
+        rayConfig.nodeIp, rayConfig.getNodeManagerPort(),
+        rayConfig.workerMode == WorkerType.DRIVER ? System.getProperty("user.dir") : "",
+        rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
         (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
         new GcsClientOptions(rayConfig), numWorkersPerProcess,
         rayConfig.logDir, rayConfig.rayletConfigParameters);
@@ -95,8 +96,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     workerContext = new NativeWorkerContext();
     objectStore = new NativeObjectStore(workerContext);
     taskSubmitter = new NativeTaskSubmitter();
-    // TOCHECK: implement this in core worker
-    // registerWorker();
 
     LOGGER.info("RayNativeRuntime started with store {}, raylet {}",
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName);
@@ -151,34 +150,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
-  /**
-   * Register this worker or driver to GCS.
-   */
-  private void registerWorker() {
-    RedisClient redisClient = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-    Map<String, String> workerInfo = new HashMap<>();
-    String workerId = new String(workerContext.getCurrentWorkerId().getBytes());
-    if (rayConfig.workerMode == WorkerType.DRIVER) {
-      workerInfo.put("node_ip_address", rayConfig.nodeIp);
-      workerInfo.put("driver_id", workerId);
-      workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
-      workerInfo.put("plasma_store_socket", rayConfig.objectStoreSocketName);
-      workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
-      workerInfo.put("name", System.getProperty("user.dir"));
-      //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
-      redisClient.hmset("Drivers:" + workerId, workerInfo);
-    } else {
-      workerInfo.put("node_ip_address", rayConfig.nodeIp);
-      workerInfo.put("plasma_store_socket", rayConfig.objectStoreSocketName);
-      workerInfo.put("raylet_socket", rayConfig.rayletSocketName);
-      //TODO: b"Workers:" + worker.workerId,
-      redisClient.hmset("Workers:" + workerId, workerInfo);
-    }
-  }
-
   private static native void nativeInitialize(int workerMode, String ndoeIpAddress,
-      int nodeManagerPort, String storeSocket, String rayletSocket, byte[] jobId,
-      GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
+      int nodeManagerPort, String driverName, String storeSocket, String rayletSocket,
+      byte[] jobId, GcsClientOptions gcsClientOptions, int numWorkersPerProcess,
       String logDir, Map<String, String> rayletConfigParameters);
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);

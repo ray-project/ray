@@ -83,6 +83,8 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
+  /// The name of the driver.
+  std::string driver_name;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
   /// Application-language callback to check for signals that have been received
@@ -691,6 +693,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shut down the worker completely.
   /// \return void.
   void Shutdown();
+
+  /// Register this worker or driver to GCS.
+  void RegisterToGcs();
 
   /// Check if the raylet has failed. If so, shutdown.
   void CheckForRayletFailure(const boost::system::error_code &error);

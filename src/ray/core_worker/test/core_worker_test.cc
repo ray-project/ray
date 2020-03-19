@@ -263,6 +263,7 @@ class CoreWorkerTest : public ::testing::Test {
           true,                           // install_failure_signal_handler
           "127.0.0.1",                    // node_ip_address
           node_manager_port,              // node_manager_port
+          "core_worker_test",             // driver_name
           nullptr,                        // task_execution_callback
           nullptr,                        // check_signals
           nullptr,                        // gc_collect

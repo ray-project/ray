@@ -263,6 +263,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
   RAY_LOG(INFO) << "Initializing worker " << GetWorkerID();
+
   // Initialize gcs client.
   if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
     gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
@@ -270,6 +271,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(options_.gcs_options);
   }
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  RegisterToGcs();
 
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
@@ -479,6 +481,29 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
     // TODO(ekl) we can't unsubscribe to actor notifications here due to
     // https://github.com/ray-project/ray/pull/6885
   }
+}
+
+void CoreWorker::RegisterToGcs() {
+  std::unordered_map<std::string, std::string> worker_info;
+  const auto &worker_id = GetWorkerID();
+  worker_info.emplace("node_ip_address", options_.node_ip_address);
+  worker_info.emplace("plasma_store_socket", options_.store_socket);
+  worker_info.emplace("raylet_socket", options_.raylet_socket);
+
+  if (options_.worker_type == WorkerType::DRIVER) {
+    auto start_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+    worker_info.emplace("driver_id", worker_id.Binary());
+    worker_info.emplace("start_time", std::to_string(start_time));
+    if (!options_.driver_name.empty()) {
+      worker_info.emplace("name", options_.driver_name);
+    }
+  } else {
+    // TOCHECK: How to fill `stdout_file` and `stderr_file` for a worker?
+  }
+
+  RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id, worker_info));
 }
 
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {

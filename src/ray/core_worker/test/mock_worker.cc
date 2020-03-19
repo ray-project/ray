@@ -115,6 +115,7 @@ int main(int argc, char **argv) {
       true,                             // install_failure_signal_handler
       "127.0.0.1",                      // node_ip_address
       std::stoi(std::string(argv[3])),  // node_manager_port
+      "",                               // driver_name
       &ray::ExecuteTask,                // task_execution_callback
       nullptr,                          // check_signals
       nullptr,                          // gc_collect
