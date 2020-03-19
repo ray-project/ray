@@ -46,6 +46,11 @@ class ReferenceCounter {
 
   ~ReferenceCounter() {}
 
+  /// Wait for all object references to go out of scope, and then shutdown.
+  ///
+  /// \param shutdown The shutdown callback to call.
+  void DrainAndShutdown(std::function<void()> shutdown);
+
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
   /// any owner information, since we don't know how it was created.
@@ -365,6 +370,10 @@ class ReferenceCounter {
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
+  /// Shutdown if all references have gone out of scope and shutdown
+  /// is scheduled.
+  void ShutdownIfNeeded() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Deserialize a ReferenceTable.
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
 
@@ -487,6 +496,10 @@ class ReferenceCounter {
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  /// Optional shutdown hook to call when all references have gone
+  /// out of scope.
+  std::function<void()> shutdown_hook_ GUARDED_BY(mutex_) = nullptr;
 };
 
 }  // namespace ray

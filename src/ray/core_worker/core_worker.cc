@@ -288,6 +288,9 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::Exit(bool intentional) {
+  RAY_LOG(INFO)
+      << "Exit signal " << (intentional ? "(intentional)" : "")
+      << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
