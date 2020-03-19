@@ -330,8 +330,7 @@ You can configure any Trainer to launch a policy server with the following confi
 
         # Use the policy server to generate experiences.
         "input": (
-            lambda ioctx: PolicyServerInput( \
-                ioctx, SERVER_ADDRESS, SERVER_PORT)
+            lambda ioctx: PolicyServerInput(ioctx, SERVER_ADDRESS, SERVER_PORT)
         ),
         # Use the existing trainer process to run the server.
         "num_workers": 0,
