@@ -101,34 +101,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
-    FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(workerContext.getCurrentJobId(), func)
-            .functionDescriptor;
-    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
-    return callActorFunction(actor, functionDescriptor, args, numReturns);
-  }
-
-  @Override
-  @SuppressWarnings("unchecked")
-  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
-      Object[] args, ActorCreationOptions options) {
-    FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
-            .functionDescriptor;
-    return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
-  }
-
-  private void checkPyArguments(Object[] args) {
-    for (Object arg : args) {
-      Preconditions.checkArgument(
-          (arg instanceof RayPyActor) || (arg instanceof byte[]),
-          "Python argument can only be a RayPyActor or a byte array, not {}.",
-          arg.getClass().getName());
-    }
-  }
-
-  @Override
   public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
                         CallOptions options) {
     checkPyArguments(args);
@@ -136,6 +108,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         pyRemoteFunction.functionName);
     // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
+  }
+
+  @Override
+  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
+    FunctionDescriptor functionDescriptor =
+        functionManager.getFunction(workerContext.getCurrentJobId(), func)
+            .functionDescriptor;
+    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
+    return callActorFunction(actor, functionDescriptor, args, numReturns);
   }
 
   @Override
@@ -148,12 +129,31 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
+  public <T> RayActor<T> createActor(RayFunc actorFactoryFunc,
+      Object[] args, ActorCreationOptions options) {
+    FunctionDescriptor functionDescriptor =
+        functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
+            .functionDescriptor;
+    return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
+  }
+
+  @Override
   public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
                                 ActorCreationOptions options) {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActorClass.moduleName, pyActorClass.className,
         PYTHON_INIT_METHOD_NAME);
     return (RayPyActor) createActorImpl(functionDescriptor, args, options);
+  }
+
+  private void checkPyArguments(Object[] args) {
+    for (Object arg : args) {
+      Preconditions.checkArgument(
+          (arg instanceof RayPyActor) || (arg instanceof byte[]),
+          "Python argument can only be a RayPyActor or a byte array, not {}.",
+          arg.getClass().getName());
+    }
   }
 
   @Override

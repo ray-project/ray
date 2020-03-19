@@ -153,8 +153,19 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
+  public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
+                        CallOptions options) {
+    return getCurrentRuntime().call(pyRemoteFunction, args, options);
+  }
+
+  @Override
   public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
     return getCurrentRuntime().callActor(actor, func, args);
+  }
+
+  @Override
+  public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object[] args) {
+    return getCurrentRuntime().callActor(pyActor, pyActorMethod, args);
   }
 
   @Override
@@ -164,25 +175,14 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public RuntimeContext getRuntimeContext() {
-    return getCurrentRuntime().getRuntimeContext();
-  }
-
-  @Override
-  public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
-                        CallOptions options) {
-    return getCurrentRuntime().call(pyRemoteFunction, args, options);
-  }
-
-  @Override
-  public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object[] args) {
-    return getCurrentRuntime().callActor(pyActor, pyActorMethod, args);
-  }
-
-  @Override
   public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
                                 ActorCreationOptions options) {
     return getCurrentRuntime().createActor(pyActorClass, args, options);
+  }
+
+  @Override
+  public RuntimeContext getRuntimeContext() {
+    return getCurrentRuntime().getRuntimeContext();
   }
 
   @Override
