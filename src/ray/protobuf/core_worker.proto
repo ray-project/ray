@@ -109,11 +109,11 @@ message PushTaskRequest {
   // Resource mapping ids assigned to the worker executing the task.
   repeated ResourceMapEntry resource_mapping = 6;
   // The version of the caller. This is used to distinguish on-the-fly
-  // requests from an actor before it die, and requests from the reconstructed
-  // actor, which might happen theoretically when network has issues.
-  // This is set to the timestamp when the actor is created, so it can
-  // be used to differentiate which is the new reconstructed actor.
-  // For non-actor workers it's set to 0.
+  // requests from a caller before it die, and requests from the reconstructed
+  // caller, which might happen theoretically when network has issues.
+  // - For an actor, this is set to the timestamp when the actor is created,
+  //   so it can be used to differentiate which is the new reconstructed actor.
+  // - For a non-actor task, it's set to the timestamp the task starts execution.
   int64 caller_version = 7;
 }
 

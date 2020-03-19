@@ -76,7 +76,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-    request->set_caller_version(actor_creation_timestamp_ms_);
+    request->set_caller_version(caller_creation_timestamp_ms_);
 
     absl::MutexLock lock(&mu_);
 
@@ -202,13 +202,14 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectActorTaskSubmitter::SetActorCreationTimestamp() {
-  actor_creation_timestamp_ms_ = current_sys_time_ms();
+void CoreWorkerDirectActorTaskSubmitter::SetCallerCreationTimestamp(int64_t timestamp) {
+  caller_creation_timestamp_ms_ = timestamp;
 }
 
 void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
-                                        rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
+                                        rpc::Address rpc_address,
+                                        std::shared_ptr<DependencyWaiterInterface> dependency_client) {
+  waiter_.reset(new DependencyWaiterImpl(*dependency_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -290,7 +291,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will reconstruct the actor.
-        RAY_CHECK_OK(local_raylet_client_->TaskDone());
+        RAY_CHECK_OK(task_done_());
       }
     }
     if (status.IsSystemExit()) {
@@ -341,7 +342,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         // The existing caller has the newer version, this indicates the request
         // is from an old caller, which might be possible when network has problems.
         // In this case fail this request.
-        RAY_LOG(WARNING) << "Ingoring request from an old caller because "
+        RAY_LOG(WARNING) << "Ignoring request from an old caller because "
                          << "it has a smaller timestamp, old worker ID: "
                          << caller_worker_id << ", current worker ID"
                          << it->second.first.caller_worker_id;
