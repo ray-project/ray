@@ -73,7 +73,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
-  WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -113,7 +113,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
-  WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
   manager_.PendingTaskFailed(spec.TaskId(), error);
@@ -149,7 +149,7 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
-  WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
   for (int i = 0; i < num_retries; i++) {

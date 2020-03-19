@@ -219,7 +219,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   CoreWorker(CoreWorker const &) = delete;
   void operator=(CoreWorker const &other) = delete;
 
-  const WorkerID &GetWorkerID() const { return worker_context_.GetWorkerID(); }
+  const WorkerID &GetWorkerID() const;
 
   WorkerType GetWorkerType() const { return options_.worker_type; }
 

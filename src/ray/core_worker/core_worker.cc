@@ -464,6 +464,10 @@ void CoreWorker::RunIOService() {
   io_service_.run();
 }
 
+const WorkerID &CoreWorker::GetWorkerID() const {
+  return worker_context_.GetWorkerID();
+}
+
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
