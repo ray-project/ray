@@ -1,13 +1,16 @@
+import logging
+
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 
+logger = logging.getLogger(__name__)
+
 try:
     import tree
-except (ImportError, ModuleNotFoundError):
-    raise ModuleNotFoundError(
-        "Module `dm-tree` is not installed! Run a `pip install dm-tree` on "
-        "your command line to fix this problem.")
+except (ImportError, ModuleNotFoundError) as e:
+    logger.warning("`dm-tree` is not installed! Run `pip install dm-tree`.")
+    raise e
 
 
 def sequence_mask(lengths, maxlen, dtype=None):
