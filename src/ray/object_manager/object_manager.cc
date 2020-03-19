@@ -38,7 +38,7 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config)
 ObjectStoreRunner::~ObjectStoreRunner() {
   // Try to stop the eventloop gracefully with a timeout.
   plasma_store_.Stop();
-  std::this_thread::sleep_for(std::chrono::microseconds(100));
+  std::this_thread::sleep_for(std::chrono::microseconds(500));
   pthread_kill(store_thread_.native_handle(), SIGTERM);
   store_thread_.join();
 }
