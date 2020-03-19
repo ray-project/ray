@@ -206,9 +206,9 @@ void CoreWorkerDirectActorTaskSubmitter::SetCallerCreationTimestamp(int64_t time
   caller_creation_timestamp_ms_ = timestamp;
 }
 
-void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
-                                        rpc::Address rpc_address,
-                                        std::shared_ptr<DependencyWaiterInterface> dependency_client) {
+void CoreWorkerDirectTaskReceiver::Init(
+    rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+    std::shared_ptr<DependencyWaiterInterface> dependency_client) {
   waiter_.reset(new DependencyWaiterImpl(*dependency_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;

@@ -136,10 +136,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task));
-    direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
-        new CoreWorkerDirectTaskReceiver(worker_context_,
-                                         task_execution_service_, execute_task,
-                                         [this] { return local_raylet_client_->TaskDone(); }));
+    direct_task_receiver_ =
+        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
+            worker_context_, task_execution_service_, execute_task,
+            [this] { return local_raylet_client_->TaskDone(); }));
   }
 
   // Start RPC server after all the task receivers are properly initialized.

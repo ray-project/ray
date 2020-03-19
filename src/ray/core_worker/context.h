@@ -71,10 +71,12 @@ class WorkerContext {
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
+
  protected:
   // allow unit test to set.
   bool current_actor_is_direct_call_ = false;
   bool current_task_is_direct_call_ = false;
+
  private:
   const WorkerType worker_type_;
   const WorkerID worker_id_;

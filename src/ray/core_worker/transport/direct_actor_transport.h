@@ -425,7 +425,7 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
-  using OnTaskDone = std::function<ray::Status ()>;
+  using OnTaskDone = std::function<ray::Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
