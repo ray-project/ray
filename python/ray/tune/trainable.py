@@ -18,7 +18,7 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
-                             TRAINING_ITERATION, RESULT_DUPLICATE)
+                             TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
@@ -147,6 +147,7 @@ class Trainable:
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
+        trial_info = self.config.pop(TRIAL_INFO, None)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -167,6 +168,7 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+        self._trial_info = trial_info
 
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
@@ -207,7 +209,7 @@ class Trainable:
         return ""
 
     def current_ip(self):
-        logger.warning("Getting current IP.")
+        logger.info("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
@@ -510,6 +512,30 @@ class Trainable:
 
         """
         return os.path.join(self._logdir, "")
+
+    @property
+    def trial_name(self):
+        """Trial name for the corresponding trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            name = self.trial_name
+        """
+        return self._trial_info.trial_name
+
+    @property
+    def trial_id(self):
+        """Trial ID for the corresponding trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            trial_id = self.trial_id
+        """
+        return self._trial_info.trial_id
 
     @property
     def iteration(self):

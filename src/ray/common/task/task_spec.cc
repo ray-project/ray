@@ -275,4 +275,18 @@ std::string TaskSpecification::DebugString() const {
   return stream.str();
 }
 
+std::string TaskSpecification::CallSiteString() const {
+  std::ostringstream stream;
+  auto desc = FunctionDescriptor();
+  if (IsActorCreationTask()) {
+    stream << "(deserialize actor creation task arg) ";
+  } else if (IsActorTask()) {
+    stream << "(deserialize actor task arg) ";
+  } else {
+    stream << "(deserialize task arg) ";
+  }
+  stream << FunctionDescriptor()->CallSiteString();
+  return stream.str();
+}
+
 }  // namespace ray

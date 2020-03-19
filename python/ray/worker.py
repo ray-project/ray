@@ -1549,10 +1549,7 @@ def put(value, weakref=False):
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
-                    "store was full of pinned objects. If you are putting "
-                    "and holding references to a lot of object ids, consider "
-                    "ray.put(value, weakref=True) to allow object data to "
-                    "be evicted early.")
+                    "store was full of pinned objects.")
                 raise
         return object_id
 
