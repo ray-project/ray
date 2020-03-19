@@ -39,6 +39,7 @@ def convert_to_non_torch_type(stats):
         dict: A new dict with the same structure as stats_dict, but with all
             values converted to non-torch Tensor types.
     """
+
     # The mapping function used to numpyize torch Tensors.
     def mapping(item):
         if isinstance(item, torch.Tensor):
