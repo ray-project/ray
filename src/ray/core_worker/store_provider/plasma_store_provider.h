@@ -33,10 +33,12 @@ namespace ray {
 /// See `CoreWorkerStoreProvider` for the semantics of public methods.
 class CoreWorkerPlasmaStoreProvider {
  public:
-  CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
-                                const std::shared_ptr<raylet::RayletClient> raylet_client,
-                                std::function<Status()> check_signals, bool evict_if_full,
-                                std::function<void()> on_store_full = nullptr);
+  CoreWorkerPlasmaStoreProvider(
+      const std::string &store_socket,
+      const std::shared_ptr<raylet::RayletClient> raylet_client,
+      std::function<Status()> check_signals, bool evict_if_full,
+      std::function<void()> on_store_full = nullptr,
+      std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 
@@ -95,6 +97,11 @@ class CoreWorkerPlasmaStoreProvider {
   Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
 
+  /// Lists objects in used (pinned) by the current client.
+  ///
+  /// \return Output mapping of used object ids to (size, callsite).
+  absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjectsList() const;
+
   std::string MemoryUsageString();
 
  private:
@@ -136,6 +143,24 @@ class CoreWorkerPlasmaStoreProvider {
   std::function<Status()> check_signals_;
   const bool evict_if_full_;
   std::function<void()> on_store_full_;
+  std::function<std::string()> get_current_call_site_;
+
+  // Active buffers tracker. This must be allocated as a separate structure since its
+  // lifetime can exceed that of the store provider due to callback references.
+  struct BufferTracker {
+    // Guards the active buffers map. This mutex may be acquired during PlasmaBuffer
+    // destruction.
+    mutable absl::Mutex active_buffers_mutex_;
+    // Mapping of live object buffers to their creation call site. Destroyed buffers are
+    // automatically removed from this list via destructor callback. The map key uniquely
+    // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
+    // alive forever (i.e., this is a weak ref map).
+    absl::flat_hash_map<std::pair<ObjectID, PlasmaBuffer *>, std::string> active_buffers_
+        GUARDED_BY(active_buffers_mutex_);
+  };
+
+  // Pointer to the shared buffer tracker.
+  std::shared_ptr<BufferTracker> buffer_tracker_;
 };
 
 }  // namespace ray

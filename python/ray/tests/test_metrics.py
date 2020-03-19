@@ -300,7 +300,10 @@ def test_raylet_pending_tasks(shutdown_only):
         def __init__(self):
             self.a = [ActorRequiringGPU.remote() for i in range(4)]
 
-    ParentActor.remote()
+    # If we do not get ParentActor actor handler, reference counter will
+    # terminate ParentActor.
+    parent_actor = ParentActor.remote()
+    assert parent_actor is not None
 
     def test_pending_actor(ray_addresses):
         webui_url = ray_addresses["webui_url"].replace("localhost",

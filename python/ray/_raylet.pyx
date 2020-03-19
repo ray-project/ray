@@ -11,6 +11,7 @@ import numpy
 import gc
 import inspect
 import threading
+import traceback
 import time
 import logging
 import os
@@ -533,7 +534,8 @@ cdef void async_plasma_callback(CObjectID object_id,
     if event_handler is not None:
         obj_id = ObjectID(object_id.Binary())
         if data_size > 0 and obj_id:
-            # This must be asynchronous to allow objects to avoid blocking the IO thread.
+            # This must be asynchronous to allow objects to avoid blocking
+            # the IO thread.
             event_handler._loop.call_soon_threadsafe(
                 event_handler._complete_future, obj_id)
 
@@ -555,6 +557,46 @@ cdef void gc_collect() nogil:
             logger.info(
                 "gc.collect() freed {} refs in {} seconds".format(
                     num_freed, end - start))
+
+
+# This function introduces ~2-7us of overhead per call (i.e., it can be called
+# up to hundreds of thousands of times per second).
+cdef void get_py_stack(c_string* stack_out) nogil:
+    """Get the Python call site.
+
+    This can be called from within C++ code to retrieve the file name and line
+    number of the Python code that is calling into the core worker.
+    """
+
+    with gil:
+        frame = inspect.currentframe()
+        msg = ""
+        while frame:
+            filename = frame.f_code.co_filename
+            # Decode Ray internal frames to add annotations.
+            if filename.endswith("ray/worker.py"):
+                if frame.f_code.co_name == "put":
+                    msg = "(put object) "
+            elif filename.endswith("ray/workers/default_worker.py"):
+                pass
+            elif filename.endswith("ray/remote_function.py"):
+                # TODO(ekl) distinguish between task return objects and
+                # arguments. This can only be done in the core worker.
+                msg = "(task call) "
+            elif filename.endswith("ray/actor.py"):
+                # TODO(ekl) distinguish between actor return objects and
+                # arguments. This can only be done in the core worker.
+                msg = "(actor call) "
+            elif filename.endswith("ray/serialization.py"):
+                if frame.f_code.co_name == "id_deserializer":
+                    msg = "(deserialize task arg) "
+            else:
+                msg += "{}:{}:{}".format(
+                    frame.f_code.co_filename, frame.f_code.co_name,
+                    frame.f_lineno)
+                break
+            frame = frame.f_back
+        stack_out[0] = msg.encode("ascii")
 
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
@@ -602,7 +644,8 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, gc_collect, True))
+            task_execution_handler, check_signals, gc_collect,
+            get_py_stack, True))
 
     def run_task_loop(self):
         with nogil:

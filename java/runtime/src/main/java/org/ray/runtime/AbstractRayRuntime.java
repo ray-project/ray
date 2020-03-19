@@ -5,6 +5,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -176,7 +177,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
   }
 
-  private RayObject callActorFunction(RayActor rayActor,
+  private RayObject callActorFunction(BaseActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
@@ -190,14 +191,14 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
   }
 
-  private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
+  private BaseActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
-    RayActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
+    BaseActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
 
