@@ -17,7 +17,7 @@ from ray.tune.logger import pretty_print
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
-CHECKPOINT_FILE = "last_checkpoint_%s.out"
+CHECKPOINT_FILE = "last_checkpoint_{}.out"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # Serving and training loop
     while True:
         print(pretty_print(trainer.train()))
-        checkpoint_path = trainer.save()
-        print("Last checkpoint", checkpoint_path)
+        checkpoint = trainer.save()
+        print("Last checkpoint", checkpoint)
         with open(checkpoint_path, "w") as f:
-            f.write(checkpoint_path)
+            f.write(checkpoint)
