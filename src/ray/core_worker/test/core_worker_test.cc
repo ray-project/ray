@@ -266,6 +266,7 @@ class CoreWorkerTest : public ::testing::Test {
           nullptr,                        // task_execution_callback
           nullptr,                        // check_signals
           nullptr,                        // gc_collect
+          nullptr,                        // get_lang_stack
           1,                              // ref_counting_enabled
           1,                              // num_workers
       };

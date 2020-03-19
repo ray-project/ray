@@ -44,8 +44,8 @@ Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecutor(JNIEnv *, jclass, jo
  * Method:    nativeShutdown
  * Signature: ()V
  */
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *, jclass);
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *,
+                                                                            jclass);
 
 /*
  * Class:     org_ray_runtime_RayNativeRuntime

@@ -167,7 +167,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
 
         void GetAsync(const CObjectID &object_id,
-                      ray_callback_function successs_callback,
+                      ray_callback_function success_callback,
                       ray_callback_function fallback_callback,
                       void* python_future)
 
@@ -205,9 +205,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &arg_reference_ids,
             const c_vector[CObjectID] &return_ids,
             c_vector[shared_ptr[CRayObject]] *returns) nogil
-        ) task_execution_callback
+         ) task_execution_callback
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
+        (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         int num_workers
         CCoreWorkerOptions()

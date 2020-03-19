@@ -99,13 +99,13 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
       };
 
   ray::CoreWorkerOptions options = {
-      static_cast<ray::WorkerType>(workerMode),      // worker_type
-      ray::Language::JAVA,                           // langauge
-      JavaStringToNativeString(env, storeSocket),    // store_socket
-      JavaStringToNativeString(env, rayletSocket),   // raylet_socket
-      JavaByteArrayToId<ray::JobID>(env, jobId),     // job_id
-      ToGcsClientOptions(env, gcsClientOptions),     // gcs_options
-      JavaStringToNativeString(env, logDir),         // log_dir
+      static_cast<ray::WorkerType>(workerMode),     // worker_type
+      ray::Language::JAVA,                          // langauge
+      JavaStringToNativeString(env, storeSocket),   // store_socket
+      JavaStringToNativeString(env, rayletSocket),  // raylet_socket
+      JavaByteArrayToId<ray::JobID>(env, jobId),    // job_id
+      ToGcsClientOptions(env, gcsClientOptions),    // gcs_options
+      JavaStringToNativeString(env, logDir),        // log_dir
       // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
       false,                                         // install_failure_signal_handler
       JavaStringToNativeString(env, nodeIpAddress),  // node_ip_address
@@ -113,6 +113,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
       task_execution_callback,                       // task_execution_callback
       nullptr,                                       // check_signals
       nullptr,                                       // gc_collect
+      nullptr,                                       // get_lang_stack
       false,                                         // ref_counting_enabled
       static_cast<int>(numWorkersPerProcess),        // num_workers
   };
@@ -127,8 +128,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
   java_task_executor = nullptr;
 }
 
-JNIEXPORT void JNICALL
-Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env, jclass o) {
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
+                                                                            jclass o) {
   ray::CoreWorkerProcess::Shutdown();
 }
 

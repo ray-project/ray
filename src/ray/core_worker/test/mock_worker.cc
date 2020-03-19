@@ -118,6 +118,7 @@ int main(int argc, char **argv) {
       &ray::ExecuteTask,                // task_execution_callback
       nullptr,                          // check_signals
       nullptr,                          // gc_collect
+      nullptr,                          // get_lang_stack
       1,                                // ref_counting_enabled
       1,                                // num_workers
   };

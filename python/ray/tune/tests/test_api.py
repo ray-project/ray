@@ -584,6 +584,36 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
 
+    def testTrialInfoAccess(self):
+        class TestTrainable(Trainable):
+            def _train(self):
+                result = {"name": self.trial_name, "trial_id": self.trial_id}
+                print(result)
+                return result
+
+        analysis = tune.run(TestTrainable, stop={TRAINING_ITERATION: 1})
+        trial = analysis.trials[0]
+        self.assertEqual(trial.last_result.get("name"), str(trial))
+        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
+    def testTrialInfoAccessFunction(self):
+        def train(config, reporter):
+            reporter(name=reporter.trial_name, trial_id=reporter.trial_id)
+
+        analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
+        trial = analysis.trials[0]
+        self.assertEqual(trial.last_result.get("name"), str(trial))
+        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
+        def track_train(config):
+            tune.track.log(
+                name=tune.track.trial_name(), trial_id=tune.track.trial_id())
+
+        analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
+        trial = analysis.trials[0]
+        self.assertEqual(trial.last_result.get("name"), str(trial))
+        self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+
     def testNestedResults(self):
         def create_result(i):
             return {"test": {"1": {"2": {"3": i, "4": False}}}}

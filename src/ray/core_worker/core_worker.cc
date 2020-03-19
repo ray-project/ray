@@ -258,6 +258,9 @@ void CoreWorkerProcess::StartExecutingTasks() {
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
+      get_call_site_(RayConfig::instance().record_ref_creation_sites()
+                         ? options_.get_lang_stack
+                         : nullptr),
       worker_context_(options_.worker_type, worker_id, options_.job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
@@ -348,7 +351,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, options_.check_signals,
       /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
-      boost::bind(&CoreWorker::TriggerGlobalGC, this)));
+      boost::bind(&CoreWorker::TriggerGlobalGC, this),
+      boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_LOG(DEBUG) << "Promoting object to plasma " << obj_id;
@@ -362,10 +366,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
-        RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
-                       << spec.DebugString();
+        uint32_t delay = RayConfig::instance().task_retry_delay_ms();
+        RAY_LOG(ERROR) << "Will resubmit task after a " << delay
+                       << "ms delay: " << spec.DebugString();
         absl::MutexLock lock(&mutex_);
-        to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
+        to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
       }));
 
   // Create an entry for the driver task in the task table. This task is
@@ -435,6 +440,9 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::Exit(bool intentional) {
+  RAY_LOG(INFO)
+      << "Exit signal " << (intentional ? "(intentional)" : "")
+      << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
@@ -585,7 +593,7 @@ Status CoreWorker::Put(const RayObject &object,
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::DIRECT));
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                     rpc_address_);
+                                     rpc_address_, CurrentCallSite(), object.GetSize());
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
@@ -626,7 +634,8 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
-                                       rpc_address_);
+                                       rpc_address_, CurrentCallSite(),
+                                       data_size + metadata->Size());
   }
   return Status::OK();
 }
@@ -934,7 +943,8 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  CurrentCallSite(), max_retries);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
@@ -972,7 +982,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   Status status;
   if (actor_creation_options.is_direct_call) {
     task_manager_->AddPendingTask(
-        GetCallerId(), rpc_address_, task_spec,
+        GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
         std::max(RayConfig::instance().actor_creation_min_retries(),
                  actor_creation_options.max_reconstructions));
     status = direct_task_submitter_->SubmitTask(task_spec);
@@ -1025,7 +1035,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  CurrentCallSite());
     if (actor_handle->IsDead()) {
       auto status = Status::IOError("sent task to dead actor");
       task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
@@ -1084,7 +1095,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                 bool is_owner_handle) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddLocalReference(actor_creation_return_id);
+  reference_counter_->AddLocalReference(actor_creation_return_id, CurrentCallSite());
 
   bool inserted;
   {
@@ -1249,7 +1260,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // Pin the borrowed IDs for the duration of the task.
   for (const auto &borrowed_id : borrowed_ids) {
     RAY_LOG(DEBUG) << "Incrementing ref for borrowed ID " << borrowed_id;
-    reference_counter_->AddLocalReference(borrowed_id);
+    reference_counter_->AddLocalReference(borrowed_id, task_spec.CallSiteString());
   }
 
   const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
@@ -1490,7 +1501,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // Acquire a reference and retry. This prevents the object from being
     // evicted out from under us before we can start the get.
-    AddLocalReference(object_id);
+    AddLocalReference(object_id, "<temporary (get object status)>");
     if (task_manager_->IsTaskPending(object_id.TaskId())) {
       // The task is pending. Send the reply once the task finishes.
       memory_store_->GetAsync(object_id,
@@ -1620,6 +1631,12 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
+
+  if (request.include_memory_info()) {
+    reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
+                                          stats);
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
