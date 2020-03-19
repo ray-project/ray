@@ -121,7 +121,7 @@ class TestDQN(unittest.TestCase):
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
         obs = np.array(0)
 
-        for fw in ["tf", "eager"]:
+        for fw in ["eager", "tf"]:
             print("framework={}".format(fw))
 
             config["eager"] = fw == "eager"

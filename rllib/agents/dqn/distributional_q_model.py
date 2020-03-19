@@ -31,7 +31,12 @@ class DistributionalQModel(TFModelV2):
                  use_noisy=False,
                  v_min=-10.0,
                  v_max=10.0,
-                 sigma0=0.5):
+                 sigma0=0.5,
+                 # TODO(sven): Move `add_layer_norm` into ModelCatalog as
+                 #  generic option, then error if we use ParameterNoise as
+                 #  Exploration type and do not have any LayerNorm layers in
+                 #  the net.
+                 add_layer_norm=False):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -44,6 +49,7 @@ class DistributionalQModel(TFModelV2):
             v_min (float): min value support for distributional DQN
             v_max (float): max value support for distributional DQN
             sigma0 (float): initial value of noisy nets
+            parameter_noise (bool): enable layer norm for param noise
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the Q head. Those layers for forward()
@@ -64,6 +70,13 @@ class DistributionalQModel(TFModelV2):
                     if use_noisy:
                         action_out = self._noisy_layer(
                             "hidden_%d" % i, action_out, q_hiddens[i], sigma0)
+                    elif add_layer_norm:
+                        action_out = tf.keras.layers.Dense(
+                            units=q_hiddens[i],
+                            activation=tf.nn.relu
+                        )(action_out)
+                        action_out = \
+                            tf.keras.layers.LayerNormalization()(action_out)
                     else:
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
@@ -115,6 +128,13 @@ class DistributionalQModel(TFModelV2):
                     state_out = self._noisy_layer("dueling_hidden_%d" % i,
                                                   state_out, q_hiddens[i],
                                                   sigma0)
+                elif add_layer_norm:
+                    state_out = tf.keras.layers.Dense(
+                        units=q_hiddens[i],
+                        activation=tf.nn.relu
+                    )(state_out)
+                    state_out = \
+                        tf.keras.layers.LayerNormalization()(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
                         units=q_hiddens[i], activation=tf.nn.relu)(state_out)

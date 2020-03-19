@@ -134,6 +134,9 @@ class DynamicTFPolicy(TFPolicy):
             dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
 
+        # Create the Exploration object to use for this Policy.
+        self.exploration = self._create_exploration(action_space, config)
+
         # Setup model
         if existing_model:
             self.model = existing_model
@@ -160,8 +163,6 @@ class DynamicTFPolicy(TFPolicy):
                 for s in self.model.get_initial_state()
             ]
 
-        # Create the Exploration object to use for this Policy.
-        self.exploration = self._create_exploration(action_space, config)
         timestep = tf.placeholder(tf.int32, (), name="timestep")
 
         if forward_fn:
@@ -178,13 +179,6 @@ class DynamicTFPolicy(TFPolicy):
                     explore=explore,
                     is_training=self._input_dict["is_training"])
         else:
-            self.exploration.before_forward_pass(
-                model=self.model,
-                obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-                state_batches=self._state_in,
-                seq_lens=self._seq_lens,
-                timestep=timestep,
-                explore=explore)
             dist_inputs, self._state_out = self.model(
                 self._input_dict, self._state_in, self._seq_lens)
             self.exploration.after_forward_pass(

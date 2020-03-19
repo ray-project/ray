@@ -883,7 +883,7 @@ py_test(
 py_test(
     name = "policy/tests/test_compute_log_likelihoods",
     tags = ["policy"],
-    size = "small",
+    size = "medium",
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 

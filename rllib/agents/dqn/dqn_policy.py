@@ -5,11 +5,12 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.policy.tf_policy import LearningRateSchedule
-from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils import try_import_tf
@@ -149,7 +150,10 @@ def build_q_model(policy, obs_space, action_space, config):
         use_noisy=config["noisy"],
         v_min=config["v_min"],
         v_max=config["v_max"],
-        sigma0=config["sigma0"])
+        sigma0=config["sigma0"],
+        # TODO(sven): Move option to add LayerNorm after each Dense
+        #  generically into ModelCatalog.
+        add_layer_norm=isinstance(policy.exploration, ParameterNoise))
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -165,7 +169,10 @@ def build_q_model(policy, obs_space, action_space, config):
         use_noisy=config["noisy"],
         v_min=config["v_min"],
         v_max=config["v_max"],
-        sigma0=config["sigma0"])
+        sigma0=config["sigma0"],
+        # TODO(sven): Move option to add LayerNorm after each Dense
+        #  generically into ModelCatalog.
+        add_layer_norm=isinstance(policy.exploration, ParameterNoise))
 
     return policy.q_model
 

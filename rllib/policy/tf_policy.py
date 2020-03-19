@@ -261,6 +261,15 @@ class TFPolicy(Policy):
                         timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
+
+        self.exploration.before_forward_pass(
+            model=self.model,
+            obs_batch=self._input_dict[SampleBatch.CUR_OBS],
+            state_batches=self._state_in,
+            seq_lens=self._seq_lens,
+            timestep=timestep,
+            explore=explore)
+
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -271,6 +280,9 @@ class TFPolicy(Policy):
             explore=explore,
             timestep=timestep
             if timestep is not None else self.global_timestep)
+
+        TODO(sven): Add
+
         # Execute session run to get action (and other fetches).
         return builder.get(fetches)
 
