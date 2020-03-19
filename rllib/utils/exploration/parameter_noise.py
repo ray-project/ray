@@ -159,8 +159,9 @@ class ParameterNoise(Exploration):
     def on_episode_start(self,
                          policy,
                          model,
-                         environment,
-                         episode,
+                         *,
+                         environment=None,
+                         episode=None,
                          tf_sess=None):
         # If True, add noise here and leave it (for the episode) unless a
         # compute_action call has `explore=False` (then we remove the noise,
@@ -184,9 +185,13 @@ class ParameterNoise(Exploration):
             return self._apply_noise(model)
 
     @override(Exploration)
-    def on_episode_end(self, policy, model, environment, episode,
+    def on_episode_end(self,
+                       policy,
+                       model,
+                       *,
+                       environment=None,
+                       episode=None,
                        tf_sess=None):
-
         # If config["explore"]=False: No noise has been added at beginning of
         # episode -> no reason to remove it here.
         if self.default_explore is False:

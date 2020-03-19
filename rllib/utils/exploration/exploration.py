@@ -119,8 +119,8 @@ class Exploration:
                          policy,
                          model,
                          *,
-                         environment,
-                         episode,
+                         environment=None,
+                         episode=None,
                          tf_sess=None):
         """Handles necessary exploration logic at the beginning of an episode.
 
@@ -137,8 +137,8 @@ class Exploration:
                        policy,
                        model,
                        *,
-                       environment,
-                       episode,
+                       environment=None,
+                       episode=None,
                        tf_sess=None):
         """Handles necessary exploration logic at the end of an episode.
 
