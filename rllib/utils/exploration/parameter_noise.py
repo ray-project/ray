@@ -1,6 +1,7 @@
 from gym.spaces import Discrete
 import numpy as np
 from scipy.stats import entropy
+import time
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -53,6 +54,7 @@ class ParameterNoise(Exploration):
 
         self.stddev = get_variable(
             initial_stddev, framework=self.framework, tf_name="stddev")
+        self.last_stddev_adjustment = 0
         # Our noise to be added to the weights. Each item in `self.noise`
         # corresponds to one Model variable and holding the Gaussian noise to
         # be added to that variable (weight).
@@ -206,6 +208,10 @@ class ParameterNoise(Exploration):
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+        # Only do this every n seconds b/c session calls in here are expensive.
+        if self.last_stddev_adjustment > time.time() - 1:
+            return sample_batch
+
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
         inputs, dist_class, _ = policy.compute_distribution_inputs(
@@ -247,6 +253,8 @@ class ParameterNoise(Exploration):
             tf_sess.run(tf.assign(self.stddev, new_stddev))
         else:
             self.stddev = new_stddev
+
+        self.last_stddev_adjustment = time.time()
 
         return sample_batch
 

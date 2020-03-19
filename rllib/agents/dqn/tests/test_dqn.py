@@ -23,10 +23,10 @@ class TestDQN(unittest.TestCase):
             results = trainer.train()
             print(results)
 
+        # tf-eager.
+        config["eager"] = True
         eager_mode_ctx = eager_mode()
         eager_mode_ctx.__enter__()
-
-        config["eager"] = True
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):
@@ -140,6 +140,8 @@ class TestDQN(unittest.TestCase):
             # DQN with ParameterNoise exploration (config["explore"]=True).
             # ----
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            trainer.train()
+
             policy = trainer.get_policy()
             weights_before = policy.get_weights()
             # Pseudo-start an episode and compare the weights before and after.
