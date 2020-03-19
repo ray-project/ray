@@ -126,10 +126,9 @@ struct CoreWorkerOptions {
 ///     ...                                 // Do other stuff
 ///     CoreWorkerProcess::StartExecutingTasks();
 ///
-/// To shutdown a worker in the current process, execute the code below in a thread
-/// associated to the worker. If you started more than one worker, you need to run the
-/// code below for each of the workers.
-///     CoreWorkerProcess::ShutdownCurrentWorker();
+/// To shutdown a worker in the current process, return a system exit status (with status
+/// code `IntentionalSystemExit` or `UnexpectedSystemExit`) in the task execution
+/// callback.
 ///
 /// If more than 1 worker is started, only the threads which invoke the
 /// `task_execution_callback` will be automatically associated with the corresponding
@@ -153,10 +152,6 @@ class CoreWorkerProcess {
   /// Shutdown workers completely at process level.
   /// This API is for driver only.
   static void Shutdown();
-
-  /// Shutdown the core worker associated with the current thread.
-  /// This API is for worker only.
-  static void ShutdownCurrentWorker();
 
   /// Get the core worker associated with the current thread.
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure

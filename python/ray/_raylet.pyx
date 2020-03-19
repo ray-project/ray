@@ -664,8 +664,6 @@ cdef class CoreWorker:
             if <int>CCoreWorkerProcess.GetCoreWorker().GetWorkerType() \
                     == <int>WORKER_TYPE_DRIVER:
                 CCoreWorkerProcess.Shutdown()
-            else:
-                CCoreWorkerProcess.ShutdownCurrentWorker()
 
     def run_task_loop(self):
         with nogil:

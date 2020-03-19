@@ -292,9 +292,7 @@ class StreamingWorker {
         1,              // ref_counting_enabled
         1,              // num_workers
     };
-    core_worker_raii_.reset(new InitShutdownRAII(CoreWorkerProcess::Initialize,
-                                                 CoreWorkerProcess::ShutdownCurrentWorker,
-                                                 options));
+    CoreWorkerProcess::Initialize(options);
 
     RayFunction reader_async_call_func{ray::Language::PYTHON,
                                        ray::FunctionDescriptorBuilder::BuildPython(
@@ -438,7 +436,6 @@ class StreamingWorker {
   }
 
  private:
-  std::unique_ptr<InitShutdownRAII> core_worker_raii_;
   std::shared_ptr<ReaderClient> reader_client_;
   std::shared_ptr<WriterClient> writer_client_;
   std::shared_ptr<std::thread> test_thread_;

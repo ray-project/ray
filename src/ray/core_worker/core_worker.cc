@@ -99,16 +99,6 @@ void CoreWorkerProcess::Shutdown() {
   instance_.reset();
 }
 
-void CoreWorkerProcess::ShutdownCurrentWorker() {
-  RAY_CHECK(instance_) << "The process is not initialized for core worker.";
-  RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER)
-      << "The `ShutdownCurrentWorker` interface is for worker only.";
-  auto &worker = GetCoreWorker();
-  worker.Disconnect();
-  worker.Shutdown();
-  // TODO (kfstorm): Maybe we can call `exit(0)` directly if num_workers is 1?
-}
-
 CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     : options_(options),
       global_worker_id_(
@@ -203,7 +193,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
   current_core_worker_ = worker;
 
   absl::MutexLock lock(&worker_map_mutex_);
-  // TOCHECK
   workers_.emplace(worker->GetWorkerID(), worker);
   RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
@@ -1591,7 +1580,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
           << "Killing an actor which is running in a worker process with multiple "
              "workers is not supported yet. The worker process will fail anyway, but you "
              "should try to create the Java actor with some dynamic options to make it "
-             "being hosted with a dedicated worker process.";
+             "being hosted in a dedicated worker process.";
     }
     if (options_.log_dir != "") {
       RayLog::ShutDownRayLog();
