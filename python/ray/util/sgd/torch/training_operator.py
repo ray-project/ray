@@ -2,9 +2,6 @@ import collections
 
 import torch
 
-import time
-import ray
-
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH,

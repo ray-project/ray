@@ -279,9 +279,8 @@ class TorchTrainer:
                 self.apply_all_workers(self.initialization_hook)
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
-            ray.get(self.workers[0].set_reporters.remote([
-                h.create_reporter() for h in self.handlers
-            ]))
+            ray.get(self.workers[0].set_reporters.remote(
+                [h.create_reporter() for h in self.handlers]))
         else:
             # Generate actor class
             Runner = ray.remote(
@@ -314,9 +313,11 @@ class TorchTrainer:
                 worker.setup.remote(address, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
             ])
-            ray.get([w.set_reporters.remote([
-                h.create_reporter() for h in self.handlers
-            ]) for w in self.workers])
+            ray.get([
+                w.set_reporters.remote(
+                    [h.create_reporter() for h in self.handlers])
+                for w in self.workers
+            ])
 
     def train(self,
               num_steps=None,
@@ -377,9 +378,7 @@ class TorchTrainer:
             h.record_train_info(info, num_steps)
 
         success, worker_stats = self._train_epoch(
-            num_steps=num_steps,
-            profile=profile,
-            info=info)
+            num_steps=num_steps, profile=profile, info=info)
         # Fault handling
         for i in range(max_retries):
             if success:
@@ -390,10 +389,7 @@ class TorchTrainer:
             logger.info(
                 "Retrying training step with %d workers." % len(self.workers))
             success, worker_stats = self._train_epoch(
-                num_steps=num_steps,
-                profile=profile,
-                info=info,
-                batch_logs_handler=batch_logs_handler)
+                num_steps=num_steps, profile=profile, info=info)
         if not success:
             raise RuntimeError("Training run failed.")
 

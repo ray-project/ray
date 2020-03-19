@@ -6,6 +6,7 @@ from tqdm import tqdm
 import ray
 from ray.util.sgd.torch.constants import BATCH_LOGS_RATE_LIMIT
 
+
 @ray.remote(num_cpus=0)
 class _ReporterActor:
     def __init__(self):
@@ -33,6 +34,7 @@ class _ReporterActor:
 
         return res
 
+
 class TqdmReporter:
     def __init__(self, actor):
         self.actor = actor
@@ -56,9 +58,7 @@ class TqdmReporter:
 
         self.last_packet_time = 0
 
-        self._send_setup({
-            "loader_len": len(training_op.train_loader)
-        })
+        self._send_setup({"loader_len": len(training_op.train_loader)})
 
     def on_batch_end(self, batch_info, metrics, training_op):
         if training_op.world_rank != 0:
@@ -70,6 +70,7 @@ class TqdmReporter:
                 "loss": metrics["train_loss"]
             }
         })
+
 
 class TqdmHandler:
     def __init__(self):
@@ -92,8 +93,7 @@ class TqdmHandler:
             else:
                 desc = "{}e".format(self.train_info["epoch_idx"] + 1)
 
-        self.batch_pbar = tqdm(
-            total=n, desc=desc, unit="batch", leave=False)
+        self.batch_pbar = tqdm(total=n, desc=desc, unit="batch", leave=False)
 
     def handle_logs_packet(self, packet):
         self.batch_pbar.n = packet["batch_idx"] + 1
