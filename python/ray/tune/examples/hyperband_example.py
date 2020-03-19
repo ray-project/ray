@@ -47,7 +47,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(num_cpus=4 if args.smoke_test else None)
 
     # Hyperband early stopping, configured with `episode_reward_mean` as the
     # objective and `training_iteration` as the time unit,
@@ -56,7 +56,7 @@ if __name__ == "__main__":
         time_attr="training_iteration",
         metric="episode_reward_mean",
         mode="max",
-        max_t=100)
+        max_t=200)
 
     exp = Experiment(
         name="hyperband_test",
