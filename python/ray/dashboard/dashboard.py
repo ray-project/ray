@@ -421,11 +421,11 @@ border-radius: 5%;
             content_type="text/html")
 
     async def enable_hosted_dashboard(self, req) -> aiohttp.web.Response:
-        url = self._enalbe_hosted_dashboard()
+        url = self._enable_hosted_dashboard()
         return await json_response(self.is_dev, {"url": url})
 
     async def to_hosted_redirect(self, req) -> aiohttp.web.Response:
-        dashboard_url = self._enalbe_hosted_dashboard()
+        dashboard_url = self._enable_hosted_dashboard()
         if "http://" not in dashboard_url:
             dashboard_url = "http://" + dashboard_url
         raise aiohttp.web.HTTPFound(dashboard_url)
