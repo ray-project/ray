@@ -4,45 +4,64 @@ import requests
 import threading
 import time
 
-import grpc
-
-from ray.core.generated import dashboard_pb2
-from ray.core.generated import dashboard_pb2_grpc
-
 logger = logging.getLogger(__file__)
 
+
 class Exporter(threading.Thread):
-    """Thread that keeps running and export metrics"""
+    """Python thread that exports metrics periodically.
+
+    Args:
+        dashboard_id(str): Unique Dashboard ID.
+        export_address(str): Address to export metrics.
+        access_token(str): Access token that is appeneded to
+            authorization header.
+        dashboard_controller(BaseDashboardController): dashboard
+            controller for dashboard business logic.
+        update_frequency(float): Frequency to export metrics.
+    """
 
     def __init__(self,
-                 cluster_id,
+                 dashboard_id,
                  export_address,
                  access_token,
                  dashboard_controller,
                  update_frequency=1.0):
-        self.cluster_id = cluster_id
+        assert update_frequency >= 1.0
+        self.dashboard_id = dashboard_id
         self.dashboard_controller = dashboard_controller
         self.export_address = export_address
-        if not self.export_address.startswith('http://'):
-            self.export_address = 'http://' + self.export_address
+        if not self.export_address.startswith("http://"):
+            self.export_address = "http://" + self.export_address
         self.update_frequency = update_frequency
         self.access_token = access_token
 
         super().__init__()
 
-    def export(self, node_info, raylet_info):
-        response = requests.post(self.export_address, data=json.dumps({
-            "cluster_id": self.cluster_id,
-            "access_token": self.access_token,
-            "node_info": node_info,
-            "raylet_info": raylet_info
-        }))
+    def export(self, ray_config, node_info, raylet_info, tune_info,
+               tune_availability):
+        # TODO(sang): Receive actions and run.
+        requests.post(
+            self.export_address,
+            data=json.dumps({
+                "cluster_id": self.dashboard_id,
+                "access_token": self.access_token,
+                "ray_config": ray_config,
+                "node_info": node_info,
+                "raylet_info": raylet_info,
+                "tune_info": tune_info,
+                "tune_availability": tune_availability
+            }))
 
     def run(self):
         while True:
             try:
                 time.sleep(self.update_frequency)
-                self.export(self.dashboard_controller.get_node_info(), self.dashboard_controller.get_raylet_info())
+                self.export(self.dashboard_controller.get_ray_config(),
+                            self.dashboard_controller.get_node_info(),
+                            self.dashboard_controller.get_raylet_info(),
+                            self.dashboard_controller.tune_info(),
+                            self.dashboard_controller.tune_availability())
             except Exception as e:
-                logger.error("Exception occured while exporting metrics: {}".format(e))
+                logger.error(
+                    "Exception occured while exporting metrics: {}".format(e))
                 continue

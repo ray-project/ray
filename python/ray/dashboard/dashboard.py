@@ -34,8 +34,10 @@ from ray.core.generated import reporter_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.hosted_dashboard.dashboard_client import DashboardClient
-from ray.dashboard.dashboard_controller_interface \
-    import BaseDashboardController
+from ray.dashboard.dashboard_controller_interface import (
+    BaseDashboardController)
+from ray.dashboard.dashboard_route_handler_interface import (
+    BaseDashboardRouteHandler)
 
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -101,13 +103,31 @@ def get_host_and_port(addr):
     return addr.strip().split(":")
 
 
-class DashboardController(BaseDashboardController):
-    """Perform data fetching and other actions required by HTTP endpoints."""
+async def json_response(is_dev, result=None, error=None,
+                        ts=None) -> aiohttp.web.Response:
+    if ts is None:
+        ts = datetime.datetime.utcnow()
 
+    headers = None
+    if is_dev:
+        headers = {"Access-Control-Allow-Origin": "*"}
+
+    return aiohttp.web.json_response(
+        {
+            "result": result,
+            "timestamp": to_unix_time(ts),
+            "error": error,
+        },
+        headers=headers)
+
+
+class DashboardController(BaseDashboardController):
     def __init__(self, redis_address, redis_password, update_frequency=1.0):
         self.node_stats = NodeStats(redis_address, redis_password)
         self.raylet_stats = RayletStats(redis_address, update_frequency,
                                         redis_password)
+        if Analysis is not None:
+            self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
         self.is_hosted = False
 
     def _construct_raylet_info(self):
@@ -172,11 +192,54 @@ class DashboardController(BaseDashboardController):
                 data["extraInfo"] += "\n" + "\n".join(to_print)
         return {"nodes": D, "actors": actor_tree}
 
-    def get_node_info(self, **kwargs):
+    def get_ray_config(self):
+        try:
+            config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f)
+        except Exception:
+            error = "No config"
+            return error, None
+
+        D = {
+            "min_workers": cfg["min_workers"],
+            "max_workers": cfg["max_workers"],
+            "initial_workers": cfg["initial_workers"],
+            "autoscaling_mode": cfg["autoscaling_mode"],
+            "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+        }
+
+        try:
+            D["head_type"] = cfg["head_node"]["InstanceType"]
+        except KeyError:
+            D["head_type"] = "unknown"
+
+        try:
+            D["worker_type"] = cfg["worker_nodes"]["InstanceType"]
+        except KeyError:
+            D["worker_type"] = "unknown"
+
+        return None, D
+
+    def get_node_info(self):
         return self.node_stats.get_node_stats()
 
-    def get_raylet_info(self, **kwargs):
+    def get_raylet_info(self):
         return self._construct_raylet_info()
+
+    def tune_info(self):
+        if Analysis is not None:
+            D = self.tune_stats.get_stats()
+        else:
+            D = {}
+        return D
+
+    def tune_availability(self):
+        if Analysis is not None:
+            D = self.tune_stats.get_availability()
+        else:
+            D = {"available": False}
+        return D
 
     def launch_profiling(self, node_id, pid, duration):
         profiling_id = self.raylet_stats.launch_profiling(
@@ -189,13 +252,13 @@ class DashboardController(BaseDashboardController):
     def get_profiling_info(self, profiling_id):
         return self.raylet_stats.get_profiling_info(profiling_id)
 
-    def kill_actor(self, actor_id, ip_address, port, **kwargs):
+    def kill_actor(self, actor_id, ip_address, port):
         return self.raylet_stats.kill_actor(actor_id, ip_address, port)
 
-    def get_logs(self, hostname, pid, **kwargs):
+    def get_logs(self, hostname, pid):
         return self.node_stats.get_logs(hostname, pid)
 
-    def get_errors(self, hostname, pid, **kwargs):
+    def get_errors(self, hostname, pid):
         return self.node_stats.get_errors(hostname, pid)
 
     def start_collecting_metrics(self):
@@ -203,7 +266,255 @@ class DashboardController(BaseDashboardController):
         self.raylet_stats.start()
 
 
-class Dashboard(object):
+class DashboardRouteHandler(BaseDashboardRouteHandler):
+    def __init__(self, dashboard_controller: DashboardController,
+                 is_dev=False):
+        self.dashboard_controller = dashboard_controller
+        self.is_dev = is_dev
+
+    def forbidden(self) -> aiohttp.web.Response:
+        return aiohttp.web.Response(status=403, text="403 Forbidden")
+
+    def get_forbidden(self, _) -> aiohttp.web.Response:
+        return self.forbidden()
+
+    async def get_index(self, req) -> aiohttp.web.Response:
+        return aiohttp.web.FileResponse(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "client/build/index.html"))
+
+    async def get_favicon(self, req) -> aiohttp.web.Response:
+        return aiohttp.web.FileResponse(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "client/build/favicon.ico"))
+
+    async def ray_config(self, req) -> aiohttp.web.Response:
+        error, result = self.dashboard_controller.get_ray_config()
+        if error:
+            return await json_response(self.is_dev, error=error)
+        return await json_response(self.is_dev, result=result)
+
+    async def node_info(self, req) -> aiohttp.web.Response:
+        now = datetime.datetime.utcnow()
+        D = self.dashboard_controller.get_node_info()
+        return await json_response(self.is_dev, result=D, ts=now)
+
+    async def raylet_info(self, req) -> aiohttp.web.Response:
+        result = self.dashboard_controller.get_raylet_info()
+        return await json_response(self.is_dev, result=result)
+
+    async def tune_info(self, req) -> aiohttp.web.Response:
+        result = self.dashboard_controller.tune_info()
+        return await json_response(self.is_dev, result=result)
+
+    async def tune_availability(self, req) -> aiohttp.web.Response:
+        result = self.dashboard_controller.tune_availability()
+        return await json_response(self.is_dev, result=result)
+
+    async def launch_profiling(self, req) -> aiohttp.web.Response:
+        node_id = req.query.get("node_id")
+        pid = int(req.query.get("pid"))
+        duration = int(req.query.get("duration"))
+        profiling_id = self.dashboard_controller.launch_profiling(
+            node_id, pid, duration)
+        return await json_response(self.is_dev, result=str(profiling_id))
+
+    async def check_profiling_status(self, req) -> aiohttp.web.Response:
+        profiling_id = req.query.get("profiling_id")
+        status = self.dashboard_controller.check_profiling_status(profiling_id)
+        return await json_response(self.is_dev, result=status)
+
+    async def get_profiling_info(self, req) -> aiohttp.web.Response:
+        profiling_id = req.query.get("profiling_id")
+        profiling_info = self.dashboard_controller.get_profiling_info(
+            profiling_id)
+        return aiohttp.web.json_response(self.is_dev, profiling_info)
+
+    async def kill_actor(self, req) -> aiohttp.web.Response:
+        actor_id = req.query.get("actor_id")
+        ip_address = req.query.get("ip_address")
+        port = req.query.get("port")
+        return await json_response(
+            self.is_dev,
+            self.dashboard_controller.kill_actor(actor_id, ip_address, port))
+
+    async def logs(self, req) -> aiohttp.web.Response:
+        hostname = req.query.get("hostname")
+        pid = req.query.get("pid")
+        result = self.dashboard_controller.get_logs(hostname, pid)
+        return await json_response(self.is_dev, result=result)
+
+    async def errors(self, req) -> aiohttp.web.Response:
+        hostname = req.query.get("hostname")
+        pid = req.query.get("pid")
+        result = self.dashboard_controller.get_errors(hostname, pid)
+        return await json_response(self.is_dev, result=result)
+
+
+class HostedDashboardHandler:
+    def __init__(self,
+                 dashboard_controller,
+                 hosted_dashboard_addr,
+                 dashboard_id,
+                 is_dev=False):
+        self.dashboard_controller = dashboard_controller
+        self.is_dev = is_dev
+        self.hosted_dashboard_addr = hosted_dashboard_addr
+        hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
+            self.hosted_dashboard_addr)
+        self.dashboard_client = DashboardClient(
+            hosted_dashboard_host, hosted_dashboard_port,
+            self.dashboard_controller, dashboard_id)
+
+    def _enable_hosted_dashboard(self) -> str:
+        assert self.hosted_dashboard_addr
+        self.dashboard_client.start_exporting_metrics()
+        return self.dashboard_client.hosted_dashboard_url
+
+    async def is_hosted(self, req) -> aiohttp.web.Response:
+        is_hosted = self.dashboard_controller.is_hosted
+        return await json_response(
+            self.is_dev, result={"is_hosted": is_hosted})
+
+    async def to_hosted(self, req) -> aiohttp.web.Response:
+        return aiohttp.web.Response(
+            text="""
+<html>
+<head>
+    <title> Ray Hosted Dashboard </title>
+    <style>
+    body {
+        font-family: noto sans,sans-serif;
+        padding: 25px;
+    }
+    button {
+    background-color: #0099e6;
+color: white;
+font-size: x-large;
+border: none;
+padding: 3px 6px;
+border-radius: 5%;
+    }
+    </style>
+</head>
+<body>
+    <h1>
+    Ray Hosted Dashboard Terms and Conditions
+    </h1>
+
+    <h2> 📜 📜 📜 </h2>
+    <p> Please agree to our EULA. </p>
+
+    <button id="agreed"> Agree </id>
+
+    <script type="text/javascript">
+        document.getElementById("agreed").onclick = function () {
+            location.href = "/to_hosted_agreed";
+        };
+    </script>
+
+</body>
+</html>
+""",
+            content_type="text/html")
+
+    async def enable_hosted_dashboard(self, req) -> aiohttp.web.Response:
+        url = self._enalbe_hosted_dashboard()
+        return await json_response(self.is_dev, {"url": url})
+
+    async def to_hosted_redirect(self, req) -> aiohttp.web.Response:
+        dashboard_url = self._enalbe_hosted_dashboard()
+        if "http://" not in dashboard_url:
+            dashboard_url = "http://" + dashboard_url
+        raise aiohttp.web.HTTPFound(dashboard_url)
+
+    async def grafana_iframe(self, req) -> aiohttp.web.Response:
+        if not self.dashboard_controller.is_hosted:
+            return self.get_forbidden(req)
+
+        iframe_div = self.dashboard_controller.get_grafana_iframe({
+            "pid": req.query.get("pid"),
+            "metric": req.query.get("metric")
+        })
+        return await json_response(self.is_dev, {"frame_html": iframe_div})
+
+    async def get_hosted_dashboard_url(self, req) -> aiohttp.web.Response:
+        url = self.dashboard_client.hosted_dashboard_url
+        return await json_response(self.is_dev, {"url": url})
+
+
+def setup_hosted_dashboard_routes(app: aiohttp.web.Application,
+                                  handler: HostedDashboardHandler):
+    """Routes that require dynamically changing class attributes."""
+    app.router.add_get("/api/is_hosted", handler.is_hosted)
+    app.router.add_get("/to_hosted", handler.to_hosted)
+    app.router.add_get("/to_hosted_agreed", handler.to_hosted_redirect)
+    app.router.add_get("/api/grafana_iframe", handler.grafana_iframe)
+    app.router.add_get("/api/enable_hostsed_dashboard",
+                       handler.enable_hosted_dashboard)
+    app.router.add_get("/api/hosted_dashboard_url",
+                       handler.get_hosted_dashboard_url)
+
+
+def setup_static_dir(app):
+    build_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "client/build")
+    if not os.path.isdir(build_dir):
+        raise OSError(
+            errno.ENOENT, "Dashboard build directory not found. If installing "
+            "from source, please follow the additional steps "
+            "required to build the dashboard"
+            "(cd python/ray/dashboard/client "
+            "&& npm ci "
+            "&& npm run build)", build_dir)
+
+    static_dir = os.path.join(build_dir, "static")
+    app.router.add_static("/static", static_dir)
+    return build_dir
+
+
+def setup_speedscope_dir(app, build_dir):
+    speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
+    app.router.add_static("/speedscope", speedscope_dir)
+
+
+def setup_dashboard_route(app: aiohttp.web.Application,
+                          handler: BaseDashboardRouteHandler,
+                          index=None,
+                          favicon=None,
+                          ray_config=None,
+                          node_info=None,
+                          raylet_info=None,
+                          tune_info=None,
+                          tune_availability=None,
+                          launch_profiling=None,
+                          check_profiling_status=None,
+                          get_profiling_info=None,
+                          kill_actor=None,
+                          logs=None,
+                          errors=None):
+    def add_get_route(route, handler_func):
+        if route is not None:
+            app.router.add_get(route, handler_func)
+
+    add_get_route(index, handler.get_index)
+    add_get_route(favicon, handler.get_favicon)
+    add_get_route(ray_config, handler.ray_config)
+    add_get_route(node_info, handler.node_info)
+    add_get_route(raylet_info, handler.raylet_info)
+    add_get_route(tune_info, handler.tune_info)
+    add_get_route(tune_availability, handler.tune_availability)
+    add_get_route(launch_profiling, handler.launch_profiling)
+    add_get_route(check_profiling_status, handler.check_profiling_status)
+    add_get_route(get_profiling_info, handler.get_profiling_info)
+    add_get_route(kill_actor, handler.kill_actor)
+    add_get_route(logs, handler.logs)
+    add_get_route(errors, handler.errors)
+
+
+class Dashboard:
     """A dashboard process for monitoring Ray nodes.
 
     This dashboard is made up of a REST API which collates data published by
@@ -218,9 +529,6 @@ class Dashboard(object):
             information for this Ray session.
         redis_passord(str): Redis password to access GCS
         hosted_dashboard_addr(str): The address users host their dashboard.
-        update_frequency(float): Frequency where metrics are updated.
-        DashboardController(DashboardController): DashboardController
-            that defines the business logic of a Dashboard server.
     """
 
     def __init__(self,
@@ -228,7 +536,6 @@ class Dashboard(object):
                  port,
                  redis_address,
                  temp_dir,
-                 dashboard_controller,
                  redis_password=None,
                  hosted_dashboard_addr=None):
         self.host = host
@@ -236,13 +543,9 @@ class Dashboard(object):
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
         self.temp_dir = temp_dir
-
-        self.dashboard_controller = dashboard_controller
-        # SANG-TODO remove this.
-        # self.dashboard_controller = DashboardController(
-        #     redis_address, redis_password, update_frequency)
-        if Analysis is not None:
-            self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
+        self.dashboard_id = str(uuid.uuid4())
+        self.dashboard_controller = DashboardController(
+            redis_address, redis_password)
 
         self.hosted_dashboard_addr = hosted_dashboard_addr
         self.dashboard_client = None
@@ -254,236 +557,39 @@ class Dashboard(object):
         self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
         self.app = aiohttp.web.Application()
-        self.setup_routes()
+        self.route_handler = DashboardRouteHandler(
+            self.dashboard_controller, is_dev=self.is_dev)
 
-    def setup_routes(self):
-        def forbidden() -> aiohttp.web.Response:
-            return aiohttp.web.Response(status=403, text="403 Forbidden")
+        # Setup Metrics exporting service if necessary.
+        if self.hosted_dashboard_addr:
+            self.hosted_dashboard_handler = HostedDashboardHandler(
+                self.dashboard_controller,
+                self.hosted_dashboard_addr,
+                self.dashboard_id,
+                is_dev=self.is_dev)
+            setup_hosted_dashboard_routes(self.app,
+                                          self.hosted_dashboard_handler)
 
-        def get_forbidden(_) -> aiohttp.web.Response:
-            return forbidden()
-
-        async def get_index(req) -> aiohttp.web.Response:
-            return aiohttp.web.FileResponse(
-                os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "client/build/index.html"))
-
-        async def get_favicon(req) -> aiohttp.web.Response:
-            return aiohttp.web.FileResponse(
-                os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "client/build/favicon.ico"))
-
-        async def json_response(result=None, error=None,
-                                ts=None) -> aiohttp.web.Response:
-            if ts is None:
-                ts = datetime.datetime.utcnow()
-
-            headers = None
-            if self.is_dev:
-                headers = {"Access-Control-Allow-Origin": "*"}
-
-            return aiohttp.web.json_response(
-                {
-                    "result": result,
-                    "timestamp": to_unix_time(ts),
-                    "error": error,
-                },
-                headers=headers)
-
-        async def ray_config(_) -> aiohttp.web.Response:
-            try:
-                config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
-                with open(config_path) as f:
-                    cfg = yaml.safe_load(f)
-            except Exception:
-                return await json_response(error="No config")
-
-            D = {
-                "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"],
-                "initial_workers": cfg["initial_workers"],
-                "autoscaling_mode": cfg["autoscaling_mode"],
-                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
-            }
-
-            try:
-                D["head_type"] = cfg["head_node"]["InstanceType"]
-            except KeyError:
-                D["head_type"] = "unknown"
-
-            try:
-                D["worker_type"] = cfg["worker_nodes"]["InstanceType"]
-            except KeyError:
-                D["worker_type"] = "unknown"
-
-            return await json_response(result=D)
-
-        async def node_info(req) -> aiohttp.web.Response:
-            now = datetime.datetime.utcnow()
-            D = self.dashboard_controller.get_node_info()
-            return await json_response(result=D, ts=now)
-
-        async def raylet_info(req) -> aiohttp.web.Response:
-            result = self.dashboard_controller.get_raylet_info()
-            return await json_response(result=result)
-
-        async def tune_info(req) -> aiohttp.web.Response:
-            if Analysis is not None:
-                D = self.tune_stats.get_stats()
-            else:
-                D = {}
-            return await json_response(result=D)
-
-        async def tune_availability(req) -> aiohttp.web.Response:
-            if Analysis is not None:
-                D = self.tune_stats.get_availability()
-            else:
-                D = {"available": False}
-            return await json_response(result=D)
-
-        async def launch_profiling(req) -> aiohttp.web.Response:
-            node_id = req.query.get("node_id")
-            pid = int(req.query.get("pid"))
-            duration = int(req.query.get("duration"))
-            profiling_id = self.dashboard_controller.launch_profiling(
-                node_id, pid, duration)
-            return await json_response(str(profiling_id))
-
-        async def check_profiling_status(req) -> aiohttp.web.Response:
-            profiling_id = req.query.get("profiling_id")
-            status = self.dashboard_controller.check_profiling_status(
-                profiling_id)
-            return await json_response(result=status)
-
-        async def get_profiling_info(req) -> aiohttp.web.Response:
-            profiling_id = req.query.get("profiling_id")
-            profiling_info = self.dashboard_controller.get_profiling_info(
-                profiling_id)
-            return aiohttp.web.json_response(profiling_info)
-
-        async def kill_actor(req) -> aiohttp.web.Response:
-            actor_id = req.query.get("actor_id")
-            ip_address = req.query.get("ip_address")
-            port = req.query.get("port")
-            return await json_response(
-                self.dashboard_controller.kill_actor(actor_id, ip_address,
-                                                     port))
-
-        async def logs(req) -> aiohttp.web.Response:
-            hostname = req.query.get("hostname")
-            pid = req.query.get("pid")
-            result = self.dashboard_controller.get_logs(hostname, pid)
-            return await json_response(result=result)
-
-        async def errors(req) -> aiohttp.web.Response:
-            hostname = req.query.get("hostname")
-            pid = req.query.get("pid")
-            result = self.dashboard_controller.get_errors(hostname, pid)
-            return await json_response(result=result)
-
-        async def is_hosted(req) -> aiohttp.web.Response:
-            is_hosted = self.dashboard_controller.is_hosted
-            return await json_response(result={"is_hosted": is_hosted})
-
-        async def to_hosted(req) -> aiohttp.web.Response:
-            return aiohttp.web.Response(text="""
-<html>
-    <head>
-        <title> Ray Hosted Dashboard </title>
-        <style>
-        body {
-            font-family: noto sans,sans-serif;
-            padding: 25px;
-        }
-        button {
-        background-color: #0099e6;
-    color: white;
-    font-size: x-large;
-    border: none;
-    padding: 3px 6px;
-    border-radius: 5%;
-        }
-        </style>
-    </head>
-    <body>
-      <h1>
-        Ray Hosted Dashboard Terms and Conditions
-      </h1>
-
-      <h2> 📜 📜 📜 </h2>
-      <p> Please agree to our EULA. </p>
-
-      <button id="agreed"> Agree </id>
-
-      <script type="text/javascript">
-          document.getElementById("agreed").onclick = function () {
-              location.href = "/to_hosted_agreed";
-          };
-      </script>
-
-    </body>
-</html>
-""", content_type="text/html"
-        )
-
-        async def to_hosted_redirect(req) -> aiohttp.web.Response:
-            dashboard_url = self.start_exporter()
-            if 'http://' not in dashboard_url:
-                dashboard_url = 'http://' + dashboard_url
-            raise aiohttp.web.HTTPFound(dashboard_url)
-
-        async def grafana_iframe(req) -> aiohttp.web.Response:
-            if not self.dashboard_controller.is_hosted:
-                return get_forbidden(req)
-
-            iframe_div = self.dashboard_controller.get_grafana_iframe({
-                "pid": req.query.get("pid"),
-                "metric": req.query.get("metric")
-            })
-            return await json_response({"frame_html": iframe_div})
-
-        self.app.router.add_get("/", get_index)
-        self.app.router.add_get("/favicon.ico", get_favicon)
-
-        build_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "client/build")
-        if not os.path.isdir(build_dir):
-            raise OSError(
-                errno.ENOENT,
-                "Dashboard build directory not found. If installing "
-                "from source, please follow the additional steps "
-                "required to build the dashboard"
-                "(cd python/ray/dashboard/client "
-                "&& npm ci "
-                "&& npm run build)", build_dir)
-
-        static_dir = os.path.join(build_dir, "static")
-        self.app.router.add_static("/static", static_dir)
-
-        speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
-        self.app.router.add_static("/speedscope", speedscope_dir)
-
-        self.app.router.add_get("/api/ray_config", ray_config)
-        self.app.router.add_get("/api/node_info", node_info)
-        self.app.router.add_get("/api/raylet_info", raylet_info)
-        self.app.router.add_get("/api/tune_info", tune_info)
-        self.app.router.add_get("/api/tune_availability", tune_availability)
-        self.app.router.add_get("/api/launch_profiling", launch_profiling)
-        self.app.router.add_get("/api/check_profiling_status",
-                                check_profiling_status)
-        self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
-        self.app.router.add_get("/api/kill_actor", kill_actor)
-        self.app.router.add_get("/api/logs", logs)
-        self.app.router.add_get("/api/errors", errors)
-
-        self.app.router.add_get('/api/is_hosted', is_hosted)
-        self.app.router.add_get("/to_hosted", to_hosted)
-        self.app.router.add_get("/to_hosted_agreed", to_hosted_redirect)
-        self.app.router.add_get("/api/grafana_iframe", grafana_iframe)
-
-        self.app.router.add_get("/{_}", get_forbidden)
+        # Setup Dashboard Routes
+        build_dir = setup_static_dir(self.app)
+        setup_speedscope_dir(self.app, build_dir)
+        setup_dashboard_route(
+            self.app,
+            self.route_handler,
+            index="/",
+            favicon="/favicon.ico",
+            ray_config="/api/ray_config",
+            node_info="/api/node_info",
+            raylet_info="/api/raylet_info",
+            tune_info="/api/tune_info",
+            tune_availability="/api/tune_availability",
+            launch_profiling="/api/launch_profiling",
+            check_profiling_status="/api/check_profiling_status",
+            get_profiling_info="/api/get_profiling_info",
+            kill_actor="/api/kill_actor",
+            logs="/api/logs",
+            errors="/api/errors")
+        self.app.router.add_get("/{_}", self.route_handler.get_forbidden)
 
     def log_dashboard_url(self):
         url = ray.services.get_webui_url_from_redis(self.redis_client)
@@ -493,23 +599,9 @@ class Dashboard(object):
             f.write(url)
         logger.info("Dashboard running on {}".format(url))
 
-    def start_exporter(self) -> str:
-        assert self.hosted_dashboard_addr
-
-        hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
-            self.hosted_dashboard_addr)
-        self.dashboard_client = DashboardClient(hosted_dashboard_host,
-                                                hosted_dashboard_port,
-                                                self.dashboard_controller)
-        self.dashboard_client.start_exporting_metrics()
-
-        return self.dashboard_client.hosted_dashboard_url
-
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
-        if Analysis is not None:
-            self.tune_stats.start()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 

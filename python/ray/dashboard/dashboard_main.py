@@ -5,7 +5,7 @@ import traceback
 import ray
 
 import ray.ray_constants as ray_constants
-from ray.dashboard.dashboard import Dashboard, DashboardController
+from ray.dashboard.dashboard import Dashboard
 
 if __name__ == "__main__":
     # TODO(sang): Use Click instead of argparser
@@ -57,24 +57,23 @@ if __name__ == "__main__":
         required=False,
         type=str,
         # TODO(simon): change to ray.io address
-        default="54.200.58.116:9081",
+        # default="54.200.58.116:9081",
+        default="127.0.0.1:9081",
         help="Specify the address where user dashboard will be hosted.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    import os
-    hosted_addr_override = os.environ.get('RAY_HOSTED_ADDR')
+    # TODO(sang): Remove this.
+    hosted_addr_override = os.environ.get("RAY_HOSTED_ADDR")
 
     try:
-        dashboard_controller = DashboardController(
-            args.redis_address, args.redis_password)
         dashboard = Dashboard(
             args.host,
             args.port,
             args.redis_address,
             args.temp_dir,
-            dashboard_controller,
-            hosted_dashboard_addr=hosted_addr_override or args.hosted_dashboard_addr,
+            hosted_dashboard_addr=hosted_addr_override
+            or args.hosted_dashboard_addr,
             redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:
