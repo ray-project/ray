@@ -21,8 +21,8 @@
 #include <inttypes.h>
 #include <stddef.h>
 
-#include <unordered_map>
 #include <mutex>
+#include <unordered_map>
 
 namespace plasma {
 

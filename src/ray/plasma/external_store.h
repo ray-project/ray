@@ -23,8 +23,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "arrow/status.h"
 #include "arrow/buffer.h"
+#include "arrow/status.h"
 #include "plasma/common.h"
 using arrow::Status;
 using arrow::Buffer;

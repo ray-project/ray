@@ -104,7 +104,8 @@ class CoreWorkerTest : public ::testing::Test {
 
     // start plasma store.
     for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket = ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
+      store_socket =
+          ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
     }
 
     // start gcs server

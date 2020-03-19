@@ -94,9 +94,7 @@ start a new worker with the given *root temporary directory*.
           │   ├── log_monitor.out
           │   ├── monitor.err
           │   ├── monitor.out
-          │   ├── plasma_store.err  # outputs of the plasma store
-          │   ├── plasma_store.out
-          │   ├── raylet.err  # outputs of the raylet process
+          │   ├── raylet.err  # outputs of the raylet process & plasma store
           │   ├── raylet.out
           │   ├── redis-shard_0.err   # outputs of redis shards
           │   ├── redis-shard_0.out

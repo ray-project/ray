@@ -85,8 +85,10 @@ class TestObjectManagerBase : public ::testing::Test {
     flushall_redis();
 
     // start store
-    store_id_1 = ray::JoinPaths(ray::GetUserTempDir(), "store" + UniqueID::FromRandom().Hex());
-    store_id_2 = ray::JoinPaths(ray::GetUserTempDir(), "store" + UniqueID::FromRandom().Hex());
+    store_id_1 =
+        ray::JoinPaths(ray::GetUserTempDir(), "store" + UniqueID::FromRandom().Hex());
+    store_id_2 =
+        ray::JoinPaths(ray::GetUserTempDir(), "store" + UniqueID::FromRandom().Hex());
 
     unsigned int pull_timeout_ms = 1;
     push_timeout_ms = 1000;

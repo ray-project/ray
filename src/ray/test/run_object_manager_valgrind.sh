@@ -28,7 +28,6 @@ LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
 
 # Allow cleanup commands to fail.
-killall plasma_store || true
 bazel run //:redis-cli -- -p 6379 shutdown || true
 sleep 1s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &

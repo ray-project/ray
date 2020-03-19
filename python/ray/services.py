@@ -1463,7 +1463,7 @@ def determine_plasma_store_config(object_store_memory,
     if huge_pages and not (sys.platform == "linux"
                            or sys.platform == "linux2"):
         raise ValueError("The huge_pages argument is only supported on "
-                        "Linux.")
+                         "Linux.")
 
     if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
         raise ValueError("Attempting to cap object store memory usage at {} "

@@ -145,15 +145,13 @@ def test_driver_lives_sequential(ray_start_regular):
     reason="Hanging with new GCS API.")
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
-    if ray_constants.GCS_SERVICE_ENABLED:
-        process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE]
-                         + all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER]
-                         + all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+    if ray_constants.GCS_SERVICE_ENABLED:        
+        process_infos = (all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
+                         all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
                          all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR]
                          + all_processes[ray_constants.PROCESS_TYPE_MONITOR])
     else:
         process_infos = (
-            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
             all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
             all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
             all_processes[ray_constants.PROCESS_TYPE_MONITOR] +

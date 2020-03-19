@@ -1,16 +1,15 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 #include <unistd.h>
-#include "gtest/gtest.h"
-#include "queue/queue_client.h"
-#include "ray/core_worker/core_worker.h"
 
 #include "data_reader.h"
 #include "data_writer.h"
+#include "gtest/gtest.h"
 #include "message/message.h"
 #include "message/message_bundle.h"
-#include "ring_buffer.h"
-
+#include "queue/queue_client.h"
 #include "queue_tests_base.h"
+#include "ray/core_worker/core_worker.h"
+#include "ring_buffer.h"
 
 using namespace std::placeholders;
 namespace ray {
@@ -24,15 +23,15 @@ static int node_manager_port;
 class StreamingWriterTest : public StreamingQueueTestBase {
  public:
   StreamingWriterTest()
-      : StreamingQueueTestBase(1, raylet_executable, node_manager_port,
-                               actor_executable, gcs_server_executable) {}
+      : StreamingQueueTestBase(1, raylet_executable, node_manager_port, actor_executable,
+                               gcs_server_executable) {}
 };
 
 class StreamingExactlySameTest : public StreamingQueueTestBase {
  public:
   StreamingExactlySameTest()
-      : StreamingQueueTestBase(1, raylet_executable, node_manager_port,
-                               actor_executable, gcs_server_executable) {}
+      : StreamingQueueTestBase(1, raylet_executable, node_manager_port, actor_executable,
+                               gcs_server_executable) {}
 };
 
 TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {

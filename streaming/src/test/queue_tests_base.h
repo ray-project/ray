@@ -15,8 +15,8 @@ static void flushall_redis(void) {
 /// Base class for real-world tests with streaming queue
 class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
  public:
-  StreamingQueueTestBase(int num_nodes, std::string raylet_exe,
-                         int port, std::string actor_exe, std::string gcs_server_exe)
+  StreamingQueueTestBase(int num_nodes, std::string raylet_exe, int port,
+                         std::string actor_exe, std::string gcs_server_exe)
       : gcs_options_("127.0.0.1", 6379, ""),
         raylet_executable_(raylet_exe),
         gcs_server_executable_(gcs_server_exe),
@@ -37,9 +37,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     // start plasma store.
     for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket =  ray::JoinPaths(
-        ray::GetUserTempDir(),
-        "store" + RandomObjectID().Hex());
+      store_socket =
+          ray::JoinPaths(ray::GetUserTempDir(), "store" + RandomObjectID().Hex());
     }
 
     // start gcs server

@@ -139,10 +139,9 @@ def test_raylet_tempfiles(shutdown_only):
     assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
     log_files_expected = {
-        "log_monitor.out", "log_monitor.err", "plasma_store.out",
-        "plasma_store.err", "monitor.out", "monitor.err", "redis-shard_0.out",
-        "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-        "raylet.err"
+        "log_monitor.out", "log_monitor.err", "monitor.out", "monitor.err",
+        "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err",
+        "raylet.out", "raylet.err"
     }
 
     if ray_constants.GCS_SERVICE_ENABLED:
