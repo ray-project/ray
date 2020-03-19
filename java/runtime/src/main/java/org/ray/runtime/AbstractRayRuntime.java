@@ -104,7 +104,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
                         CallOptions options) {
     checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyRemoteFunction.moduleName, "",
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyRemoteFunction.moduleName,
+        "",
         pyRemoteFunction.functionName);
     // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
@@ -142,7 +144,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
                                 ActorCreationOptions options) {
     checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActorClass.moduleName, pyActorClass.className,
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyActorClass.moduleName,
+        pyActorClass.className,
         PYTHON_INIT_METHOD_NAME);
     return (RayPyActor) createActorImpl(functionDescriptor, args, options);
   }
