@@ -1,3 +1,5 @@
+#include "ray/util/filesystem.h"
+
 namespace ray {
 namespace streaming {
 
@@ -70,7 +72,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + RandomObjectID().Hex();
+    std::string store_socket_name = ray::JoinPaths(
+        ray::GetUserTempDir(),
+        "store" + RandomObjectID().Hex());
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable_ + " -m 10000000 -s " +
                                  store_socket_name +
@@ -91,7 +95,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   std::string StartGcsServer(std::string redis_address) {
-    std::string gcs_server_socket_name = "/tmp/gcs_server" + ObjectID::FromRandom().Hex();
+    std::string gcs_server_socket_name = ray::JoinPaths(
+        ray::GetUserTempDir(),
+        "gcs_server" + ObjectID::FromRandom().Hex());
     std::string ray_start_cmd = gcs_server_executable_;
     ray_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -116,7 +122,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           int port, std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().Hex();
+    std::string raylet_socket_name = ray::JoinPaths(
+        ray::GetUserTempDir(),
+        "raylet" + RandomObjectID().Hex());
     std::string ray_start_cmd = raylet_executable_;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
@@ -154,7 +162,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
                   const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
                   std::string test_name, uint64_t param) {
     std::string forked_serialized_str;
-    Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str);
+    ObjectID actor_handle_id;
+    Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str,
+                                            &actor_handle_id);
     STREAMING_CHECK(st.ok());
     STREAMING_LOG(INFO) << "forked_serialized_str: " << forked_serialized_str;
     TestInitMessage msg(role, self_actor_id, peer_actor_id, forked_serialized_str,

@@ -11,7 +11,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
-import org.ray.api.TestUtils;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.actor.NativeRayPyActor;
 import org.slf4j.Logger;
@@ -61,10 +60,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testCallingPythonActor() {
-    // Python worker doesn't support direct call yet.
-    TestUtils.skipTestIfDirectActorCallEnabled();
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
-    RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
+    RayObject res = actor.call("increase", "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());
   }
 
@@ -111,7 +108,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   public static byte[] callPythonActorHandle(byte[] value) {
     // This function will be called from test_cross_language_invocation.py
     NativeRayPyActor actor = (NativeRayPyActor)NativeRayActor.fromBytes(value);
-    RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
+    RayObject res = actor.call("increase", "1".getBytes());
     Assert.assertEquals(res.get(), "3".getBytes());
     return (byte[])res.get();
   }

@@ -1,8 +1,8 @@
 package org.ray.api.test;
 
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.gson.Gson;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.ray.api.Ray;
+import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.NetworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,8 +78,7 @@ public abstract class BaseMultiLanguageTest {
     String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
         .filter(s -> !s.contains(" ") && s.contains("test"))
         .collect(Collectors.joining(":"));
-    String workerOptions =
-        " -classpath " + classpath;
+    String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
@@ -90,15 +90,9 @@ public abstract class BaseMultiLanguageTest {
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--include-java",
-        "--java-worker-options=" + workerOptions
+        "--java-worker-options=" + workerOptions,
+        "--internal-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
     );
-    String numWorkersPerProcessJava = System
-        .getProperty("ray.raylet.config.num_workers_per_process_java");
-    if (!Strings.isNullOrEmpty(numWorkersPerProcessJava)) {
-      startCommand = ImmutableList.<String>builder().addAll(startCommand)
-          .add(String.format("--internal-config={\"num_workers_per_process_java\": %s}",
-              numWorkersPerProcessJava)).build();
-    }
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
     }

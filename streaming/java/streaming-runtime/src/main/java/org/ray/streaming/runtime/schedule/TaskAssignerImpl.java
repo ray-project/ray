@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.ray.api.BaseActor;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
 import org.ray.streaming.jobgraph.JobEdge;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobVertex;
@@ -58,7 +58,7 @@ public class TaskAssignerImpl implements TaskAssigner {
     return new ExecutionGraph(executionNodes);
   }
 
-  private RayActor createWorker(JobVertex jobVertex) {
+  private BaseActor createWorker(JobVertex jobVertex) {
     switch (jobVertex.getLanguage()) {
       case PYTHON:
         return Ray.createPyActor(

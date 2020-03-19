@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/core_worker.h"
 
 #include <boost/asio.hpp>
@@ -13,14 +27,14 @@
 #include "hiredis/hiredis.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/util/test_util.h"
+#include "ray/util/filesystem.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/util/test_util.h"
 
 namespace {
 
@@ -94,13 +108,13 @@ class CoreWorkerTest : public ::testing::Test {
       store_socket = StartStore();
     }
 
-    // core worker test relies on node resources. It's important that one raylet can
-    // receive the heartbeat from another. So starting raylet monitor is required here.
-    raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
-
     // start gcs server
     if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
       gcs_server_pid_ = StartGcsServer("127.0.0.1");
+    } else {
+      // core worker test relies on node resources. It's important that one raylet can
+      // receive the heartbeat from another. So starting raylet monitor is required here.
+      raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
     }
 
     // start raylet on each node. Assign each node with different resources so that
@@ -136,7 +150,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + ObjectID::FromRandom().Hex();
+    std::string store_socket_name =
+        ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable + " -m 10000000 -s " +
                                  store_socket_name +
@@ -158,7 +173,8 @@ class CoreWorkerTest : public ::testing::Test {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           int port, std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + ObjectID::FromRandom().Hex();
+    std::string raylet_socket_name =
+        ray::JoinPaths(ray::GetUserTempDir(), "raylet" + ObjectID::FromRandom().Hex());
     std::string ray_start_cmd = raylet_executable;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
@@ -191,8 +207,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartRayletMonitor(std::string redis_address) {
-    std::string raylet_monitor_pid =
-        "/tmp/raylet_monitor" + ObjectID::FromRandom().Hex() + ".pid";
+    std::string raylet_monitor_pid = ray::JoinPaths(
+        ray::GetUserTempDir(), "raylet_monitor" + ObjectID::FromRandom().Hex() + ".pid");
     std::string raylet_monitor_start_cmd = raylet_monitor_executable;
     raylet_monitor_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -212,8 +228,8 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartGcsServer(std::string redis_address) {
-    std::string gcs_server_pid =
-        "/tmp/gcs_server" + ObjectID::FromRandom().Hex() + ".pid";
+    std::string gcs_server_pid = ray::JoinPaths(
+        ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex() + ".pid");
     std::string gcs_server_start_cmd = gcs_server_executable;
     gcs_server_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -618,9 +634,10 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      /*is_detached*/ false,
                                      /*is_asyncio*/ false};
   const auto job_id = NextJobId();
-  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), job_id,
-                           ObjectID::FromRandom(), function.GetLanguage(), true,
-                           function.GetFunctionDescriptor(), "");
+  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+                           TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                           function.GetLanguage(), true, function.GetFunctionDescriptor(),
+                           "");
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -734,8 +751,9 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(ZeroNodeTest, TestActorHandle) {
   // Test actor handle serialization and deserialization round trip.
   JobID job_id = NextJobId();
-  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), job_id,
-                       ObjectID::FromRandom(), Language::PYTHON, /*is_direct_call=*/false,
+  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
+                       TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                       Language::PYTHON, /*is_direct_call=*/false,
                        ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "");
   std::string output;
   original.Serialize(&output);

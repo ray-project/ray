@@ -3,32 +3,11 @@ RLlib Environments
 
 RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined, multi-agent, and also batched environments.
 
+.. tip::
+
+    Not all environments work with all algorithms. Check out the algorithm `feature compatibility matrix <rllib-algorithms.html#feature-compatibility-matrix>`__ for more information.
+
 .. image:: rllib-envs.svg
-
-Feature Compatibility Matrix
-----------------------------
-
-=============  =======================  ==================  ===========  ===========================
-Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
-=============  =======================  ==================  ===========  ===========================
-A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
-DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
-DDPG, TD3       No                      **Yes**             **Yes**
-APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
-APEX-DDPG       No                      **Yes**             **Yes**
-SAC             (todo)                  **Yes**             **Yes**
-ES              **Yes**                 **Yes**             No
-ARS             **Yes**                 **Yes**             No
-QMIX            **Yes**                 No                  **Yes**      `+RNN`_
-MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
-=============  =======================  ==================  ===========  ===========================
-
-.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
-.. _`+RNN`: rllib-models.html#recurrent-models
-.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
 
 Configuring Environments
 ------------------------

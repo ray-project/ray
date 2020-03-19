@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_COMMON_JAVA_JNI_UTILS_H
 #define RAY_COMMON_JAVA_JNI_UTILS_H
 
@@ -94,10 +108,6 @@ extern jfieldID java_function_arg_value;
 extern jclass java_base_task_options_class;
 /// resources field of BaseTaskOptions class
 extern jfieldID java_base_task_options_resources;
-/// useDirectCall field of BaseTaskOptions class
-extern jfieldID java_base_task_options_use_direct_call;
-/// DEFAULT_USE_DIRECT_CALL field of BaseTaskOptions class
-extern jfieldID java_base_task_options_default_use_direct_call;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -288,6 +298,39 @@ inline jobject NativeIdVectorToJavaByteArrayList(JNIEnv *env,
   return NativeVectorToJavaList<ID>(env, native_vector, [](JNIEnv *env, const ID &id) {
     return IdToJavaByteArray<ID>(env, id);
   });
+}
+
+/// Convert a Java Map<?, ?> to a C++ std::unordered_map<?, ?>
+template <typename key_type, typename value_type>
+inline std::unordered_map<key_type, value_type> JavaMapToNativeMap(
+    JNIEnv *env, jobject java_map,
+    const std::function<key_type(JNIEnv *, jobject)> &key_converter,
+    const std::function<value_type(JNIEnv *, jobject)> &value_converter) {
+  std::unordered_map<key_type, value_type> native_map;
+  if (java_map) {
+    jobject entry_set = env->CallObjectMethod(java_map, java_map_entry_set);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      auto java_key = (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      key_type key = key_converter(env, java_key);
+      auto java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
+      value_type value = value_converter(env, java_value);
+      native_map.emplace(key, value);
+      env->DeleteLocalRef(java_key);
+      env->DeleteLocalRef(java_value);
+      env->DeleteLocalRef(map_entry);
+    }
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    env->DeleteLocalRef(iterator);
+    env->DeleteLocalRef(entry_set);
+  }
+  return native_map;
 }
 
 /// Convert a C++ ray::Buffer to a Java byte array.

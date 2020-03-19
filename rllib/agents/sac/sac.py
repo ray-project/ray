@@ -4,8 +4,8 @@ from ray.rllib.agents.sac.sac_policy import SACTFPolicy
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts"
+    "prioritized_replay_beta", "prioritized_replay_eps",
+    "rollout_fragment_length", "train_batch_size", "learning_starts"
 ]
 
 # yapf: disable
@@ -14,7 +14,6 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "twin_q": True,
     "use_state_preprocessor": False,
-    "policy": "GaussianLatentSpacePolicy",
     # RLlib model options for the Q function
     "Q_model": {
         "hidden_activation": "relu",
@@ -26,16 +25,21 @@ DEFAULT_CONFIG = with_common_config({
         "hidden_layer_sizes": (256, 256),
     },
     # Unsquash actions to the upper and lower bounds of env's action space.
+    # Ignored for discrete action spaces.
     "normalize_actions": True,
 
     # === Learning ===
+    # Disable setting done=True at end of episode. This should be set to True
+    # for infinite-horizon MDPs (e.g., many continuous control problems).
+    "no_done_at_end": False,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 5e-3,
-    # Target entropy lower bound. This is the inverse of reward scale,
-    # and will be optimized automatically.
+    # Initial value to use for the entropy weight alpha.
+    "initial_alpha": 1.0,
+    # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
+    # Discrete(2), -3.0 for Box(shape=(3,))).
+    # This is the inverse of reward scale, and will be optimized automatically.
     "target_entropy": "auto",
-    # Disable setting done=True at end of episode.
-    "no_done_at_end": True,
     # N-step target updates.
     "n_step": 1,
 
@@ -47,13 +51,13 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": int(1e6),
     # If True prioritized replay buffer will be used.
-    # TODO(hartikainen): Make sure this works or remove the option.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
     "prioritized_replay_eps": 1e-6,
     "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
+
     "compress_observations": False,
 
     # === Optimization ===
@@ -62,13 +66,13 @@ DEFAULT_CONFIG = with_common_config({
         "critic_learning_rate": 3e-4,
         "entropy_learning_rate": 3e-4,
     },
-    # If not None, clip gradients during optimization at this value
+    # If not None, clip gradients during optimization at this value.
     "grad_norm_clipping": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 1,
+    "rollout_fragment_length": 1,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -96,4 +100,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 SACTrainer = GenericOffPolicyTrainer.with_updates(
-    name="SAC", default_config=DEFAULT_CONFIG, default_policy=SACTFPolicy)
+    name="SAC",
+    default_config=DEFAULT_CONFIG,
+    default_policy=SACTFPolicy,
+)

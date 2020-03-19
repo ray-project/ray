@@ -15,6 +15,48 @@ tf.enable_eager_execution()
 torch, _ = try_import_torch()
 
 
+class DummyComponent:
+    """A simple class that can be used for testing framework-agnostic logic.
+
+    Implements a simple `add()` method for adding a value to
+    `self.prop_b`.
+    """
+
+    def __init__(self,
+                 prop_a,
+                 prop_b=0.5,
+                 prop_c=None,
+                 framework="tf",
+                 **kwargs):
+        self.framework = framework
+        self.prop_a = prop_a
+        self.prop_b = prop_b
+        self.prop_c = prop_c or "default"
+        self.prop_d = kwargs.pop("prop_d", 4)
+        self.kwargs = kwargs
+
+    def add(self, value):
+        if self.framework == "tf":
+            return self._add_tf(value)
+        return self.prop_b + value
+
+    def _add_tf(self, value):
+        return tf.add(self.prop_b, value)
+
+
+class NonAbstractChildOfDummyComponent(DummyComponent):
+    pass
+
+
+class AbstractDummyComponent(DummyComponent, metaclass=ABCMeta):
+    """Used for testing `from_config()`.
+    """
+
+    @abstractmethod
+    def some_abstract_method(self):
+        raise NotImplementedError
+
+
 class TestFrameWorkAgnosticComponents(unittest.TestCase):
     """
     Tests the Component base class to implement framework-agnostic functional
@@ -75,10 +117,13 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         check(component.add(-1.1).numpy(), -2.1)  # prop_b == -1.0
 
         # Test recognizing default package path.
-        component = from_config(Exploration, {
-            "type": "EpsilonGreedy",
-            "action_space": Discrete(2)
-        })
+        component = from_config(
+            Exploration, {
+                "type": "EpsilonGreedy",
+                "action_space": Discrete(2),
+                "num_workers": 0,
+                "worker_index": 0,
+            })
         check(component.epsilon_schedule.outside_value, 0.05)  # default
 
         # Create torch Component from yaml-string.
@@ -91,48 +136,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         check(component.add(-5.1), np.array([-6.6]))  # prop_b == -1.5
 
 
-class DummyComponent:
-    """A simple class that can be used for testing framework-agnostic logic.
-
-    Implements a simple `add()` method for adding a value to
-    `self.prop_b`.
-    """
-
-    def __init__(self,
-                 prop_a,
-                 prop_b=0.5,
-                 prop_c=None,
-                 framework="tf",
-                 **kwargs):
-        self.framework = framework
-        self.prop_a = prop_a
-        self.prop_b = prop_b
-        self.prop_c = prop_c or "default"
-        self.prop_d = kwargs.pop("prop_d", 4)
-        self.kwargs = kwargs
-
-    def add(self, value):
-        if self.framework == "tf":
-            return self._add_tf(value)
-        return self.prop_b + value
-
-    def _add_tf(self, value):
-        return tf.add(self.prop_b, value)
-
-
-class NonAbstractChildOfDummyComponent(DummyComponent):
-    pass
-
-
-class AbstractDummyComponent(DummyComponent, metaclass=ABCMeta):
-    """Used for testing `from_config()`.
-    """
-
-    @abstractmethod
-    def some_abstract_method(self):
-        raise NotImplementedError
-
-
 if __name__ == "__main__":
-    import unittest
-    unittest.main(verbosity=1)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

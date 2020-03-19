@@ -42,10 +42,12 @@ optional_ray_files = []
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
+    "ray/autoscaler/azure/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
     "ray/autoscaler/kubernetes/example-full.yaml",
     "ray/autoscaler/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/ray-schema.json"
 ]
 
 ray_project_files = [
@@ -75,14 +77,16 @@ extras = {
     "debug": [],
     "dashboard": [],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate", "tensorboardX"],
+    "tune": ["tabulate", "tensorboardX"]
 }
 
 extras["rllib"] = extras["tune"] + [
-    "pyyaml",
+    "atari_py",
+    "dm_tree",
     "gym[atari]",
-    "opencv-python-headless",
     "lz4",
+    "opencv-python-headless",
+    "pyyaml",
     "scipy",
 ]
 
@@ -176,6 +180,7 @@ requires = [
     "packaging",
     "pytest",
     "pyyaml",
+    "jsonschema",
     "redis>=3.3.2",
     # NOTE: Don't upgrade the version of six! Doing so causes installation
     # problems. See https://github.com/ray-project/ray/issues/4169.

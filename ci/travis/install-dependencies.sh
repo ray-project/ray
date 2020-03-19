@@ -53,7 +53,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist scikit-learn
+    blist scikit-learn numba
 elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
@@ -64,7 +64,7 @@ elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist scikit-learn
+    blist scikit-learn numba
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
@@ -91,11 +91,14 @@ else
   exit 1
 fi
 
+# Install modules needed in all jobs.
+pip install dm-tree
+
 # Additional RLlib dependencies.
 if [[ "$RLLIB_TESTING" == "1" ]]; then
   pip install tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    gym[atari] atari_py smart_open lz4
+    atari_py gym[atari] lz4 smart_open
 fi
 
 # Additional streaming dependencies.

@@ -3,6 +3,7 @@ package org.ray.runtime;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.concurrent.Callable;
+import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -139,8 +140,8 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public void killActor(RayActor<?> actor) {
-    getCurrentRuntime().killActor(actor);
+  public void killActor(BaseActor actor, boolean noReconstruction) {
+    getCurrentRuntime().killActor(actor, noReconstruction);
   }
 
   @Override
@@ -171,8 +172,8 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callPy(RayPyActor pyActor, String functionName, Object[] args) {
-    return getCurrentRuntime().callPy(pyActor, functionName, args);
+  public RayObject callPyActor(RayPyActor pyActor, String functionName, Object[] args) {
+    return getCurrentRuntime().callPyActor(pyActor, functionName, args);
   }
 
   @Override

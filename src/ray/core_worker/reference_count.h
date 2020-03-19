@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_REF_COUNT_H
 #define RAY_CORE_WORKER_REF_COUNT_H
 
@@ -37,7 +51,8 @@ class ReferenceCounter {
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  void AddLocalReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  void AddLocalReference(const ObjectID &object_id, const std::string &call_site)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the local reference count for the ObjectID by one.
   ///
@@ -92,7 +107,15 @@ class ReferenceCounter {
   /// \param[in] dependencies The objects that the object depends on.
   void AddOwnedObject(const ObjectID &object_id,
                       const std::vector<ObjectID> &contained_ids, const TaskID &owner_id,
-                      const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+                      const rpc::Address &owner_address, const std::string &call_site,
+                      const int64_t object_size) LOCKS_EXCLUDED(mutex_);
+
+  /// Update the size of the object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] size The known size of the object.
+  void UpdateObjectSize(const ObjectID &object_id, int64_t object_size)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
   ///
@@ -212,13 +235,26 @@ class ReferenceCounter {
   /// \return Whether we have a reference to the object ID.
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
+  /// Write the current reference table to the given proto.
+  ///
+  /// \param[out] stats The proto to write references to.
+  void AddObjectRefStats(
+      const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+      rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
-    Reference() : owned_by_us(false) {}
+    Reference() {}
+    Reference(std::string call_site, const int64_t object_size)
+        : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
-    Reference(const TaskID &owner_id, const rpc::Address &owner_address)
-        : owned_by_us(true), owner({owner_id, owner_address}) {}
+    Reference(const TaskID &owner_id, const rpc::Address &owner_address,
+              std::string call_site, const int64_t object_size)
+        : call_site(call_site),
+          object_size(object_size),
+          owned_by_us(true),
+          owner({owner_id, owner_address}) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -250,10 +286,15 @@ class ReferenceCounter {
                was_stored_in_objects);
     }
 
+    /// Description of the call site where the reference was created.
+    std::string call_site = "<unknown>";
+    /// Object size if known, otherwise -1;
+    int64_t object_size = -1;
+
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
-    bool owned_by_us;
+    bool owned_by_us = false;
     /// The object's owner, if we know it. This has no value if the object is
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
