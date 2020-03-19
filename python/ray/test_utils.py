@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import socket
 
 import ray
 
@@ -234,3 +235,25 @@ def put_object(obj, use_ray_put):
         return ray.put(obj)
     else:
         return _put.remote(obj)
+
+
+def wait_until_server_available(address, timeout_ms=1000,
+                                retry_interval_ms=100):
+    ip_port = address.split(':')
+    ip = ip_port[0]
+    port = int(ip_port[1])
+    time_elapsed = 0
+    start = time.time()
+    while time_elapsed <= timeout_ms:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        try:
+            s.connect((ip, port))
+        except Exception:
+            time_elapsed = (time.time() - start) * 1000
+            time.sleep(retry_interval_ms / 1000.0)
+            s.close()
+            continue
+        s.close()
+        return True
+    return False
