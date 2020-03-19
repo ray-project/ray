@@ -1023,7 +1023,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
             RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/true, /*no_reconstruction=*/false));
+                KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
           }
         }));
   }
