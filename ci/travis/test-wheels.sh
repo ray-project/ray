@@ -21,7 +21,8 @@ else
   exit 1
 fi
 
-TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_microbenchmarks.py"
+TEST_DIR="$TRAVIS_BUILD_DIR/python/ray/tests"
+TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
 if [[ "$platform" == "linux" ]]; then
@@ -45,7 +46,10 @@ if [[ "$platform" == "linux" ]]; then
 
   # Run a simple test script to make sure that the wheel works.
   INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
-  $PYTHON_EXE "$TEST_SCRIPT"
+
+  for TEST_SCRIPT in $TEST_SCRIPTS; do
+      $PYTHON_EXE "$TEST_SCRIPT"
+  done
 
   # Run the UI test to make sure that the packaged UI works.
   $PIP_CMD install -q aiohttp google grpcio psutil requests setproctitle
@@ -63,11 +67,13 @@ elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
   PY_MMS=("3.5"
           "3.6"
-          "3.7")
+          "3.7"
+          "3.8")
   # This array is just used to find the right wheel.
   PY_WHEEL_VERSIONS=("35"
                      "36"
-                     "37")
+                     "37"
+                     "38")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM=${PY_MMS[i]}
