@@ -1,16 +1,71 @@
 #include "ray/util/util.h"
 
 #include <algorithm>
+#include <regex>
 #include <string>
 #include <vector>
 
 #include "ray/util/logging.h"
 
-std::vector<std::string> ParseCommandLine(const std::string &s, CommandLineSyntax kind) {
-  using std::min;
-  if (s.find('\0') < s.size()) {
-    RAY_LOG(ERROR) << "command-line arguments cannot contain null characters: " << s;
+static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
+  std::vector<std::string> result;
+  const std::string single_quoted = R"('([^']*)')",
+                    double_quoted = R"(\"((?:[^"\\]|\\.)*)\")",
+                    unquoted = R"(((?:\\(?:.|$)|[^"'\s\\])+))", boundary = R"(\s+|$)";
+  std::regex re_cmdline(single_quoted + "|" + double_quoted + "|" + unquoted + "|" +
+                        boundary),
+      re_dq_escape(R"(\\([\\"]))"), re_escape(R"(\\(.))");
+  bool was_space = true;
+  std::string arg;
+  for (std::sregex_iterator i(s.begin(), s.end(), re_cmdline), end; i != end; ++i) {
+    const std::smatch &match = *i;
+    bool space = false;
+    size_t j = 0;
+    if (match[++j].matched) {
+      arg += match[j];
+    } else if (match[++j].matched) {
+      arg += std::regex_replace(match[j].str(), re_dq_escape, "$1");
+    } else if (match[++j].matched) {
+      arg += std::regex_replace(match[j].str(), re_escape, "$1");
+    } else {
+      if (!was_space) {
+        result.push_back(arg);
+        arg.clear();
+      }
+      space = true;
+    }
+    was_space = space;
   }
+  return result;
+}
+
+static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
+  std::vector<std::string> result;
+  const std::string double_quoted = R"(\"((?:[^"\\]|\\.)*)\")",
+                    unquoted = R"(((?:\\(?:.|$)|[^"\s\\])+))", boundary = R"(\s+|$)";
+  std::regex re_cmdline(double_quoted + "|" + unquoted + "|" + boundary),
+      re_dq_escape(R"((\\*)\1(?:\\(")|$))"), re_escape(R"((\\*)\1\\("))");
+  bool was_space = false;
+  std::string arg;
+  for (std::sregex_iterator i(s.begin(), s.end(), re_cmdline), end; i != end; ++i) {
+    const std::smatch &match = *i;
+    bool space = false;
+    size_t j = 0;
+    if (match[++j].matched) {
+      arg += std::regex_replace(match[j].str(), re_dq_escape, "$1$2");
+    } else if (match[++j].matched) {
+      arg += std::regex_replace(match[j].str(), re_escape, "$2");
+    } else if (!was_space) {
+      result.push_back(arg);
+      arg.clear();
+      space = true;
+    }
+    was_space = space;
+  }
+  return result;
+}
+
+std::vector<std::string> ParseCommandLine(const std::string &s, CommandLineSyntax kind) {
   if (kind == CommandLineSyntax::System) {
 #ifdef _WIN32
     kind = CommandLineSyntax::Windows;
@@ -18,107 +73,53 @@ std::vector<std::string> ParseCommandLine(const std::string &s, CommandLineSynta
     kind = CommandLineSyntax::POSIX;
 #endif
   }
-  enum State {
-    Normal,
-    AfterWhitespace,
-    AfterBackslash,
-    InSingleQuotes,
-    InDoubleQuotes,
-    AfterBackslashInDoubleQuotes,
-  } state = kind == CommandLineSyntax::Windows ? State::Normal : State::AfterWhitespace;
   std::vector<std::string> result;
-  std::string arg;
-  for (size_t i = 0; i < s.size(); ++i) {
-    char ch = s[i];
-    switch (state) {
-    case State::Normal:
-    case State::AfterWhitespace:
-      switch (ch) {
-      case ' ':
-      case '\t':
-      case '\n':
-        if (state != State::AfterWhitespace) {
-          result.push_back(arg);
-          arg.clear();
-        }
-        state = State::AfterWhitespace;
-        break;
-      case '\\':
-        arg += ch;  // Keep backslash for now; we'll remove it if needed
-        state = State::AfterBackslash;
-        break;
-      case '\'':
-        if (kind != CommandLineSyntax::POSIX) {
-          goto DEFAULT_AFTER_WHITESPACE;
-        }
-        state = State::InSingleQuotes;
-        break;
-      case '\"':
-        state = State::InDoubleQuotes;
-        break;
-      default:
-      DEFAULT_AFTER_WHITESPACE:
-        arg += ch;
-        state = State::Normal;
-        break;
-      }
-      break;
-    case State::AfterBackslash:
-      if (kind == CommandLineSyntax::POSIX ||
-          (kind == CommandLineSyntax::Windows && ch == '\"')) {
-        arg.pop_back();  // Remove preceding backslash
-      }
-      arg += ch;
-      state = State::Normal;
-      break;
-    case State::InSingleQuotes:
-      switch (ch) {
-      case '\'':
-        state = State::Normal;
-        break;
-      default:
-        arg += ch;
-        break;
-      }
-      break;
-    case State::InDoubleQuotes:
-      switch (ch) {
-      case '\\':
-        arg += ch;  // Keep backslash for now; we'll remove it if needed
-        state = State::AfterBackslashInDoubleQuotes;
-        break;
-      case '\"':
-        if (kind == CommandLineSyntax::Windows) {
-          size_t j = arg.find_last_not_of('\\');
-          j = j < arg.size() ? j + 1 : 0;
-          arg.erase(j, (arg.size() - j) / 2);
-        }
-        state = State::Normal;
-        break;
-      default:
-        arg += ch;
-        break;
-      }
-      break;
-    case State::AfterBackslashInDoubleQuotes:
-      switch (ch) {
-      case '\\':
-        if (kind == CommandLineSyntax::POSIX) {
-          arg.pop_back();  // Remove preceding backslash
-        }
-        break;
-      case '\"':
-        arg.pop_back();  // Remove preceding backslash
-        break;
-      }
-      arg += ch;
-      state = State::InDoubleQuotes;
-      break;
-    }
+  switch (kind) {
+  case CommandLineSyntax::POSIX:
+    result = ParsePosixCommandLine(s);
+    break;
+  case CommandLineSyntax::Windows:
+    result = ParseWindowsCommandLine(s);
+    break;
+  default:
+    RAY_LOG(FATAL) << "invalid command line syntax";
+    break;
   }
-  if (state != State::AfterWhitespace) {
-    result.push_back(arg);
-    arg.clear();
+  return result;
+}
+
+std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
+  std::string result;
+  std::regex unsafe_chars(R"([^[:alnum:]%_=+\-])"), single_quote("(')");
+  for (size_t i = 0; i != args.size(); ++i) {
+    std::string arg = args[i];
+    if (std::regex_search(arg, unsafe_chars)) {
+      arg = std::regex_replace(arg, single_quote, "'\\$1'");
+      arg = "'" + arg + "'";
+    }
+    if (i > 0) {
+      result += ' ';
+    }
+    result += arg;
+  }
+  return result;
+}
+
+static std::string CreateWindowsCommandLine(const std::vector<std::string> &args) {
+  std::string result;
+  std::regex unsafe_chars(R"([^[:alnum:]%_=+\-:])"), double_quote(R"((\\*)("))"),
+      end(R"((\\*)$)");
+  for (size_t i = 0; i != args.size(); ++i) {
+    std::string arg = args[i];
+    if (std::regex_search(arg, unsafe_chars)) {
+      arg = std::regex_replace(arg, end, "$1$1");
+      arg = std::regex_replace(arg, double_quote, "$1$1\\$2");
+      arg = '"' + arg + '"';
+    }
+    if (i > 0) {
+      result += ' ';
+    }
+    result += arg;
   }
   return result;
 }
@@ -133,65 +134,16 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
 #endif
   }
   std::string result;
-  for (size_t i = 0; i != args.size(); ++i) {
-    if (i > 0) {
-      result += ' ';
-    }
-    std::string arg = args[i];
-    bool is_safe_without_quotes = true;
-    for (size_t j = 0; j != arg.size(); ++j) {
-      char ch = arg[j];
-      switch (ch) {
-      case '%':
-      case '-':
-      case '_':
-      case '=':
-      case '+':
-        break;
-      case ':':
-        if (kind == CommandLineSyntax::Windows) {
-          is_safe_without_quotes = false;
-        }
-        break;
-      default:
-        if (!isalnum(ch)) {
-          is_safe_without_quotes = false;
-        }
-        break;
-      }
-    }
-    if (!is_safe_without_quotes) {
-      char quote = kind == CommandLineSyntax::POSIX ? '\'' : '\"';
-      bool quote_started = false;
-      for (size_t j = 0; j != arg.size(); ++j) {
-        char ch = arg[j];
-        if (ch == quote) {
-          if (quote_started) {
-            result += quote;
-            quote_started = !quote_started;
-          }
-          result += '\\';
-          result += ch;
-        } else {
-          if (!quote_started) {
-            result += quote;
-            quote_started = !quote_started;
-          }
-          if (quote == '\"' && ch == '\\') {
-            result += '\\';
-            result += ch;
-          } else {
-            result += ch;
-          }
-        }
-      }
-      if (quote_started) {
-        result += quote;
-        quote_started = !quote_started;
-      }
-    } else {
-      result += arg;
-    }
+  switch (kind) {
+  case CommandLineSyntax::POSIX:
+    result = CreatePosixCommandLine(args);
+    break;
+  case CommandLineSyntax::Windows:
+    result = CreateWindowsCommandLine(args);
+    break;
+  default:
+    RAY_LOG(FATAL) << "invalid command line syntax";
+    break;
   }
   return result;
 }

@@ -36,8 +36,6 @@ TEST(UtilTest, ParseCommandLineTest) {
   ASSERT_EQ(ParseCommandLine(R"("\\\a")", win32), ArgList({R"(\\\a)"}));
   ASSERT_EQ(ParseCommandLine(R"('a')", posix), ArgList({R"(a)"}));
   ASSERT_EQ(ParseCommandLine(R"('a')", win32), ArgList({R"('a')"}));
-  ASSERT_EQ(ParseCommandLine(R"('a )", posix), ArgList({R"(a )"}));
-  ASSERT_EQ(ParseCommandLine(R"('a )", win32), ArgList({R"('a)"}));
   ASSERT_EQ(ParseCommandLine(R"(x' a \b')", posix), ArgList({R"(x a \b)"}));
   ASSERT_EQ(ParseCommandLine(R"(x' a \b')", win32), ArgList({R"(x')", R"(a)", R"(\b')"}));
 }
