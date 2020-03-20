@@ -51,7 +51,7 @@ void RedisServiceManagerForTest::FlushAll() {
   std::string flush_all_redis_command =
       REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SERVER_PORT) + " flushall";
   RAY_LOG(INFO) << "Cleaning up redis with command: " << flush_all_redis_command;
-  RAY_CHECK(system(flush_all_redis_command.c_str()) == 0);
+  system(flush_all_redis_command.c_str());
   usleep(100 * 1000);
 }
 
