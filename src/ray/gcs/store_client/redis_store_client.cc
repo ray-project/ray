@@ -143,7 +143,7 @@ Status RedisStoreClient::AsyncGetByIndex(const std::string &table_name,
 
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const ScanCallback<std::string, std::string> &callback) {
+    const ScanCallback<std::pair<std::string, std::string>> &callback) {
   RAY_CHECK(callback != nullptr);
 
   auto range_executor =
@@ -204,7 +204,7 @@ RedisRangeOpExecutor::RedisRangeOpExecutor(std::shared_ptr<RedisClient> redis_cl
 
 RedisRangeOpExecutor::RedisRangeOpExecutor(
     std::shared_ptr<RedisClient> redis_client, const std::string &table_name,
-    const ScanCallback<std::string, std::string> &get_all_callback)
+    const ScanCallback<std::pair<std::string, std::string>> &get_all_callback)
     : redis_client_(redis_client),
       table_name_(table_name),
       get_all_callback_(get_all_callback) {

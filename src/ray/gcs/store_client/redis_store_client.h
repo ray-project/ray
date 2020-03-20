@@ -34,8 +34,9 @@ class RedisStoreClient : public StoreClient {
   Status AsyncGetByIndex(const std::string &table_name, const std::string &index,
                          const MultiItemCallback<std::string> &callback) override;
 
-  Status AsyncGetAll(const std::string &table_name,
-                     const ScanCallback<std::string, std::string> &callback) override;
+  Status AsyncGetAll(
+      const std::string &table_name,
+      const ScanCallback<std::pair<std::string, std::string>> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
@@ -67,9 +68,9 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<RedisRangeOpExe
                        const std::string &table_name, const std::string &index,
                        const StatusCallback &delete_by_index_callback);
 
-  RedisRangeOpExecutor(std::shared_ptr<RedisClient> redis_client,
-                       const std::string &table_name,
-                       const ScanCallback<std::string, std::string> &get_all_callback);
+  RedisRangeOpExecutor(
+      std::shared_ptr<RedisClient> redis_client, const std::string &table_name,
+      const ScanCallback<std::pair<std::string, std::string>> &get_all_callback);
 
   ~RedisRangeOpExecutor();
 
@@ -113,7 +114,7 @@ class RedisRangeOpExecutor : public std::enable_shared_from_this<RedisRangeOpExe
   StatusCallback delete_by_index_callback_{nullptr};
   std::atomic<int> pending_delete_count_{0};
 
-  ScanCallback<std::string, std::string> get_all_callback_{nullptr};
+  ScanCallback<std::pair<std::string, std::string>> get_all_callback_{nullptr};
   std::vector<std::pair<std::string, std::string>> get_all_partial_result_;
   std::unordered_set<std::string> pending_read_keys_;
 

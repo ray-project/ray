@@ -5,7 +5,17 @@ namespace ray {
 
 IOServicePool::IOServicePool(size_t io_service_num) : io_service_num_(io_service_num) {}
 
-IOServicePool::~IOServicePool() {}
+IOServicePool::~IOServicePool() {
+  for (auto &thread : threads_) {
+    delete thread;
+  }
+  threads_.clear();
+
+  for (auto io_service : io_services_) {
+    delete io_service;
+  }
+  io_services_.clear();
+}
 
 void IOServicePool::Run() {
   for (size_t i = 0; i < io_service_num_; ++i) {
@@ -28,14 +38,7 @@ void IOServicePool::Stop() {
 
   for (auto &thread : threads_) {
     thread->join();
-    delete thread;
   }
-  threads_.clear();
-
-  for (auto io_service : io_services_) {
-    delete io_service;
-  }
-  io_services_.clear();
 
   RAY_LOG(INFO) << "IOServicePool is stopped.";
 }
