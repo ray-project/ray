@@ -616,9 +616,8 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, True and not local_mode, local_mode ))
-            # TODO(ilr) Fix ref-counting
-        self.local_mode = local_mode
+            task_execution_handler, check_signals, True, local_mode ))
+        self.local_mode_enabled = local_mode
     def run_task_loop(self):
         with nogil:
             self.core_worker.get().StartExecutingTasks()
@@ -730,10 +729,9 @@ cdef class CoreWorker:
             with nogil:
                 # Using custom object IDs is not supported because we can't
                 # track their lifecycle, so don't pin the object in that case.
-                if self.local_mode:
-                    check_status(self.core_worker.get().Seal(c_object_id, pin_object and object_id is None,
+                if self.local_mode_enabled:
+                    check_status(self.core_worker.get().Seal(c_object_id, pin_object and object_id is None, CAddress(),
                                                 data, metadata))
-
                 else:
                     check_status(
                         self.core_worker.get().Seal(
@@ -1072,18 +1070,11 @@ cdef class CoreWorker:
                 print("Writing serialized object?")
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
-                if self.local_mode:
-                    print()
-                    # Pint object is the true value
-                    print("TRY 1")
-                    return_ids[1]
-                    print("TRY 2")
-                    returns[0][i]
-                    print("TRY 3")
-                    
-                    check_status(self.core_worker.get().Seal(return_ids[i], False,
-                                                returns[0][i].get().GetData(),returns[0][i].get().GetMetadata()))
-                    print("TRY 4")
+                if self.local_mode_enabled:
+                    check_status(self.core_worker.get().Seal(return_ids[i], 
+                                False, CAddress(),
+                                returns[0][i].get().GetData(),
+                                returns[0][i].get().GetMetadata()))
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:

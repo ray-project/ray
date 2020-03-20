@@ -311,10 +311,6 @@ class Worker:
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
-
-        Raises:
-            Exception if running in LOCAL_MODE and any of the object IDs do not
-            exist in the emulated object store.
         """
         # Make sure that the values are object IDs.
         for object_id in object_ids:
@@ -618,8 +614,8 @@ def init(address=None,
             same driver in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different
             drivers.
-        local_mode (bool): True if the code should be executed serially
-            without Ray. This is useful for debugging.
+        local_mode (bool): True if the code should be executed serially. This is
+        useful for debugging.
         driver_object_store_memory (int): Limit the amount of memory the driver
             can use in the object store for creating objects. By default, this
             is autoset based on available system memory, subject to a 20GB cap.
@@ -715,7 +711,6 @@ def init(address=None,
             redis_port=redis_port,
             node_ip_address=node_ip_address,
             object_id_seed=object_id_seed,
-            local_mode=False,
             driver_mode=driver_mode,
             redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
@@ -736,7 +731,7 @@ def init(address=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
-            load_code_from_local=True,  #load_code_from_local,
+            load_code_from_local=load_code_from_local or local_mode,
             use_pickle=use_pickle,
             _internal_config=_internal_config,
         )
@@ -1232,7 +1227,8 @@ def connect(node,
     elif LOCAL_MODE:
         pass
     else:
-        raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
+        raise ValueError(
+            "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1483,7 +1479,6 @@ def get(object_ids, timeout=None):
 
     with profiling.profile("ray.get"):
         is_individual_id = isinstance(object_ids, ray.ObjectID)
-        print(type(object_ids))
         if is_individual_id:
             object_ids = [object_ids]
 

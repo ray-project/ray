@@ -242,13 +242,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
   /// \param[in] owner_address Address of the owner of the object who will be contacted by
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
+  /// \param[in] data of the object to be written (for local_mode).
+  /// \param[in] metadata Metadata of the object to be written (for local_mode).
   /// \return Status.
   Status Seal(const ObjectID &object_id, bool pin_object,
-              const absl::optional<rpc::Address> &owner_address = absl::nullopt);
-
-  Status Seal(const ObjectID &object_id, bool pin_object,
-              const std::shared_ptr<Buffer> &data,
-              const std::shared_ptr<Buffer> &metadata);
+              const absl::optional<rpc::Address> &owner_address = absl::nullopt,
+              const absl::optional<std::shared_ptr<Buffer>> &data = absl::nullopt,
+              const absl::optional<std::shared_ptr<Buffer>> &metadata = absl::nullopt);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -577,6 +577,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs);
+
+  /// Execute a local mode task (runs normal ExecuteTask)
+  ///
+  /// \param spec[in] task_spec Task specification.
+  /// \return Status.
+  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
