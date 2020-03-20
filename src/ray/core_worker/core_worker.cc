@@ -294,7 +294,9 @@ void CoreWorker::Exit(bool intentional) {
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
-  task_manager_->DrainAndShutdown([this, intentional]() {
+
+  // Callback to shutdown.
+  auto shutdown = [this, intentional]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     task_execution_service_.post([this, intentional]() {
@@ -303,13 +305,36 @@ void CoreWorker::Exit(bool intentional) {
       }
       Shutdown();
     });
-  });
+  };
+
+  // Callback to drain objects once all pending tasks have been drained.
+  auto drain_references_callback = [this, shutdown]() {
+    bool not_actor_task = false;
+    {
+      absl::MutexLock lock(&mutex_);
+      not_actor_task = actor_id_.IsNil();
+    }
+    if (not_actor_task) {
+      // If we are a task, then we cannot hold any object references in the
+      // heap. Therefore, any active object references are being held by other
+      // processes. Wait for these processes to release their references before
+      // we shutdown.
+      // NOTE(swang): This could still cause this worker process to stay alive
+      // forever if another process holds a reference forever.
+      reference_counter_->DrainAndShutdown(shutdown);
+    } else {
+      // If we are an actor, then we may be holding object references in the
+      // heap. Then, we should not wait to drain the object references before
+      // shutdown since this could hang.
+      shutdown();
+    }
+  };
+
+  task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
 void CoreWorker::RunIOService() {
-#ifdef _WIN32
-  // TODO(mehrdadn): Is there an equivalent for Windows we need here?
-#else
+#ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
@@ -996,7 +1021,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
             RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/true, /*no_reconstruction=*/false));
+                KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
           }
         }));
   }

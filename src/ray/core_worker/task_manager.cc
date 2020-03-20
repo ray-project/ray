@@ -86,9 +86,9 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
     }
   }
 
-  // Do not hold the lock when calling into the reference counter.
+  // Do not hold the lock when calling callbacks.
   if (!has_pending_tasks) {
-    reference_counter_->DrainAndShutdown(shutdown);
+    shutdown();
   }
 }
 
@@ -217,9 +217,9 @@ void TaskManager::ShutdownIfNeeded() {
       std::swap(shutdown_hook_, shutdown_hook);
     }
   }
-  // Do not hold the lock when calling into the reference counter.
+  // Do not hold the lock when calling callbacks.
   if (shutdown_hook != nullptr) {
-    reference_counter_->DrainAndShutdown(shutdown_hook);
+    shutdown_hook();
   }
 }
 
