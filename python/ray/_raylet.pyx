@@ -246,6 +246,7 @@ cdef int prepare_resources(
     cdef:
         unordered_map[c_string, double] out
         c_string resource_name
+
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
 
@@ -273,7 +274,6 @@ cdef void prepare_args(
         ObjectID obj_id
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
-    print("ARgs are: ", args)
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
@@ -315,7 +315,6 @@ cdef deserialize_args(
 
     for arg in args:
         if isinstance(arg, RayError):
-            print("ERROR!!!!!!")
             raise arg
 
     return ray.signature.recover_args(args)
@@ -329,10 +328,8 @@ cdef execute_task(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns):
-    print("PLSa")
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
-    print("PLSb")
     cdef:
         dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker
@@ -345,7 +342,6 @@ cdef execute_task(
     # Why the fuck does this matter for LOCAL_MODE
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
-    print("SOMEWHERE 32b")
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
@@ -355,15 +351,12 @@ cdef execute_task(
                 num_tasks_since_last_checkpoint=0,
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
-    print("SOMEWHERE 32c")
     execution_info = execution_infos.get(function_descriptor)
-    print("SOMEWHERE 32d")
     if not execution_info:
         print("other execution info")
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
         execution_infos[function_descriptor] = execution_info
-    print("SOMEWHERE 31")
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.Hex() + b'}')
@@ -389,7 +382,6 @@ cdef execute_task(
                 int(ray_constants.from_memory_units(
                         dereference(
                             c_resources.find(b"object_store_memory")).second)))
-        print("somewhere b")
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
@@ -430,7 +422,6 @@ cdef execute_task(
                 return future.result()
 
             return function(actor, *arguments, **kwarguments)
-    print("somewhere a")
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
             task_exception = False
@@ -451,7 +442,6 @@ cdef execute_task(
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
-                    print(args, kwargs)
                     outputs = function_executor(*args, **kwargs)
                     task_exception = False
                     if c_return_ids.size() == 1:
@@ -461,7 +451,6 @@ cdef execute_task(
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
                     worker, outputs, c_return_ids, returns)
-                print("OUTTA store task outputs")
         except Exception as error:
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
@@ -496,9 +485,7 @@ cdef execute_task(
         # Reset signal counters so that the next task can get
         # all past signals.
         ray_signal.reset()
-    print("PAS WEIRD SIGNAL")
     if execution_info.max_calls != 0:
-        print("IN IF Stment")
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(job_id, function_descriptor)
@@ -522,21 +509,17 @@ cdef CRayStatus task_execution_handler(
         const CWorkerID &c_worker_id) nogil:
 
     with gil:
-        print("IN THE CALLBACK")
         try:
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, ray_function, c_resources, c_args,
                              c_arg_reference_ids, c_return_ids, returns)
-                print("FINISHED EXECUTE_TASK")
-            except Exception as e:
+            except Exception as e:  # TODO(ilr) Explore why you added this to the codepath
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
                     "was executing a task.")
                 print("EXCEPTION:", e)
-                print(traceback_str)
-                print(ray.worker)
                 ray.utils.push_error_to_driver(
                     ray.worker.global_worker,
                     "worker_crash",
@@ -1067,7 +1050,6 @@ cdef class CoreWorker:
             if serialized_object is NoReturn:
                 returns[0][i].reset()
             else:
-                print("Writing serialized object?")
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
                 if self.local_mode_enabled:
