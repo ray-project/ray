@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 class BaseDashboardController(ABC):
-    """Perform data fetching and other actions required by Dashboard
+    """Set of APIs to interact with a Dashboard class and routes.
 
     Make sure you run start_collecting_metrics function before using
     get_[stats]_info methods.

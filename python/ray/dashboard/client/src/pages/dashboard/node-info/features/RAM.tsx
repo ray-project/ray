@@ -6,7 +6,6 @@ import {
   NodeFeatureComponent,
   WorkerFeatureComponent
 } from "./types";
-import SpanButton from "../../../../common/SpanButton";
 
 export const ClusterRAM: ClusterFeatureComponent = ({ nodes }) => {
   let used = 0;

@@ -41,6 +41,9 @@ class MetricsExportClient:
                 data=json.dumps({
                     "cluster_id": self.dashboard_id
                 }))
+        except requests.exceptions.ConnectionError as e:
+            logger.error("Failed to connect to the server {}".format(self.auth_url))
+            return False
         except requests.exceptions.HTTPError as e:
             logger.error("HTTP error occured while connecting to "
                          "a metrics auth server.: {}".format(e))
@@ -66,15 +69,6 @@ class MetricsExportClient:
     def dashboard_url(self):
         return self._dashboard_url
 
-    def enable(self):
-        assert not self.is_authenticated
-
-        succeed = self._authenticate()
-        if not succeed:
-            logger.error("Failed to authenticate to a metrics auth server.")
-            return False
-        return True
-
     def start_exporting_metrics(self):
         """Create a thread to export metrics. 
 
@@ -83,8 +77,15 @@ class MetricsExportClient:
         Return:
             Whether or not it suceedes to run exporter.
         """
-        assert self.is_authenticated
         assert not self.is_exporting_started
+        if not self.is_authenticated:
+            succeed = self._authenticate()
+            if not succeed:
+                logger.error("Failed to authenticate to a metrics "
+                            "auth server.")
+                logger.warn("Metrics export won't be enabled with a "
+                            "server: {}".format(self.auth_url))
+                return False
 
         # Exporter is a Python thread that keeps exporting metrics with
         # access token obtained by an authentication process.

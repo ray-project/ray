@@ -33,9 +33,9 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
-from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.dashboard_controller_interface import (
     BaseDashboardController)
+from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.dashboard_route_handler_interface import (
     BaseDashboardRouteHandler)
 
@@ -350,8 +350,8 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
 
 class MetricsExportHandler:
     def __init__(self,
-                 dashboard_controller,
-                 metrics_export_client,
+                 dashboard_controller: DashboardController,
+                 metrics_export_client: MetricsExportClient,
                  dashboard_id,
                  is_dev=False):
         self.dashboard_controller = dashboard_controller
@@ -365,7 +365,14 @@ class MetricsExportHandler:
                 result={"url": None},
                 error="Already enabled")
 
-        self.metrics_export_client.start_exporting_metrics()
+        succeed = self.metrics_export_client.start_exporting_metrics()
+        if not succeed:
+            return await json_response(
+                self.is_dev,
+                result={"url": None},
+                error="Failed to enable metrics exporting.")
+
+        url = self.metrics_export_client.dashboard_url
         return await json_response(self.is_dev, result={"url": url})
 
     async def get_dashboard_address(self, req) -> aiohttp.web.Response:
@@ -380,7 +387,10 @@ class MetricsExportHandler:
 
     async def redirect_to_dashboard(self, req) -> aiohttp.web.Response:
         if not self.metrics_export_client.enabled:
-            return aiohttp.web.Response(status=403, text="403 Forbidden")
+            return await json_response(
+                self.is_dev,
+                result={"url": None},
+                error="You should enable metrics export to use this endpoint.")
 
         raise aiohttp.web.HTTPFound(self.metrics_export_client.dashboard_url)
 
@@ -501,7 +511,6 @@ class Dashboard:
             self.dashboard_id
         )
         if metrics_export_address:
-            self.metrics_export_client.enable()
             self.metrics_export_handler = MetricsExportHandler(
                 self.dashboard_controller,
                 self.metrics_export_client,
@@ -534,7 +543,7 @@ class Dashboard:
     def log_dashboard_url(self):
         url = ray.services.get_webui_url_from_redis(self.redis_client)
         if url is None:
-            raise ValueError("WebUI URL is not present in Redis.")
+            raise ValueError("WebUI URL is not present in GCS.")
         with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
             f.write(url)
         logger.info("Dashboard running on {}".format(url))

@@ -165,7 +165,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {
               label: "UsedLocalObjectMemory",
               value: actor.usedObjectStoreMemory.toLocaleString()
-            },
+            }
             // {
             //   label: "Task",
             //   value: actor.currentTaskFuncDesc.join(".")
