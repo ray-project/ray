@@ -1,7 +1,7 @@
 import errno
 import logging
 import os
-import tree
+from sklearn import tree
 
 import numpy as np
 import ray
