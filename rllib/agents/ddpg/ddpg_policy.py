@@ -74,6 +74,8 @@ class DDPGPostprocessing:
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
     def __init__(self, observation_space, action_space, config):
+        self.observation_space = observation_space
+        self.action_space = action_space
         config = dict(ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG, **config)
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
@@ -117,7 +119,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             ])
 
         # Create exploration component.
-        self.exploration = self._create_exploration(action_space, config)
+        self.exploration = self._create_exploration()
         explore = tf.placeholder_with_default(True, (), name="is_exploring")
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE):
