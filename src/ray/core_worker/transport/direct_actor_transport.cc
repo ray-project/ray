@@ -201,7 +201,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  RAY_LOG(INFO) << "Received task " << task_spec.DebugString();
+  RAY_LOG(DEBUG) << "Received task " << task_spec.DebugString();
   if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
@@ -242,7 +242,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     // We have posted an exit task onto the main event loop,
     // so shouldn't bother executing any further work.
     if (exiting_) return;
-    RAY_LOG(INFO) << "in accept callback";
 
     auto num_returns = task_spec.NumReturns();
     if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
@@ -250,7 +249,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       num_returns--;
     }
     RAY_CHECK(num_returns >= 0);
-    RAY_LOG(INFO) << "in accept callback2";
     std::vector<std::shared_ptr<RayObject>> return_objects;
     auto status = task_handler_(task_spec, resource_ids, &return_objects,
                                 reply->mutable_borrowed_refs());
@@ -315,7 +313,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   // Run actor creation task immediately on the main thread, without going
   // through a scheduling queue.
   if (task_spec.IsActorCreationTask()) {
-    RAY_LOG(INFO) << "Actor creation";
     accept_callback();
     return;
   }

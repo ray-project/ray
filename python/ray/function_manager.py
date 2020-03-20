@@ -128,7 +128,7 @@ class FunctionActorManager:
         Args:
             remote_function: the RemoteFunction object.
         """
-        if self._worker.load_code_from_local or self._worker.mode == ray.worker.LOCAL_MODE:
+        if self._worker.load_code_from_local:
             return
 
         function = remote_function._function
@@ -225,7 +225,6 @@ class FunctionActorManager:
         Returns:
             A FunctionExecutionInfo object.
         """
-        print(job_id)
         if self._worker.load_code_from_local:
             # Load function from local code.
             # Currently, we don't support isolating code by jobs,

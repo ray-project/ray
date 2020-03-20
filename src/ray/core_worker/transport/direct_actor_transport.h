@@ -264,7 +264,7 @@ class SchedulingQueue {
                      << client_processed_up_to;
       next_seq_no_ = client_processed_up_to + 1;
     }
-    RAY_LOG(INFO) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
+    RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
     pending_tasks_[seq_no] =
         InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
