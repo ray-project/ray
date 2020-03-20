@@ -33,11 +33,11 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
-from ray.dashboard.dashboard_controller_interface import (
+from ray.dashboard.interface.dashboard_controller_interface import (
     BaseDashboardController)
-from ray.dashboard.metrics_exporter.client import MetricsExportClient
-from ray.dashboard.dashboard_route_handler_interface import (
+from ray.dashboard.interface.dashboard_route_handler_interface import (
     BaseDashboardRouteHandler)
+from ray.dashboard.metrics_exporter.client import MetricsExportClient
 
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR

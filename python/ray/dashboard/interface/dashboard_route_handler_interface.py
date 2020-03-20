@@ -1,61 +1,59 @@
+import aiohttp
+
 from abc import ABC, abstractmethod
 
-class BaseDashboardController(ABC):
-    """Set of APIs to interact with a Dashboard class and routes.
 
-    Make sure you run start_collecting_metrics function before using
-    get_[stats]_info methods.
-    """
+class BaseDashboardRouteHandler(ABC):
+    """Collection of routes that should be implemented for dashboard."""
 
     @abstractmethod
-    def get_ray_config(self):
+    def get_forbidden(self, _) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def get_node_info(self):
+    async def get_index(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def get_raylet_info(self):
+    async def ray_config(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def tune_info(self):
+    async def node_info(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def tune_availability(self):
+    async def raylet_info(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def launch_profiling(self, node_id, pid, duration):
+    async def tune_info(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def check_profiling_status(self, profiling_id):
+    async def tune_availability(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def get_profiling_info(self, profiling_id):
+    async def launch_profiling(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def kill_actor(self, actor_id, ip_address, port):
+    async def check_profiling_status(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def get_logs(self, hostname, pid):
+    async def get_profiling_info(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def get_errors(self, hostname, pid):
+    async def kill_actor(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def start_collecting_metrics(self):
-        """Start threads/processes/actors to collect metrics
+    async def logs(self, req) -> aiohttp.web.Response:
+        raise NotImplementedError("Please implement this method.")
 
-        NOTE: This interface should be called only once before using
-            other api calls.
-        """
+    @abstractmethod
+    async def errors(self, req) -> aiohttp.web.Response:
         raise NotImplementedError("Please implement this method.")
