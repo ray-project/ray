@@ -97,7 +97,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
-    Class<?>[] returnTypes = null;
+    Class<?>[] returnTypes;
     if (func instanceof RayFuncVoid) {
       returnTypes = new Class<?>[] {};
     } else {
@@ -110,7 +110,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
                         CallOptions options) {
-    checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
         pyRemoteFunction.moduleName,
         "",
@@ -123,7 +122,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
-    Class<?>[] returnTypes = null;
+    Class<?>[] returnTypes;
     if (func instanceof RayFuncVoid) {
       returnTypes = new Class<?>[] {};
     } else {
@@ -135,7 +134,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object... args) {
-    checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), pyActorMethod.methodName);
     // Python functions always have a return value, even if it's `None`.
@@ -155,7 +153,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
                                 ActorCreationOptions options) {
-    checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
         pyActorClass.moduleName,
         pyActorClass.className,
