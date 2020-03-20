@@ -11,6 +11,11 @@ class RayError(Exception):
     pass
 
 
+class RayConnectionError(RayError):
+    """Raised when ray is not yet connected but needs to be."""
+    pass
+
+
 class RayTaskError(RayError):
     """Indicates that a task threw an exception during execution.
 
