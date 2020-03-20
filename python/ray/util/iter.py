@@ -1,10 +1,11 @@
+from contextlib import contextmanager
 import collections
 import random
 import threading
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
-from ray.util.iter_metrics import MetricsContext
+from ray.util.iter_metrics import MetricsContext, SharedMetrics
 
 # The type of an iterator element.
 T = TypeVar("T")
@@ -412,7 +413,7 @@ class ParallelIterator(Generic[T]):
                     futures = [a.par_iter_next.remote() for a in active]
 
         name = "{}.batch_across_shards()".format(self)
-        return LocalIterator(base_iterator, MetricsContext(), name=name)
+        return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
     def gather_async(self, async_queue_depth=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
@@ -438,8 +439,10 @@ class ParallelIterator(Generic[T]):
         if async_queue_depth < 1:
             raise ValueError("queue depth must be positive")
 
+        # Forward reference to the returned iterator.
+        local_iter = None
+
         def base_iterator(timeout=None):
-            metrics = LocalIterator.get_metrics()
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
@@ -463,7 +466,7 @@ class ParallelIterator(Generic[T]):
                 for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
-                        metrics.current_actor = actor
+                        local_iter.shared_metrics.get().current_actor = actor
                         yield ray.get(obj_id)
                         futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
@@ -473,7 +476,8 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, MetricsContext(), name=name)
+        local_iter = LocalIterator(base_iterator, SharedMetrics(), name=name)
+        return local_iter
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -540,7 +544,7 @@ class ParallelIterator(Generic[T]):
                     break
 
         name = self.name + ".shard[{}]".format(shard_index)
-        return LocalIterator(base_iterator, MetricsContext(), name=name)
+        return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
 
 class LocalIterator(Generic[T]):
@@ -562,7 +566,7 @@ class LocalIterator(Generic[T]):
 
     def __init__(self,
                  base_iterator: Callable[[], Iterable[T]],
-                 metrics: MetricsContext,
+                 shared_metrics: SharedMetrics,
                  local_transforms: List[Callable[[Iterable], Any]] = None,
                  timeout: int = None,
                  name=None):
@@ -572,7 +576,7 @@ class LocalIterator(Generic[T]):
             base_iterator (func): A function that produces the base iterator.
                 This is a function so that we can ensure LocalIterator is
                 serializable.
-            metrics (MetricsContext): Existing metrics context or a new
+            shared_metrics (SharedMetrics): Existing metrics context or a new
                 context. Should be the same for each chained iterator.
             local_transforms (list): A list of transformation functions to be
                 applied on top of the base iterator. When iteration begins, we
@@ -584,10 +588,11 @@ class LocalIterator(Generic[T]):
                 blocking.
             name (str): Optional name for this iterator.
         """
+        assert isinstance(shared_metrics, SharedMetrics)
         self.base_iterator = base_iterator
         self.built_iterator = None
         self.local_transforms = local_transforms or []
-        self.metrics = metrics
+        self.shared_metrics = shared_metrics
         self.timeout = timeout
         self.name = name or "unknown"
 
@@ -603,36 +608,22 @@ class LocalIterator(Generic[T]):
 
     def _build_once(self):
         if self.built_iterator is None:
-            print("build iter 1")
             it = iter(self.base_iterator(self.timeout))
             for fn in self.local_transforms:
                 it = fn(it)
-            print("build iter 2")
-
-            # This sets the iterator context during iterator execution, and
-            # clears it after so that multiple iterators can be used at a time.
-            def set_restore_context(it):
-                print("set_restore_context: start")
-                if hasattr(self.thread_local, "metrics"):
-                    prev_metrics = self.thread_local.metrics
-                else:
-                    prev_metrics = None
-                print("set_restore_context: prev metrics", prev_metrics)
-                self.thread_local.metrics = self.metrics
-                try:
-                    print("set_restore_context: start for loop")
-                    for item in it:
-                        self.thread_local.metrics = prev_metrics
-                        print("set_restore_context: restore to prev")
-                        yield item
-                        print("set_restore_context: restore to self")
-                        self.thread_local.metrics = self.metrics
-                finally:
-                    print("set_restore_context: exit for loop")
-                    self.thread_local.metrics = prev_metrics
-
-            it = set_restore_context(it)
             self.built_iterator = it
+
+    @contextmanager
+    def _metrics_context(self):
+        if hasattr(self.thread_local, "metrics"):
+            prev_metrics = self.thread_local.metrics
+        else:
+            prev_metrics = None
+        try:
+            self.thread_local.metrics = self.shared_metrics.get()
+            yield
+        finally:
+            self.thread_local.metrics = prev_metrics
 
     def __iter__(self):
         self._build_once()
@@ -657,7 +648,8 @@ class LocalIterator(Generic[T]):
                     # Keep retrying the function until it returns a valid
                     # value. This allows for non-blocking functions.
                     while True:
-                        result = fn(item)
+                        with self._metrics_context():
+                            result = fn(item)
                         yield result
                         if not isinstance(result, _NextValueNotReady):
                             break
@@ -672,7 +664,8 @@ class LocalIterator(Generic[T]):
                     # Avoids calling on_fetch_start repeatedly if we are
                     # yielding _NextValueNotReady.
                     if new_item:
-                        fn._on_fetch_start()
+                        with self._metrics_context():
+                            fn._on_fetch_start()
                         new_item = False
                     item = next(it)
                     if not isinstance(item, _NextValueNotReady):
@@ -683,19 +676,20 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.metrics,
+            self.shared_metrics,
             self.local_transforms + [apply_foreach],
             name=self.name + ".for_each()")
 
     def filter(self, fn: Callable[[T], bool]) -> "LocalIterator[T]":
         def apply_filter(it):
             for item in it:
-                if isinstance(item, _NextValueNotReady) or fn(item):
-                    yield item
+                with self._metrics_context():
+                    if isinstance(item, _NextValueNotReady) or fn(item):
+                        yield item
 
         return LocalIterator(
             self.base_iterator,
-            self.metrics,
+            self.shared_metrics,
             self.local_transforms + [apply_filter],
             name=self.name + ".filter()")
 
@@ -715,7 +709,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.metrics,
+            self.shared_metrics,
             self.local_transforms + [apply_batch],
             name=self.name + ".batch({})".format(n))
 
@@ -730,7 +724,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.metrics,
+            self.shared_metrics,
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
 
@@ -768,7 +762,7 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(
             self.base_iterator,
-            self.metrics,
+            self.shared_metrics,
             self.local_transforms + [apply_shuffle],
             name=self.name +
             ".shuffle(shuffle_buffer_size={}, seed={})".format(
@@ -844,7 +838,7 @@ class LocalIterator(Generic[T]):
             iterators.append(
                 LocalIterator(
                     make_next(i),
-                    self.metrics, [],
+                    self.shared_metrics, [],
                     name=self.name + ".duplicate[{}]".format(i)))
 
         return iterators
@@ -870,8 +864,9 @@ class LocalIterator(Generic[T]):
             timeout = 0
 
         active = []
-        shared_metrics = MetricsContext()
+        shared_metrics = SharedMetrics()
         for it in [self] + list(others):
+            it.shared_metrics.set(shared_metrics.get())
             active.append(
                 LocalIterator(
                     it.base_iterator,
@@ -953,7 +948,7 @@ class ParallelIteratorWorker(object):
     def par_iter_init(self, transforms):
         """Implements ParallelIterator worker init."""
         it = LocalIterator(lambda timeout: self.item_generator,
-                           MetricsContext())
+                           SharedMetrics())
         for fn in transforms:
             it = fn(it)
             assert it is not None, fn
