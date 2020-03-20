@@ -27,14 +27,14 @@ namespace gcs {
 
 class RedisGcsClient;
 
-/// \class RedisActorInfoAccessor
-/// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
+/// \class RedisLogBasedActorInfoAccessor
+/// `RedisLogBasedActorInfoAccessor` is an implementation of `ActorInfoAccessor`
 /// that uses Redis as the backend storage.
-class RedisActorInfoAccessor : public ActorInfoAccessor {
+class RedisLogBasedActorInfoAccessor : public ActorInfoAccessor {
  public:
-  explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisLogBasedActorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisActorInfoAccessor() {}
+  virtual ~RedisLogBasedActorInfoAccessor() {}
 
   Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
 
@@ -98,14 +98,14 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
   ActorSubscriptionExecutor log_based_actor_sub_executor_;
 };
 
-/// \class RedisNewActorInfoAccessor
-/// `RedisNewActorInfoAccessor` is an implementation of `ActorInfoAccessor`
+/// \class RedisActorInfoAccessor
+/// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
 /// that uses Redis as the backend storage.
-class RedisNewActorInfoAccessor : public RedisActorInfoAccessor {
+class RedisActorInfoAccessor : public RedisLogBasedActorInfoAccessor {
  public:
-  explicit RedisNewActorInfoAccessor(RedisGcsClient *client_impl);
+  explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisNewActorInfoAccessor() {}
+  virtual ~RedisActorInfoAccessor() {}
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;

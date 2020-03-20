@@ -276,8 +276,8 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
-  RAY_LOG(INFO) << "Registering node info, node id = " << node_id
-                << ", address is = " << local_node_info.node_manager_address();
+  RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
+                 << ", address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
@@ -289,8 +289,8 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
           local_node_info_.CopyFrom(local_node_info);
           local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
         }
-        RAY_LOG(INFO) << "Finished registering node info, status = " << status
-                      << ", node id = " << node_id;
+        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
+                       << ", node id = " << node_id;
       });
   return Status::OK();
 }
