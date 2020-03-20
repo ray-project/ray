@@ -11,6 +11,9 @@ import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
+import org.ray.api.function.PyActorClass;
+import org.ray.api.function.PyActorMethod;
+import org.ray.api.function.PyRemoteFunction;
 import org.ray.api.function.RayFunc;
 import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
@@ -98,12 +101,33 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
+  public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
+                        CallOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyRemoteFunction.moduleName,
+        "",
+        pyRemoteFunction.functionName);
+    // Python functions always have a return value, even if it's `None`.
+    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
+  }
+
+  @Override
+  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
     int numReturns = func instanceof RayFuncVoid ? 0 : 1;
     return callActorFunction(actor, functionDescriptor, args, numReturns);
+  }
+
+  @Override
+  public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object... args) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
+        pyActor.getClassName(), pyActorMethod.methodName);
+    // Python functions always have a return value, even if it's `None`.
+    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
   }
 
   @Override
@@ -116,6 +140,17 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
   }
 
+  @Override
+  public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
+                                ActorCreationOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyActorClass.moduleName,
+        pyActorClass.className,
+        PYTHON_INIT_METHOD_NAME);
+    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
+  }
+
   private void checkPyArguments(Object[] args) {
     for (Object arg : args) {
       Preconditions.checkArgument(
@@ -123,34 +158,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
           "Python argument can only be a RayPyActor or a byte array, not {}.",
           arg.getClass().getName());
     }
-  }
-
-  @Override
-  public RayObject callPy(String moduleName, String functionName, Object[] args,
-      CallOptions options) {
-    checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, "",
-        functionName);
-    // Python functions always have a return value, even if it's `None`.
-    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
-  }
-
-  @Override
-  public RayObject callPyActor(RayPyActor pyActor, String functionName, Object... args) {
-    checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
-        pyActor.getClassName(), functionName);
-    // Python functions always have a return value, even if it's `None`.
-    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
-  }
-
-  @Override
-  public RayPyActor createPyActor(String moduleName, String className, Object[] args,
-      ActorCreationOptions options) {
-    checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, className,
-        PYTHON_INIT_METHOD_NAME);
-    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override
