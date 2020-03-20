@@ -223,7 +223,7 @@ def test_caller_actor_reconstruction(ray_start_regular):
 
         def get_pid(self):
             return os.getpid()
-    
+
     @ray.remote(max_reconstructions=1)
     class Actor:
         """An actor that will be reconstructed at most once."""
@@ -244,7 +244,7 @@ def test_caller_actor_reconstruction(ray_start_regular):
     # kill the actor.
     # TODO(zhijunfu): use ray.kill instead.
     kill_actor(actor)
-    
+
     # Check that we can still call the actor.
     assert ray.get(actor.increase.remote()) == 4
 
@@ -259,8 +259,8 @@ def test_caller_task_reconstruction(ray_start_regular):
         if value > 2:
             return value
         else:
-            os._exit(0) 
-    
+            os._exit(0)
+
     @ray.remote(max_reconstructions=1)
     class Actor:
         """An actor that will be reconstructed at most once."""
