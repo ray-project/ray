@@ -69,7 +69,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public <T> RayObject<T> put(T obj) {
     ObjectId objectId = objectStore.put(obj);
-    return new RayObjectImpl<>(objectId, obj.getClass());
+    try {
+      return new RayObjectImpl<>(objectId, obj.getClass());
+    } catch (Exception e) {
+      return new RayObjectImpl<>(objectId, Object.class);
+    }
   }
 
   @Override
