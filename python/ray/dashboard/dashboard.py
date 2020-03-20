@@ -33,7 +33,7 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
-from ray.dashboard.hosted_dashboard.dashboard_client import DashboardClient
+from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.dashboard_controller_interface import (
     BaseDashboardController)
 from ray.dashboard.dashboard_route_handler_interface import (
@@ -99,10 +99,6 @@ def b64_decode(reply):
     return b64decode(reply).decode("utf-8")
 
 
-def get_host_and_port(addr):
-    return addr.strip().split(":")
-
-
 async def json_response(is_dev, result=None, error=None,
                         ts=None) -> aiohttp.web.Response:
     if ts is None:
@@ -128,7 +124,6 @@ class DashboardController(BaseDashboardController):
                                         redis_password=redis_password)
         if Analysis is not None:
             self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
-        self.is_hosted = False
 
     def _construct_raylet_info(self):
         D = self.raylet_stats.get_raylet_stats()
@@ -353,42 +348,51 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         return await json_response(self.is_dev, result=result)
 
 
-class HostedDashboardHandler:
+class MetricsExportHandler:
     def __init__(self,
                  dashboard_controller,
-                 hosted_dashboard_addr,
+                 metrics_export_client,
                  dashboard_id,
                  is_dev=False):
         self.dashboard_controller = dashboard_controller
         self.is_dev = is_dev
-        self.hosted_dashboard_addr = hosted_dashboard_addr
-        hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
-            self.hosted_dashboard_addr)
-        self.dashboard_client = DashboardClient(
-            hosted_dashboard_host, hosted_dashboard_port,
-            self.dashboard_controller, dashboard_id)
+        self.metrics_export_client = metrics_export_client
 
-    def _enable_hosted_dashboard(self) -> str:
-        assert self.hosted_dashboard_addr
-        self.dashboard_client.start_exporting_metrics()
-        return self.dashboard_client.hosted_dashboard_url
+    async def enable_export_metrics(self, req) -> aiohttp.web.Response:
+        if self.metrics_export_client.enabled:
+            return await json_response(
+                self.is_dev,
+                result={"url": None},
+                error="Already enabled")
 
-    async def enable_hosted_dashboard(self, req) -> aiohttp.web.Response:
-        url = self._enable_hosted_dashboard()
-        return await json_response(self.is_dev, {"url": url})
+        self.metrics_export_client.start_exporting_metrics()
+        return await json_response(self.is_dev, result={"url": url})
 
-    async def get_hosted_dashboard_url(self, req) -> aiohttp.web.Response:
-        url = self.dashboard_client.hosted_dashboard_url
-        return await json_response(self.is_dev, {"url": url})
+    async def get_dashboard_address(self, req) -> aiohttp.web.Response:
+        if not self.metrics_export_client.enabled:
+            return await json_response(
+                self.is_dev,
+                result={"url": None},
+                error="Metrics exporting is not enabled.")
+
+        url = self.metrics_export_client.dashboard_url
+        return await json_response(self.is_dev, result={"url": url})
+
+    async def redirect_to_dashboard(self, req) -> aiohttp.web.Response:
+        if not self.metrics_export_client.enabled:
+            return aiohttp.web.Response(status=403, text="403 Forbidden")
+
+        raise aiohttp.web.HTTPFound(self.metrics_export_client.dashboard_url)
 
 
-def setup_hosted_dashboard_routes(app: aiohttp.web.Application,
-                                  handler: HostedDashboardHandler):
+def setup_metrics_export_routes(app: aiohttp.web.Application,
+                                  handler: MetricsExportHandler):
     """Routes that require dynamically changing class attributes."""
     app.router.add_get("/api/enable_hostsed_dashboard",
-                       handler.enable_hosted_dashboard)
-    app.router.add_get("/api/hosted_dashboard_url",
-                       handler.get_hosted_dashboard_url)
+                       handler.enable_export_metrics)
+    app.router.add_get("/api/dashboard_url",
+                       handler.get_dashboard_address)
+    app.router.add_get("/dashboard", handler.redirect_to_dashboard)
 
 
 def setup_static_dir(app):
@@ -461,7 +465,7 @@ class Dashboard:
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
         redis_passord(str): Redis password to access GCS
-        hosted_dashboard_addr(str): The address users host their dashboard.
+        metrics_export_address(str): The address users host their dashboard.
     """
 
     def __init__(self,
@@ -470,7 +474,7 @@ class Dashboard:
                  redis_address,
                  temp_dir,
                  redis_password=None,
-                 hosted_dashboard_addr=None):
+                 metrics_export_address=None):
         self.host = host
         self.port = port
         self.redis_client = ray.services.create_redis_client(
@@ -479,8 +483,6 @@ class Dashboard:
         self.dashboard_id = str(uuid.uuid4())
         self.dashboard_controller = DashboardController(
             redis_address, redis_password)
-
-        self.dashboard_client = None
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -493,14 +495,20 @@ class Dashboard:
             self.dashboard_controller, is_dev=self.is_dev)
 
         # Setup Metrics exporting service if necessary.
-        if hosted_dashboard_addr:
-            self.hosted_dashboard_handler = HostedDashboardHandler(
+        self.metrics_export_client = MetricsExportClient(
+            metrics_export_address,
+            self.dashboard_controller,
+            self.dashboard_id
+        )
+        if metrics_export_address:
+            self.metrics_export_client.enable()
+            self.metrics_export_handler = MetricsExportHandler(
                 self.dashboard_controller,
-                hosted_dashboard_addr,
+                self.metrics_export_client,
                 self.dashboard_id,
                 is_dev=self.is_dev)
-            setup_hosted_dashboard_routes(self.app,
-                                          self.hosted_dashboard_handler)
+            setup_metrics_export_routes(self.app,
+                                          self.metrics_export_handler)
 
         # Setup Dashboard Routes
         build_dir = setup_static_dir(self.app)
@@ -534,6 +542,8 @@ class Dashboard:
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
+        if self.metrics_export_client.enabled:
+            self.metrics_export_client.start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 

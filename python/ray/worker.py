@@ -549,7 +549,6 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
-         hosted_dashboard_addr=None,
          use_pickle=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
@@ -729,7 +728,6 @@ def init(address=None,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            hosted_dashboard_addr=hosted_dashboard_addr,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we

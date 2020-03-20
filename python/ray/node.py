@@ -476,14 +476,13 @@ class Node:
                 process_info
             ]
 
-    def start_dashboard(self, require_webui, hosted_dashboard_addr):
+    def start_dashboard(self, require_webui):
         """Start the dashboard.
 
         Args:
             require_webui (bool): If true, this will raise an exception if we
                 fail to start the webui. Otherwise it will print a warning if
                 we fail to start the webui.
-            hosted_dashboard_addr (str): The address users host dashboard.
         """
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
         self._webui_url, process_info = ray.services.start_dashboard(
@@ -491,7 +490,6 @@ class Node:
             self._ray_params.webui_host,
             self.redis_address,
             self._temp_dir,
-            hosted_dashboard_addr,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -626,8 +624,7 @@ class Node:
         self.start_monitor()
         self.start_raylet_monitor()
         self.start_dashboard(
-            require_webui=self._ray_params.include_webui,
-            hosted_dashboard_addr=self._ray_params.hosted_dashboard_addr)
+            require_webui=self._ray_params.include_webui)
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

@@ -1046,7 +1046,6 @@ def start_dashboard(require_webui,
                     host,
                     redis_address,
                     temp_dir,
-                    hosted_dashboard_addr,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
@@ -1061,7 +1060,6 @@ def start_dashboard(require_webui,
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
-        hosted_dashboard_addr (str): The address users host their dashboard.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1085,15 +1083,16 @@ def start_dashboard(require_webui,
         os.path.dirname(os.path.abspath(__file__)),
         "dashboard/dashboard_main.py")
     command = [
-        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
-        "--port={}".format(port), "--redis-address={}".format(redis_address),
+        sys.executable,
+        "-u",
+        dashboard_filepath,
+        "--host={}".format(host),
+        "--port={}".format(port),
+        "--redis-address={}".format(redis_address),
         "--temp-dir={}".format(temp_dir)
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
-
-    if hosted_dashboard_addr:
-        command += ["--hosted-dashboard-addr={}".format(hosted_dashboard_addr)]
 
     webui_dependencies_present = True
     try:
@@ -1117,21 +1116,11 @@ def start_dashboard(require_webui,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
-        dashboard_url = "http://{}:{}".format(
+        dashboard_url = "{}:{}".format(
             host if host != "0.0.0.0" else get_node_ip_address(), port)
-
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
             colorama.Fore.RESET, colorama.Style.NORMAL))
-
-        if not hosted_dashboard_addr:
-            # TODO(simon): Implement frontend UI for this.
-            # TODO(sang): Change the url name?
-            enable_hosted_dashboard_url = "{}/to_hosted".format(dashboard_url)
-            logger.info("To host your dashboard, go to {}{}{}{}{}".format(
-                colorama.Style.BRIGHT, colorama.Fore.GREEN,
-                enable_hosted_dashboard_url, colorama.Fore.RESET,
-                colorama.Style.NORMAL))
 
         return dashboard_url, process_info
     else:

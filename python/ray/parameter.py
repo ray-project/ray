@@ -121,7 +121,6 @@ class RayParams:
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 hosted_dashboard_addr=None,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -156,7 +155,6 @@ class RayParams:
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
-        self.hosted_dashboard_addr = hosted_dashboard_addr
         self._internal_config = _internal_config
         self._check_usage()
 

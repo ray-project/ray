@@ -52,14 +52,10 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
-    parser.add_argument(
-        "--hosted-dashboard-addr",
-        required=False,
-        type=str,
-        default=None,
-        help="Specify the address where user dashboard will be hosted.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
+
+    metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")
 
     try:
         dashboard = Dashboard(
@@ -67,7 +63,7 @@ if __name__ == "__main__":
             args.port,
             args.redis_address,
             args.temp_dir,
-            hosted_dashboard_addr=args.hosted_dashboard_addr,
+            metrics_export_address=metrics_export_address,
             redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:

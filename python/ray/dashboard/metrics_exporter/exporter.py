@@ -30,8 +30,6 @@ class Exporter(threading.Thread):
         self.dashboard_id = dashboard_id
         self.dashboard_controller = dashboard_controller
         self.export_address = export_address
-        if not self.export_address.startswith("http://"):
-            self.export_address = "http://" + self.export_address
         self.update_frequency = update_frequency
         self.access_token = access_token
 
@@ -39,18 +37,27 @@ class Exporter(threading.Thread):
 
     def export(self, ray_config, node_info, raylet_info, tune_info,
                tune_availability):
-        # TODO(sang): Receive actions and run.
-        requests.post(
-            self.export_address,
-            data=json.dumps({
-                "cluster_id": self.dashboard_id,
-                "access_token": self.access_token,
-                "ray_config": ray_config,
-                "node_info": node_info,
-                "raylet_info": raylet_info,
-                "tune_info": tune_info,
-                "tune_availability": tune_availability
-            }))
+        try:
+            response = requests.post(
+                self.export_address,
+                data=json.dumps({
+                    "cluster_id": self.dashboard_id,
+                    "access_token": self.access_token,
+                    "ray_config": ray_config,
+                    "node_info": node_info,
+                    "raylet_info": raylet_info,
+                    "tune_info": tune_info,
+                    "tune_availability": tune_availability
+                }))
+        except requests.exceptions.HTTPError as e:
+            logger.error("Failed to export metrics due to "
+                        "an error: {}".format(e))
+
+        if response.status_code != 200:
+            logger.error("Failed to export metrics\n"
+                         "URL: {}.\n"
+                         "Status code: {}"
+                         .format(self.export_address, response.status_code))
 
     def run(self):
         while True:
