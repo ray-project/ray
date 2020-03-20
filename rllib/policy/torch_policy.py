@@ -50,7 +50,7 @@ class TorchPolicy(Policy):
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
-        self.exporation = self._create_exploration()
+        self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
         self._optimizer = self.optimizer()
@@ -94,9 +94,8 @@ class TorchPolicy(Policy):
                     is_training=False)
             # Get the exploration action from the forward results.
             action, logp = self.exploration.get_exploration_action(
-                dist_inputs,
-                self.dist_class,
-                self.model,
+                distribution_inputs=dist_inputs,
+                action_dist_class=self.dist_class,
                 timestep=timestep
                 if timestep is not None else self.global_timestep,
                 explore=explore)
