@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -125,6 +126,15 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 			podName := elem.(string)
 			svcConf := common.DefaultServiceConfig(*instance, podName)
 			rayPodSvc := common.ServiceForPod(svcConf)
+			blockOwnerDeletion := true
+			ownerReference :=  metav1.OwnerReference{
+				APIVersion: instance.APIVersion,
+				Kind: instance.Kind,
+				Name: instance.Name,
+				UID: instance.UID,
+				BlockOwnerDeletion: &blockOwnerDeletion,
+			}
+			rayPodSvc.OwnerReferences = append(rayPodSvc.OwnerReferences, ownerReference)
 			if errSvc := r.Create(context.TODO(), rayPodSvc); errSvc != nil {
 				if errors.IsAlreadyExists(errSvc) {
 					log.Info("Pod service already exist,no need to create")
