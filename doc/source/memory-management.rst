@@ -36,7 +36,7 @@ The ``ray memory`` command can be used to help track down what ``ObjectID`` refe
 
 Running ``ray memory`` from the command line while a Ray application is running will give you a dump of all of the ``ObjectID`` references that are currently held by the driver, actors, and tasks in the cluster.
 
-.. code-block:: python
+.. code-block::
   -----------------------------------------------------------------------------------------------------
   Object ID                                Reference Type       Object Size   Reference Creation Site
   =====================================================================================================
