@@ -9,14 +9,40 @@ ray.tune
     :show-inheritance:
     :exclude-members: TuneError, Trainable, DurableTrainable
 
+Training (`tune.Trainable`, tune.track)
+---------------------------------------
+
+tune.Trainable
+~~~~~~~~~~~~~~
 .. autoclass:: ray.tune.Trainable
     :members:
     :private-members:
+
+tune.DurableTrainable
+~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.DurableTrainable
 
 .. autoclass:: ray.tune.function_runner.StatusReporter
     :members: __call__, logdir
+
+tune.track
+~~~~~~~~~~
+
+.. automodule:: ray.tune.track
+    :members:
+
+Sampling
+--------
+
+Test
+
+Trial Executors
+---------------
+
+.. autoclass:: ray.tune.ray_trial_executor.RayTrialExecutor
+
+.. autoclass:: ray.tune.trial_executor.TrialExecutor
 
 ray.tune.schedulers
 -------------------
@@ -40,15 +66,18 @@ ray.tune.suggest
 
 .. autoclass:: ray.tune.suggest.Repeater
 
-ray.tune.track
---------------
 
-.. automodule:: ray.tune.track
-    :members:
-
-
-ray.tune.logger
----------------
+Loggers
+-------
 
 .. autoclass:: ray.tune.logger.Logger
-    :members:
+
+.. autoclass:: ray.tune.logger.UnifiedLogger
+
+.. autoclass:: ray.tune.logger.TBXLogger
+
+.. autoclass:: ray.tune.logger.JsonLogger
+
+XXTODO - DO NOT MERGE without adding docs to JsonLogger.
+
+.. autoclass:: ray.tune.logger.CSVLogger
