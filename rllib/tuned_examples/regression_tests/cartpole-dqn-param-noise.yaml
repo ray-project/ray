@@ -1,0 +1,10 @@
+cartpole-dqn:
+    env: CartPole-v0
+    run: DQN
+    stop:
+        episode_reward_mean: 50
+    config:
+        exploration_config:
+            type: ParameterNoise
+            random_timesteps: 0
+        lr: 0.0003
