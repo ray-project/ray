@@ -1,7 +1,5 @@
 package org.ray.streaming.runtime.transfer;
 
-import com.google.common.base.Preconditions;
-import org.ray.api.id.UniqueId;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;

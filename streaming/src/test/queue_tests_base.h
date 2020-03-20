@@ -280,7 +280,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     // Create an actor.
     ActorID actor_id;
     RAY_CHECK_OK(
-        worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
+        CoreWorkerProcess::GetCoreWorker().CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
     return actor_id;
   }
 
@@ -317,7 +317,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         "",                             // log_dir
         true,                           // install_failure_signal_handler
         "127.0.0.1",                    // node_ip_address
-        node_manager_port,              // node_manager_port
+        node_manager_port_,             // node_manager_port
         "queue_tests",                  // driver_name
         nullptr,                        // task_execution_callback
         nullptr,                        // check_signals
