@@ -12,6 +12,7 @@ RUN pip install -U boto3
 # Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
 RUN apt-get install -y zlib1g-dev libgl1-mesa-dev
 # The following is needed to support TensorFlow 1.14
+RUN conda remove -y --force wrapt
 RUN pip install gym[atari] opencv-python-headless tensorflow lz4 pytest-timeout smart_open tensorflow_probability dm_tree
 RUN pip install -U h5py  # Mutes FutureWarnings
 RUN pip install --upgrade bayesian-optimization hyperopt
