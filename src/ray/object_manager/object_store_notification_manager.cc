@@ -70,7 +70,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
 #else
   socket_.assign(local_stream_protocol(), fd, ec);
 #endif
-  assert(!ec.value());
+  RAY_CHECK(!ec);
   NotificationWait();
 }
 

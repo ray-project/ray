@@ -78,7 +78,8 @@ void RedisAsioClient::operate() {
 }
 
 void RedisAsioClient::handle_read(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
+            error_code == boost::asio::error::connection_reset);
   read_in_progress_ = false;
   redis_async_context_.RedisAsyncHandleRead();
 
@@ -88,7 +89,8 @@ void RedisAsioClient::handle_read(boost::system::error_code error_code) {
 }
 
 void RedisAsioClient::handle_write(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
+            error_code == boost::asio::error::connection_reset);
   write_in_progress_ = false;
   redis_async_context_.RedisAsyncHandleWrite();
 
