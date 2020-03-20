@@ -463,7 +463,7 @@ class ActorClass:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
 
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         if worker.mode is None:
             raise RuntimeError("Actors cannot be created before ray.init() "
                                "has been called.")
@@ -655,7 +655,7 @@ class ActorHandle:
     def __del__(self):
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         if worker.connected and hasattr(worker, "core_worker"):
             worker.core_worker.remove_actor_handle_reference(
                 self._ray_actor_id)
@@ -682,7 +682,7 @@ class ActorHandle:
             object_ids: A list of object IDs returned by the remote actor
                 method.
         """
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
 
         args = args or []
         kwargs = kwargs or {}
@@ -776,7 +776,7 @@ class ActorHandle:
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
@@ -809,7 +809,7 @@ class ActorHandle:
                 the actor handle.
 
         """
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
@@ -859,7 +859,7 @@ def modify_class(cls):
         __ray_actor_class__ = cls  # The original actor class
 
         def __ray_terminate__(self):
-            worker = ray.worker.get_global_worker()
+            worker = ray.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
 
@@ -936,8 +936,6 @@ def exit_actor():
     else:
         raise TypeError("exit_actor called on a non-actor worker.")
 
-
-ray.worker.global_worker.make_actor = make_actor
 
 CheckpointContext = namedtuple(
     "CheckpointContext",
