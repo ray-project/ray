@@ -34,8 +34,6 @@ Views
 
 Machine View
 ~~~~~~~~~~~~
-Go to the Machine View when you want to see resource usage statistics for each node and each worker process.
-
 The Machine View shows you:
 
 - System resources usage for each machine and worker. E.G. RAM, CPU, disk, and network usage information.
@@ -47,8 +45,6 @@ The Machine View shows you:
 
 Logical View
 ~~~~~~~~~~~~
-Go to the Logical View when you want to see actor statistics. 
-
 The Logical View shows you:
 
 - Created and killed actors
@@ -67,8 +63,6 @@ The Ray Config tab shows you the current autoscaler configuration.
 
 Tune
 ~~~~
-Go to the Tune to see running Tune jobs and their statistics.
-
 The Tune tab shows you:
 
 - Tune jobs and their status.
@@ -153,19 +147,15 @@ References
 Machine View
 ~~~~~~~~~~~~
 
-**Machine/Worker Hierarchy**
+**Machine/Worker Hierarchy**: The dashboard visualizes hierarchical relationship of workers (processes) and machines (nodes). Each host consists of many workers, and you can see them by clicking a + button.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Machine-view-reference-1.png
     :align: center
 
-Ray consists of nodes and workers. Nodes typicall mean machines and workers mean processes.
-The dashboard visualizes hierarchical relationship of workers and machines. Each host consists of many workers, and you can see them by clicking a + button.
-
+You can hide it again by clicking a - button.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Machine-view-reference-2.png
     :align: center
-
-Worker information is visible when a + button is clicked. You can hide it by clicking a - button.
 
 **Resource Configuration**
 
@@ -245,9 +235,9 @@ Logical View (Experimental)
 
 **Pending Actor Creation**: Actor creation is pending when there is no available resource for this actor because it is already taken by other tasks / actors. This is depicted as a yellow colored actor.
 
-**Actor Hierarchy**
+**Actor Hierarchy**: The logical view renders actor information in a tree format. 
 
-The logical view renders actor information in a tree format. To illustrate this, in the code block below, the ``Parent`` actor creates two ``Child`` actors and each ``Child`` actor creates one ``GrandChild`` actor.
+To illustrate this, in the code block below, the ``Parent`` actor creates two ``Child`` actors and each ``Child`` actor creates one ``GrandChild`` actor.
 This relationship is visible in the dashboard *Logical View* tab.
 
 .. code-block:: python
@@ -279,7 +269,7 @@ You can see that the dashboard shows the parent/child relationship as expected.
 
 Ray Config
 ~~~~~~~~~~~~
-Configuration defined at ``cluster.yaml`` for the autoscaler mode. Check `Cluster.yaml reference <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`_ to learn it in more details.
+Configuration defined at ``cluster.yaml`` for the autoscaler mode. See `Cluster.yaml reference <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`_ for more details.
 
 Tune (Experimental)
 ~~~~~~~~~~~~~~~~~~~
