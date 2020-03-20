@@ -1336,6 +1336,22 @@ py_test(
     args = ["--num-cpus=4"]
 )
 
+sh_test(
+    name = "examples/serving/test_local_inference",
+    tags = ["examples", "examples_L", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_local_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "examples/serving/test_remote_inference",
+    tags = ["examples", "examples_R", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_remote_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
 py_test(
     name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
