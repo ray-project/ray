@@ -65,7 +65,7 @@ class RedisClient {
     return shard_contexts_;
   }
 
-  std::shared_ptr<RedisContext> GetRedisContext(const std::string &shard_key);
+  std::shared_ptr<RedisContext> GetShardContext(const std::string &shard_key);
 
   std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
 
