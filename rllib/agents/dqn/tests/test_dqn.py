@@ -136,27 +136,25 @@ class TestDQN(unittest.TestCase):
             elif fw == "eager":
                 eager_mode_ctx = eager_mode()
                 eager_mode_ctx.__enter__()
+                assert tf.executing_eagerly()
 
             # DQN with ParameterNoise exploration (config["explore"]=True).
             # ----
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
-            trainer.train()
-
             policy = trainer.get_policy()
-            weights_before = policy.get_weights()
+            noise_before = self._get_current_noise(policy, fw)
+            initial_weights = self._get_current_weight(policy, fw)
+
             # Pseudo-start an episode and compare the weights before and after.
-            policy.exploration.on_episode_start(
-                policy, policy.model, tf_sess=policy._sess)
-            weights_after = policy.get_weights()
-            key = 0 if fw == "eager" else list(weights_before.keys())[0]
-            noise = policy.exploration.noise[0][0][0]
-            if fw == "tf":
-                noise = policy._sess.run(noise)
-            check(weights_before[key][0][0] + noise, weights_after[key][0][0])
+            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            noise = self._get_current_noise(policy, fw)
+            noisy_weights = self._get_current_weight(policy, fw)
+            check(noise, noise_before, false=True)
+            check(initial_weights - noise_before + noise, noisy_weights)
 
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
-            for _ in range(25):
+            for _ in range(10):
                 a = trainer.compute_action(obs, explore=False)
                 check(a, a_)
 
@@ -164,30 +162,40 @@ class TestDQN(unittest.TestCase):
             # However, this is only due to the underlying epsilon-greedy
             # exploration.
             actions = []
-            for _ in range(25):
+            for _ in range(10):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
 
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones.
-            policy.exploration.on_episode_end(
-                policy, policy.model, tf_sess=policy._sess)
-            weights_after_episode_end = policy.get_weights()
-            check(weights_before[key][0][0],
-                  weights_after_episode_end[key][0][0])
+            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            weights_after_episode_end = self._get_current_weight(policy, fw)
+            check(
+                initial_weights - noise_before,
+                weights_after_episode_end,
+                decimals=5)
 
             # DQN with ParameterNoise exploration (config["explore"]=False).
             # ----
             config["explore"] = False
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             policy = trainer.get_policy()
-            weights_before = policy.get_weights()
+            initial_weights = self._get_current_weight(policy, fw)
+
+            # Noise before anything (should be 0.0, no episode started yet).
+            noise = self._get_current_noise(policy, fw)
+            check(noise, 0.0)
+
             # Pseudo-start an episode and compare the weights before and after
             # (they should be the same).
-            policy.exploration.on_episode_start(
-                policy, policy.model, tf_sess=policy._sess)
-            weights_after = policy.get_weights()
-            check(weights_before[key][0][0], weights_after[key][0][0])
+            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+
+            # Check, whether some noise has been sampled (NOT applied to the
+            # NN, due to explore=False).
+            noise = self._get_current_noise(policy, fw)
+            check(noise, 0.0, false=True)
+            noisy_weights = self._get_current_weight(policy, fw)
+            check(initial_weights, noisy_weights)
 
             # Setting explore=False or None should always return the same
             # action.
@@ -201,11 +209,13 @@ class TestDQN(unittest.TestCase):
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones (no noise permanently
             # applied throughout the episode).
-            policy.exploration.on_episode_end(
-                policy, policy.model, tf_sess=policy._sess)
-            weights_after_episode_end = policy.get_weights()
-            check(weights_before[key][0][0],
-                  weights_after_episode_end[key][0][0])
+            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            weights_after_episode_end = self._get_current_weight(policy, fw)
+            check(initial_weights, weights_after_episode_end)
+            # Noise should still be the same (re-sampling only happens at
+            # beginning of episode).
+            noise_after = self._get_current_noise(policy, fw)
+            check(noise, noise_after)
 
             # Switch off EpsilonGreedy underlying exploration.
             # ----
@@ -223,15 +233,31 @@ class TestDQN(unittest.TestCase):
             # the same action for the same input (parameter noise is
             # deterministic).
             policy = trainer.get_policy()
-            policy.exploration.on_episode_start(
-                policy, policy.model, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
             a_ = trainer.compute_action(obs)
-            for _ in range(25):
+            for _ in range(10):
                 a = trainer.compute_action(obs, explore=True)
                 check(a, a_)
 
             if eager_mode_ctx:
                 eager_mode_ctx.__exit__(None, None, None)
+
+    def _get_current_noise(self, policy, fw):
+        # If noise not even created yet, return 0.0.
+        if policy.exploration.noise is None:
+            return 0.0
+
+        noise = policy.exploration.noise[0][0][0]
+        if fw == "tf":
+            noise = policy.get_session().run(noise)
+        else:
+            noise = noise.numpy()
+        return noise
+
+    def _get_current_weight(self, policy, fw):
+        weights = policy.get_weights()
+        key = 0 if fw == "eager" else list(weights.keys())[0]
+        return weights[key][0][0]
 
 
 if __name__ == "__main__":

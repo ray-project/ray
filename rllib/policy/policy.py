@@ -51,7 +51,6 @@ class Policy(metaclass=ABCMeta):
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
-        self.exploration = self._create_exploration(action_space, config)
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
@@ -383,24 +382,26 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    def _create_exploration(self, action_space, config):
+    def _create_exploration(self):
         """Creates the Policy's Exploration object.
 
         This method only exists b/c some Trainers do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTfPolicy.
         TODO(sven): unify these cases."""
+        if getattr(self, "exploration", None) is not None:
+            return self.exploration
+
         exploration = from_config(
             Exploration,
-            config.get("exploration_config", {"type": "StochasticSampling"}),
-            action_space=action_space,
-            policy_config=config,
-            num_workers=config.get("num_workers", 0),
-            worker_index=config.get("worker_index", 0),
+            self.config.get("exploration_config",
+                            {"type": "StochasticSampling"}),
+            action_space=self.action_space,
+            policy_config=self.config,
+            model=self.model,
+            num_workers=self.config.get("num_workers", 0),
+            worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
-        # If config is further passed around, it'll contain an already
-        # instantiated object.
-        config["exploration_config"] = exploration
         return exploration
 
 

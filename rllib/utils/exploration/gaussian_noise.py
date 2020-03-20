@@ -6,7 +6,6 @@ from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
-from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -24,6 +23,7 @@ class GaussianNoise(Exploration):
     def __init__(self,
                  action_space,
                  *,
+                 model,
                  framework,
                  random_timesteps=1000,
                  stddev=0.1,
@@ -35,7 +35,6 @@ class GaussianNoise(Exploration):
         """Initializes a GaussianNoise Exploration object.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
             random_timesteps (int): The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps, the
                 `self.scale` annealing process will start (see below).
@@ -50,10 +49,10 @@ class GaussianNoise(Exploration):
                 `random_timesteps` steps.
             scale_schedule (Optional[Schedule]): An optional Schedule object
                 to use (instead of constructing one from the given parameters).
-            framework (Optional[str]): One of None, "tf", "torch".
         """
         assert framework is not None
-        super().__init__(action_space, framework=framework, **kwargs)
+        super().__init__(
+            action_space, model=model, framework=framework, **kwargs)
 
         self.random_timesteps = random_timesteps
         self.random_exploration = Random(
@@ -72,13 +71,13 @@ class GaussianNoise(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
+                               *,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
-                               model: ModelV2,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Adds IID Gaussian noise for exploration, TD3-style.
-        action_dist = action_dist_class(distribution_inputs, model)
+        action_dist = action_dist_class(distribution_inputs, self.model)
 
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore,

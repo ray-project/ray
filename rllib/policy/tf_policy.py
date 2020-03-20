@@ -123,6 +123,7 @@ class TFPolicy(Policy):
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
         self.model = model
+        self.exploration = self._create_exploration()
         self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
@@ -263,28 +264,36 @@ class TFPolicy(Policy):
         explore = explore if explore is not None else self.config["explore"]
 
         self.exploration.before_forward_pass(
-            model=self.model,
             obs_batch=self._input_dict[SampleBatch.CUR_OBS],
             state_batches=self._state_in,
             seq_lens=self._seq_lens,
             timestep=timestep,
-            explore=explore)
+            explore=explore,
+            tf_sess=self.get_session())
 
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
             obs_batch,
-            state_batches,
-            prev_action_batch,
-            prev_reward_batch,
+            state_batches=state_batches,
+            prev_action_batch=prev_action_batch,
+            prev_reward_batch=prev_reward_batch,
             explore=explore,
             timestep=timestep
-            if timestep is not None else self.global_timestep)
-
-        TODO(sven): Add
+            if timestep is not None else self.global_timestep,
+            fetch_dist_inputs=True)
 
         # Execute session run to get action (and other fetches).
-        return builder.get(fetches)
+        fetched = builder.get(fetches)
+
+        self.exploration.after_forward_pass(
+            distribution_inputs=fetched[-1],
+            action_dist_class=self.dist_class,
+            timestep=timestep,
+            explore=explore,
+            tf_sess=self.get_session())
+
+        return fetched[0], fetched[1:-2], fetched[-2]
 
     @override(Policy)
     def compute_distribution_inputs(self,
@@ -564,12 +573,14 @@ class TFPolicy(Policy):
     def _build_compute_actions(self,
                                builder,
                                obs_batch,
+                               *,
                                state_batches=None,
                                prev_action_batch=None,
                                prev_reward_batch=None,
                                episodes=None,
                                explore=None,
-                               timestep=None):
+                               timestep=None,
+                               fetch_dist_inputs=False):
 
         explore = explore if explore is not None else self.config["explore"]
 
@@ -593,10 +604,16 @@ class TFPolicy(Policy):
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches([self._sampled_action] +
-                                      self._state_outputs +
-                                      [self.extra_compute_action_fetches()])
-        return fetches[0], fetches[1:-1], fetches[-1]
+
+        # Determine, what exactly to fetch from the graph.
+        to_fetch = [self._sampled_action] + self._state_outputs + \
+                   [self.extra_compute_action_fetches()]
+        if fetch_dist_inputs:
+            to_fetch.append(self._distribution_inputs)
+
+        # Perform the session call.
+        fetches = builder.add_fetches(to_fetch)
+        return fetches
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()

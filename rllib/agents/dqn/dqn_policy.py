@@ -153,7 +153,9 @@ def build_q_model(policy, obs_space, action_space, config):
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
-        add_layer_norm=isinstance(policy.exploration, ParameterNoise))
+        add_layer_norm=isinstance(
+            getattr(policy, "exploration", None), ParameterNoise)
+        or config["exploration_config"]["type"] == "ParameterNoise")
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -172,7 +174,9 @@ def build_q_model(policy, obs_space, action_space, config):
         sigma0=config["sigma0"],
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
-        add_layer_norm=isinstance(policy.exploration, ParameterNoise))
+        add_layer_norm=isinstance(
+            getattr(policy, "exploration", None), ParameterNoise)
+        or config["exploration_config"]["type"] == "ParameterNoise")
 
     return policy.q_model
 
@@ -286,16 +290,10 @@ def setup_late_mixins(policy, obs_space, action_space, config):
 def _compute_q_values(policy, model, obs, explore):
     config = policy.config
 
-    policy.exploration.before_forward_pass(model, obs, explore=explore)
     model_out, state = model({
         SampleBatch.CUR_OBS: obs,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-    policy.exploration.after_forward_pass(
-        distribution_inputs=model_out,
-        action_dist_class=None,
-        model=model,
-        explore=explore)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,

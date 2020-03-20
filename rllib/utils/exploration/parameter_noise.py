@@ -1,7 +1,6 @@
 from gym.spaces import Discrete
 import numpy as np
 from scipy.stats import entropy
-import time
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -30,8 +29,9 @@ class ParameterNoise(Exploration):
 
     def __init__(self,
                  action_space,
-                 policy_config,
                  *,
+                 policy_config,
+                 model,
                  framework,
                  initial_stddev=1.0,
                  random_timesteps=10000,
@@ -40,9 +40,6 @@ class ParameterNoise(Exploration):
         """Initializes a ParameterNoise Exploration object.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
-            policy_config (dict): The Policy's config dict.
-            framework (str): One of None, "tf", "torch".
             initial_stddev (float): The initial stddev to use for the noise.
             random_timesteps (int): The number of timesteps to act completely
                 randomly (see [1]).
@@ -50,23 +47,49 @@ class ParameterNoise(Exploration):
                 None for auto-detection/setup.
         """
         assert framework is not None
-        super().__init__(action_space, framework=framework, **kwargs)
+        super().__init__(
+            action_space,
+            policy_config=policy_config,
+            model=model,
+            framework=framework,
+            **kwargs)
 
         self.stddev = get_variable(
             initial_stddev, framework=self.framework, tf_name="stddev")
-        #self.last_stddev_adjustment = 0
-        # Our noise to be added to the weights. Each item in `self.noise`
-        # corresponds to one Model variable and holding the Gaussian noise to
-        # be added to that variable (weight).
-        self.noise = None
-        self.tf_add_new_noise_op = None
-        self.tf_remove_existing_noise_op = None
-        self.noise_is_currently_added = False
 
         # The weight variables of the Model where noise should be applied to.
         # This excludes any variable, whose name contains "LayerNorm" (those
         # are BatchNormalization layers, which should not be perturbed).
-        self.model_variables = None
+        self.model_variables = [
+            v for v in self.model.variables() if "LayerNorm" not in v.name
+        ]
+        # Our noise to be added to the weights. Each item in `self.noise`
+        # corresponds to one Model variable and holding the Gaussian noise to
+        # be added to that variable (weight).
+        self.noise = []
+        for var in self.model_variables:
+            self.noise.append(
+                get_variable(
+                    np.zeros(var.shape, dtype=np.float32),
+                    framework=self.framework,
+                    tf_name=var.name.split(":")[0] + "_noisy"))
+
+        # tf-specific ops to sample, assign and remove noise.
+        if self.framework == "tf" and not tf.executing_eagerly():
+            self.tf_sample_new_noise_op = \
+                self._tf_sample_new_noise_op()
+            self.tf_add_stored_noise_op = \
+                self._tf_add_stored_noise_op()
+            self.tf_remove_noise_op = \
+                self._tf_remove_noise_op()
+            # Create convenience sample+add op for tf.
+            with tf.control_dependencies([self.tf_sample_new_noise_op]):
+                add_op = self._tf_add_stored_noise_op()
+            with tf.control_dependencies([add_op]):
+                self.tf_sample_new_noise_and_add_op = tf.no_op()
+
+        # Whether the Model's weights currently have noise added or not.
+        self.weights_are_currently_noisy = False
 
         # Auto-detection of underlying exploration functionality.
         if sub_exploration is None:
@@ -91,12 +114,12 @@ class ParameterNoise(Exploration):
             framework=self.framework,
             action_space=self.action_space,
             **kwargs)
+
         # Store the default setting for `explore`.
         self.default_explore = policy_config["explore"]
 
     @override(Exploration)
     def before_forward_pass(self,
-                            model,
                             obs_batch,
                             *,
                             state_batches=None,
@@ -104,124 +127,85 @@ class ParameterNoise(Exploration):
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             timestep=None,
-                            explore=True):
-        # Initialize all noise_vars.
-        if self.noise is None:
-            self.model_variables = [
-                v for v in model.variables() if "LayerNorm" not in v.name
-            ]
-            self.noise = []
-            for var in self.model_variables:
-                self.noise.append(
-                    get_variable(
-                        np.zeros(var.shape, dtype=np.float32),
-                        framework=self.framework,
-                        tf_name=var.name.split(":")[0] + "_noisy"))
-
-            if self.framework == "tf":
-                self.tf_add_new_noise_op = self._tf_add_new_noise_op(model)
-                self.tf_remove_existing_noise_op = \
-                    self._remove_existing_noise(model)
-
-        if self.framework == "tf" and not tf.executing_eagerly():
-            return self._tf_before_forward_op(explore, model)
-        # `explore` matches `self.default_explore` TODO(sven) ???:
-        #  Revert noise, forward-pass, then re-apply noise.
+                            explore=True,
+                            tf_sess=None):
+        if explore:
+            # We don't explore by default AND weights are currently noise-free:
+            # Apply stored noise.
+            if not self.default_explore and \
+                    not self.weights_are_currently_noisy:
+                self._add_stored_noise(tf_sess=tf_sess)
         else:
-            if not explore:
-                self._remove_existing_noise(model)
+            # We expolore by default AND noise is currently in place:
+            # Remove it.
+            if self.default_explore and self.weights_are_currently_noisy:
+                self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
     def after_forward_pass(self,
                            *,
                            distribution_inputs,
                            action_dist_class,
-                           model,
                            timestep=None,
-                           explore=True):
-        if self.framework == "tf" and not tf.executing_eagerly():
-            return self._tf_after_forward_op(explore, model)
+                           explore=True,
+                           tf_sess=None):
+        if explore:
+            # Default is not to explore -> Remove noise.
+            if not self.default_explore:
+                self._remove_noise(tf_sess=tf_sess)
+            # Default is to explore. Don't do anything.
         else:
-            # No exploration: Revert noise, forward-pass, then re-apply noise.
-            if not explore:
-                self._apply_existing_noise(model)
+            # Default is to explore. Add noise again.
+            if self.default_explore:
+                self._add_stored_noise(tf_sess=tf_sess)
+            # Default is not to explore. Don't do anything.
 
     @override(Exploration)
     def get_exploration_action(self,
+                               *,
                                distribution_inputs,
                                action_dist_class,
-                               model,
                                timestep,
                                explore=True):
+        # Use our sub-exploration object to handle the final exploration
+        # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            distribution_inputs,
-            action_dist_class,
-            model,
-            timestep,
+            distribution_inputs=distribution_inputs,
+            action_dist_class=action_dist_class,
+            timestep=timestep,
             explore=explore)
 
     @override(Exploration)
     def on_episode_start(self,
                          policy,
-                         model,
                          *,
                          environment=None,
                          episode=None,
                          tf_sess=None):
-        #print("episode_start")
-        # If explore=True, add noise here and leave it (for the episode) unless
-        # a compute_action call has `explore=False` (then we remove the noise,
-        # act, then re-add it).
-        # If explore=False, we are w/o noise by default
-        # (not adding noise here).
-        if self.default_explore is False:
-            return
-
-        # Execute the add-noise-op for tf.
-        if self.framework == "tf":
-            if tf.executing_eagerly():
-                self._tf_add_new_noise_op(model)
-            else:
-                tf_sess.run(self.tf_add_new_noise_op)
-
-        # Add noise.
+        # Sample fresh noise and add to weights.
+        if self.default_explore:
+            self._sample_new_noise_and_add(tf_sess=tf_sess, override=True)
+        # Only sample, don't apply anything to the weights.
         else:
-            for i in range(len(self.noise)):
-                self.noise[i] = torch.normal(
-                    0.0, self.stddev, size=self.noise[i].size)
-            self._apply_existing_noise(model)
-
-        self.noise_is_currently_added = True
+            self._sample_new_noise(tf_sess=tf_sess)
 
     @override(Exploration)
     def on_episode_end(self,
                        policy,
-                       model,
                        *,
                        environment=None,
                        episode=None,
                        tf_sess=None):
-        # If config["explore"]=False: No noise has been added at beginning of
-        # episode -> no reason to remove it here.
-        #print("episode_end")
-        if self.default_explore is False:
-            return
-
-        # Build/execute the remove-noise-op for tf.
-        if self.framework == "tf" and not tf.executing_eagerly():
-            tf_sess.run(self.tf_remove_existing_noise_op)
-        # Removes noise.
-        else:
-            self._remove_existing_noise(model)
-        self.noise_is_currently_added = False
+        # Remove stored noise from weights (only if currently noisy).
+        if self.weights_are_currently_noisy:
+            self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
-        ## Only do this every n seconds b/c session calls in here are expensive.
-        #if self.last_stddev_adjustment > time.time() - 1:
+        # Only do this every n seconds b/c session calls in here are expensive.
+        # if self.last_stddev_adjustment > time.time() - 1:
         #    return sample_batch
 
-        noisy_inputs = noise_free_inputs = None
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
@@ -230,7 +214,7 @@ class ParameterNoise(Exploration):
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
-            explore=self.noise_is_currently_added)
+            explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
         if dist_class is Categorical:
@@ -238,11 +222,9 @@ class ParameterNoise(Exploration):
         else:  # TODO(sven): Other action-dist cases.
             raise NotImplementedError
 
-        if self.noise_is_currently_added:
-            noisy_inputs = inputs
+        if self.weights_are_currently_noisy:
             noisy_action_dist = action_dist
         else:
-            noise_free_inputs = inputs
             noise_free_action_dist = action_dist
 
         inputs, dist_class, _ = policy.compute_distribution_inputs(
@@ -250,24 +232,22 @@ class ParameterNoise(Exploration):
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
-            explore=not self.noise_is_currently_added)
+            explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
         if dist_class is Categorical:
             action_dist = softmax(inputs)
 
-        if not self.noise_is_currently_added:
-            noisy_inputs = inputs
+        if not self.weights_are_currently_noisy:
             noisy_action_dist = action_dist
         else:
-            noise_free_inputs = inputs
             noise_free_action_dist = action_dist
 
         new_stddev = 0.0
         # Categorical case (e.g. DQN).
         if dist_class is Categorical:
-            pi_distance = np.nanmean(entropy(
-                noise_free_action_dist.T, noisy_action_dist.T))
+            pi_distance = np.nanmean(
+                entropy(noise_free_action_dist.T, noisy_action_dist.T))
             current_epsilon = self.sub_exploration.get_info()["cur_epsilon"]
             if tf_sess is not None:
                 current_epsilon = tf_sess.run(current_epsilon)
@@ -284,55 +264,23 @@ class ParameterNoise(Exploration):
         else:
             self.stddev = new_stddev
 
-        #self.last_stddev_adjustment = time.time()
+        # self.last_stddev_adjustment = time.time()
 
         return sample_batch
 
-    def _tf_before_forward_op(self, explore, model):
-        # explore: Do nothing if noise is in place, otherwise, add noise.
-        def true_fn():
-            return tf.no_op() if self.default_explore else \
-                self._apply_existing_noise(model)
+    def _sample_new_noise(self, *, tf_sess=None):
+        """Samples new noise and stores it in `self.noise`."""
+        if self.framework == "tf":
+            if tf.executing_eagerly():
+                self._tf_sample_new_noise_op()
+            else:
+                tf_sess.run(self.tf_sample_new_noise_op)
+        else:
+            for i in range(len(self.noise)):
+                self.noise[i] = torch.normal(
+                    0.0, self.stddev, size=self.noise[i].size)
 
-        # No exploration: Remove noise (for upcoming forward-pass) if noise is
-        # in place, otherwise, do nothing.
-        def false_fn():
-            return self._remove_existing_noise(model) if self.default_explore else \
-                tf.no_op()
-
-        return tf.cond(
-            tf.constant(explore) if isinstance(explore, bool) else explore,
-            true_fn=true_fn,
-            false_fn=false_fn)
-
-    def _tf_after_forward_op(self, explore, model):
-        # explore: Do nothing if noise is in place, otherwise, remove noise.
-        def true_fn():
-            return tf.no_op() if self.default_explore else \
-                self._remove_existing_noise(model)
-
-        # No exploration: Re-apply previously removed noise or do nothing
-        # (if noise was never applied).
-        def false_fn():
-            return self._apply_existing_noise(model) if self.default_explore \
-                else tf.no_op()
-
-        return tf.cond(
-            tf.constant(explore) if isinstance(explore, bool) else explore,
-            true_fn=true_fn,
-            false_fn=false_fn)
-
-    def _tf_add_new_noise_op(self, model):
-        """
-        Returns a tf op that assigns "freshly" sampled noise to self.noise
-        and applies it to the network's weights.
-
-        Args:
-            model (ModelV2): The ModelV2 object.
-
-        Returns:
-            tf.op: The tf op to sample new noise and apply it to the network.
-        """
+    def _tf_sample_new_noise_op(self):
         added_noises = []
         for noise in self.noise:
             added_noises.append(
@@ -342,47 +290,101 @@ class ParameterNoise(Exploration):
                         shape=noise.shape,
                         stddev=self.stddev,
                         dtype=tf.float32)))
-        with tf.control_dependencies(added_noises):
-            return self._apply_existing_noise(model)
+        return tf.group(*added_noises)
 
-    def _apply_existing_noise(self, model):
-        """
-        Adds the existing `self.noise` to the model parameters
-        (no new sampling of noise).
+    def _sample_new_noise_and_add(self, *, tf_sess=None, override=False):
+        if self.framework == "tf" and not tf.executing_eagerly():
+            if override and self.weights_are_currently_noisy:
+                tf_sess.run(self.tf_remove_noise_op)
+            tf_sess.run(self.tf_sample_new_noise_and_add_op)
+        else:
+            if override and self.weights_are_currently_noisy:
+                self._remove_noise()
+            self._sample_new_noise()
+            self._add_stored_noise()
+
+        self.weights_are_currently_noisy = True
+
+    def _add_stored_noise(self, *, tf_sess=None):
+        """Adds the stored `self.noise` to the model's parameters.
+
+        Note: No new sampling of noise here.
 
         Args:
-            model (ModelV2): The Model object.
+            tf_sess (Optional[tf.Session]): The tf-session to use to add the
+                stored noise to the (currently noise-free) weights.
+            override (bool): If True, undo any currently applied noise first,
+                then add the currently stored noise.
         """
-        # Build the apply-existing-noise-op.
+        # Make sure we only add noise to currently noise-free weights.
+        assert self.weights_are_currently_noisy is False
+
         if self.framework == "tf":
-            add_noise_ops = list()
-            for var, noise in zip(self.model_variables, self.noise):
-                add_noise_ops.append(tf.assign_add(var, noise))
-            return tf.group(*add_noise_ops)
-        # Add existing noise to the model's parameters.
+            if tf.executing_eagerly():
+                self._tf_add_stored_noise_op()
+            else:
+                tf_sess.run(self.tf_add_stored_noise_op)
+        # Add stored noise to the model's parameters.
         else:
             for i in range(len(self.noise)):
                 # Add noise to weights in-place.
                 torch.add_(self.model_variables[i], self.noise[i])
 
-    def _remove_existing_noise(self, model):
+        self.weights_are_currently_noisy = True
+
+    def _tf_add_stored_noise_op(self):
+        """Generates tf-op that assigns the stored noise to weights.
+
+        Also used by tf-eager.
+
+        Returns:
+            tf.op: The tf op to apply the already stored noise to the NN.
+        """
+        add_noise_ops = list()
+        for var, noise in zip(self.model_variables, self.noise):
+            add_noise_ops.append(tf.assign_add(var, noise))
+        ret = tf.group(*tuple(add_noise_ops))
+        with tf.control_dependencies([ret]):
+            return tf.no_op()
+
+    def _remove_noise(self, *, tf_sess=None):
         """
         Removes the current action noise from the model parameters.
 
         Args:
-            model (ModelV2): The Model object.
+            tf_sess (Optional[tf.Session]): The tf-session to use to remove
+                the noise from the (currently noisy) weights.
         """
-        # Generate remove-existing-noise op.
+        # Make sure we only remove noise iff currently noisy.
+        assert self.weights_are_currently_noisy
+
         if self.framework == "tf":
-            remove_existing_noise_ops = list()
-            for var, noise in zip(self.model_variables, self.noise):
-                remove_existing_noise_ops.append(tf.assign_add(var, -noise))
-            return tf.group(*tuple(remove_existing_noise_ops))
-        # Removes the existing noise from the model's parameters.
+            if tf.executing_eagerly():
+                self._tf_remove_noise_op()
+            else:
+                tf_sess.run(self.tf_remove_noise_op)
         else:
+            # Removes the stored noise from the model's parameters.
             for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
                 torch.add_(var, -noise)
+
+        self.weights_are_currently_noisy = False
+
+    def _tf_remove_noise_op(self):
+        """Generates a tf-op for removing noise from the model's weights.
+
+        Also used by tf-eager.
+
+        Returns:
+            tf.op: The tf op to remve the currently stored noise from the NN.
+        """
+        remove_noise_ops = list()
+        for var, noise in zip(self.model_variables, self.noise):
+            remove_noise_ops.append(tf.assign_add(var, -noise))
+        ret = tf.group(*tuple(remove_noise_ops))
+        with tf.control_dependencies([ret]):
+            return tf.no_op()
 
     @override(Exploration)
     def get_info(self):

@@ -578,9 +578,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                         TFPolicy.compute_actions.__code__):
             rnn_in_cols = _to_column_format(rnn_in)
             # TODO(ekl): how can we make info batch available to TF code?
-            # TODO(sven): Return dict from _build_compute_actions.
-            # it's becoming more and more unclear otherwise, what's where in
-            # the return tuple.
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
                 obs_batch=[t.obs for t in eval_data],
@@ -588,6 +585,9 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 timestep=policy.global_timestep)
+            # Remove dist-inputs from fetched results.
+            pending_fetches[policy_id] = [pending_fetches[policy_id][0]] + \
+                pending_fetches[policy_id][2:]
         else:
             # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
@@ -631,7 +631,9 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id][:3]
+
+        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))

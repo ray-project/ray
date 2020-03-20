@@ -134,9 +134,6 @@ class DynamicTFPolicy(TFPolicy):
             dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
 
-        # Create the Exploration object to use for this Policy.
-        self.exploration = self._create_exploration(action_space, config)
-
         # Setup model
         if existing_model:
             self.model = existing_model
@@ -149,6 +146,9 @@ class DynamicTFPolicy(TFPolicy):
                 logit_dim,
                 self.config["model"],
                 framework="tf")
+
+        # Create the Exploration object to use for this Policy.
+        self.exploration = self._create_exploration()
 
         if existing_inputs:
             self._state_in = [
@@ -181,20 +181,13 @@ class DynamicTFPolicy(TFPolicy):
         else:
             dist_inputs, self._state_out = self.model(
                 self._input_dict, self._state_in, self._seq_lens)
-            self.exploration.after_forward_pass(
-                distribution_inputs=dist_inputs,
-                action_dist_class=dist_class,
-                model=self.model,
-                timestep=timestep,
-                explore=explore)
 
         # Using an exploration setup.
         sampled_action, sampled_action_logp = \
             self.exploration.get_exploration_action(
-                dist_inputs,
-                dist_class,
-                self.model,
-                timestep,
+                distribution_inputs=dist_inputs,
+                action_dist_class=dist_class,
+                timestep=timestep,
                 explore=explore)
 
         # Phase 1 init.

@@ -6,7 +6,6 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -20,7 +19,7 @@ class Random(Exploration):
     If explore=False, returns the greedy/max-likelihood action.
     """
 
-    def __init__(self, action_space, *, framework, **kwargs):
+    def __init__(self, action_space, *, model, framework, **kwargs):
         """Initialize a Random Exploration object.
 
         Args:
@@ -28,7 +27,10 @@ class Random(Exploration):
             framework (Optional[str]): One of None, "tf", "torch".
         """
         super().__init__(
-            action_space=action_space, framework=framework, **kwargs)
+            action_space=action_space,
+            model=model,
+            framework=framework,
+            **kwargs)
 
         # Determine py_func types, depending on our action-space.
         if isinstance(self.action_space, (Discrete, MultiDiscrete)) or \
@@ -40,13 +42,13 @@ class Random(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
+                               *,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
-                               model: ModelV2,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Instantiate the distribution object.
-        action_dist = action_dist_class(distribution_inputs, model)
+        action_dist = action_dist_class(distribution_inputs, self.model)
         if self.framework == "tf":
             return self.get_tf_exploration_action_op(action_dist, explore)
         else:

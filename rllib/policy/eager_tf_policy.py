@@ -229,7 +229,7 @@ def build_eager_tf_policy(name,
                     config["model"],
                     framework="tf",
                 )
-
+            self.exploration = self._create_exploration()
             self._state_in = [
                 tf.convert_to_tensor(np.array([s]))
                 for s in self.model.get_initial_state()
@@ -341,9 +341,8 @@ def build_eager_tf_policy(name,
                         **prev_batches)
                 # Get the exploration action from the forward results.
                 action, logp = self.exploration.get_exploration_action(
-                    dist_inputs,
-                    self.dist_class,
-                    self.model,
+                    distribution_inputs=dist_inputs,
+                    action_dist_class=self.dist_class,
                     timestep=timestep
                     if timestep is not None else self.global_timestep,
                     explore=explore)
@@ -377,6 +376,13 @@ def build_eager_tf_policy(name,
                 n = obs_batch.shape[0]
             seq_lens = tf.ones(n, dtype=tf.int32)
 
+            self.exploration.before_forward_pass(
+                obs_batch=obs_batch,
+                state_batches=state_batches,
+                seq_lens=seq_lens,
+                timestep=timestep,
+                explore=explore)
+
             # Custom forward pass to get the action dist inputs.
             if forward_fn:
                 dist_inputs, dist_class, state_out = forward_fn(
@@ -391,25 +397,18 @@ def build_eager_tf_policy(name,
                     is_training=is_training)
             # Forward pass through our exploration object.
             else:
-                self.exploration.before_forward_pass(
-                    model=self.model,
-                    obs_batch=obs_batch,
-                    state_batches=state_batches,
-                    seq_lens=seq_lens,
-                    timestep=timestep,
-                    explore=explore)
                 dist_inputs, state_out = self.model({
                     SampleBatch.CUR_OBS: obs_batch,
                     SampleBatch.PREV_ACTIONS: prev_action_batch,
                     SampleBatch.PREV_REWARDS: prev_reward_batch,
                 }, state_batches, seq_lens)
                 dist_class = self.dist_class
-                self.exploration.after_forward_pass(
-                    distribution_inputs=dist_inputs,
-                    action_dist_class=dist_class,
-                    model=self.model,
-                    timestep=timestep,
-                    explore=explore)
+
+            self.exploration.after_forward_pass(
+                distribution_inputs=dist_inputs,
+                action_dist_class=dist_class,
+                timestep=timestep,
+                explore=explore)
 
             return dist_inputs, dist_class, state_out
 

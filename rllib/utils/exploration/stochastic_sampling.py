@@ -5,7 +5,6 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -22,6 +21,7 @@ class StochasticSampling(Exploration):
 
     def __init__(self,
                  action_space,
+                 model,
                  *,
                  framework,
                  static_params=None,
@@ -39,7 +39,8 @@ class StochasticSampling(Exploration):
             framework (str): One of None, "tf", "torch".
         """
         assert framework is not None
-        super().__init__(action_space, framework=framework, **kwargs)
+        super().__init__(
+            action_space, model=model, framework=framework, **kwargs)
 
         self.static_params = static_params or {}
 
@@ -49,9 +50,9 @@ class StochasticSampling(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
+                               *,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
-                               model: ModelV2,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         kwargs = self.static_params.copy()
@@ -63,7 +64,8 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(distribution_inputs, model, **kwargs)
+        action_dist = action_dist_class(distribution_inputs, self.model,
+                                        **kwargs)
 
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore)
