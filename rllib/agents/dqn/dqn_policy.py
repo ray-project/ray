@@ -187,7 +187,7 @@ def get_distribution_inputs_and_class(policy,
                                       *,
                                       explore=True,
                                       **kwargs):
-    q_vals = _compute_q_values(policy, q_model, obs_batch, explore)
+    q_vals = compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -198,14 +198,14 @@ def get_distribution_inputs_and_class(policy,
 def build_q_losses(policy, model, _, train_batch):
     config = policy.config
     # q network evaluation
-    q_t, q_logits_t, q_dist_t = _compute_q_values(
+    q_t, q_logits_t, q_dist_t = compute_q_values(
         policy,
         policy.q_model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False)
 
     # target q network evalution
-    q_tp1, q_logits_tp1, q_dist_tp1 = _compute_q_values(
+    q_tp1, q_logits_tp1, q_dist_tp1 = compute_q_values(
         policy,
         policy.target_q_model,
         train_batch[SampleBatch.NEXT_OBS],
@@ -223,7 +223,7 @@ def build_q_losses(policy, model, _, train_batch):
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-            q_dist_tp1_using_online_net = _compute_q_values(
+            q_dist_tp1_using_online_net = compute_q_values(
                 policy, policy.q_model,
                 train_batch[SampleBatch.NEXT_OBS],
                 explore=False)
@@ -287,7 +287,7 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def _compute_q_values(policy, model, obs, explore):
+def compute_q_values(policy, model, obs, explore):
     config = policy.config
 
     model_out, state = model({

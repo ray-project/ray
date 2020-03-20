@@ -85,7 +85,7 @@ def get_distribution_inputs_and_class(policy,
                                       *,
                                       explore=True,
                                       **kwargs):
-    q_vals = _compute_q_values(policy, q_model, obs_batch, explore)
+    q_vals = compute_q_values(policy, q_model, obs_batch, explore)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
@@ -95,14 +95,14 @@ def get_distribution_inputs_and_class(policy,
 
 def build_q_losses(policy, model, dist_class, train_batch):
     # q network evaluation
-    q_t = _compute_q_values(
+    q_t = compute_q_values(
         policy,
         policy.q_model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False)
 
     # target q network evalution
-    q_tp1 = _compute_q_values(
+    q_tp1 = compute_q_values(
         policy,
         policy.target_q_model,
         train_batch[SampleBatch.NEXT_OBS],
@@ -136,17 +136,11 @@ def build_q_losses(policy, model, dist_class, train_batch):
     return loss
 
 
-def _compute_q_values(policy, model, obs, explore):
-    policy.exploration.before_forward_pass(model, obs, explore=explore)
+def compute_q_values(policy, model, obs, explore):
     model_out, _ = model({
         SampleBatch.CUR_OBS: obs,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-    policy.exploration.after_forward_pass(
-        distribution_inputs=model_out,
-        action_dist_class=None,
-        model=model,
-        explore=explore)
 
     return model.get_q_values(model_out)
 
