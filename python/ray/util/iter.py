@@ -864,9 +864,10 @@ class LocalIterator(Generic[T]):
             timeout = 0
 
         active = []
-        shared_metrics = SharedMetrics()
-        for it in [self] + list(others):
-            it.shared_metrics.set(shared_metrics.get())
+        parent_iters = [self] + list(others)
+        shared_metrics = SharedMetrics(
+            parents=[p.shared_metrics for p in parent_iters])
+        for it in parent_iters:
             active.append(
                 LocalIterator(
                     it.base_iterator,
