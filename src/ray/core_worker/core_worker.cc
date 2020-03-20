@@ -334,9 +334,7 @@ void CoreWorker::Exit(bool intentional) {
 }
 
 void CoreWorker::RunIOService() {
-#ifdef _WIN32
-  // TODO(mehrdadn): Is there an equivalent for Windows we need here?
-#else
+#ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
