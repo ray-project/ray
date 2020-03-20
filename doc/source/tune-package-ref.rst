@@ -1,27 +1,36 @@
 Tune Package Reference
 =======================
 
-
 .. contents:: :local:
 
 
 Training (tune.run, Experiment)
 -------------------------------
 
+tune.run
+~~~~~~~~
+
 .. autofunction:: ray.tune.run
+
+tune.run_experiments
+~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.run_experiments
 
+tune.Experiment
+~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.tune.Experiment
 
-Trainable (`tune.Trainable`, tune.track)
-----------------------------------------
+Trainable (tune.Trainable, tune.track)
+--------------------------------------
 
 tune.Trainable
 ~~~~~~~~~~~~~~
+
 .. autoclass:: ray.tune.Trainable
-    :members:
     :private-members:
+    :members:
 
 tune.DurableTrainable
 ~~~~~~~~~~~~~~~~~~~~~

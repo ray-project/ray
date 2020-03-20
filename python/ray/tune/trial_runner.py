@@ -70,7 +70,7 @@ class _TuneFunctionDecoder(json.JSONDecoder):
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
-    ..code-block: ptyhon
+    .. code-block: python
 
         runner = TrialRunner()
         runner.add_trial(Trial(...))
@@ -88,6 +88,27 @@ class TrialRunner:
     could deadlock waiting for new resources to become available. Furthermore,
     oversubscribing the cluster could degrade training performance, leading to
     misleading benchmark results.
+
+    Args:
+        search_alg (SearchAlgorithm): SearchAlgorithm for generating
+            Trial objects.
+        scheduler (TrialScheduler): Defaults to FIFOScheduler.
+        launch_web_server (bool): Flag for starting TuneServer
+        local_checkpoint_dir (str): Path where
+            global checkpoints are stored and restored from.
+        remote_checkpoint_dir (str): Remote path where
+            global checkpoints are stored and restored from. Used
+            if `resume` == REMOTE.
+        stopper: Custom class for stopping whole experiments. See
+            ``Stopper``.
+        resume (str|False): see `tune.py:run`.
+        sync_to_cloud (func|str): See `tune.py:run`.
+        server_port (int): Port number for launching TuneServer.
+        verbose (bool): Flag for verbosity. If False, trial results
+            will not be output.
+        checkpoint_period (int): Trial runner checkpoint periodicity in
+            seconds. Defaults to 10.
+        trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -106,29 +127,6 @@ class TrialRunner:
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
-        """Initializes a new TrialRunner.
-
-        Args:
-            search_alg (SearchAlgorithm): SearchAlgorithm for generating
-                Trial objects.
-            scheduler (TrialScheduler): Defaults to FIFOScheduler.
-            launch_web_server (bool): Flag for starting TuneServer
-            local_checkpoint_dir (str): Path where
-                global checkpoints are stored and restored from.
-            remote_checkpoint_dir (str): Remote path where
-                global checkpoints are stored and restored from. Used
-                if `resume` == REMOTE.
-            stopper: Custom class for stopping whole experiments. See
-                ``Stopper``.
-            resume (str|False): see `tune.py:run`.
-            sync_to_cloud (func|str): See `tune.py:run`.
-            server_port (int): Port number for launching TuneServer.
-            verbose (bool): Flag for verbosity. If False, trial results
-                will not be output.
-            checkpoint_period (int): Trial runner checkpoint periodicity in
-                seconds. Defaults to 10.
-            trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
-        """
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
