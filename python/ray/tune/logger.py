@@ -87,7 +87,7 @@ class MLFLowLogger(Logger):
 
     def on_result(self, result):
         for key, value in result.items():
-            if not isinstance(value, float):
+            if not isinstance(value, (float, int)):
                 continue
             self.client.log_metric(
                 self._run_id, key, value, step=result.get(TRAINING_ITERATION))
