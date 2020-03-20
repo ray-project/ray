@@ -43,7 +43,7 @@ class MetricsContext:
 
 
 class SharedMetrics:
-    """Holds a ref to a (shared) metrics context.
+    """Holds an indirect reference to a (shared) metrics context.
 
     This is used by LocalIterator.union() to point the metrics contexts of
     entirely separate iterator chains to the same underlying context."""
