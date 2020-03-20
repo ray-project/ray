@@ -133,18 +133,7 @@ You can detect local memory anomalies through the Logical View tab.
 
 Let's see how to use this information.
 
-Number of object IDs in scope keeps increasing.
-###############################################
-This can lead to OOM errors or eviction of objectIDs that your program still wants to use. 
-
-Why? If this number keeps increasing as you run your Ray cluster, that could mean that your objectIDs are not properly garbage collected. 
-
-Number of local objects are way less than number of object IDs in scope
-#######################################################################
-This means the Ray application will be slower. 
-
-Why? Local objects are smaller size objects (<100KB) that are stored in a local memory. If there are many object Id in scope with a small number of local objects, that measn most of objects are big. 
-Since big objects are residing in plasma store, which is slower, the application will be slower.
+if NumObjectIdsInScope, NumLocalObjects, or UsedLocalObjectMemory keeps growing without bound, it can lead to OOM errors or eviction of objectIDs that your program still wants to use. 
 
 Profiling (Experimental)
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -168,7 +157,6 @@ More information on how to interpret the flamegraph is available at https://gith
 
 References
 ----------
-Note that experimental pages are subject to change.
 
 Machine View
 ~~~~~~~~~~~~
@@ -180,13 +168,13 @@ Hierarchy Button
     :align: center
 
 Ray consists of nodes and workers. Nodes typicall mean machines and workers mean processes.
-The dashboard visualizes this hierarchical relationship. Each host consists of many workers and you can see them by clicking a + button.
+The dashboard visualizes hierarchical relationship of workers and machines. Each host consists of many workers, and you can see them by clicking a + button.
 
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Machine-view-reference-2.png
     :align: center
 
-Worker information is visible when + button is clicked. You can hide it by clicking a - button.
+Worker information is visible when a + button is clicked. You can hide it by clicking a - button.
 
 Resource Configuration Row
 ##########################
@@ -203,6 +191,10 @@ For example, when the Ray cluster is configured with 4 cores, ``ray.init(num_cpu
 When you spawn a new actor that uses 1 cpu, you can see this will be changed to be (CPU: 1/4). 
 
 .. code-block:: python
+
+  import ray
+
+  ray.init(num_cpus=4)
 
   @ray.remote(num_cpus=1)
   class A:
