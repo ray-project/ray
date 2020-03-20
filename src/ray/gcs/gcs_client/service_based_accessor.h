@@ -104,28 +104,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Sequencer<ActorID> sequencer_;
 };
 
-class ServiceBasedNewActorInfoAccessor : public ServiceBasedActorInfoAccessor {
- public:
-  explicit ServiceBasedNewActorInfoAccessor(ServiceBasedGcsClient *client_impl);
-
-  virtual ~ServiceBasedNewActorInfoAccessor() = default;
-
-  Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done) override;
-
-  Status AsyncSubscribe(const ActorID &actor_id,
-                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-                        const StatusCallback &done) override;
-
-  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
-
- private:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
-      ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor actor_sub_executor_;
-};
-
 /// \class ServiceBasedNodeInfoAccessor
 /// ServiceBasedNodeInfoAccessor is an implementation of `NodeInfoAccessor`
 /// that uses GCS Service as the backend.
