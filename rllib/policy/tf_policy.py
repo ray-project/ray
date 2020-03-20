@@ -264,9 +264,9 @@ class TFPolicy(Policy):
         explore = explore if explore is not None else self.config["explore"]
 
         self.exploration.before_forward_pass(
-            obs_batch=self._input_dict[SampleBatch.CUR_OBS],
-            state_batches=self._state_in,
-            seq_lens=self._seq_lens,
+            obs_batch=obs_batch,
+            state_batches=state_batches,
+            seq_lens=np.ones(len(obs_batch)),
             timestep=timestep,
             explore=explore,
             tf_sess=self.get_session())
@@ -293,7 +293,7 @@ class TFPolicy(Policy):
             explore=explore,
             tf_sess=self.get_session())
 
-        return fetched[0], fetched[1:-2], fetched[-2]
+        return fetched[:-1]
 
     @override(Policy)
     def compute_distribution_inputs(self,
@@ -613,7 +613,10 @@ class TFPolicy(Policy):
 
         # Perform the session call.
         fetches = builder.add_fetches(to_fetch)
-        return fetches
+        if fetch_dist_inputs:
+            return fetches[0], fetches[1:-2], fetches[-2], fetches[-1]
+        else:
+            return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()

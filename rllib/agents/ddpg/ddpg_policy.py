@@ -108,9 +108,11 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             name="cur_obs")
 
         with tf.variable_scope(POLICY_SCOPE) as scope:
-            policy_out, self.policy_model = self._build_policy_network(
-                self.cur_observations, observation_space, action_space)
+            self._distribution_inputs, self.policy_model = \
+                self._build_policy_network(
+                    self.cur_observations, observation_space, action_space)
             self.policy_vars = scope_vars(scope.name)
+        self.model = self.policy_model
 
         # Noise vars for P network except for layer normalization vars
         if self.config["parameter_noise"]:
@@ -121,13 +123,15 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Create exploration component.
         self.exploration = self._create_exploration()
         explore = tf.placeholder_with_default(True, (), name="is_exploring")
-        # Action outputs
+        # Action outputs.
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                policy_out, Deterministic, self.policy_model, timestep,
-                explore)
+                distribution_inputs=self._distribution_inputs,
+                action_dist_class=Deterministic,
+                timestep=timestep,
+                explore=explore)
 
-        # Replay inputs
+        # Replay inputs.
         self.obs_t = tf.placeholder(
             tf.float32,
             shape=(None, ) + observation_space.shape,
@@ -291,6 +295,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops,
             explore=explore,
+            distribution_inputs=self._distribution_inputs,
             timestep=timestep)
         self.sess.run(tf.global_variables_initializer())
 

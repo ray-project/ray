@@ -309,8 +309,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
         # Call each policy's Exploration.on_episode_start method.
         for p in policies.values():
             p.exploration.on_episode_start(
-                p,
-                getattr(p, "model", None),
+                policy=p,
                 environment=base_env,
                 episode=episode,
                 tf_sess=getattr(p, "_sess", None))
@@ -504,8 +503,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
                 p.exploration.on_episode_end(
-                    p,
-                    getattr(p, "model", None),
+                    policy=p,
                     environment=base_env,
                     episode=episode,
                     tf_sess=getattr(p, "_sess", None))
@@ -585,9 +583,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 timestep=policy.global_timestep)
-            # Remove dist-inputs from fetched results.
-            pending_fetches[policy_id] = [pending_fetches[policy_id][0]] + \
-                pending_fetches[policy_id][2:]
         else:
             # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
