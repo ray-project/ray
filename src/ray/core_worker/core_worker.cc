@@ -35,13 +35,13 @@ void BuildCommonTaskSpec(
     const std::vector<ray::TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
+    std::vector<ObjectID> *return_ids) {
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
                             task_index, caller_id, address, num_returns,
-                            transport_type == ray::TaskTransportType::DIRECT,
-                            required_resources, required_placement_resources);
+                            /*is_direct_transport_type=*/true, required_resources,
+                            required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -54,9 +54,8 @@ void BuildCommonTaskSpec(
   // Compute return IDs.
   return_ids->resize(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] =
-        ObjectID::ForTaskReturn(task_id, i + 1,
-                                /*transport_type=*/static_cast<int>(transport_type));
+    (*return_ids)[i] = ObjectID::ForTaskReturn(
+        task_id, i + 1, static_cast<int>(ray::TaskTransportType::DIRECT));
   }
 }
 
@@ -800,21 +799,14 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
 
   const std::unordered_map<std::string, double> required_resources;
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(
-      builder, worker_context_.GetCurrentJobID(), task_id,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, task_options.num_returns, task_options.resources,
-      required_resources,
-      task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
-      return_ids);
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, task_options.num_returns,
+                      task_options.resources, required_resources, return_ids);
   TaskSpecification task_spec = builder.Build();
-  if (task_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                  CurrentCallSite(), max_retries);
-    return direct_task_submitter_->SubmitTask(task_spec);
-  } else {
-    return local_raylet_client_->SubmitTask(task_spec);
-  }
+  task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
+                                max_retries);
+  return direct_task_submitter_->SubmitTask(task_spec);
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -833,33 +825,24 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
-                      actor_creation_options.placement_resources,
-                      actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
-                                                            : TaskTransportType::RAYLET,
-                      &return_ids);
+                      actor_creation_options.placement_resources, &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
-      actor_creation_options.is_direct_call, actor_creation_options.max_concurrency,
+      /*is_direct_call=*/true, actor_creation_options.max_concurrency,
       actor_creation_options.is_detached, actor_creation_options.is_asyncio);
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
-  Status status;
-  if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(
-        GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
-        std::max(RayConfig::instance().actor_creation_min_retries(),
-                 actor_creation_options.max_reconstructions));
-    status = direct_task_submitter_->SubmitTask(task_spec);
-  } else {
-    status = local_raylet_client_->SubmitTask(task_spec);
-  }
+  task_manager_->AddPendingTask(
+      GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
+      std::max(RayConfig::instance().actor_creation_min_retries(),
+               actor_creation_options.max_reconstructions));
+  Status status = direct_task_submitter_->SubmitTask(task_spec);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
-      function.GetLanguage(), actor_creation_options.is_direct_call,
-      function.GetFunctionDescriptor(), extension_data));
+      function.GetLanguage(), function.GetFunctionDescriptor(), extension_data));
   RAY_CHECK(AddActorHandle(std::move(actor_handle),
                            /*is_owner_handle=*/!actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
@@ -876,10 +859,6 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
 
-  const bool is_direct_call = actor_handle->IsDirectCallActor();
-  const TaskTransportType transport_type =
-      is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET;
-
   // Build common task spec.
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
@@ -890,28 +869,24 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, transport_type, return_ids);
+                      required_resources, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
-  actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
+  actor_handle->SetActorTaskSpec(builder, new_cursor);
   // Remove cursor from return ids.
   return_ids->pop_back();
 
   // Submit task.
   Status status;
   TaskSpecification task_spec = builder.Build();
-  if (is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                  CurrentCallSite());
-    if (actor_handle->IsDead()) {
-      auto status = Status::IOError("sent task to dead actor");
-      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
-                                       &status);
-    } else {
-      status = direct_actor_submitter_->SubmitTask(task_spec);
-    }
+  task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                CurrentCallSite());
+  if (actor_handle->IsDead()) {
+    auto status = Status::IOError("sent task to dead actor");
+    task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
+                                     &status);
   } else {
-    RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
+    status = direct_actor_submitter_->SubmitTask(task_spec);
   }
   return status;
 }
@@ -920,7 +895,6 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill,
                              bool no_reconstruction) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-  RAY_CHECK(actor_handle->IsDirectCallActor());
   direct_actor_submitter_->KillActor(actor_id, force_kill, no_reconstruction);
   return Status::OK();
 }
@@ -977,14 +951,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
         absl::MutexLock lock(&actor_handles_mutex_);
         auto it = actor_handles_.find(actor_id);
         RAY_CHECK(it != actor_handles_.end());
-        if (it->second->IsDirectCallActor()) {
-          // We have to reset the actor handle since the next instance of the
-          // actor will not have the last sequence number that we sent.
-          // TODO: Remove the check for direct calls. We do not reset for the
-          // raylet codepath because it tries to replay all tasks since the
-          // last actor checkpoint.
-          it->second->Reset();
-        }
+        // We have to reset the actor handle since the next instance of the
+        // actor will not have the last sequence number that we sent.
+        it->second->Reset();
         direct_actor_submitter_->DisconnectActor(actor_id, false);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
@@ -1074,9 +1043,8 @@ Status CoreWorker::AllocateReturnObjects(
       }
 
       // Allocate a buffer for the return object.
-      if (worker_context_.CurrentTaskIsDirectCall() &&
-          static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size()) {
+      if (static_cast<int64_t>(data_sizes[i]) <
+          RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(
@@ -1129,12 +1097,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     reference_counter_->AddLocalReference(borrowed_id, task_spec.CallSiteString());
   }
 
-  const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
-                                  ? TaskTransportType::DIRECT
-                                  : TaskTransportType::RAYLET;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i, transport_type));
+    return_ids.push_back(task_spec.ReturnId(i, TaskTransportType::DIRECT));
   }
 
   Status status;
@@ -1167,11 +1132,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
       if (!Seal(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
-                       << return_ids[i] << " in store: " << status.message();
-      }
-    } else if (!worker_context_.CurrentTaskIsDirectCall()) {
-      if (!Put(*return_objects->at(i), {}, return_ids[i]).ok()) {
-        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
       }
     }
@@ -1301,16 +1261,10 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
     return;
   }
 
-  if (worker_context_.CurrentActorIsDirectCall()) {
-    send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
-                        nullptr);
-    return;
-  } else {
-    task_queue_length_ += 1;
-    task_execution_service_.post([=] {
-      raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
-    });
-  }
+  task_queue_length_ += 1;
+  task_execution_service_.post([=] {
+    raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
+  });
 }
 
 void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,

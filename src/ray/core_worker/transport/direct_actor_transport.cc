@@ -213,12 +213,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
-    send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
-                        nullptr, nullptr);
-    return;
-  }
-
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
     int count = task_spec.ArgIdCount(i);
