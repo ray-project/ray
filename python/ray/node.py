@@ -623,8 +623,10 @@ class Node:
 
         self.start_monitor()
         self.start_raylet_monitor()
-        self.start_dashboard(
-            require_webui=self._ray_params.include_webui)
+        if self._ray_params.include_webui:
+            self.start_dashboard(require_webui=True)
+        elif self._ray_params.include_webui is None:
+            self.start_dashboard(require_webui=False)
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
