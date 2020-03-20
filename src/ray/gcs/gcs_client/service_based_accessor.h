@@ -97,9 +97,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
  private:
   ServiceBasedGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
       ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor actor_sub_executor_;
+  ActorSubscriptionExecutor log_based_actor_sub_executor_;
 
   Sequencer<ActorID> sequencer_;
 };
@@ -121,9 +121,9 @@ class ServiceBasedNewActorInfoAccessor : public ServiceBasedActorInfoAccessor {
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
 
  private:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, NewActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor raw_actor_sub_executor_;
+  ActorSubscriptionExecutor actor_sub_executor_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor

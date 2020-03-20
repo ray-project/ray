@@ -783,13 +783,13 @@ std::vector<ActorID> SyncGetAllActorID(redisContext *redis_context,
   return actor_id_list;
 }
 
-std::vector<ActorID> ActorTable::GetAllActorID() {
+std::vector<ActorID> LogBasedActorTable::GetAllActorID() {
   auto redis_context = client_->primary_context()->sync_context();
   return SyncGetAllActorID(redis_context, TablePrefix_Name(prefix_));
 }
 
-Status ActorTable::Get(const ray::ActorID &actor_id,
-                       ray::rpc::ActorTableData *actor_table_data) {
+Status LogBasedActorTable::Get(const ray::ActorID &actor_id,
+                               ray::rpc::ActorTableData *actor_table_data) {
   RAY_CHECK(actor_table_data != nullptr);
   auto key = TablePrefix_Name(prefix_) + actor_id.Binary();
   auto reply = GetRedisContext(actor_id)->RunArgvSync({"LRANGE", key, "-1", "-1"});
@@ -807,13 +807,13 @@ Status ActorTable::Get(const ray::ActorID &actor_id,
   return Status::OK();
 }
 
-std::vector<ActorID> NewActorTable::GetAllActorID() {
+std::vector<ActorID> ActorTable::GetAllActorID() {
   auto redis_context = client_->primary_context()->sync_context();
   return SyncGetAllActorID(redis_context, TablePrefix_Name(prefix_));
 }
 
-Status NewActorTable::Get(const ray::ActorID &actor_id,
-                          ray::rpc::ActorTableData *actor_table_data) {
+Status ActorTable::Get(const ray::ActorID &actor_id,
+                       ray::rpc::ActorTableData *actor_table_data) {
   RAY_CHECK(actor_table_data != nullptr);
   auto key = TablePrefix_Name(prefix_) + actor_id.Binary();
   auto reply = GetRedisContext(actor_id)->RunArgvSync({"GET", key});

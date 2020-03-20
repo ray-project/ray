@@ -133,8 +133,8 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   Attach(io_service);
 
+  log_based_actor_table_.reset(new LogBasedActorTable({primary_context_}, this));
   actor_table_.reset(new ActorTable({primary_context_}, this));
-  raw_actor_table_.reset(new NewActorTable({primary_context_}, this));
 
   // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
   // We will use NodeID instead of ClientID.
@@ -203,8 +203,8 @@ std::string RedisGcsClient::DebugString() const {
   std::stringstream result;
   result << "RedisGcsClient:";
   result << "\n- TaskTable: " << raylet_task_table_->DebugString();
+  result << "\n- LogBasedActorTable: " << log_based_actor_table_->DebugString();
   result << "\n- ActorTable: " << actor_table_->DebugString();
-  result << "\n- NewActorTable: " << raw_actor_table_->DebugString();
   result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
   result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
   result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
@@ -219,9 +219,11 @@ ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
 
 raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
-ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
+LogBasedActorTable &RedisGcsClient::log_based_actor_table() {
+  return *log_based_actor_table_;
+}
 
-NewActorTable &RedisGcsClient::raw_actor_table() { return *raw_actor_table_; }
+ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
 
 WorkerFailureTable &RedisGcsClient::worker_failure_table() {
   return *worker_failure_table_;

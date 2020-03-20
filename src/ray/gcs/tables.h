@@ -716,15 +716,15 @@ class JobTable : public Log<JobID, JobTableData> {
   virtual ~JobTable() {}
 };
 
-/// Actor table starts with an ALIVE entry, which represents the first time the actor
-/// is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE entries,
-/// which represent each time the actor fails (RECONSTRUCTING) and gets recreated (ALIVE).
-/// These may be followed by a DEAD entry, which means that the actor has failed and will
-/// not be reconstructed.
-class ActorTable : public Log<ActorID, ActorTableData> {
+/// Log-based Actor table starts with an ALIVE entry, which represents the first time the
+/// actor is created. This may be followed by 0 or more pairs of RECONSTRUCTING, ALIVE
+/// entries, which represent each time the actor fails (RECONSTRUCTING) and gets recreated
+/// (ALIVE). These may be followed by a DEAD entry, which means that the actor has failed
+/// and will not be reconstructed.
+class LogBasedActorTable : public Log<ActorID, ActorTableData> {
  public:
-  ActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-             RedisGcsClient *client)
+  LogBasedActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                     RedisGcsClient *client)
       : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::ACTOR_PUBSUB;
     prefix_ = TablePrefix::ACTOR;
@@ -737,13 +737,13 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   Status Get(const ActorID &actor_id, ActorTableData *actor_table_data);
 };
 
-/// New actor table.
+/// Actor table.
 /// This table is only used for GCS-based actor management. And when completely migrate to
-/// GCS service, the old actor table could be removed.
-class NewActorTable : public Table<ActorID, ActorTableData> {
+/// GCS service, the log-based actor table could be removed.
+class ActorTable : public Table<ActorID, ActorTableData> {
  public:
-  NewActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                RedisGcsClient *client)
+  ActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+             RedisGcsClient *client)
       : Table(contexts, client) {
     pubsub_channel_ = TablePubsub::ACTOR_PUBSUB;
     prefix_ = TablePrefix::ACTOR;

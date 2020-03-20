@@ -79,7 +79,8 @@ ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : subscribe_id_(ClientID::FromRandom()),
       client_impl_(client_impl),
-      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
+      log_based_actor_sub_executor_(
+          client_impl->GetRedisGcsClient().log_based_actor_table()) {}
 
 Status ServiceBasedActorInfoAccessor::GetAll(
     std::vector<ActorTableData> *actor_table_data_list) {
@@ -163,7 +164,8 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing register or update operations of actors.";
   RAY_CHECK(subscribe != nullptr);
-  auto status = actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto status =
+      log_based_actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
   return status;
 }
@@ -174,8 +176,8 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
-  auto status =
-      actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
+  auto status = log_based_actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id,
+                                                             subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
                  << actor_id;
   return status;
@@ -184,7 +186,8 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
 Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                        const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id;
-  auto status = actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+  auto status =
+      log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
   RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
                  << actor_id;
   return status;
@@ -266,15 +269,14 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 ServiceBasedNewActorInfoAccessor::ServiceBasedNewActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : ServiceBasedActorInfoAccessor(client_impl),
-      raw_actor_sub_executor_(client_impl->GetRedisGcsClient().raw_actor_table()) {}
+      actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
 
 Status ServiceBasedNewActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing register or update operations of actors.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =
-      raw_actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto status = actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing register or update operations of actors.";
   return status;
 }
@@ -286,7 +288,7 @@ Status ServiceBasedNewActorInfoAccessor::AsyncSubscribe(
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
   auto status =
-      raw_actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
+      actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
                  << actor_id;
   return status;
@@ -295,7 +297,7 @@ Status ServiceBasedNewActorInfoAccessor::AsyncSubscribe(
 Status ServiceBasedNewActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                           const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id;
-  auto status = raw_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
+  auto status = actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
   RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
                  << actor_id;
   return status;

@@ -93,9 +93,9 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
   ClientID subscribe_id_{ClientID::FromRandom()};
 
  private:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
       ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor actor_sub_executor_;
+  ActorSubscriptionExecutor log_based_actor_sub_executor_;
 };
 
 /// \class RedisNewActorInfoAccessor
@@ -131,9 +131,9 @@ class RedisNewActorInfoAccessor : public RedisActorInfoAccessor {
   Status Get(const ActorID &actor_id, ActorTableData *actor_table_data) const override;
 
  private:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, NewActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor raw_actor_sub_executor_;
+  ActorSubscriptionExecutor actor_sub_executor_;
 };
 
 /// \class RedisJobInfoAccessor
