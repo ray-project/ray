@@ -161,6 +161,21 @@ class SACModel(TFModelV2):
         else:
             return self.twin_q_net(model_out)
 
+    def get_policy_output(self, model_out):
+        """Return the action output for the most recent forward pass.
+
+        This outputs the support for pi(s). For continuous action spaces, this
+        is the action directly. For discrete, is is the mean / std dev.
+
+        Arguments:
+            model_out (Tensor): obs embeddings from the model layers, of shape
+                [BATCH_SIZE, num_outputs].
+
+        Returns:
+            tensor of shape [BATCH_SIZE, action_out_size]
+        """
+        return self.action_model(model_out)
+
     def policy_variables(self):
         """Return the list of variables for the policy net."""
 
