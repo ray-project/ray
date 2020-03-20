@@ -1,16 +1,21 @@
 Tune Package Reference
 =======================
 
-ray.tune
---------
 
-.. automodule:: ray.tune
-    :members:
-    :show-inheritance:
-    :exclude-members: TuneError, Trainable, DurableTrainable
+.. contents:: :local:
 
-Training (`tune.Trainable`, tune.track)
----------------------------------------
+
+Training (tune.run, Experiment)
+-------------------------------
+
+.. autofunction:: ray.tune.run
+
+.. autofunction:: ray.tune.run_experiments
+
+.. autofunction:: ray.tune.Experiment
+
+Trainable (`tune.Trainable`, tune.track)
+----------------------------------------
 
 tune.Trainable
 ~~~~~~~~~~~~~~
@@ -31,23 +36,87 @@ tune.track
 
 .. automodule:: ray.tune.track
     :members:
+    :exclude-members: init, shutdown
 
 Sampling
 --------
-.. automodule:: ray.tune
-    :show-inheritance:
-    :members: randint, randn, loguniform, uniform, choice, sample_from
 
+.. autofunction:: ray.tune.randn
 
-ray.tune.schedulers
--------------------
+.. autofunction:: ray.tune.loguniform
 
-.. automodule:: ray.tune.schedulers
+.. autofunction:: ray.tune.uniform
+
+.. autofunction:: ray.tune.choice
+
+.. autoclass:: ray.tune.sample_from
+
+.. autofunction:: ray.tune.grid_search
+
+Stopper
+-------
+
+.. autoclass:: ray.tune.Stopper
     :members:
-    :show-inheritance:
 
-tune.suggest
-------------
+Analysis (tune.analysis)
+------------------------
+
+ExperimentAnalysis
+~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.ExperimentAnalysis
+    :members:
+
+
+Analysis
+~~~~~~~~
+
+.. autoclass:: ray.tune.Analysis
+    :members:
+
+
+Schedulers (tune.schedulers)
+----------------------------
+
+TrialScheduler
+~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.TrialScheduler
+    :members:
+
+FIFOScheduler
+~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.FIFOScheduler
+
+HyperBandScheduler
+~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.HyperBandScheduler
+
+ASHAScheduler/AsyncHyperBandScheduler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.AsyncHyperBandScheduler
+
+.. autoclass:: ray.tune.schedulers.ASHAScheduler
+
+MedianStoppingRule
+~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.MedianStoppingRule
+
+PopulationBasedTraining
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.PopulationBasedTraining
+
+
+Search Algorithms (tune.suggest)
+--------------------------------
+
+XXTODO this is missing
 
 .. autoclass:: ray.tune.suggest.Repeater
 
@@ -58,14 +127,6 @@ tune.suggest
     :members:
     :private-members:
     :show-inheritance:
-
-Registry
---------
-
-.. autofunction:: ray.tune.register_trainable
-
-.. autofunction:: ray.tune.register_env
-
 
 Loggers (tune.logger)
 ---------------------
@@ -122,9 +183,33 @@ JupyterNotebookReporter
 .. autoclass:: ray.tune.JupyterNotebookReporter
 
 
-Trial Executors
----------------
+Internals
+---------
+
+Registry
+~~~~~~~~
+
+.. autofunction:: ray.tune.register_trainable
+
+.. autofunction:: ray.tune.register_env
+
+RayTrialExecutor
+~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.ray_trial_executor.RayTrialExecutor
+    :members:
+
+TrialExecutor
+~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.trial_executor.TrialExecutor
+    :members:
+
+TrialRunner
+~~~~~~~~~~~
+
+.. autoclass:: ray.tune.trial_runner.TrialRunner
+
+Trial
+~~~~~
+.. autofunction:: ray.tune.trial.Trial

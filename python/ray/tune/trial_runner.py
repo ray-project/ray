@@ -70,7 +70,8 @@ class _TuneFunctionDecoder(json.JSONDecoder):
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
-    Example:
+    ..code-block: ptyhon
+
         runner = TrialRunner()
         runner.add_trial(Trial(...))
         runner.add_trial(Trial(...))
