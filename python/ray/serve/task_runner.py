@@ -1,5 +1,6 @@
 import time
 import traceback
+import inspect
 
 import ray
 from ray.serve import context as serve_context
@@ -7,6 +8,7 @@ from ray.serve.context import FakeFlaskRequest
 from collections import defaultdict
 from ray.serve.utils import parse_request_item
 from ray.serve.exceptions import RayServeException
+from ray.async_compat import sync_to_async
 
 
 class TaskRunner:
@@ -87,6 +89,9 @@ class RayServeMixin:
         self._ray_serve_self_handle = my_handle
         self._ray_serve_setup_completed = True
 
+        if not inspect.iscoroutinefunction(self.__call__):
+            self.__call__ = sync_to_async(self.__call__)
+
     def _ray_serve_fetch(self):
         assert self._ray_serve_setup_completed
 
@@ -94,13 +99,13 @@ class RayServeMixin:
             self._ray_serve_dequeue_requester_name,
             self._ray_serve_self_handle)
 
-    def invoke_single(self, request_item):
+    async def invoke_single(self, request_item):
         args, kwargs, is_web_context = parse_request_item(request_item)
         serve_context.web = is_web_context
         start_timestamp = time.time()
 
         try:
-            result = self.__call__(*args, **kwargs)
+            result = await self.__call__(*args, **kwargs)
         except Exception as e:
             result = wrap_to_ray_error(e)
             self._serve_metric_error_counter += 1
@@ -108,7 +113,7 @@ class RayServeMixin:
         self._serve_metric_latency_list.append(time.time() - start_timestamp)
         return result
 
-    def invoke_batch(self, request_item_list):
+    async def invoke_batch(self, request_item_list):
         # TODO(alind) : create no-http services. The enqueues
         # from such services will always be TaskContext.Python.
 
@@ -160,7 +165,7 @@ class RayServeMixin:
             arg_list = [arg_list]
 
             start_timestamp = time.time()
-            result_list = self.__call__(*arg_list, **kwargs_list)
+            result_list = await self.__call__(*arg_list, **kwargs_list)
 
             self._serve_metric_latency_list.append(time.time() -
                                                    start_timestamp)
@@ -177,13 +182,13 @@ class RayServeMixin:
             self._serve_metric_error_counter += batch_size
             return [wrapped_exception for _ in range(batch_size)]
 
-    def _ray_serve_call(self, request):
+    async def _ray_serve_call(self, request):
         # check if work_item is a list or not
         # if it is list: then batching supported
         if not isinstance(request, list):
-            result = self.invoke_single(request)
+            result = await self.invoke_single(request)
         else:
-            result = self.invoke_batch(request)
+            result = await self.invoke_batch(request)
 
         # re-assign to default values
         serve_context.web = False
