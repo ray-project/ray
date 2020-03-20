@@ -506,7 +506,7 @@ void CoreWorker::RegisterToGcs() {
   }
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id,
-                                                          worker_info));
+                                                          worker_info, nullptr));
 }
 
 void CoreWorker::CheckForRayletFailure(const boost::system::error_code &error) {

@@ -40,5 +40,26 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
   RAY_LOG(DEBUG) << "Finished reporting worker failure, " << worker_address.DebugString();
 }
 
+void DefaultWorkerInfoHandler::HandleRegisterWorker(
+    const RegisterWorkerRequest &request, RegisterWorkerReply *reply,
+    SendReplyCallback send_reply_callback) {
+  auto worker_type = request.worker_type();
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  auto worker_info = MapFromProtobuf(request.worker_info());
+
+  auto on_done = [worker_id, reply, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to register worker " << worker_id;
+    }
+  };
+
+  Status status = gcs_client_.Workers().AsyncRegisterWorker(worker_type, worker_id,
+                                                            worker_info, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
+  RAY_LOG(DEBUG) << "Finished registering worker " << worker_id;
+}
+
 }  // namespace rpc
 }  // namespace ray

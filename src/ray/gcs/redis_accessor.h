@@ -354,7 +354,8 @@ class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
 
   Status AsyncRegisterWorker(
       rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info) override;
+      const std::unordered_map<std::string, std::string> &worker_info,
+      const StatusCallback &callback) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};

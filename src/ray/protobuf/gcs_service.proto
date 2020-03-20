@@ -16,6 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 
 message GcsStatus {
@@ -345,8 +346,23 @@ message ReportWorkerFailureReply {
   GcsStatus status = 1;
 }
 
+message RegisterWorkerRequest {
+  /// The type of the worker.
+  WorkerType worker_type = 1;
+  /// The ID of the worker.
+  bytes worker_id = 2;
+  /// The information of the worker in a dictionary.
+  map<string, string> worker_info = 3;
+}
+
+message RegisterWorkerReply {
+  GcsStatus status = 1;
+}
+
 // Service for worker info access.
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
+  // Register a worker to GCS Service.
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
 }

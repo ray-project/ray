@@ -661,7 +661,8 @@ Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
 
 Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
     rpc::WorkerType worker_type, const WorkerID &worker_id,
-    const std::unordered_map<std::string, std::string> &worker_info) {
+    const std::unordered_map<std::string, std::string> &worker_info,
+    const StatusCallback &callback) {
   std::vector<std::string> args;
   args.emplace_back("HMSET");
   if (worker_type == rpc::WorkerType::DRIVER) {
@@ -674,7 +675,12 @@ Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
     args.push_back(entry.second);
   }
 
-  return client_impl_->primary_context()->RunArgvAsync(args);
+  auto status = client_impl_->primary_context()->RunArgvAsync(args);
+  if (callback) {
+    // TODO (kfstorm): Invoke the callback asynchronously.
+    callback(status);
+  }
+  return status;
 }
 
 }  // namespace gcs
