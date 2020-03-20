@@ -63,17 +63,17 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   public void testCrossLanguageSerialization() {
     {
       int[] input = new int[]{1, 2};
-      RayObject<Object> res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", Object.class), input);
-      Object[] r = (Object[]) res.get();
+      RayObject<int[]> res = Ray.call(
+          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_input", int[].class), input);
+      int[] r = res.get();
       Assert.assertEquals(r.length, input.length);
-      Assert.assertEquals(((Number) r[0]).intValue(), input[0]);
-      Assert.assertEquals(((Number) r[1]).intValue(), input[1]);
+      Assert.assertEquals(r[0], input[0]);
+      Assert.assertEquals(r[1], input[1]);
     }
     {
-      RayObject res = Ray.call(
-          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_java", Object.class));
-      Assert.assertTrue((boolean)res.get());
+      RayObject<Boolean> res = Ray.call(
+          new PyRemoteFunction<>(PYTHON_MODULE, "py_return_java", Boolean.class));
+      Assert.assertTrue(res.get());
     }
   }
 
