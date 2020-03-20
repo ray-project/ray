@@ -190,6 +190,7 @@ Below is an example.
 **Host**: If it is a node, it shows host information. If it is a worker, it shows a pid.
 
 **Workers**: If it is a node, it shows a number of workers and virtual cores. Note that number of workers can exceed number of cores.
+
 **Uptime**: Uptime of each worker and process.
 
 **CPU**: CPU usage of each node and worker.
