@@ -13,15 +13,21 @@ Frequently Asked Questions (FAQ)
 
 **My application failed with ObjectStoreFullError. What happened?**
 
-This exception is raised when the object store on a node was full of pinned objects when the application tried to create a new object (either by calling ``ray.put()`` or returning an object from a task). If you're sure that the configured object store size was large enough for your application to run, ensure that you're removing ``ObjectID`` references when they're no longer in use so their objects can be evicted from the object store. See `Debugging using 'ray memory'`_ for information on how to identify what objects are in scope in your application.
+Ensure that you're removing ``ObjectID`` references when they're no longer needed. See `Debugging using 'ray memory'`_ for information on how to identify what objects are in scope in your application.
+
+This exception is raised when the object store on a node was full of pinned objects when the application tried to create a new object (either by calling ``ray.put()`` or returning an object from a task). If you're sure that the configured object store size was large enough for your application to run, ensure that you're removing ``ObjectID`` references when they're no longer in use so their objects can be evicted from the object store. 
 
 **I'm running Ray inside IPython or a Jupyter Notebook and there are ObjectID references causing problems even though I'm not storing them anywhere.**
 
-IPython stores the output of every cell in a local Python variable indefinitely. This causes Ray to pin the objects even though your application may not actually be using them. You can try `Enabling LRU Fallback`_ to solve this, which will cause unused objects referenced by IPython to be LRU evicted when the object store is full instead of erroring.
+Try `Enabling LRU Fallback`_, which will cause unused objects referenced by IPython to be LRU evicted when the object store is full instead of erroring.
+
+IPython stores the output of every cell in a local Python variable indefinitely. This causes Ray to pin the objects even though your application may not actually be using them. 
 
 **My application used to run on previous versions of Ray but now I'm getting ObjectStoreFullError.**
 
-In previous versions of Ray, there was no reference counting and instead objects in the object store were LRU evicted once the object store ran out of space. Some applications (e.g., applications that keep references to all objects ever created) may have worked with LRU eviction but do not with reference counting. In this case, you can either modify your application to remove ``ObjectID`` references or try `Enabling LRU Fallback`_ to revert to the old behavior.
+Either modify your application to remove ``ObjectID`` references when they're no longer needed or try `Enabling LRU Fallback`_ to revert to the old behavior.
+
+In previous versions of Ray, there was no reference counting and instead objects in the object store were LRU evicted once the object store ran out of space. Some applications (e.g., applications that keep references to all objects ever created) may have worked with LRU eviction but do not with reference counting. 
 
 Debugging using 'ray memory'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
