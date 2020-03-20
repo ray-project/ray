@@ -54,10 +54,10 @@ class SharedMetrics:
                  parents: List["SharedMetrics"] = None):
         self.metrics = metrics or MetricsContext()
         self.parents = parents or []
-        # Recursively sync all parents to point to the same underlying metrics.
         self.set(self.metrics)
 
     def set(self, metrics):
+        """Recursively set self and parents to point to the same metrics."""
         self.metrics = metrics
         for parent in self.parents:
             parent.set(metrics)
