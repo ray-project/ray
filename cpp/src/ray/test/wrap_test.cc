@@ -505,11 +505,11 @@ TEST(ray_marshall, type_hybrid) {
 }
 
 TEST(ray_marshall, type_ray_object) {
-  RayObject<uint32_t> in_arg1(ObjectID::FromRandom());
-  RayObject<uint32_t> out_arg1;
+  ray::api::RayObject<uint32_t> in_arg1(ObjectID::FromRandom());
+  ray::api::RayObject<uint32_t> out_arg1;
 
-  RayObject<std::string> in_arg2(ObjectID::FromRandom());
-  RayObject<std::string> out_arg2;
+  ray::api::RayObject<std::string> in_arg2(ObjectID::FromRandom());
+  ray::api::RayObject<std::string> out_arg2;
 
   // 0 args
   // marshall

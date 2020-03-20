@@ -95,10 +95,10 @@ ActorID LocalModeTaskSubmitter::CreateActor(remote_function_ptr_holder &fptr,
   AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
   ActorID id = runtime.GetNextActorID();
   typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
-      uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
+      uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args);
   EXEC_FUNCTION exec_function = (EXEC_FUNCTION)(fptr.value[1]);
   auto data =
-      (*exec_function)(dylib_base_addr, (int32_t)(fptr.value[0] - dylib_base_addr), args);
+      (*exec_function)(dylib_base_addr, (long)(fptr.value[0] - dylib_base_addr), args);
   std::unique_ptr<ActorContext> actorContext(new ActorContext());
   actorContext->currentActor = data;
   actorContextsMutex_.lock();

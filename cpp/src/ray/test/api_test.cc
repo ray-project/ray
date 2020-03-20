@@ -48,9 +48,9 @@ TEST(ray_api_test_case, Put_test) {
 
 TEST(ray_api_test_case, wait_test) {
   Ray::Init();
-  RayObject<int> r0 = Ray::Call(Foo0);
-  RayObject<int> r1 = Ray::Call(Foo, 3);
-  RayObject<int> r2 = Ray::Call(Bar, 2, 3);
+  auto r0 = Ray::Call(Foo0);
+  auto r1 = Ray::Call(Foo, 3);
+  auto r2 = Ray::Call(Bar, 2, 3);
   std::vector<ObjectID> vector;
   vector.push_back(r0.ID());
   vector.push_back(r1.ID());
@@ -145,7 +145,7 @@ TEST(ray_api_test_case, compare_with_future) {
 
   // Ray API
   Ray::Init();
-  RayObject<int> f3 = Ray::Call(Foo, 1);
+  auto f3 = Ray::Call(Foo, 1);
   int rt3 = *f3.Get();
 
   EXPECT_EQ(rt1, 2);

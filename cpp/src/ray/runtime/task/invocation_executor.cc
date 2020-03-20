@@ -15,22 +15,22 @@ void InvocationExecutor::Execute(const TaskSpecification &taskSpec,
   auto typed_descriptor = functionDescriptor->As<ray::CppFunctionDescriptor>();
   if (actor) {
     typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
-        uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+        uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args,
         std::shared_ptr<msgpack::sbuffer> object);
     EXEC_FUNCTION exec_function = (EXEC_FUNCTION)(
-        dylib_base_addr + std::stoi(typed_descriptor->ExecFunctionOffset()));
+        dylib_base_addr + std::stol(typed_descriptor->ExecFunctionOffset()));
     auto data = (*exec_function)(
-        dylib_base_addr, std::stoi(typed_descriptor->FunctionOffset()), args, actor);
+        dylib_base_addr, std::stol(typed_descriptor->FunctionOffset()), args, actor);
     AbstractRayRuntime &rayRuntime = AbstractRayRuntime::GetInstance();
     rayRuntime.Put(std::move(data), taskSpec.ReturnId(0, ray::TaskTransportType::RAYLET),
                    taskSpec.TaskId());
   } else {
     typedef std::shared_ptr<msgpack::sbuffer> (*EXEC_FUNCTION)(
-        uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
+        uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args);
     EXEC_FUNCTION exec_function = (EXEC_FUNCTION)(
-        dylib_base_addr + std::stoi(typed_descriptor->ExecFunctionOffset()));
+        dylib_base_addr + std::stol(typed_descriptor->ExecFunctionOffset()));
     auto data = (*exec_function)(dylib_base_addr,
-                                 std::stoi(typed_descriptor->FunctionOffset()), args);
+                                 std::stol(typed_descriptor->FunctionOffset()), args);
     AbstractRayRuntime &rayRuntime = AbstractRayRuntime::GetInstance();
     rayRuntime.Put(std::move(data), taskSpec.ReturnId(0, ray::TaskTransportType::RAYLET),
                    taskSpec.TaskId());

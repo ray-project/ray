@@ -78,8 +78,8 @@ ObjectID AbstractRayRuntime::Call(remote_function_ptr_holder &fptr,
       TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
   invocationSpec.actorId = ActorID::Nil();
   invocationSpec.args = args;
-  invocationSpec.funcOffset = (int32_t)(fptr.value[0] - dylib_base_addr);
-  invocationSpec.execFuncOffset = (int32_t)(fptr.value[1] - dylib_base_addr);
+  invocationSpec.funcOffset = (long)(fptr.value[0] - dylib_base_addr);
+  invocationSpec.execFuncOffset = (long)(fptr.value[1] - dylib_base_addr);
   return taskSubmitter_->SubmitTask(invocationSpec);
 }
 
@@ -96,8 +96,8 @@ ObjectID AbstractRayRuntime::CallActor(const remote_function_ptr_holder &fptr,
       TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
   invocationSpec.actorId = actor;
   invocationSpec.args = args;
-  invocationSpec.funcOffset = (int32_t)(fptr.value[0] - dylib_base_addr);
-  invocationSpec.execFuncOffset = (int32_t)(fptr.value[1] - dylib_base_addr);
+  invocationSpec.funcOffset = (long)(fptr.value[0] - dylib_base_addr);
+  invocationSpec.execFuncOffset = (long)(fptr.value[1] - dylib_base_addr);
   return taskSubmitter_->SubmitActorTask(invocationSpec);
 }
 

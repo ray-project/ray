@@ -3,7 +3,7 @@
 
 // 0 args
 template <typename RT>
-std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, int32_t func_offset,
+std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, long func_offset,
                                                std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   typedef RT (*FUNC)();
@@ -18,7 +18,7 @@ std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, int32_t func
 
 // 1 args
 template <typename RT, typename T1>
-std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, int32_t func_offset,
+std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, long func_offset,
                                                std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   T1 t1;
@@ -48,7 +48,7 @@ std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, int32_t func
 
 // 2 args
 template <typename RT, typename T1, typename T2>
-std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, int32_t func_offset,
+std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, long func_offset,
                                                std::shared_ptr<msgpack::sbuffer> args,
                                                TaskType type) {
   RT rt;
@@ -90,7 +90,7 @@ std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, int32_t func
 // 0 args
 template <typename RT>
 std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
-    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args) {
+    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   typedef RT (*FUNC)();
   FUNC func = (FUNC)(base_addr + func_offset);
@@ -105,7 +105,7 @@ std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
 // 1 args
 template <typename RT, typename T1>
 std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
-    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args) {
+    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   T1 t1;
   msgpack::unpacker unpacker;
@@ -135,7 +135,7 @@ std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
 // 2 args
 template <typename RT, typename T1, typename T2>
 std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
-    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args) {
+    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args) {
   RT rt;
   T1 t1;
   T2 t2;
@@ -175,7 +175,7 @@ std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
 // 0 args
 template <typename RT, typename O>
 std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
-    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args,
     std::shared_ptr<msgpack::sbuffer> object) {
   msgpack::unpacker actor_unpacker;
   actor_unpacker.reserve_buffer(object->size());
@@ -202,7 +202,7 @@ std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
 // 1 args
 template <typename RT, typename O, typename T1>
 std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
-    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args,
     std::shared_ptr<msgpack::sbuffer> object) {
   msgpack::unpacker actor_unpacker;
   actor_unpacker.reserve_buffer(object->size());
@@ -244,7 +244,7 @@ std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
 // 2 args
 template <typename RT, typename O, typename T1, typename T2>
 std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
-    uintptr_t base_addr, int32_t func_offset, std::shared_ptr<msgpack::sbuffer> args,
+    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args,
     std::shared_ptr<msgpack::sbuffer> object) {
   msgpack::unpacker actor_unpacker;
   actor_unpacker.reserve_buffer(object->size());
