@@ -34,15 +34,10 @@ tune.track
 
 Sampling
 --------
+.. automodule:: ray.tune
+    :show-inheritance:
+    :members: randint, randn, loguniform, uniform, choice, sample_from
 
-Test
-
-Trial Executors
----------------
-
-.. autoclass:: ray.tune.ray_trial_executor.RayTrialExecutor
-
-.. autoclass:: ray.tune.trial_executor.TrialExecutor
 
 ray.tune.schedulers
 -------------------
@@ -51,33 +46,85 @@ ray.tune.schedulers
     :members:
     :show-inheritance:
 
-ray.tune.suggest
-----------------
+tune.suggest
+------------
 
-.. automodule:: ray.tune.suggest
+.. autoclass:: ray.tune.suggest.Repeater
+
+.. autoclass:: ray.tune.suggest.SearchAlgorithm
     :members:
-    :exclude-members: function, sample_from, grid_search, SuggestionAlgorithm
-    :show-inheritance:
 
 .. autoclass:: ray.tune.suggest.SuggestionAlgorithm
     :members:
     :private-members:
     :show-inheritance:
 
-.. autoclass:: ray.tune.suggest.Repeater
+Registry
+--------
+
+.. autofunction:: ray.tune.register_trainable
+
+.. autofunction:: ray.tune.register_env
 
 
-Loggers
--------
+Loggers (tune.logger)
+---------------------
+
+Logger
+~~~~~~
 
 .. autoclass:: ray.tune.logger.Logger
 
+UnifiedLogger
+~~~~~~~~~~~~~
+
 .. autoclass:: ray.tune.logger.UnifiedLogger
 
+TBXLogger
+~~~~~~~~~
+
 .. autoclass:: ray.tune.logger.TBXLogger
+
+JsonLogger
+~~~~~~~~~~
 
 .. autoclass:: ray.tune.logger.JsonLogger
 
 XXTODO - DO NOT MERGE without adding docs to JsonLogger.
 
+CSVLogger
+~~~~~~~~~
+
 .. autoclass:: ray.tune.logger.CSVLogger
+
+MLFLowLogger
+~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.logger.MLFLowLogger
+
+
+Reporters
+---------
+
+ProgressReporter
+~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.ProgressReporter
+
+CLIReporter
+~~~~~~~~~~~
+
+.. autoclass:: ray.tune.CLIReporter
+
+JupyterNotebookReporter
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.JupyterNotebookReporter
+
+
+Trial Executors
+---------------
+
+.. autoclass:: ray.tune.ray_trial_executor.RayTrialExecutor
+
+.. autoclass:: ray.tune.trial_executor.TrialExecutor
