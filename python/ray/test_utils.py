@@ -240,7 +240,7 @@ def put_object(obj, use_ray_put):
 def wait_until_server_available(address,
                                 timeout_ms=5000,
                                 retry_interval_ms=100):
-    ip_port = address.split(':')
+    ip_port = address.split(":")
     ip = ip_port[0]
     port = int(ip_port[1])
     time_elapsed = 0
