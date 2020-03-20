@@ -180,7 +180,6 @@ requires = [
     "packaging",
     "pytest",
     "pyyaml",
-    "jsonschema",
     "redis>=3.3.2",
     # NOTE: Don't upgrade the version of six! Doing so causes installation
     # problems. See https://github.com/ray-project/ray/issues/4169.
