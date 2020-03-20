@@ -1,7 +1,7 @@
 package org.ray.api.function;
 
 /**
- * A class for calling Python remote function
+ * A class that represents a Python remote function.
  */
 public class PyRemoteFunction<R> {
   public final String moduleName;
