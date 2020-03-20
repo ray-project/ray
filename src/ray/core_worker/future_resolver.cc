@@ -40,8 +40,8 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
         // Either the owner is gone or the owner replied that the object has
         // been created. In both cases, we can now try to fetch the object via
         // plasma.
-        RAY_CHECK_OK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                           object_id));
+        RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                         object_id));
       }));
 }
 

@@ -11,6 +11,9 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
+import org.ray.api.function.PyActorClass;
+import org.ray.api.function.PyActorMethod;
+import org.ray.api.function.PyRemoteFunction;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.actor.NativeRayPyActor;
 import org.slf4j.Logger;
@@ -48,26 +51,34 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testCallingPythonFunction() {
-    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func", "hello".getBytes());
+    RayObject<byte[]> res = Ray.call(
+        new PyRemoteFunction<>(PYTHON_MODULE, "py_func", byte[].class),
+        "hello".getBytes());
     Assert.assertEquals(res.get(), "Response from Python: hello".getBytes());
   }
 
   @Test
   public void testPythonCallJavaFunction() {
-    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_function", "hello".getBytes());
+    RayObject<byte[]> res = Ray.call(
+        new PyRemoteFunction<>(PYTHON_MODULE, "py_func_call_java_function", byte[].class),
+        "hello".getBytes());
     Assert.assertEquals(res.get(), "[Python]py_func -> [Java]bytesEcho -> hello".getBytes());
   }
 
   @Test
   public void testCallingPythonActor() {
-    RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
-    RayObject res = actor.call("increase", "1".getBytes());
+    RayPyActor actor = Ray.createActor(new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
+    RayObject<byte[]> res = actor.call(
+        new PyActorMethod<>("increase", byte[].class),
+        "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());
   }
 
   @Test
   public void testPythonCallJavaActor() {
-    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor", "1".getBytes());
+    RayObject<byte[]> res = Ray.call(
+        new PyRemoteFunction<>(PYTHON_MODULE, "py_func_call_java_actor", byte[].class),
+        "1".getBytes());
     Assert.assertEquals(res.get(), "Counter1".getBytes());
 
   }
@@ -76,7 +87,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   public void testPassActorHandleFromPythonToJava() {
     // Call a python function which creates a python actor
     // and pass the actor handle to callPythonActorHandle.
-    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_pass_python_actor_handle");
+    RayObject<byte[]> res = Ray.call(
+        new PyRemoteFunction<>(PYTHON_MODULE, "py_func_pass_python_actor_handle", byte[].class));
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
@@ -86,15 +98,22 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     RayActor<TestActor> javaActor = Ray.createActor(TestActor::new, "1".getBytes());
     Preconditions.checkState(javaActor instanceof NativeRayActor);
     byte[] actorHandleBytes = ((NativeRayActor) javaActor).toBytes();
-    RayObject res = Ray.callPy(PYTHON_MODULE,
-        "py_func_call_java_actor_from_handle", actorHandleBytes);
+    RayObject<byte[]> res = Ray.call(
+        new PyRemoteFunction<>(PYTHON_MODULE,
+            "py_func_call_java_actor_from_handle",
+            byte[].class),
+        actorHandleBytes);
     Assert.assertEquals(res.get(), "12".getBytes());
     // Create a python actor, and pass actor handle to python.
-    RayPyActor pyActor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
+    RayPyActor pyActor = Ray.createActor(
+        new PyActorClass(PYTHON_MODULE, "Counter"), "1".getBytes());
     Preconditions.checkState(pyActor instanceof NativeRayActor);
     actorHandleBytes = ((NativeRayActor) pyActor).toBytes();
-    res = Ray.callPy(PYTHON_MODULE,
-        "py_func_call_python_actor_from_handle", actorHandleBytes);
+    res = Ray.call(
+        new PyRemoteFunction<>(PYTHON_MODULE,
+            "py_func_call_python_actor_from_handle",
+            byte[].class),
+        actorHandleBytes);
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
@@ -107,10 +126,12 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   public static byte[] callPythonActorHandle(byte[] value) {
     // This function will be called from test_cross_language_invocation.py
-    NativeRayPyActor actor = (NativeRayPyActor)NativeRayActor.fromBytes(value);
-    RayObject res = actor.call("increase", "1".getBytes());
+    NativeRayPyActor actor = (NativeRayPyActor) NativeRayActor.fromBytes(value);
+    RayObject<byte[]> res = actor.call(
+        new PyActorMethod<>("increase", byte[].class),
+        "1".getBytes());
     Assert.assertEquals(res.get(), "3".getBytes());
-    return (byte[])res.get();
+    return (byte[]) res.get();
   }
 
   public static class TestActor {

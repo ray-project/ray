@@ -387,7 +387,7 @@ cc_library(
         ],
         exclude = [
             "src/ray/raylet/mock_gcs_client.cc",
-            "src/ray/raylet/monitor_main.cc",
+            "src/ray/raylet/monitor*.cc",
             "src/ray/raylet/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
