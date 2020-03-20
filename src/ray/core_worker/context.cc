@@ -80,6 +80,12 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
+bool WorkerContext::IsDriver() const { return worker_type_ == WorkerType::DRIVER; }
+
+bool WorkerContext::IsActor() const {
+  return worker_type_ == WorkerType::WORKER && current_actor_id_ != ActorID::Nil();
+}
+
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 
 int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskIndex(); }
@@ -92,8 +98,6 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
-
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
@@ -102,11 +106,11 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   if (task_spec.IsNormalTask()) {
     RAY_CHECK(current_job_id_.IsNil());
-    SetCurrentJobId(task_spec.JobId());
+    current_job_id_ = task_spec.JobId();
     current_task_is_direct_call_ = task_spec.IsDirectCall();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
-    SetCurrentJobId(task_spec.JobId());
+    current_job_id_ = task_spec.JobId();
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_is_direct_call_ = task_spec.IsDirectActorCreationCall();
@@ -123,7 +127,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().ResetCurrentTask(task_spec);
   if (task_spec.IsNormalTask()) {
-    SetCurrentJobId(JobID::Nil());
+    current_job_id_ = JobID::Nil();
   }
 }
 
@@ -143,16 +147,7 @@ bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
   //  - We only support lifetime resources for direct actors, which can be
   //    acquired when the actor is created, per call resources are not supported,
   //    thus we don't need to release resources for direct actor call.
-  return worker_type_ != WorkerType::DRIVER && !CurrentActorIsDirectCall() &&
-         CurrentThreadIsMain();
-}
-
-bool WorkerContext::CurrentActorIsDirectCall() const {
-  return current_actor_is_direct_call_;
-}
-
-bool WorkerContext::CurrentTaskIsDirectCall() const {
-  return current_task_is_direct_call_ || current_actor_is_direct_call_;
+  return !IsDriver() && !IsActor() && CurrentThreadIsMain();
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {
