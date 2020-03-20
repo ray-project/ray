@@ -14,6 +14,9 @@ from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
+                                                DiagGaussian)
 from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -112,7 +115,7 @@ def get_distribution_inputs_and_class(policy,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
     # Get action model output from base-model output.
-    distribution_inputs = model.action_model(model_out)
+    distribution_inputs = model.get_policy_output(model_out)
     action_dist_class = get_dist_class(policy.config, policy.action_space)
     return distribution_inputs, action_dist_class, state_out
 
@@ -136,9 +139,10 @@ def actor_critic_loss(policy, model, _, train_batch):
     # Discrete case.
     if model.discrete:
         # Get all action probs directly from pi and form their logp.
-        log_pis_t = tf.nn.log_softmax(model.action_model(model_out_t), -1)
+        log_pis_t = tf.nn.log_softmax(model.get_policy_output(model_out_t), -1)
         policy_t = tf.exp(log_pis_t)
-        log_pis_tp1 = tf.nn.log_softmax(model.action_model(model_out_tp1), -1)
+        log_pis_tp1 = tf.nn.log_softmax(
+            model.get_policy_output(model_out_tp1), -1)
         policy_tp1 = tf.exp(log_pis_tp1)
         # Q-values.
         q_t = model.get_q_values(model_out_t)
@@ -167,11 +171,11 @@ def actor_critic_loss(policy, model, _, train_batch):
         # Sample simgle actions from distribution.
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
-            model.action_model(model_out_t), policy.model)
+            model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample()
         log_pis_t = tf.expand_dims(action_dist_t.sampled_action_logp(), -1)
         action_dist_tp1 = action_dist_class(
-            model.action_model(model_out_tp1), policy.model)
+            model.get_policy_output(model_out_tp1), policy.model)
         policy_tp1 = action_dist_tp1.sample()
         log_pis_tp1 = tf.expand_dims(action_dist_tp1.sampled_action_logp(), -1)
 

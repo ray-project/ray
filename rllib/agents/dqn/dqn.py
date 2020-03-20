@@ -80,7 +80,7 @@ DEFAULT_CONFIG = with_common_config({
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
-    "compress_observations": True,
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer
