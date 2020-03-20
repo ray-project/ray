@@ -173,10 +173,6 @@ def ray_deps_setup():
             "//thirdparty/patches:arrow-windows-dlmalloc.patch",
             "//thirdparty/patches:arrow-windows-tcp.patch",
         ],
-    ) if True else native.new_local_repository(
-        name = "plasma",
-        build_file = "bazel/BUILD.plasma",
-        path = "../arrow",
     )
 
     auto_http_archive(
