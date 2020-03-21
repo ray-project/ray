@@ -649,13 +649,13 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   promise.get_future().get();
 }
 
-TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
-  // Stop redis.
-  TearDownTestCase();
-
-  // Check if gcs server has exited.
-  RAY_CHECK(gcs_server_->IsStopped());
-}
+// TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
+//  // Stop redis.
+//  TearDownTestCase();
+//
+//  // Check if gcs server has exited.
+//  RAY_CHECK(gcs_server_->IsStopped());
+//}
 
 }  // namespace ray
 
