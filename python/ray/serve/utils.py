@@ -5,6 +5,8 @@ import string
 import time
 import io
 import os
+import socket
+import array
 
 import requests
 from pygments import formatters, highlight, lexers
@@ -110,3 +112,46 @@ def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
 
 def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
+
+
+class UnixFileDescriptTransport:
+    """This class faciliate sending file descriptors among processes."""
+
+    def __init__(self, unix_domain_path):
+        self.unix_domain_path = unix_domain_path
+
+    def bind(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.bind(self.unix_domain_path)
+
+    def send(self, fd: int, num_receivers: int):
+        self.sock.listen(num_receivers)
+
+        # The code was taken from python official doc
+        # https://docs.python.org/3/library/socket.html#socket.socket.sendmsg
+        for _ in range(num_receivers):
+            conn, addr = self.sock.accept()
+            conn.sendmsg([b""], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                  array.array("i", [fd]))])
+        self.sock.close()
+        os.unlink(self.unix_domain_path)
+
+    def receive(self) -> int:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(self.unix_domain_path)
+
+        # The following code was taken from python documentation
+        # https://docs.python.org/3/library/socket.html#socket.socket.recvmsg
+        fds = array.array("i")
+        # We know the message size is 0. But still use buffer to receive it
+        msg_length = 10
+        msg, ancdata, flags, addr = sock.recvmsg(
+            msg_length, socket.CMSG_LEN(1 * fds.itemsize))
+        for cmsg_level, cmsg_type, cmsg_data in ancdata:
+            assert cmsg_level == socket.SOL_SOCKET
+            assert cmsg_type == socket.SCM_RIGHTS
+            # Append data, ignoring any truncated integers at the end.
+            fds.frombytes(
+                cmsg_data[:len(cmsg_data) - (len(cmsg_data) % fds.itemsize)])
+        fds = list(fds)
+        return fds[0]

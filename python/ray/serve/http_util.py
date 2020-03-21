@@ -41,9 +41,15 @@ def build_wsgi_environ(scope, body):
     }
 
     # Get server name and port - required in WSGI, not in ASGI
-    environ["SERVER_NAME"] = scope["server"][0]
-    environ["SERVER_PORT"] = str(scope["server"][1])
-    environ["REMOTE_ADDR"] = scope["client"][0]
+    # scope["server"] and scope["client"] can default to None
+    environ["SERVER_NAME"] = ""
+    environ["SERVER_PORT"] = ""
+    environ["REMOTE_ADDR"] = ""
+    if scope["server"]:
+        environ["SERVER_NAME"] = scope["server"][0]
+        environ["SERVER_PORT"] = str(scope["server"][1])
+    if scope["client"]:
+        environ["REMOTE_ADDR"] = scope["client"][0]
 
     # Transforms headers into environ entries.
     for name, value in scope.get("headers", []):

@@ -1,5 +1,7 @@
 import asyncio
 import json
+import socket
+import tempfile
 
 import uvicorn
 
@@ -7,7 +9,7 @@ import ray
 from ray.experimental.async_api import _async_init
 from ray.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.serve.context import TaskContext
-from ray.serve.utils import BytesEncoder
+from ray.serve.utils import BytesEncoder, UnixFileDescriptTransport
 from ray.serve.request_params import RequestMetadata
 
 from urllib.parse import parse_qs
@@ -186,11 +188,46 @@ class HTTPProxy:
             await JSONResponse({"result": result})(scope, receive, send)
 
 
+def run_uvicorn_server(socket: socket.socket):
+    config = uvicorn.Config(HTTPProxy(), lifespan="on", access_log=True)
+    server = uvicorn.Server(config=config)
+    server.run(sockets=[socket])
+
+
+@ray.remote
+class HTTPWorkerActor:
+    def __init__(self, fd_transport: UnixFileDescriptTransport):
+        self.fd_transport = fd_transport
+
+    def run(self):
+        fd = self.fd_transport.receive()
+        sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
+        run_uvicorn_server(sock)
+
+
 @ray.remote
 class HTTPActor:
-    def __init__(self):
-        self.app = HTTPProxy()
+    def run(self, host="0.0.0.0", port=8000, num_workers=2):
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+        sock.set_inheritable(True)
 
-    def run(self, host="0.0.0.0", port=8000):
-        uvicorn.run(
-            self.app, host=host, port=port, lifespan="on", access_log=False)
+        if num_workers > 1:
+            num_child_workers = num_workers - 1
+
+            fd = sock.fileno()
+            fd_transport = UnixFileDescriptTransport(
+                unix_domain_path=tempfile.mktemp())
+            workers = [
+                HTTPWorkerActor.remote(fd_transport)
+                for _ in range(num_child_workers)
+            ]
+            fd_transport.bind()
+            # in remote actor, worker calls fd_transport.receive()
+            [worker.run.remote() for worker in workers]
+            # in here, master perform blocking send
+            fd_transport.send(fd, num_child_workers)
+
+        # Run a server at the master as well.
+        run_uvicorn_server(sock)
