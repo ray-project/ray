@@ -38,11 +38,7 @@ def parse_request_item(request_item):
         is_web_context = True
         asgi_scope, body_bytes = request_item.request_args
 
-        # http_body_bytes enclosed in list due to
-        # https://github.com/ray-project/ray/issues/6944
-        # TODO(alind):  remove list enclosing after issue is fixed
-        flask_request = build_flask_request(asgi_scope,
-                                            io.BytesIO(body_bytes[0]))
+        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
         args = (flask_request, )
         kwargs = {}
     else:
