@@ -189,7 +189,7 @@ class HTTPProxy:
 
 
 def run_uvicorn_server(socket: socket.socket):
-    config = uvicorn.Config(HTTPProxy(), lifespan="on", access_log=True)
+    config = uvicorn.Config(HTTPProxy(), lifespan="on", access_log=False)
     server = uvicorn.Server(config=config)
     server.run(sockets=[socket])
 

@@ -115,7 +115,7 @@ def get_random_letters(length=6):
 
 
 class UnixFileDescriptTransport:
-    """This class faciliate sending file descriptors among processes."""
+    """This class faciliates sending file descriptors among processes."""
 
     def __init__(self, unix_domain_path):
         self.unix_domain_path = unix_domain_path
