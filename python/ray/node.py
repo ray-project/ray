@@ -397,20 +397,20 @@ class Node:
         Args:
             socket_path (string): the socket file to prepare.
         """
-        if socket_path is not None:
-            if sys.platform != "win32":
+        result = socket_path
+        if sys.platform == "win32":
+            if socket_path is None:
+                result = "tcp://{}:{}".format(
+                    self._localhost, self._get_unused_port())
+        else:
+            if socket_path is None:
+                result = self._make_inc_temp(
+                    prefix=default_prefix, directory_name=self._sockets_dir)
+            else:
                 if os.path.exists(socket_path):
                     raise RuntimeError(
                         "Socket file {} exists!".format(socket_path))
-                socket_dir = os.path.dirname(socket_path)
-                try_to_create_directory(socket_dir)
-            result = socket_path
-        elif sys.platform == "win32":
-            port = self._get_unused_port()
-            result = "tcp://{}:{}".format(self._localhost, port)
-        else:
-            result = self._make_inc_temp(
-                prefix=default_prefix, directory_name=self._sockets_dir)
+                try_to_create_directory(os.path.dirname(socket_path))
         return result
 
     def start_reaper_process(self):
