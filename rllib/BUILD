@@ -1353,7 +1353,8 @@ sh_test(
 )
 
 py_test(
-    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    name = "examples/rock_paper_scissors_multiagent",
+    main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
     size = "large",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
