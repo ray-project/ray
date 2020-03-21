@@ -154,8 +154,13 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   }
 }
 
+void CoreWorkerProcess::EnsureInitialized() {
+  RAY_CHECK(instance_) << "The core worker process is not initialized yet or already "
+                       << "shutdown.";
+}
+
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  RAY_CHECK(instance_);
+  EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
     return *instance_->global_worker_;
   }
@@ -166,7 +171,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
 }
 
 void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
-  RAY_CHECK(instance_);
+  EnsureInitialized();
   if (instance_->options_.num_workers == 1) {
     RAY_CHECK(instance_->global_worker_->GetWorkerID() == worker_id);
     return;
@@ -220,7 +225,7 @@ void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 }
 
 void CoreWorkerProcess::StartExecutingTasks() {
-  RAY_CHECK(instance_);
+  EnsureInitialized();
   RAY_CHECK(instance_->options_.worker_type == WorkerType::WORKER);
   if (instance_->options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.

@@ -175,6 +175,8 @@ class CoreWorkerProcess {
  private:
   CoreWorkerProcess(const CoreWorkerOptions &options);
 
+  static void EnsureInitialized();
+
   std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
       LOCKS_EXCLUDED(worker_map_mutex_);
 

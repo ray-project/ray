@@ -72,6 +72,7 @@ cdef class ActorID(BaseID):
 
 cdef class CoreWorker:
     cdef:
+        c_bool is_driver
         object async_thread
         object async_event_loop
         object plasma_event_handler

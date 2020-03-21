@@ -635,6 +635,7 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, driver_name):
+        self.is_driver = is_driver
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
         options.worker_type = (
@@ -658,12 +659,12 @@ cdef class CoreWorker:
 
         CCoreWorkerProcess.Initialize(options)
 
-    # TOCHECK: https://github.com/ray-project/ray/pull/6614
-    # TOCHECK: https://github.com/ray-project/ray/pull/6450
     def __dealloc__(self):
         with nogil:
-            if <int>CCoreWorkerProcess.GetCoreWorker().GetWorkerType() \
-                    == <int>WORKER_TYPE_DRIVER:
+            # If it's a worker, the core worker process should have been
+            # shutdown. So we can't call `CCoreWorkerProcess.GetCoreWorker()`
+            # here.
+            if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
 
     def run_task_loop(self):
