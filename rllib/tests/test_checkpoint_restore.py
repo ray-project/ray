@@ -77,7 +77,7 @@ def ckpt_restore_test(use_object_store, alg_name, failures):
         alg2 = cls(config=CONFIGS[alg_name], env="CartPole-v0")
         env = gym.make("CartPole-v0")
 
-    for _ in range(2):
+    for _ in range(1):
         res = alg1.train()
         print("current status: " + str(res))
 
@@ -87,7 +87,7 @@ def ckpt_restore_test(use_object_store, alg_name, failures):
     else:
         alg2.restore(alg1.save())
 
-    for _ in range(5):
+    for _ in range(2):
         if "DDPG" in alg_name or "SAC" in alg_name:
             obs = np.clip(
                 np.random.uniform(size=3),
@@ -121,7 +121,7 @@ def export_test(alg_name, failures):
     else:
         algo = cls(config=CONFIGS[alg_name], env="CartPole-v0")
 
-    for _ in range(3):
+    for _ in range(1):
         res = algo.train()
         print("current status: " + str(res))
 

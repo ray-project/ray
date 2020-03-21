@@ -398,7 +398,7 @@ class Policy(metaclass=ABCMeta):
                             {"type": "StochasticSampling"}),
             action_space=self.action_space,
             policy_config=self.config,
-            model=self.model,
+            model=getattr(self, "model", None),
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))

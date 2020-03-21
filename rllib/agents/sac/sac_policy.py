@@ -14,9 +14,6 @@ from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import (Categorical, SquashedGaussian,
-                                                DiagGaussian)
 from ray.rllib.utils import try_import_tf, try_import_tfp
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
