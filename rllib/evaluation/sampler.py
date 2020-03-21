@@ -576,13 +576,25 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                         TFPolicy.compute_actions.__code__):
             rnn_in_cols = _to_column_format(rnn_in)
             # TODO(ekl): how can we make info batch available to TF code?
+            obs_batch = [t.obs for t in eval_data]
+            prev_action_batch = [t.prev_action for t in eval_data]
+            prev_reward_batch = [t.prev_reward for t in eval_data]
+            policy.exploration.before_forward_pass(
+                obs_batch=obs_batch,
+                state_batches=rnn_in_cols,
+                prev_action_batch=prev_action_batch,
+                prev_reward_batch=prev_reward_batch,
+                timestep=policy.global_timestep,
+                tf_sess=policy.get_session()
+            )
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
-                obs_batch=[t.obs for t in eval_data],
+                obs_batch=obs_batch,
                 state_batches=rnn_in_cols,
-                prev_action_batch=[t.prev_action for t in eval_data],
-                prev_reward_batch=[t.prev_reward for t in eval_data],
-                timestep=policy.global_timestep)
+                prev_action_batch=prev_action_batch,
+                prev_reward_batch=prev_reward_batch,
+                timestep=policy.global_timestep,
+                fetch_dist_inputs=True)
         else:
             # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
@@ -598,8 +610,15 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 episodes=[active_episodes[t.env_id] for t in eval_data],
                 timestep=policy.global_timestep)
     if builder:
-        for k, v in pending_fetches.items():
-            eval_results[k] = builder.get(v)
+        for pid, v in pending_fetches.items():
+            eval_results[pid] = builder.get(v)
+            policy = _get_or_raise(policies, pid)
+            policy.exploration.after_forward_pass(
+                distribution_inputs=eval_results[pid][3],
+                action_dist_class=policy.dist_class,
+                timestep=policy.global_timestep,
+                tf_sess=policy.get_session()
+            )
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(
@@ -627,7 +646,9 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
 
-        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id]
+        actions = eval_results[policy_id][0]
+        rnn_out_cols = eval_results[policy_id][1]
+        pi_info_cols = eval_results[policy_id][2]
 
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "

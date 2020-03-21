@@ -127,8 +127,11 @@ class ParameterNoise(Exploration):
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             timestep=None,
-                            explore=True,
+                            explore=None,
                             tf_sess=None):
+        print("before forward")
+        explore = explore if explore is not None else \
+            self.policy_config["explore"]
         if explore:
             # We don't explore by default AND weights are currently noise-free:
             # Apply stored noise.
@@ -147,8 +150,11 @@ class ParameterNoise(Exploration):
                            distribution_inputs,
                            action_dist_class,
                            timestep=None,
-                           explore=True,
+                           explore=None,
                            tf_sess=None):
+        print("after forward")
+        explore = explore if explore is not None else \
+            self.policy_config["explore"]
         if explore:
             # Default is not to explore -> Remove noise.
             if not self.default_explore:
@@ -270,6 +276,7 @@ class ParameterNoise(Exploration):
 
     def _sample_new_noise(self, *, tf_sess=None):
         """Samples new noise and stores it in `self.noise`."""
+        print("sampling")
         if self.framework == "tf":
             if tf.executing_eagerly():
                 self._tf_sample_new_noise_op()
@@ -295,7 +302,9 @@ class ParameterNoise(Exploration):
     def _sample_new_noise_and_add(self, *, tf_sess=None, override=False):
         if self.framework == "tf" and not tf.executing_eagerly():
             if override and self.weights_are_currently_noisy:
+                print("removing")
                 tf_sess.run(self.tf_remove_noise_op)
+            print("sampling AND adding")
             tf_sess.run(self.tf_sample_new_noise_and_add_op)
         else:
             if override and self.weights_are_currently_noisy:
@@ -318,6 +327,7 @@ class ParameterNoise(Exploration):
         """
         # Make sure we only add noise to currently noise-free weights.
         assert self.weights_are_currently_noisy is False
+        print("adding")
 
         if self.framework == "tf":
             if tf.executing_eagerly():
@@ -357,6 +367,7 @@ class ParameterNoise(Exploration):
         """
         # Make sure we only remove noise iff currently noisy.
         assert self.weights_are_currently_noisy
+        print("removing")
 
         if self.framework == "tf":
             if tf.executing_eagerly():

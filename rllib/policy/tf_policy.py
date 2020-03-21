@@ -270,7 +270,6 @@ class TFPolicy(Policy):
             timestep=timestep,
             explore=explore,
             tf_sess=self.get_session())
-
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,

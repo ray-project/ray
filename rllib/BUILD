@@ -966,7 +966,7 @@ py_test(
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_eager_support.py"]
 )
 
