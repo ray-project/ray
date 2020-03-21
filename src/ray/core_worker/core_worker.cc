@@ -172,7 +172,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
-      [this](const rpc::Address &addr) {
+      RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
@@ -294,7 +294,9 @@ void CoreWorker::Exit(bool intentional) {
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
-  task_manager_->DrainAndShutdown([this, intentional]() {
+
+  // Callback to shutdown.
+  auto shutdown = [this, intentional]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     task_execution_service_.post([this, intentional]() {
@@ -303,13 +305,36 @@ void CoreWorker::Exit(bool intentional) {
       }
       Shutdown();
     });
-  });
+  };
+
+  // Callback to drain objects once all pending tasks have been drained.
+  auto drain_references_callback = [this, shutdown]() {
+    bool not_actor_task = false;
+    {
+      absl::MutexLock lock(&mutex_);
+      not_actor_task = actor_id_.IsNil();
+    }
+    if (not_actor_task) {
+      // If we are a task, then we cannot hold any object references in the
+      // heap. Therefore, any active object references are being held by other
+      // processes. Wait for these processes to release their references before
+      // we shutdown.
+      // NOTE(swang): This could still cause this worker process to stay alive
+      // forever if another process holds a reference forever.
+      reference_counter_->DrainAndShutdown(shutdown);
+    } else {
+      // If we are an actor, then we may be holding object references in the
+      // heap. Then, we should not wait to drain the object references before
+      // shutdown since this could hang.
+      shutdown();
+    }
+  };
+
+  task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
 void CoreWorker::RunIOService() {
-#ifdef _WIN32
-  // TODO(mehrdadn): Is there an equivalent for Windows we need here?
-#else
+#ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
@@ -459,7 +484,8 @@ Status CoreWorker::Put(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  return Status::OK();
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -503,7 +529,8 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
-  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
@@ -996,7 +1023,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
             RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/true, /*no_reconstruction=*/false));
+                KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
           }
         }));
   }
@@ -1210,8 +1237,8 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
       if (task.ArgId(i, 0).IsDirectCallType()) {
-        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                        task.ArgId(i, 0)));
+        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      task.ArgId(i, 0)));
       }
       const auto &arg_id = task.ArgId(i, 0);
       by_ref_ids.insert(arg_id);
@@ -1433,7 +1460,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   auto stats = reply->mutable_core_worker_stats();
-  stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  // TODO(swang): Differentiate between tasks that are currently pending
+  // execution and tasks that have finished but may be retried.
+  stats->set_num_pending_tasks(task_manager_->NumSubmissibleTasks());
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());

@@ -8,6 +8,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
+import org.ray.api.function.PyActorMethod;
 import org.ray.streaming.api.Language;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -68,7 +69,8 @@ public class JobSchedulerImpl implements JobScheduler {
           case PYTHON:
             byte[] workerContextBytes = buildPythonWorkerContext(
                 taskId, executionGraphPb, jobConfig);
-            waits.add(((RayPyActor)worker).call("init", workerContextBytes));
+            waits.add(((RayPyActor)worker).call(new PyActorMethod("init", Object.class),
+                workerContextBytes));
             break;
           default:
             throw new UnsupportedOperationException(
