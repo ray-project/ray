@@ -59,13 +59,15 @@ def log(**kwargs):
         from ray.tune import track
 
         def run_me(config):
-            time.sleep(1)
-            track.log(hello="world", ray="tune")
+            for iter in range(100):
+                time.sleep(1)
+                track.log(hello="world", ray="tune")
 
         analysis = tune.run(run_me)
 
     Args:
-        kwargs: Any key value pair to be logged by Tune.
+        **kwargs: Any key value pair to be logged by Tune. Any of these
+            metrics can be used for early stopping or optimization.
     """
     _session = get_session()
     return _session.log(**kwargs)

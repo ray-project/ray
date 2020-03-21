@@ -1,11 +1,8 @@
 Tune Package Reference
 =======================
 
-.. contents:: :local:
-
-
-Training (tune.run, Experiment)
--------------------------------
+Training (tune.run, tune.Experiment)
+------------------------------------
 
 tune.run
 ~~~~~~~~
@@ -47,18 +44,36 @@ tune.track
     :members:
     :exclude-members: init, shutdown
 
-Sampling
---------
+Sampling (tune.rand, tune.grid_search...)
+--------------------------------------------
+
+randn
+~~~~~
 
 .. autofunction:: ray.tune.randn
 
+loguniform
+~~~~~~~~~~
+
 .. autofunction:: ray.tune.loguniform
+
+uniform
+~~~~~~~
 
 .. autofunction:: ray.tune.uniform
 
+choice
+~~~~~~
+
 .. autofunction:: ray.tune.choice
 
+sample_from
+~~~~~~~~~~~
+
 .. autoclass:: ray.tune.sample_from
+
+grid_search
+~~~~~~~~~~~
 
 .. autofunction:: ray.tune.grid_search
 
@@ -88,12 +103,6 @@ Analysis
 Schedulers (tune.schedulers)
 ----------------------------
 
-TrialScheduler
-~~~~~~~~~~~~~~
-
-.. autoclass:: ray.tune.schedulers.TrialScheduler
-    :members:
-
 FIFOScheduler
 ~~~~~~~~~~~~~
 
@@ -122,20 +131,79 @@ PopulationBasedTraining
 .. autoclass:: ray.tune.schedulers.PopulationBasedTraining
 
 
+TrialScheduler
+~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.TrialScheduler
+    :members:
+
+
 Search Algorithms (tune.suggest)
 --------------------------------
 
-XXTODO this is missing
+BasicVariantGenerator
+~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.tune.suggest.Repeater
+.. autoclass:: ray.tune.suggest.BasicVariantGenerator
+
+AxSearch
+~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.ax.AxSearch
+
+BayesOptSearch
+~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.bayesopt.BayesOptSearch
+
+TuneBOHB
+~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.bohb.TuneBOHB
+
+DragonflySearch
+~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.dragonfly.DragonflySearch
+
+HyperOptSearch
+~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.hyperopt.HyperOptSearch
+
+NevergradSearch
+~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.nevergrad.NevergradSearch
+
+SigOptSearch
+~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.sigopt.SigOptSearch
+
+SkOptSearch
+~~~~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.skopt.SkOptSearch
+
+SearchAlgorithm
+~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.suggest.SearchAlgorithm
     :members:
+
+SuggestionAlgorithm
+~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.suggest.SuggestionAlgorithm
     :members:
     :private-members:
     :show-inheritance:
+
+Repeater
+~~~~~~~~
+
+.. autoclass:: ray.tune.suggest.Repeater
 
 Loggers (tune.logger)
 ---------------------
