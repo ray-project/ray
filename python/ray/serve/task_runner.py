@@ -35,6 +35,13 @@ def wrap_to_ray_error(exception):
         return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
 
 
+def ensure_async(func):
+    if inspect.iscoroutinefunction(func):
+        return func
+    else:
+        return sync_to_async(func)
+
+
 class RayServeMixin:
     """This mixin class adds the functionality to fetch from router queues.
 
@@ -89,9 +96,6 @@ class RayServeMixin:
         self._ray_serve_self_handle = my_handle
         self._ray_serve_setup_completed = True
 
-        if not inspect.iscoroutinefunction(self.__call__):
-            self.__call__ = sync_to_async(self.__call__)
-
     def _ray_serve_fetch(self):
         assert self._ray_serve_setup_completed
 
@@ -99,13 +103,25 @@ class RayServeMixin:
             self._ray_serve_dequeue_requester_name,
             self._ray_serve_self_handle)
 
+    def _ray_serve_get_runner_method(self, request_item):
+        method_name = request_item.backend_method
+        if not hasattr(self, method_name):
+            raise RayServeException("Backend doesn't have method {} "
+                                    "which is specified in the request. "
+                                    "The avaiable methods are {}".format(
+                                        method_name, dir(self)))
+
+        return getattr(self, method_name)
+
     async def invoke_single(self, request_item):
         args, kwargs, is_web_context = parse_request_item(request_item)
         serve_context.web = is_web_context
         start_timestamp = time.time()
 
         try:
-            result = await self.__call__(*args, **kwargs)
+            result = await ensure_async(
+                self._ray_serve_get_runner_method(request_item))(*args,
+                                                                 **kwargs)
         except Exception as e:
             result = wrap_to_ray_error(e)
             self._serve_metric_error_counter += 1
@@ -132,10 +148,13 @@ class RayServeMixin:
         kwargs_list = defaultdict(list)
         context_flags = set()
         batch_size = len(request_item_list)
+        call_methods = set()
 
         for item in request_item_list:
             args, kwargs, is_web_context = parse_request_item(item)
             context_flags.add(is_web_context)
+
+            call_methods.add(self._ray_serve_get_runner_method(item))
 
             if is_web_context:
                 # Python context only have kwargs
@@ -158,14 +177,20 @@ class RayServeMixin:
                 raise RayServeException(
                     "Batched queries contain mixed context. Please only send "
                     "the same type of requests in batching mode.")
-
             serve_context.web = context_flags.pop()
+
+            if len(call_methods) != 1:
+                raise RayServeException(
+                    "Queries contain mixed calling methods. Please only send "
+                    "the same type of requests in batching mode.")
+            call_method = ensure_async(call_methods.pop())
+
             serve_context.batch_size = batch_size
             # Flask requests are passed to __call__ as a list
             arg_list = [arg_list]
 
             start_timestamp = time.time()
-            result_list = await self.__call__(*arg_list, **kwargs_list)
+            result_list = await call_method(*arg_list, **kwargs_list)
 
             self._serve_metric_latency_list.append(time.time() -
                                                    start_timestamp)
