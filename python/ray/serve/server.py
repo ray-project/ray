@@ -9,7 +9,8 @@ import ray
 from ray.experimental.async_api import _async_init
 from ray.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.serve.context import TaskContext
-from ray.serve.utils import BytesEncoder, UnixFileDescriptTransport
+from ray.serve.utils import (BytesEncoder, UnixFileDescriptTransport,
+                             ensure_open_files_limit)
 from ray.serve.request_params import RequestMetadata
 
 from urllib.parse import parse_qs
@@ -189,6 +190,10 @@ class HTTPProxy:
 
 
 def run_uvicorn_server(socket: socket.socket):
+    # Make sure we have enough file descriptors
+    # to support concurrent connections.
+    ensure_open_files_limit()
+
     config = uvicorn.Config(HTTPProxy(), lifespan="on", access_log=False)
     server = uvicorn.Server(config=config)
     server.run(sockets=[socket])

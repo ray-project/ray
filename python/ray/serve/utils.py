@@ -1,6 +1,7 @@
 import json
 import logging
 import random
+import resource
 import string
 import time
 import io
@@ -155,3 +156,9 @@ class UnixFileDescriptTransport:
                 cmsg_data[:len(cmsg_data) - (len(cmsg_data) % fds.itemsize)])
         fds = list(fds)
         return fds[0]
+
+
+def ensure_open_files_limit(soft_limit=1024 * 80):
+    _, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    soft = soft_limit if soft_limit <= hard else hard
+    resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
