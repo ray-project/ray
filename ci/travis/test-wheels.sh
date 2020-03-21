@@ -26,7 +26,7 @@ TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
 if [[ "$platform" == "linux" ]]; then
-  # Now test Python 3.5.
+  # Now test Python 3.6.
 
   # Install miniconda.
   wget --quiet https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda3.sh
@@ -35,10 +35,8 @@ if [[ "$platform" == "linux" ]]; then
   PYTHON_EXE=$HOME/miniconda3/bin/python
   PIP_CMD=$HOME/miniconda3/bin/pip
 
-  conda install -y python=3.5
-
   # Find the right wheel by grepping for the Python version.
-  PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 '35')
+  PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 '36')
 
   # Install the wheel.
   $PIP_CMD install -q "$PYTHON_WHEEL"
