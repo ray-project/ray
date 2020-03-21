@@ -37,8 +37,8 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
     RAY_LOG(WARNING)
         << "This worker is still managing " << object_id_refs_.size()
         << " objects, waiting for them to go out of scope before shutting down.";
+    shutdown_hook_ = shutdown;
   }
-  shutdown_hook_ = shutdown;
 }
 
 void ReferenceCounter::ShutdownIfNeeded() {

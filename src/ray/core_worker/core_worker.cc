@@ -309,25 +309,32 @@ void CoreWorker::Exit(bool intentional) {
 
   // Callback to drain objects once all pending tasks have been drained.
   auto drain_references_callback = [this, shutdown]() {
-    bool not_actor_task = false;
-    {
-      absl::MutexLock lock(&mutex_);
-      not_actor_task = actor_id_.IsNil();
-    }
-    if (not_actor_task) {
-      // If we are a task, then we cannot hold any object references in the
-      // heap. Therefore, any active object references are being held by other
-      // processes. Wait for these processes to release their references before
-      // we shutdown.
-      // NOTE(swang): This could still cause this worker process to stay alive
-      // forever if another process holds a reference forever.
-      reference_counter_->DrainAndShutdown(shutdown);
-    } else {
-      // If we are an actor, then we may be holding object references in the
-      // heap. Then, we should not wait to drain the object references before
-      // shutdown since this could hang.
-      shutdown();
-    }
+    // Post to the event loop to avoid a deadlock between the TaskManager and
+    // the ReferenceCounter. The deadlock can occur because this callback may
+    // get called by the TaskManager while the ReferenceCounter's lock is held,
+    // but the callback itself must acquire the ReferenceCounter's lock to
+    // drain the object references.
+    task_execution_service_.post([this, shutdown]() {
+      bool not_actor_task = false;
+      {
+        absl::MutexLock lock(&mutex_);
+        not_actor_task = actor_id_.IsNil();
+      }
+      if (not_actor_task) {
+        // If we are a task, then we cannot hold any object references in the
+        // heap. Therefore, any active object references are being held by other
+        // processes. Wait for these processes to release their references before
+        // we shutdown.
+        // NOTE(swang): This could still cause this worker process to stay alive
+        // forever if another process holds a reference forever.
+        reference_counter_->DrainAndShutdown(shutdown);
+      } else {
+        // If we are an actor, then we may be holding object references in the
+        // heap. Then, we should not wait to drain the object references before
+        // shutdown since this could hang.
+        shutdown();
+      }
+    });
   };
 
   task_manager_->DrainAndShutdown(drain_references_callback);

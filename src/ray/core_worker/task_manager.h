@@ -53,7 +53,13 @@ class TaskManager : public TaskFinisherInterface {
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback) {}
+        retry_task_callback_(retry_task_callback) {
+    reference_counter_->SetReleaseLineageCallback(
+        [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+          RemoveLineageReference(object_id, ids_to_release);
+          ShutdownIfNeeded();
+        });
+  }
 
   /// Add a task that is pending execution.
   ///

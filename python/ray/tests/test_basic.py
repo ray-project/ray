@@ -154,6 +154,17 @@ def test_background_tasks_with_max_calls(shutdown_only):
     # wait for g to finish before exiting.
     ray.get([x[0] for x in nested])
 
+    @ray.remote(max_calls=1, max_retries=0)
+    def f():
+        return os.getpid(), g.remote()
+
+    nested = ray.get([f.remote() for _ in range(10)])
+    while nested:
+        pid, g_id = nested.pop(0)
+        ray.get(g_id)
+        del g_id
+        ray.test_utils.wait_for_pid_to_exit(pid)
+
 
 def test_fair_queueing(shutdown_only):
     ray.init(
