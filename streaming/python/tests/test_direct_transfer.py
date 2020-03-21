@@ -32,8 +32,7 @@ class Worker:
 
     def init_writer(self, output_channel, reader_actor):
         conf = {
-            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context()
-            .current_driver_id,
+            Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
             Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
         }
         self.writer = transfer.DataWriter([output_channel],
@@ -42,8 +41,7 @@ class Worker:
 
     def init_reader(self, input_channel, writer_actor):
         conf = {
-            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context()
-            .current_driver_id,
+            Config.TASK_JOB_ID: ray.worker.global_worker.current_job_id,
             Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
         }
         self.reader = transfer.DataReader([input_channel],

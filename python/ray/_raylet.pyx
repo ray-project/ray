@@ -980,7 +980,7 @@ cdef class CoreWorker:
             CObjectID c_outer_object_id = (outer_object_id.native() if
                                            outer_object_id else
                                            CObjectID.Nil())
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
         c_actor_id = (CCoreWorkerProcess.GetCoreWorker()
