@@ -158,10 +158,11 @@ class FunctionActorManager:
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
         (job_id_str, function_id_str, function_name, serialized_function,
-         module, max_calls) = self._worker.redis_client.hmget(key, [
-             "job_id", "function_id", "function_name", "function",
-             "module", "max_calls"
-         ])
+         module, max_calls) = self._worker.redis_client.hmget(
+             key, [
+                 "job_id", "function_id", "function_name", "function",
+                 "module", "max_calls"
+             ])
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
@@ -177,9 +178,11 @@ class FunctionActorManager:
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
+
                 def f(*args, **kwargs):
                     raise RuntimeError(
                         "This function was not imported properly.")
+
                 # Use a placeholder method when function pickled failed
                 self._function_execution_info[job_id][function_id] = (
                     FunctionExecutionInfo(
