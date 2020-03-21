@@ -175,10 +175,9 @@ async def test_task_runner_custom_method_batch(serve_instance):
         PRODUCER_NAME, context.TaskContext.Python, call_method="b")
 
     futures = [q.enqueue_request.remote(a_query_param) for _ in range(2)]
-    # force batching here
-    runner._ray_serve_fetch.remote()
-
     futures += [q.enqueue_request.remote(b_query_param) for _ in range(2)]
+
+    runner._ray_serve_fetch.remote()
 
     gathered = await asyncio.gather(*futures)
     assert gathered == ["a-0", "a-1", "b-0", "b-1"]

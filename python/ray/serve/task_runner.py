@@ -104,7 +104,7 @@ class RayServeMixin:
             self._ray_serve_self_handle)
 
     def _ray_serve_get_runner_method(self, request_item):
-        method_name = request_item.backend_method
+        method_name = request_item.call_method
         if not hasattr(self, method_name):
             raise RayServeException("Backend doesn't have method {} "
                                     "which is specified in the request. "
