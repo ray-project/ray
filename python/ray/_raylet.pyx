@@ -569,7 +569,12 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     """
 
     with gil:
-        frame = inspect.currentframe()
+        try:
+            frame = inspect.currentframe()
+        except ValueError:  # overhead of exception handling is about 20us
+            stack_out[0] = "".encode("ascii")
+            return
+
         msg = ""
         while frame:
             filename = frame.f_code.co_filename
