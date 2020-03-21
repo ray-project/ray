@@ -571,7 +571,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     with gil:
         try:
             frame = inspect.currentframe()
-        except ValueError:
+        except ValueError:  # overhead of exception handling is about 20us
             stack_out[0] = "".encode("ascii")
             return
 
