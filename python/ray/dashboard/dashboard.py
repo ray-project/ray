@@ -599,7 +599,7 @@ class NodeStats(threading.Thread):
                             "jobId": ray.utils.binary_to_hex(
                                 actor_data.job_id),
                             "state": actor_data.state,
-                            "isDirectCall": actor_data.is_direct_call,
+                            "isDirectCall": True,
                             "timestamp": actor_data.timestamp
                         }
                     else:
