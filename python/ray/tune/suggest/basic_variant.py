@@ -15,7 +15,7 @@ class BasicVariantGenerator(SearchAlgorithm):
     See also: `ray.tune.suggest.variant_generator`.
 
 
-    Paramters:
+    Parameters:
         shuffle (bool): Shuffles the generated list of configurations.
 
     User API:

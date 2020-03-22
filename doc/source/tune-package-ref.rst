@@ -26,6 +26,7 @@ tune.Trainable
 ~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.Trainable
+    :member-order: groupwise
     :private-members:
     :members:
 
@@ -50,41 +51,41 @@ StatusReporter
 Sampling (tune.rand, tune.grid_search...)
 -----------------------------------------
 
-randn
-~~~~~
+tune.randn
+~~~~~~~~~~
 
 .. autofunction:: ray.tune.randn
 
-loguniform
-~~~~~~~~~~
+tune.loguniform
+~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.loguniform
 
-uniform
-~~~~~~~
+tune.uniform
+~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.uniform
 
-choice
-~~~~~~
+tune.choice
+~~~~~~~~~~~
 
 .. autofunction:: ray.tune.choice
 
-sample_from
-~~~~~~~~~~~
+tune.sample_from
+~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.sample_from
 
-grid_search
-~~~~~~~~~~~
+tune.grid_search
+~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.grid_search
 
-Stopper
--------
+Stopper (tune.Stopper)
+----------------------
 
 .. autoclass:: ray.tune.Stopper
-    :members:
+    :members: __call__, stop_all
 
 Analysis (tune.analysis)
 ------------------------
@@ -93,6 +94,7 @@ ExperimentAnalysis
 ~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.ExperimentAnalysis
+    :show-inheritance:
     :members:
 
 
@@ -231,8 +233,6 @@ JsonLogger
 
 .. autoclass:: ray.tune.logger.JsonLogger
 
-XXTODO - DO NOT MERGE without adding docs to JsonLogger.
-
 CSVLogger
 ~~~~~~~~~
 
@@ -251,6 +251,7 @@ ProgressReporter
 ~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.ProgressReporter
+    :members:
 
 CLIReporter
 ~~~~~~~~~~~
@@ -292,4 +293,10 @@ TrialRunner
 
 Trial
 ~~~~~
-.. autofunction:: ray.tune.trial.Trial
+
+.. autoclass:: ray.tune.trial.Trial
+
+Resources
+~~~~~~~~~
+
+.. autoclass:: ray.tune.resources.Resources
