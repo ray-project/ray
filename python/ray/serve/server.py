@@ -129,7 +129,7 @@ class HTTPProxy:
 
         assert scope["type"] == "http"
         current_path = scope["path"]
-        if current_path == "/":
+        if current_path == "/-/routes":
             await JSONResponse(self.route_table_cache)(scope, receive, send)
             return
 

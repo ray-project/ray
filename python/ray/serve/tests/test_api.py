@@ -35,7 +35,8 @@ def test_e2e(serve_instance):
     timeout_sleep = 0.5
     while True:
         try:
-            resp = requests.get("http://127.0.0.1:8000/", timeout=0.5).json()
+            resp = requests.get(
+                "http://127.0.0.1:8000/-/routes", timeout=0.5).json()
             assert resp == result
             break
         except Exception:
@@ -87,7 +88,8 @@ def test_scaling_replicas(serve_instance):
     serve.create_endpoint("counter", "/increment")
 
     # Keep checking the routing table until /increment is populated
-    while "/increment" not in requests.get("http://127.0.0.1:8000/").json():
+    while "/increment" not in requests.get(
+            "http://127.0.0.1:8000/-/routes").json():
         time.sleep(0.2)
 
     b_config = BackendConfig(num_replicas=2)
@@ -129,7 +131,8 @@ def test_batching(serve_instance):
     serve.create_endpoint("counter1", "/increment")
 
     # Keep checking the routing table until /increment is populated
-    while "/increment" not in requests.get("http://127.0.0.1:8000/").json():
+    while "/increment" not in requests.get(
+            "http://127.0.0.1:8000/-/routes").json():
         time.sleep(0.2)
 
     # set the max batch size

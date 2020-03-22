@@ -143,7 +143,8 @@ def init(kv_store_connector=None,
         gc_window_seconds=gc_window_seconds)
 
     if start_server and blocking:
-        block_until_http_ready("http://{}:{}".format(http_host, http_port))
+        block_until_http_ready("http://{}:{}/-/routes".format(
+            http_host, http_port))
 
 
 @_ensure_connected
