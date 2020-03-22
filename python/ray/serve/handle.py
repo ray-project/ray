@@ -70,7 +70,7 @@ class RayServeHandle:
             TaskContext.Python,
             self.relative_slo_ms,
             self.absolute_slo_ms,
-            call_method=method_name)  #TODO: this relies on PR #7682
+            call_method=method_name)
         return self.router_handle.enqueue_request.remote(
             request_in_object, **kwargs)
 
