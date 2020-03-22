@@ -31,6 +31,7 @@ class Logger:
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
+        trial (Trial): Trial object for the logger to access.
     """
 
     def __init__(self, config, logdir, trial=None):
@@ -97,6 +98,11 @@ class MLFLowLogger(Logger):
 
 
 class JsonLogger(Logger):
+    """Logs trial results in json format.
+
+    Also writes to a results file and param.json file when results or
+    configurations are updated.
+    """
     def _init(self):
         self.update_config(self.config)
         local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)

@@ -46,6 +46,8 @@ class BayesOptSearch(SuggestionAlgorithm):
 
         tune.run(my_func, algo=algo)
     """
+    # bayes_opt.BayesianOptimization: Optimization object
+    optimizer = None
 
     def __init__(self,
                  space,

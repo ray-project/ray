@@ -215,10 +215,10 @@ def run(run_or_experiment,
             `sync_to_driver`.
 
     Returns:
-        List of Trial objects.
+        ExperimentAnalysis: Object for experiment analysis.
 
     Raises:
-        TuneError if any trials failed and `raise_on_failed_trial` is True.
+        TuneError: Any trials failed and `raise_on_failed_trial` is True.
 
     Examples:
         >>> tune.run(mytrainable, scheduler=PopulationBasedTraining())

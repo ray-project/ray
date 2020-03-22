@@ -3,3 +3,19 @@
     max-width: 1000px;
 }
 
+/*Extends the docstring signature box.*/
+.rst-content dl:not(.docutils) dt {
+    display: block;
+    padding: 10px;
+    word-wrap: break-word;
+    padding-right: 100px;
+}
+
+.rst-content .admonition-note .section ul {
+    margin-bottom: 0px
+}
+
+.rst-content dl dt em.property {
+    color: #2980B9;
+    text-transform: uppercase
+}

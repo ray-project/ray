@@ -34,9 +34,6 @@ tune.DurableTrainable
 
 .. autoclass:: ray.tune.DurableTrainable
 
-.. autoclass:: ray.tune.function_runner.StatusReporter
-    :members: __call__, logdir
-
 tune.track
 ~~~~~~~~~~
 
@@ -44,8 +41,14 @@ tune.track
     :members:
     :exclude-members: init, shutdown
 
+StatusReporter
+~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.function_runner.StatusReporter
+    :members: __call__, logdir
+
 Sampling (tune.rand, tune.grid_search...)
---------------------------------------------
+-----------------------------------------
 
 randn
 ~~~~~
