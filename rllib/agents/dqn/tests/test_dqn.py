@@ -14,11 +14,19 @@ class TestDQN(unittest.TestCase):
         """Test whether a DQNTrainer can be built with both frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        config["batch_mode"] = "complete_episodes"
+        config["exploration_config"] = {
+            "type": "ParameterNoise",
+            "random_timesteps": 10000
+        }
+        config["model"]["fcnet_hiddens"] = [64, 64]
+        config["model"]["fcnet_activation"] = "tanh"
+        config["lr"] = 0.001
 
         # tf.
         config["eager"] = False
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
-        num_iterations = 2
+        num_iterations = 200
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
@@ -28,7 +36,7 @@ class TestDQN(unittest.TestCase):
         eager_mode_ctx = eager_mode()
         eager_mode_ctx.__enter__()
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
-        num_iterations = 2
+        num_iterations = 200
         for i in range(num_iterations):
             results = trainer.train()
             print(results)

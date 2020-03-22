@@ -1,6 +1,5 @@
 from gym.spaces import Discrete
 import numpy as np
-from scipy.stats import entropy
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -9,7 +8,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.framework import get_variable
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.numpy import softmax
+from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -20,6 +19,7 @@ class ParameterNoise(Exploration):
 
     Implemented based on:
     [1] https://blog.openai.com/better-exploration-with-parameter-noise/
+    [2] https://arxiv.org/pdf/1706.01905.pdf
 
     At the beginning of an episode, Gaussian noise is added to all weights
     of the model. At the end of the episode, the noise is undone and an action
@@ -56,6 +56,7 @@ class ParameterNoise(Exploration):
 
         self.stddev = get_variable(
             initial_stddev, framework=self.framework, tf_name="stddev")
+        self.stddev_val = initial_stddev  # Out-of-graph tf value holder.
 
         # The weight variables of the Model where noise should be applied to.
         # This excludes any variable, whose name contains "LayerNorm" (those
@@ -117,6 +118,9 @@ class ParameterNoise(Exploration):
 
         # Store the default setting for `explore`.
         self.default_explore = policy_config["explore"]
+        # Whether we need to call `self._delayed_on_episode_start` before
+        # the forward pass.
+        self.episode_started = False
 
     @override(Exploration)
     def before_forward_pass(self,
@@ -129,7 +133,11 @@ class ParameterNoise(Exploration):
                             timestep=None,
                             explore=None,
                             tf_sess=None):
-        print("before forward")
+        # Is this the first forward pass in the new episode? If yes, do the
+        # noise re-sampling and add to weights.
+        if self.episode_started:
+            self._delayed_on_episode_start(tf_sess)
+
         explore = explore if explore is not None else \
             self.policy_config["explore"]
         if explore:
@@ -152,7 +160,6 @@ class ParameterNoise(Exploration):
                            timestep=None,
                            explore=None,
                            tf_sess=None):
-        print("after forward")
         explore = explore if explore is not None else \
             self.policy_config["explore"]
         if explore:
@@ -188,12 +195,20 @@ class ParameterNoise(Exploration):
                          environment=None,
                          episode=None,
                          tf_sess=None):
+        # We have to delay the noise-adding step by one forward call.
+        # This is due to the fact that the optimizer does it's step right
+        # after the episode was reset (and hence the noise was already added!).
+        # We don't want to update into a noisy net.
+        self.episode_started = True
+
+    def _delayed_on_episode_start(self, tf_sess):
         # Sample fresh noise and add to weights.
         if self.default_explore:
             self._sample_new_noise_and_add(tf_sess=tf_sess, override=True)
         # Only sample, don't apply anything to the weights.
         else:
             self._sample_new_noise(tf_sess=tf_sess)
+        self.episode_started = False
 
     @override(Exploration)
     def on_episode_end(self,
@@ -208,10 +223,6 @@ class ParameterNoise(Exploration):
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
-        # Only do this every n seconds b/c session calls in here are expensive.
-        # if self.last_stddev_adjustment > time.time() - 1:
-        #    return sample_batch
-
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
@@ -249,34 +260,34 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        new_stddev = 0.0
         # Categorical case (e.g. DQN).
         if dist_class is Categorical:
-            pi_distance = np.nanmean(
-                entropy(noise_free_action_dist.T, noisy_action_dist.T))
+            # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
+            kl_divergence = np.nanmean(
+                np.sum(
+                    noise_free_action_dist *
+                    np.log(noise_free_action_dist /
+                           (noisy_action_dist + SMALL_NUMBER)), 1))
             current_epsilon = self.sub_exploration.get_info()["cur_epsilon"]
             if tf_sess is not None:
                 current_epsilon = tf_sess.run(current_epsilon)
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
-            if pi_distance > delta:
-                new_stddev = self.stddev * 1.01
+            if kl_divergence <= delta:
+                self.stddev_val *= 1.01
             else:
-                new_stddev = self.stddev / 1.01
+                self.stddev_val /= 1.01
 
-        # Set new stddev to calculated value.
-        if tf_sess is not None:
-            tf_sess.run(tf.assign(self.stddev, new_stddev))
+        # Set self.stddev to calculated value.
+        if self.framework == "tf":
+            self.stddev.load(self.stddev_val, session=tf_sess)
         else:
-            self.stddev = new_stddev
-
-        # self.last_stddev_adjustment = time.time()
+            self.stddev = self.stddev_val
 
         return sample_batch
 
     def _sample_new_noise(self, *, tf_sess=None):
         """Samples new noise and stores it in `self.noise`."""
-        print("sampling")
         if self.framework == "tf":
             if tf.executing_eagerly():
                 self._tf_sample_new_noise_op()
@@ -302,9 +313,7 @@ class ParameterNoise(Exploration):
     def _sample_new_noise_and_add(self, *, tf_sess=None, override=False):
         if self.framework == "tf" and not tf.executing_eagerly():
             if override and self.weights_are_currently_noisy:
-                print("removing")
                 tf_sess.run(self.tf_remove_noise_op)
-            print("sampling AND adding")
             tf_sess.run(self.tf_sample_new_noise_and_add_op)
         else:
             if override and self.weights_are_currently_noisy:
@@ -327,7 +336,6 @@ class ParameterNoise(Exploration):
         """
         # Make sure we only add noise to currently noise-free weights.
         assert self.weights_are_currently_noisy is False
-        print("adding")
 
         if self.framework == "tf":
             if tf.executing_eagerly():
@@ -366,8 +374,7 @@ class ParameterNoise(Exploration):
                 the noise from the (currently noisy) weights.
         """
         # Make sure we only remove noise iff currently noisy.
-        assert self.weights_are_currently_noisy
-        print("removing")
+        assert self.weights_are_currently_noisy is True
 
         if self.framework == "tf":
             if tf.executing_eagerly():

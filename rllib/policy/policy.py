@@ -54,6 +54,9 @@ class Policy(metaclass=ABCMeta):
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
+        # The action distribution class to use for action sampling, if any.
+        # Child classes may set this.
+        self.dist_class = None
 
     @abstractmethod
     @DeveloperAPI
@@ -170,6 +173,7 @@ class Policy(metaclass=ABCMeta):
                                     prev_action_batch=None,
                                     prev_reward_batch=None,
                                     explore=True,
+                                    timestep=None,
                                     is_training=True):
         """Computes inputs to action distribution for a given observation.
 
@@ -181,6 +185,9 @@ class Policy(metaclass=ABCMeta):
                 action values.
             prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
                 rewards.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            timestep (int): The current (sampling) time step.
 
         Returns:
             Tuple:

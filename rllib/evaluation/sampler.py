@@ -585,8 +585,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_action_batch=prev_action_batch,
                 prev_reward_batch=prev_reward_batch,
                 timestep=policy.global_timestep,
-                tf_sess=policy.get_session()
-            )
+                tf_sess=policy.get_session())
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
                 obs_batch=obs_batch,
@@ -617,8 +616,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 distribution_inputs=eval_results[pid][3],
                 action_dist_class=policy.dist_class,
                 timestep=policy.global_timestep,
-                tf_sess=policy.get_session()
-            )
+                tf_sess=policy.get_session())
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(

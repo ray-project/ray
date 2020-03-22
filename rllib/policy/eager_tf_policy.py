@@ -35,10 +35,13 @@ def _convert_to_tf(x):
 
 
 def _convert_to_numpy(x):
-    if x is None:
-        return None
+    def _map(x):
+        if isinstance(x, tf.Tensor):
+            return x.numpy()
+        return x
+
     try:
-        return tree.map_structure(lambda component: component.numpy(), x)
+        return tree.map_structure(_map, x)
     except AttributeError:
         raise TypeError(
             ("Object of type {} has no method to convert to numpy.").format(

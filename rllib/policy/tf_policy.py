@@ -271,7 +271,7 @@ class TFPolicy(Policy):
             explore=explore,
             tf_sess=self.get_session())
         builder = TFRunBuilder(self._sess, "compute_actions")
-        fetches = self._build_compute_actions(
+        to_fetch = self._build_compute_actions(
             builder,
             obs_batch,
             state_batches=state_batches,
@@ -283,7 +283,7 @@ class TFPolicy(Policy):
             fetch_dist_inputs=True)
 
         # Execute session run to get action (and other fetches).
-        fetched = builder.get(fetches)
+        fetched = builder.get(to_fetch)
 
         self.exploration.after_forward_pass(
             distribution_inputs=fetched[-1],
@@ -301,12 +301,21 @@ class TFPolicy(Policy):
                                     prev_action_batch=None,
                                     prev_reward_batch=None,
                                     explore=None,
+                                    timestep=None,
                                     is_training=None):
         explore = explore if explore is not None else self.config["explore"]
 
         if self.dist_class is None:
             raise ValueError("Cannot return distribution_inputs w/o a "
                              "self.dist_class!")
+
+        self.exploration.before_forward_pass(
+            obs_batch=obs_batch,
+            state_batches=state_batches,
+            seq_lens=np.ones(len(obs_batch)),
+            timestep=timestep,
+            explore=explore,
+            tf_sess=self.get_session())
 
         builder = TFRunBuilder(self._sess, "compute_distribution_inputs")
         state_batches = state_batches or []
@@ -327,9 +336,17 @@ class TFPolicy(Policy):
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict({self._is_exploring: explore})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches([self._distribution_inputs] +
-                                      self._state_outputs)
-        return fetches[0], self.dist_class, fetches[1:-1]
+        to_fetch = builder.add_fetches([self._distribution_inputs] +
+                                       self._state_outputs)
+        fetched = builder.get(to_fetch)
+        self.exploration.after_forward_pass(
+            distribution_inputs=fetched[0],
+            action_dist_class=self.dist_class,
+            timestep=timestep,
+            explore=explore,
+            tf_sess=self.get_session())
+
+        return fetched[0], self.dist_class, fetched[1:-1]
 
     @override(Policy)
     def compute_log_likelihoods(self,

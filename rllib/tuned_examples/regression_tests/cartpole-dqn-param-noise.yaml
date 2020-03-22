@@ -2,14 +2,15 @@ cartpole-dqn:
     env: CartPole-v0
     run: DQN
     stop:
-        episode_reward_mean: 50
+        episode_reward_mean: 100
     config:
         exploration_config:
             type: ParameterNoise
-            random_timesteps: 0
-            initial_stddev: .5
+            random_timesteps: 1000
+            initial_stddev: 1.0
+        batch_mode: complete_episodes
         lr: 0.0003
-        num_workers: 1
+        num_workers: 0
         model:
             fcnet_hiddens: [64, 64]
-            fcnet_activation: linear
+            fcnet_activation: tanh
