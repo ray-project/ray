@@ -12,11 +12,9 @@ opencv-python-headless
 pandas
 pickle5
 pygments
-psutil
 pyyaml
 recommonmark
 redis
-setproctitle
 sphinx
 sphinx-click
 sphinx-copybutton
