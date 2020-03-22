@@ -786,7 +786,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ids[i] = ObjectID::FromRandom().WithDirectTransportType();
-    RAY_CHECK(provider.Put(buffers[i], ids[i]));
+    RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
   absl::flat_hash_set<ObjectID> wait_ids(ids.begin(), ids.end());
@@ -843,7 +843,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
     ready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
-    RAY_CHECK(provider.Put(buffers[i], ready_ids[i]));
+    RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
     unready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
   }
 
@@ -851,7 +851,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
     sleep(1);
 
     for (size_t i = 0; i < unready_ids.size(); i++) {
-      RAY_CHECK(provider.Put(buffers[i], unready_ids[i]));
+      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
     }
   };
 
