@@ -4,14 +4,14 @@ _local = {}  # dict for local mode
 
 
 def _internal_kv_initialized():
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
     return hasattr(worker, "mode") and worker.mode is not None
 
 
 def _internal_kv_get(key):
     """Fetch the value of a binary key."""
 
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
     if worker.mode == ray.worker.LOCAL_MODE:
         return _local.get(key)
 
@@ -27,7 +27,7 @@ def _internal_kv_put(key, value, overwrite=False):
         already_exists (bool): whether the value already exists.
     """
 
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
     if worker.mode == ray.worker.LOCAL_MODE:
         exists = key in _local
         if not exists or overwrite:

@@ -42,6 +42,7 @@ from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
+    RayConnectionError,
     RayError,
     RayTaskError,
     ObjectStoreFullError,
@@ -108,7 +109,6 @@ class Worker:
         self.mode = None
         self.cached_functions_to_run = []
         self.actor_init_error = None
-        self.make_actor = None
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
@@ -494,10 +494,6 @@ per worker process.
 
 _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
-
-
-class RayConnectionError(Exception):
-    pass
 
 
 def print_failed_task(task_status):
@@ -886,6 +882,7 @@ def shutdown(exiting_interpreter=False):
 atexit.register(shutdown, True)
 
 
+# TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
@@ -1675,7 +1672,8 @@ def kill(actor):
         raise ValueError("ray.kill() only supported for actors. "
                          "Got: {}.".format(type(actor)))
 
-    worker = ray.worker.get_global_worker()
+    worker = ray.worker.global_worker
+    worker.check_connected()
     worker.core_worker.kill_actor(actor._ray_actor_id, False)
 
 
@@ -1688,10 +1686,6 @@ def _mode(worker=global_worker):
     cannot be serialized.
     """
     return worker.mode
-
-
-def get_global_worker():
-    return global_worker
 
 
 def make_decorator(num_return_vals=None,
@@ -1725,9 +1719,9 @@ def make_decorator(num_return_vals=None,
                 raise TypeError("The keyword 'max_calls' is not "
                                 "allowed for actors.")
 
-            return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     memory, object_store_memory, resources,
-                                     max_reconstructions)
+            return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
+                                        memory, object_store_memory, resources,
+                                        max_reconstructions)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1815,7 +1809,7 @@ def remote(*args, **kwargs):
     work and then shut down. If you want to kill them immediately, you can
     also call ``ray.kill(actor)``.
     """
-    worker = get_global_worker()
+    worker = global_worker
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
