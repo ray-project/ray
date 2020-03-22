@@ -40,8 +40,7 @@ void BuildCommonTaskSpec(
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
                             task_index, caller_id, address, num_returns,
-                            /*is_direct_transport_type=*/true, required_resources,
-                            required_placement_resources);
+                            required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -825,11 +824,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources, &return_ids);
-  builder.SetActorCreationTaskSpec(
-      actor_id, actor_creation_options.max_reconstructions,
-      actor_creation_options.dynamic_worker_options,
-      /*is_direct_call=*/true, actor_creation_options.max_concurrency,
-      actor_creation_options.is_detached, actor_creation_options.is_asyncio);
+  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
+                                   actor_creation_options.dynamic_worker_options,
+                                   actor_creation_options.max_concurrency,
+                                   actor_creation_options.is_detached,
+                                   actor_creation_options.is_asyncio);
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();

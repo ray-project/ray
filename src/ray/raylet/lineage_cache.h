@@ -221,30 +221,12 @@ class LineageCache {
   LineageCache(const ClientID &self_node_id, std::shared_ptr<gcs::GcsClient> gcs_client,
                uint64_t max_lineage_size);
 
-  /// Asynchronously commit a task to the GCS.
-  ///
-  /// \param task The task to commit. It will be moved to the COMMITTING state.
-  /// \return Whether the task was successfully committed. This can fail if the
-  /// task was already in the COMMITTING state.
-  bool CommitTask(const Task &task);
-
   /// Flush all tasks in the local cache that are not already being
   /// committed. This is equivalent to all tasks in the UNCOMMITTED
   /// state.
   ///
   /// \return Void.
   void FlushAllUncommittedTasks();
-
-  /// Add a task and its (estimated) uncommitted lineage to the local cache. We
-  /// will subscribe to commit notifications for all uncommitted tasks to
-  /// determine when it is safe to evict the lineage from the local cache.
-  ///
-  /// \param task_id The ID of the uncommitted task to add.
-  /// \param uncommitted_lineage The task's uncommitted lineage. These are the
-  /// tasks that the given task is data-dependent on, but that have not
-  /// been committed to the GCS. This must contain the given task ID.
-  /// \return Void.
-  void AddUncommittedLineage(const TaskID &task_id, const Lineage &uncommitted_lineage);
 
   /// Mark a task as having been explicitly forwarded to a node.
   /// The lineage of the task is implicitly assumed to have also been forwarded.

@@ -1439,18 +1439,8 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
-  std::shared_ptr<ActorCheckpointData> checkpoint_data;
-  if (actor_entry->second.GetTableData().is_direct_call()) {
-    checkpoint_data =
-        actor_entry->second.GenerateCheckpointData(actor_entry->first, nullptr);
-  } else {
-    // Find the task that is running on this actor.
-    const auto task_id = worker->GetAssignedTaskId();
-    const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
-    // Generate checkpoint data.
-    checkpoint_data =
-        actor_entry->second.GenerateCheckpointData(actor_entry->first, &task);
-  }
+  std::shared_ptr<ActorCheckpointData> checkpoint_data =
+      actor_entry->second.GenerateCheckpointData(actor_entry->first, nullptr);
 
   // Write checkpoint data to GCS.
   RAY_CHECK_OK(gcs_client_->Actors().AsyncAddCheckpoint(
@@ -2005,17 +1995,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     return;
   }
 
-  // Add the task and its uncommitted lineage to the lineage cache.
-  if (forwarded) {
-    lineage_cache_.AddUncommittedLineage(task_id, uncommitted_lineage);
-  } else {
-    if (!lineage_cache_.CommitTask(task)) {
-      RAY_LOG(WARNING)
-          << "Task " << task_id
-          << " already committed to the GCS. This is most likely due to reconstruction.";
-    }
-  }
-
   if (spec.IsActorTask()) {
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
@@ -2464,7 +2443,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
     worker.AssignJobId(JobID::Nil());
   }
-  if (!spec.IsDirectActorCreationCall()) {
+  if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // direct actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
@@ -2473,7 +2452,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   }
   // Direct actors will be assigned tasks via the core worker and therefore are
   // not idle.
-  return !spec.IsDirectActorCreationCall();
+  return !spec.IsActorCreationTask();
 }
 
 std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
@@ -2498,7 +2477,6 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
-    actor_info_ptr->set_is_direct_call(task_spec.IsDirectActorCreationCall());
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
     actor_info_ptr->mutable_owner_address()->CopyFrom(
         task_spec.GetMessage().caller_address());
@@ -2807,12 +2785,12 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   }
 }
 
-bool NodeManager::IsDirectActorCreationTask(const TaskID &task_id) {
+bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
   auto actor_id = task_id.ActorId();
   if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
     // This task ID corresponds to an actor creation task.
     auto iter = actor_registry_.find(actor_id);
-    if (iter != actor_registry_.end() && iter->second.GetTableData().is_direct_call()) {
+    if (iter != actor_registry_.end()) {
       // This actor is direct call actor.
       return true;
     }
@@ -2854,7 +2832,8 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // So here we check for direct actor creation task explicitly to allow this case.
     auto iter = waiting_task_id_set.begin();
     while (iter != waiting_task_id_set.end()) {
-      if (IsDirectActorCreationTask(*iter)) {
+      // XXX
+      if (IsActorCreationTask(*iter)) {
         RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
                        << " when handling object missing for " << object_id;
         iter = waiting_task_id_set.erase(iter);

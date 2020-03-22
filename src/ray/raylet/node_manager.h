@@ -617,8 +617,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
-  /// Whether a task is an direct actor creation task.
-  bool IsDirectActorCreationTask(const TaskID &task_id);
+  /// Whether a task is an actor creation task.
+  bool IsActorCreationTask(const TaskID &task_id);
 
   /// ID of this node.
   ClientID self_node_id_;
