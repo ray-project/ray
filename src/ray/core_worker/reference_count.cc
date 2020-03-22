@@ -29,6 +29,26 @@ namespace {}  // namespace
 
 namespace ray {
 
+void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
+  absl::MutexLock lock(&mutex_);
+  if (object_id_refs_.empty()) {
+    shutdown();
+  } else {
+    RAY_LOG(WARNING)
+        << "This worker is still managing " << object_id_refs_.size()
+        << " objects, waiting for them to go out of scope before shutting down.";
+  }
+  shutdown_hook_ = shutdown;
+}
+
+void ReferenceCounter::ShutdownIfNeeded() {
+  if (shutdown_hook_ && object_id_refs_.empty()) {
+    RAY_LOG(WARNING)
+        << "All object references have gone out of scope, shutting down worker.";
+    shutdown_hook_();
+  }
+}
+
 ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
@@ -342,6 +362,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   if (should_delete_reference) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     object_id_refs_.erase(it);
+    ShutdownIfNeeded();
   }
 }
 

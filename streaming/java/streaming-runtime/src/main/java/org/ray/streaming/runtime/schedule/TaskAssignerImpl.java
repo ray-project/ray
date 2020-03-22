@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.BaseActor;
 import org.ray.api.Ray;
+import org.ray.api.function.PyActorClass;
 import org.ray.streaming.jobgraph.JobEdge;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobVertex;
@@ -61,8 +62,8 @@ public class TaskAssignerImpl implements TaskAssigner {
   private BaseActor createWorker(JobVertex jobVertex) {
     switch (jobVertex.getLanguage()) {
       case PYTHON:
-        return Ray.createPyActor(
-            "ray.streaming.runtime.worker", "JobWorker");
+        return Ray.createActor(
+            new PyActorClass("ray.streaming.runtime.worker", "JobWorker"));
       case JAVA:
         return Ray.createActor(JobWorker::new);
       default:

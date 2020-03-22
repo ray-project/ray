@@ -85,6 +85,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] actor_id Actor ID.
   void DisconnectActor(const ActorID &actor_id, bool dead = false);
 
+  /// Set the timerstamp for the caller.
+  void SetCallerCreationTimestamp(int64_t timestamp);
+
  private:
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
@@ -161,6 +164,12 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
+  /// Timestamp when the caller is created.
+  /// - if this worker is an actor, this is set to the time that the actor creation
+  ///   task starts execution;
+  /// - otherwise, it's set to the time that the current task starts execution.
+  int64_t caller_creation_timestamp_ms_ = 0;
+
   friend class CoreWorkerTest;
 };
 
@@ -195,14 +204,14 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(raylet::RayletClient &local_raylet_client)
-      : local_raylet_client_(local_raylet_client) {}
+  DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
+      : dependency_client_(dependency_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    local_raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
+    dependency_client_.WaitForDirectActorCallArgs(dependencies, tag);
   }
 
   /// Fulfills the callback stored by Wait().
@@ -216,7 +225,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  raylet::RayletClient &local_raylet_client_;
+  DependencyWaiterInterface &dependency_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -251,6 +260,13 @@ class BoundedExecutor {
   const int max_concurrency_;
   /// The underlying thread pool for running tasks.
   boost::asio::thread_pool pool_;
+};
+
+struct SchedulingQueueTag {
+  /// Worker ID for the caller.
+  WorkerID caller_worker_id;
+  /// Timestamp for the caller, which is used as a version.
+  int64_t caller_creation_timestamp_ms = 0;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -409,17 +425,20 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
+  using OnTaskDone = std::function<ray::Status()>;
+
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               std::shared_ptr<raylet::RayletClient> &local_raylet_client,
                                boost::asio::io_service &main_io_service,
-                               const TaskHandler &task_handler)
+                               const TaskHandler &task_handler,
+                               const OnTaskDone &task_done)
       : worker_context_(worker_context),
-        local_raylet_client_(local_raylet_client),
         task_handler_(task_handler),
-        task_main_io_service_(main_io_service) {}
+        task_main_io_service_(main_io_service),
+        task_done_(task_done) {}
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address);
+  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+            std::shared_ptr<DependencyWaiterInterface> dependency_client);
 
   /// Handle a `PushTask` request.
   ///
@@ -446,18 +465,19 @@ class CoreWorkerDirectTaskReceiver {
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
+  /// The callback function to be invoked when finishing a task.
+  OnTaskDone task_done_;
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
   /// Address of our RPC server.
   rpc::Address rpc_address_;
-  /// Reference to the core worker's raylet client. This is a pointer ref so that it
-  /// can be initialized by core worker after this class is constructed.
-  std::shared_ptr<raylet::RayletClient> &local_raylet_client_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
+  std::unordered_map<TaskID,
+                     std::pair<SchedulingQueueTag, std::unique_ptr<SchedulingQueue>>>
+      scheduling_queue_;
 };
 
 }  // namespace ray

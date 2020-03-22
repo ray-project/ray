@@ -8,6 +8,9 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
+import org.ray.api.function.PyActorClass;
+import org.ray.api.function.PyActorMethod;
+import org.ray.api.function.PyRemoteFunction;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
@@ -150,8 +153,19 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
-    return getCurrentRuntime().callActor(func, actor, args);
+  public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
+                        CallOptions options) {
+    return getCurrentRuntime().call(pyRemoteFunction, args, options);
+  }
+
+  @Override
+  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
+    return getCurrentRuntime().callActor(actor, func, args);
+  }
+
+  @Override
+  public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object[] args) {
+    return getCurrentRuntime().callActor(pyActor, pyActorMethod, args);
   }
 
   @Override
@@ -161,25 +175,14 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
+  public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
+                                ActorCreationOptions options) {
+    return getCurrentRuntime().createActor(pyActorClass, args, options);
+  }
+
+  @Override
   public RuntimeContext getRuntimeContext() {
     return getCurrentRuntime().getRuntimeContext();
-  }
-
-  @Override
-  public RayObject callPy(String moduleName, String functionName, Object[] args,
-                          CallOptions options) {
-    return getCurrentRuntime().callPy(moduleName, functionName, args, options);
-  }
-
-  @Override
-  public RayObject callPyActor(RayPyActor pyActor, String functionName, Object[] args) {
-    return getCurrentRuntime().callPyActor(pyActor, functionName, args);
-  }
-
-  @Override
-  public RayPyActor createPyActor(String moduleName, String className, Object[] args,
-                                  ActorCreationOptions options) {
-    return getCurrentRuntime().createPyActor(moduleName, className, args, options);
   }
 
   @Override

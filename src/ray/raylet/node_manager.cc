@@ -244,7 +244,7 @@ ray::Status NodeManager::RegisterGcs() {
 
 void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 #ifdef _WIN32
-  // TODO(mehrdadn): Implement implement graceful process termination mechanism
+  // TODO(mehrdadn): implement graceful process termination mechanism
 #else
   // If we're just cleaning up a single worker, allow it some time to clean
   // up its state before force killing. The client socket will be closed

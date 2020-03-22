@@ -140,9 +140,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task));
-    direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
-        new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
-                                         task_execution_service_, execute_task));
+    direct_task_receiver_ =
+        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
+            worker_context_, task_execution_service_, execute_task,
+            [this] { return local_raylet_client_->TaskDone(); }));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -255,7 +256,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(client_factory, rpc_address_);
+    direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
   }
 }
 
@@ -288,10 +289,15 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::Exit(bool intentional) {
+  RAY_LOG(INFO)
+      << "Exit signal " << (intentional ? "(intentional)" : "")
+      << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
-  task_manager_->DrainAndShutdown([this, intentional]() {
+
+  // Callback to shutdown.
+  auto shutdown = [this, intentional]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     task_execution_service_.post([this, intentional]() {
@@ -300,13 +306,36 @@ void CoreWorker::Exit(bool intentional) {
       }
       Shutdown();
     });
-  });
+  };
+
+  // Callback to drain objects once all pending tasks have been drained.
+  auto drain_references_callback = [this, shutdown]() {
+    bool not_actor_task = false;
+    {
+      absl::MutexLock lock(&mutex_);
+      not_actor_task = actor_id_.IsNil();
+    }
+    if (not_actor_task) {
+      // If we are a task, then we cannot hold any object references in the
+      // heap. Therefore, any active object references are being held by other
+      // processes. Wait for these processes to release their references before
+      // we shutdown.
+      // NOTE(swang): This could still cause this worker process to stay alive
+      // forever if another process holds a reference forever.
+      reference_counter_->DrainAndShutdown(shutdown);
+    } else {
+      // If we are an actor, then we may be holding object references in the
+      // heap. Then, we should not wait to drain the object references before
+      // shutdown since this could hang.
+      shutdown();
+    }
+  };
+
+  task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
 void CoreWorker::RunIOService() {
-#ifdef _WIN32
-  // TODO(mehrdadn): Is there an equivalent for Windows we need here?
-#else
+#ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
@@ -993,7 +1022,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                           << " has gone out of scope, sending message to actor "
                           << actor_id << " to do a clean exit.";
             RAY_CHECK_OK(
-                KillActor(actor_id, /*force_kill=*/true, /*no_reconstruction=*/false));
+                KillActor(actor_id, /*force_kill=*/false, /*no_reconstruction=*/false));
           }
         }));
   }
@@ -1114,11 +1143,16 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    // For an actor, set the timestamp as the time its creation task starts execution.
+    SetCallerCreationTimestamp();
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
+  } else {
+    // For a non-actor task, set the timestamp as the time it starts execution.
+    SetCallerCreationTimestamp();
   }
 
   status = task_execution_callback_(
@@ -1529,6 +1563,11 @@ void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &mess
 void CoreWorker::SetActorTitle(const std::string &title) {
   absl::MutexLock lock(&mutex_);
   actor_title_ = title;
+}
+
+void CoreWorker::SetCallerCreationTimestamp() {
+  absl::MutexLock lock(&mutex_);
+  direct_actor_submitter_->SetCallerCreationTimestamp(current_sys_time_ms());
 }
 
 }  // namespace ray
