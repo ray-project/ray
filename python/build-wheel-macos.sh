@@ -16,11 +16,11 @@ DOWNLOAD_DIR=python_downloads
 PY_VERSIONS=(#"3.5.3"
              #"3.6.1"
              #"3.7.0"
-             "3.8.2")
+             "3.8.1")
 PY_INSTS=(#"python-3.5.3-macosx10.6.pkg"
           #"python-3.6.1-macosx10.6.pkg"
           #"python-3.7.0-macosx10.6.pkg"
-          "python-3.8.2-macosx10.9.pkg")
+          "python-3.8.1-macosx10.9.pkg")
 PY_MMS=(#"3.5"
         #"3.6"
         #"3.7"
