@@ -4,7 +4,6 @@ import logging
 import math
 import os
 import pickle
-import six
 import time
 import tempfile
 
@@ -1022,7 +1021,7 @@ class Trainer(Trainable):
             self.optimizer.restore(state["optimizer"])
 
     def _register_if_needed(self, env_object):
-        if isinstance(env_object, six.string_types):
+        if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
