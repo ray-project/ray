@@ -42,6 +42,7 @@ class DistributedTorchRunner(TorchRunner):
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
         self.world_rank = world_rank
+        self.config["world_rank"] = world_rank
         logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
             url, world_rank, world_size))
         logger.debug("using {}".format(self.backend))
