@@ -7,7 +7,7 @@ import ray
 from ray.experimental.async_api import _async_init
 from ray.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.serve.context import TaskContext
-from ray.serve.utils import BytesEncoder
+from ray.serve.utils import ServeEncoder
 from ray.serve.request_params import RequestMetadata
 
 from urllib.parse import parse_qs
@@ -38,7 +38,7 @@ class JSONResponse:
             return b""
         if isinstance(content, bytes):
             return content
-        return json.dumps(content, cls=BytesEncoder, indent=2).encode()
+        return json.dumps(content, cls=ServeEncoder, indent=2).encode()
 
     async def __call__(self, scope, receive, send):
         await send({
