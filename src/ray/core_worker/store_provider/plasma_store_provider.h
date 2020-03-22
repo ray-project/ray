@@ -114,6 +114,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] timeout_ms Timeout in milliseconds.
   /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
   /// reconstruct objects.
+  /// \param[in] in_direct_call_task Whether the current task is direct call.
   /// \param[in] task_id The current TaskID.
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
@@ -123,7 +124,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return Status.
   Status FetchAndGetFromPlasmaStore(
       absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
-      int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
+      int64_t timeout_ms, bool fetch_only, bool in_direct_call_task,
+      const TaskID &task_id,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
 

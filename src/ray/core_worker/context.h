@@ -30,16 +30,16 @@ class WorkerContext {
 
   const WorkerType GetWorkerType() const;
 
-  bool IsDriver() const;
-
-  bool IsActor() const;
-
   const WorkerID &GetWorkerID() const;
 
   const JobID &GetCurrentJobID() const;
 
   const TaskID &GetCurrentTaskID() const;
 
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentJobId(const JobID &job_id);
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetCurrentTask(const TaskSpecification &task_spec);
@@ -56,6 +56,13 @@ class WorkerContext {
   /// Returns whether we should Block/Unblock through the raylet on Get/Wait.
   /// This only applies to direct task calls.
   bool ShouldReleaseResourcesOnBlockingCalls() const;
+
+  /// Returns whether we are in a direct call actor.
+  bool CurrentActorIsDirectCall() const;
+
+  /// Returns whether we are in a direct call task. This encompasses both direct
+  /// actor and normal tasks.
+  bool CurrentTaskIsDirectCall() const;
 
   int CurrentActorMaxConcurrency() const;
 
