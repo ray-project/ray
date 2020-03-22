@@ -157,11 +157,10 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   return nullptr;
 }
 
-bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
                                                   object.GetNestedIds(), true);
-  bool stored_in_direct_memory = true;
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
   // plasma.
@@ -171,7 +170,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return true;  // Object already exists in the store, which is fine.
+      return Status::OK();  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -218,7 +217,6 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   // in-memory store (would cause deadlock).
   if (should_put_in_plasma) {
     store_in_plasma_(object, object_id);
-    stored_in_direct_memory = false;
   }
 
   // It's important for performance to run the callbacks outside the lock.
@@ -226,7 +224,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     cb(object_entry);
   }
 
-  return stored_in_direct_memory;
+  return Status::OK();
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,

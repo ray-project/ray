@@ -139,9 +139,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task));
-    direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
-        new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
-                                         task_execution_service_, execute_task));
+    direct_task_receiver_ =
+        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
+            worker_context_, task_execution_service_, execute_task,
+            [this] { return local_raylet_client_->TaskDone(); }));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -171,7 +172,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
-      RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
+      [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
@@ -254,7 +255,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(client_factory, rpc_address_);
+    direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
   }
 }
 
@@ -483,8 +484,7 @@ Status CoreWorker::Put(const RayObject &object,
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-  return Status::OK();
+  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -528,8 +528,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
   }
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-  return Status::OK();
+  return memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
@@ -1109,11 +1108,16 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    // For an actor, set the timestamp as the time its creation task starts execution.
+    SetCallerCreationTimestamp();
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
+  } else {
+    // For a non-actor task, set the timestamp as the time it starts execution.
+    SetCallerCreationTimestamp();
   }
 
   status = task_execution_callback_(
@@ -1197,8 +1201,8 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
       if (task.ArgId(i, 0).IsDirectCallType()) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i, 0)));
+        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                        task.ArgId(i, 0)));
       }
       const auto &arg_id = task.ArgId(i, 0);
       by_ref_ids.insert(arg_id);
@@ -1414,9 +1418,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   auto stats = reply->mutable_core_worker_stats();
-  // TODO(swang): Differentiate between tasks that are currently pending
-  // execution and tasks that have finished but may be retried.
-  stats->set_num_pending_tasks(task_manager_->NumSubmissibleTasks());
+  stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
@@ -1515,6 +1517,11 @@ void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &mess
 void CoreWorker::SetActorTitle(const std::string &title) {
   absl::MutexLock lock(&mutex_);
   actor_title_ = title;
+}
+
+void CoreWorker::SetCallerCreationTimestamp() {
+  absl::MutexLock lock(&mutex_);
+  direct_actor_submitter_->SetCallerCreationTimestamp(current_sys_time_ms());
 }
 
 }  // namespace ray

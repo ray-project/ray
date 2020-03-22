@@ -76,6 +76,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+    request->set_caller_version(caller_creation_timestamp_ms_);
 
     absl::MutexLock lock(&mu_);
 
@@ -201,9 +202,14 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
-                                        rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
+void CoreWorkerDirectActorTaskSubmitter::SetCallerCreationTimestamp(int64_t timestamp) {
+  caller_creation_timestamp_ms_ = timestamp;
+}
+
+void CoreWorkerDirectTaskReceiver::Init(
+    rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+    std::shared_ptr<DependencyWaiterInterface> dependency_client) {
+  waiter_.reset(new DependencyWaiterImpl(*dependency_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -280,7 +286,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will reconstruct the actor.
-        RAY_CHECK_OK(local_raylet_client_->TaskDone());
+        RAY_CHECK_OK(task_done_());
       }
     }
     if (status.IsSystemExit()) {
@@ -310,15 +316,50 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto caller_worker_id = WorkerID::FromBinary(request.caller_address().worker_id());
+  auto caller_version = request.caller_version();
   auto it = scheduling_queue_.find(task_spec.CallerId());
+  if (it != scheduling_queue_.end()) {
+    if (it->second.first.caller_worker_id != caller_worker_id) {
+      // We received a request with the same caller ID, but from a different worker,
+      // this indicates the caller (actor) is reconstructed.
+      if (it->second.first.caller_creation_timestamp_ms < caller_version) {
+        // The new request has a newer caller version, then remove the old entry
+        // from scheduling queue since it's invalid now.
+        RAY_LOG(INFO) << "Remove existing scheduling queue for caller "
+                      << task_spec.CallerId() << " after receiving a "
+                      << "request from a different worker ID with a newer "
+                      << "version, old worker ID: " << it->second.first.caller_worker_id
+                      << ", new worker ID" << caller_worker_id;
+        scheduling_queue_.erase(task_spec.CallerId());
+        it = scheduling_queue_.end();
+      } else {
+        // The existing caller has the newer version, this indicates the request
+        // is from an old caller, which might be possible when network has problems.
+        // In this case fail this request.
+        RAY_LOG(WARNING) << "Ignoring request from an old caller because "
+                         << "it has a smaller timestamp, old worker ID: "
+                         << caller_worker_id << ", current worker ID"
+                         << it->second.first.caller_worker_id;
+        // Fail request with an old caller version.
+        reject_callback();
+        return;
+      }
+    }
+  }
+
   if (it == scheduling_queue_.end()) {
+    SchedulingQueueTag tag;
+    tag.caller_worker_id = caller_worker_id;
+    tag.caller_creation_timestamp_ms = caller_version;
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, worker_context_)));
+        task_spec.CallerId(),
+        std::make_pair(tag, std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                task_main_io_service_, *waiter_, worker_context_))));
     it = result.first;
   }
-  it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                  accept_callback, reject_callback, dependencies);
+  it->second.second->Add(request.sequence_number(), request.client_processed_up_to(),
+                         accept_callback, reject_callback, dependencies);
 }
 
 void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(

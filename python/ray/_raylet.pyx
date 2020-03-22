@@ -569,7 +569,12 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     """
 
     with gil:
-        frame = inspect.currentframe()
+        try:
+            frame = inspect.currentframe()
+        except ValueError:  # overhead of exception handling is about 20us
+            stack_out[0] = "".encode("ascii")
+            return
+
         msg = ""
         while frame:
             filename = frame.f_code.co_filename
@@ -953,7 +958,7 @@ cdef class CoreWorker:
             CObjectID c_outer_object_id = (outer_object_id.native() if
                                            outer_object_id else
                                            CObjectID.Nil())
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(

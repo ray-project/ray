@@ -150,7 +150,7 @@ class RemoteFunction:
                 resources=None,
                 max_retries=None):
         """Submit the remote function for execution."""
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         # If this function was not exported in this session and job, we need to
