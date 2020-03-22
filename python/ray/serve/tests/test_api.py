@@ -48,15 +48,15 @@ def test_e2e(serve_instance):
                                "The latest error was {}").format(e)
 
     def function(flask_request):
-        return flask_request.method
+        return {"method": flask_request.method}
 
     serve.create_backend(function, "echo:v1")
     serve.link("endpoint", "echo:v1")
 
-    resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
+    resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
 
-    resp = requests.post("http://127.0.0.1:8000/api").json()["result"]
+    resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
 
 
@@ -114,7 +114,7 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/increment").json()["result"]
+        resp = requests.get("http://127.0.0.1:8000/increment").json()
         counter_result.append(resp)
     # Give some time for a replica to spin down. But majority of the request
     # should be served by the only remaining replica.

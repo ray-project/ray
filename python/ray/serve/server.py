@@ -7,46 +7,10 @@ import ray
 from ray.experimental.async_api import _async_init
 from ray.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.serve.context import TaskContext
-from ray.serve.utils import ServeEncoder
 from ray.serve.request_params import RequestMetadata
+from ray.serve.http_util import Response
 
 from urllib.parse import parse_qs
-
-
-class JSONResponse:
-    """ASGI compliant response class.
-
-    It is expected to be called in async context and pass along
-    `scope, receive, send` as in ASGI spec.
-
-    >>> await JSONResponse({"k": "v"})(scope, receive, send)
-    """
-
-    def __init__(self, content=None, status_code=200):
-        """Construct a JSON HTTP Response.
-
-        Args:
-            content (optional): Any JSON serializable object.
-            status_code (int, optional): Default status code is 200.
-        """
-        self.body = self.render(content)
-        self.status_code = status_code
-        self.raw_headers = [[b"content-type", b"application/json"]]
-
-    def render(self, content):
-        if content is None:
-            return b""
-        if isinstance(content, bytes):
-            return content
-        return json.dumps(content, cls=ServeEncoder, indent=2).encode()
-
-    async def __call__(self, scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": self.status_code,
-            "headers": self.raw_headers,
-        })
-        await send({"type": "http.response.body", "body": self.body})
 
 
 class HTTPProxy:
@@ -134,7 +98,7 @@ class HTTPProxy:
 
     def _make_error_sender(self, scope, receive, send):
         async def sender(error_message, status_code):
-            await JSONResponse(
+            await Response(
                 {
                     "error": error_message
                 }, status_code=status_code)(scope, receive, send)
@@ -154,7 +118,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
         if current_path == "/-/routes":
-            await JSONResponse(self.route_table_cache)(scope, receive, send)
+            await Response(self.route_table_cache)(scope, receive, send)
             return
 
         # TODO(simon): Use werkzeug route mapper to support variable path
@@ -204,7 +168,7 @@ class HTTPProxy:
             error_message = "Internal Error. Traceback: {}.".format(result)
             await error_sender(error_message, 500)
         else:
-            await JSONResponse({"result": result})(scope, receive, send)
+            await Response(result)(scope, receive, send)
 
 
 @ray.remote
