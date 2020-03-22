@@ -136,9 +136,9 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
 
   // Put the dependencies in the store in the same order as task submission.
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store_->Put(*data, obj1));
+  ASSERT_TRUE(store_->Put(*data, obj1).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
-  ASSERT_TRUE(store_->Put(*data, obj2));
+  ASSERT_TRUE(store_->Put(*data, obj2).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 }
 
@@ -165,9 +165,9 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   // Put the dependencies in the store in the opposite order of task
   // submission.
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store_->Put(*data, obj2));
+  ASSERT_TRUE(store_->Put(*data, obj2).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
-  ASSERT_TRUE(store_->Put(*data, obj1));
+  ASSERT_TRUE(store_->Put(*data, obj1).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 }
 

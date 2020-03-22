@@ -1752,7 +1752,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   ASSERT_TRUE(lineage_deleted.empty());
 
   // We should keep lineage for owned objects.
-  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+  rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address());
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->HasReference(id));
   rc->RemoveLocalReference(id, nullptr);
@@ -1771,7 +1771,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   for (int i = 0; i < 3; i++) {
     ObjectID id = ObjectID::FromRandom();
     ids.push_back(id);
-    rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+    rc->AddOwnedObject(id, {}, TaskID::Nil(), rpc::Address());
   }
 
   rc->SetReleaseLineageCallback(
