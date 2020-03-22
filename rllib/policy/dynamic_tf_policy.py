@@ -71,8 +71,12 @@ class DynamicTFPolicy(TFPolicy):
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
             forward_fn (Optional[callable]): A callable returning
-                distribution inputs (parameters) and a dist-class to generate
-                an action distribution object from.
+                distribution inputs (parameters), a dist-class to generate
+                an action distribution object from, and (RNN) state-outs.
+                Note: No Exploration hooks have to be called from within
+                `forward_fn`. It's should only perform a simple forward pass
+                through some model. If None, pass through `self.model()` to get
+                the distribution inputs.
             existing_inputs (OrderedDict): When copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
