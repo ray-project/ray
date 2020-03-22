@@ -162,7 +162,7 @@ matrix:
 
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - ./ci/suppress_output ./python/build-wheel-macos.sh
+        - ./python/build-wheel-macos.sh
       script:
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
