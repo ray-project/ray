@@ -10,21 +10,6 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
 
 
-def test_route_decorator(serve_instance):
-    @serve.route("/hello_world")
-    def hello_world(_):
-        return ""
-
-    assert isinstance(hello_world, RayServeHandle)
-
-    hello_world.scale(2)
-    assert serve.get_backend_config("hello_world:v0").num_replicas == 2
-
-    with pytest.raises(
-            RayServeException, match="method does not accept batching"):
-        hello_world.set_max_batch_size(2)
-
-
 def test_e2e(serve_instance):
     serve.init()  # so we have access to global state
     serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
@@ -58,6 +43,21 @@ def test_e2e(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
+
+
+def test_route_decorator(serve_instance):
+    @serve.route("/hello_world")
+    def hello_world(_):
+        return ""
+
+    assert isinstance(hello_world, RayServeHandle)
+
+    hello_world.scale(2)
+    assert serve.get_backend_config("hello_world:v0").num_replicas == 2
+
+    with pytest.raises(
+            RayServeException, match="method does not accept batching"):
+        hello_world.set_max_batch_size(2)
 
 
 def test_no_route(serve_instance):
@@ -102,7 +102,7 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/increment").json()["result"]
+        resp = requests.get("http://127.0.0.1:8000/increment").json()
         counter_result.append(resp)
 
     # If the load is shared among two replicas. The max result cannot be 10.
