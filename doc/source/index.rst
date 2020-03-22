@@ -238,6 +238,7 @@ Getting Involved
    walkthrough.rst
    using-ray.rst
    configure.rst
+   ray-dashboard.rst
    cluster-index.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst

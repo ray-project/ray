@@ -1016,6 +1016,38 @@ def test_eviction(ray_start_cluster):
 
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
+        "num_nodes": 1,
+        "num_cpus": 2,
+    }, {
+        "num_nodes": 2,
+        "num_cpus": 1,
+    }],
+    indirect=True)
+def test_serialized_id_eviction(ray_start_cluster):
+    @ray.remote
+    def large_object():
+        return np.zeros(10 * 1024 * 1024)
+
+    @ray.remote
+    def get(obj_ids):
+        obj_id = obj_ids[0]
+        assert (isinstance(ray.get(obj_id), np.ndarray))
+        # Wait for the object to be evicted.
+        ray.internal.free(obj_id)
+        while ray.worker.global_worker.core_worker.object_exists(obj_id):
+            time.sleep(1)
+        with pytest.raises(ray.exceptions.UnreconstructableError):
+            ray.get(obj_id)
+        print("get done", obj_ids)
+
+    obj = large_object.remote()
+    result = get.remote([obj])
+    ray.internal.free(obj)
+    ray.get(result)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
         "num_nodes": 2,
         "num_cpus": 1,
     }, {
