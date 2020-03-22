@@ -296,8 +296,8 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
 // Tests that the ref counts are properly integrated into the local
 // object memory store.
 TEST(MemoryStoreIntegrationTest, TestSimple) {
-  ObjectID id1 = ObjectID::FromRandom().WithDirectTransportType();
-  ObjectID id2 = ObjectID::FromRandom().WithDirectTransportType();
+  ObjectID id1 = ObjectID::FromRandom();
+  ObjectID id2 = ObjectID::FromRandom();
   uint8_t data[] = {1, 2, 3, 4, 5, 6, 7, 8};
   RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr, {});
 

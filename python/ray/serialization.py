@@ -161,13 +161,10 @@ class SerializationContext:
             self.add_contained_object_id(obj)
             owner_id = ""
             owner_address = ""
-            # TODO(swang): Remove this check. Otherwise, we will not be able to
-            # handle serialized plasma IDs correctly.
-            if obj.is_direct_call_type():
-                worker = ray.worker.global_worker
-                worker.check_connected()
-                obj, owner_id, owner_address = (
-                    worker.core_worker.serialize_and_promote_object_id(obj))
+            worker = ray.worker.global_worker
+            worker.check_connected()
+            obj, owner_id, owner_address = (
+                worker.core_worker.serialize_and_promote_object_id(obj))
             obj = id_serializer(obj)
             owner_id = id_serializer(owner_id) if owner_id else owner_id
             return (obj, owner_id, owner_address)

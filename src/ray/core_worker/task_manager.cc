@@ -50,8 +50,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     }
   }
   if (spec.IsActorTask()) {
-    const auto actor_creation_return_id =
-        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     task_deps.push_back(actor_creation_return_id);
   }
   reference_counter_->UpdateSubmittedTaskReferences(task_deps);
@@ -249,8 +248,7 @@ void TaskManager::RemoveFinishedTaskReferences(
     }
   }
   if (spec.IsActorTask()) {
-    const auto actor_creation_return_id =
-        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
     plasma_dependencies.push_back(actor_creation_return_id);
   }
 

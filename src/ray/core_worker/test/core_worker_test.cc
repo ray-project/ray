@@ -392,8 +392,6 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
       ASSERT_TRUE(return_ids[0].IsReturnObject());
-      ASSERT_EQ(static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
-                TaskTransportType::DIRECT);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
@@ -772,14 +770,14 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    ids[i] = ObjectID::FromRandom().WithDirectTransportType();
+    ids[i] = ObjectID::FromRandom();
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
   absl::flat_hash_set<ObjectID> wait_ids(ids.begin(), ids.end());
   absl::flat_hash_set<ObjectID> wait_results;
 
-  ObjectID nonexistent_id = ObjectID::FromRandom().WithDirectTransportType();
+  ObjectID nonexistent_id = ObjectID::FromRandom();
   WorkerContext ctx(WorkerType::WORKER, JobID::Nil());
   wait_ids.insert(nonexistent_id);
   RAY_CHECK_OK(provider.Wait(wait_ids, ids.size() + 1, 100, ctx, &wait_results));
@@ -829,9 +827,9 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> ready_ids(buffers.size());
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
-    ready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
+    ready_ids[i] = ObjectID::FromRandom();
     RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
-    unready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
+    unready_ids[i] = ObjectID::FromRandom();
   }
 
   auto thread_func = [&unready_ids, &provider, &buffers]() {

@@ -59,19 +59,6 @@ void BuildCommonTaskSpec(
   }
 }
 
-// Group object ids according the the corresponding store providers.
-void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
-                                   absl::flat_hash_set<ObjectID> *plasma_object_ids,
-                                   absl::flat_hash_set<ObjectID> *memory_object_ids) {
-  for (const auto &object_id : object_ids) {
-    if (object_id.IsDirectCallType()) {
-      memory_object_ids->insert(object_id);
-    } else {
-      plasma_object_ids->insert(object_id);
-    }
-  }
-}
-
 }  // namespace
 
 namespace ray {
@@ -412,7 +399,6 @@ CoreWorker::GetAllReferenceCounts() const {
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     TaskID *owner_id,
                                                     rpc::Address *owner_address) {
-  RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     RAY_LOG(DEBUG) << "Storing object promoted to plasma " << object_id;
@@ -536,8 +522,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> memory_object_ids;
-  GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
+  absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
@@ -649,21 +634,11 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   }
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> memory_object_ids;
-  GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
+  absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
-  if (plasma_object_ids.size() + memory_object_ids.size() != ids.size()) {
+  if (memory_object_ids.size() != ids.size()) {
     return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
-
-  // TODO(edoakes): this logic is not ideal, and will have to be addressed
-  // before we enable direct actor calls in the Python code. If we are waiting
-  // on a list of objects mixed between multiple store providers, we could
-  // easily end up in the situation where we're blocked waiting on one store
-  // provider while another actually has enough objects ready to fulfill
-  // 'num_objects'. This is partially addressed by trying them all once with
-  // a timeout of 0, but that does not address the situation where objects
-  // become available on the second store provider while waiting on the first.
 
   absl::flat_hash_set<ObjectID> ready;
   // Wait from both store providers with timeout set to 0. This is to avoid the case
@@ -1197,13 +1172,11 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
     if (task.ArgByRef(i)) {
       // pass by reference.
       RAY_CHECK(task.ArgIdCount(i) == 1);
-      // Direct call type objects that weren't inlined have been promoted to plasma.
+      // Objects that weren't inlined have been promoted to plasma.
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
-      if (task.ArgId(i, 0).IsDirectCallType()) {
-        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                        task.ArgId(i, 0)));
-      }
+      RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      task.ArgId(i, 0)));
       const auto &arg_id = task.ArgId(i, 0);
       by_ref_ids.insert(arg_id);
       auto it = by_ref_indices.find(arg_id);
@@ -1471,7 +1444,6 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                           SetResultCallback fallback_callback, void *python_future) {
-  RAY_CHECK(object_id.IsDirectCallType());
   memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
                                       object_id](std::shared_ptr<RayObject> ray_object) {
     if (ray_object->IsInPlasmaError()) {

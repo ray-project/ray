@@ -167,9 +167,6 @@ cdef class ObjectID(BaseID):
     def hex(self):
         return decode(self.data.Hex())
 
-    def is_direct_call_type(self):
-        return self.data.IsDirectCallType()
-
     def is_nil(self):
         return self.data.IsNil()
 
@@ -185,7 +182,7 @@ cdef class ObjectID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(CObjectID.FromRandom().WithDirectTransportType().Binary())
+        return cls(CObjectID.FromRandom().Binary())
 
     def __await__(self):
         # Delayed import because this can only be imported in py3.

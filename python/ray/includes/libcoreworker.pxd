@@ -77,7 +77,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID CreationJobID() const
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
-        c_bool IsDirectCallActor() const
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":

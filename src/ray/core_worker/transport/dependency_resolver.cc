@@ -65,8 +65,6 @@ void InlineDependencies(
           inlined_dependency_ids->push_back(id);
         }
         found++;
-      } else {
-        RAY_CHECK(!id.IsDirectCallType());
       }
     }
   }
@@ -81,10 +79,7 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
     auto count = task.ArgIdCount(i);
     if (count > 0) {
       RAY_CHECK(count <= 1) << "multi args not implemented";
-      const auto &id = task.ArgId(i, 0);
-      if (id.IsDirectCallType()) {
-        local_dependencies.emplace(id, nullptr);
-      }
+      local_dependencies.emplace(task.ArgId(i, 0), nullptr);
     }
   }
   if (local_dependencies.empty()) {

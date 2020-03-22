@@ -136,8 +136,8 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   bool num_plasma_puts = 0;
   auto mem = std::make_shared<CoreWorkerMemoryStore>(
       [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; });
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   ASSERT_TRUE(mem->Put(*data, obj1).ok());
 
@@ -186,7 +186,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
@@ -194,13 +194,11 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   ASSERT_TRUE(store->Put(data, obj1).ok());
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
-  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
@@ -209,8 +207,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
   ASSERT_TRUE(store->Put(*data, obj1).ok());
@@ -234,8 +232,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
   auto data = GenerateRandomObject();
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
@@ -262,9 +260,9 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID obj3 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
+  ObjectID obj3 = ObjectID::FromRandom();
   auto data = GenerateRandomObject({obj3});
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
@@ -692,10 +690,10 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources1, descriptor2));
 
-  ObjectID direct1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID direct2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID plasma1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
-  ObjectID plasma2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID direct1 = ObjectID::FromRandom();
+  ObjectID direct2 = ObjectID::FromRandom();
+  ObjectID plasma1 = ObjectID::FromRandom();
+  ObjectID plasma2 = ObjectID::FromRandom();
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
   ASSERT_TRUE(store->Put(*data, direct1).ok());

@@ -71,7 +71,9 @@ constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask = 0x1 << kCreatedByTaskBit
 constexpr ObjectIDFlagsType kObjectTypeFlagBitMask = 0x1 << kObjectTypeBitsOffset;
 
 /// The mask that is used to mask 3 bits to indicate the type of transport.
-constexpr ObjectIDFlagsType kTransportTypeFlagBitMask = 0x7 << kTransportTypeBitsOffset;
+// TODO(edoakes): this isn't used anymore.
+// constexpr ObjectIDFlagsType kTransportTypeFlagBitMask = 0x7 <<
+// kTransportTypeBitsOffset;
 
 /// The implementations of helper functions.
 inline void SetCreatedByTaskFlag(bool created_by_task, ObjectIDFlagsType *flags) {
@@ -102,12 +104,6 @@ inline ObjectType GetObjectType(ObjectIDFlagsType flags) {
   const ObjectIDFlagsType object_type =
       (flags bitand kObjectTypeFlagBitMask) >> kObjectTypeBitsOffset;
   return static_cast<ObjectType>(object_type);
-}
-
-inline uint8_t GetTransportType(ObjectIDFlagsType flags) {
-  const ObjectIDFlagsType transport_type =
-      (flags bitand kTransportTypeFlagBitMask) >> kTransportTypeBitsOffset;
-  return static_cast<uint8_t>(transport_type);
 }
 
 }  // namespace
@@ -162,26 +158,6 @@ bool ObjectID::IsPutObject() const {
 
 bool ObjectID::IsReturnObject() const {
   return ::ray::GetObjectType(this->GetFlags()) == ObjectType::RETURN_OBJECT;
-}
-
-ObjectID ObjectID::WithTransportType(TaskTransportType transport_type) const {
-  ObjectID copy = ObjectID::FromBinary(Binary());
-  ObjectIDFlagsType flags = GetFlags();
-  SetTransportTypeFlag(static_cast<uint8_t>(transport_type), &flags);
-  std::memcpy(copy.id_ + TaskID::kLength, &flags, sizeof(flags));
-  return copy;
-}
-
-ObjectID ObjectID::WithPlasmaTransportType() const {
-  return WithTransportType(TaskTransportType::RAYLET);
-}
-
-ObjectID ObjectID::WithDirectTransportType() const {
-  return WithTransportType(TaskTransportType::DIRECT);
-}
-
-uint8_t ObjectID::GetTransportType() const {
-  return ::ray::GetTransportType(this->GetFlags());
 }
 
 // This code is from https://sites.google.com/site/murmurhash/

@@ -385,7 +385,7 @@ class NodeStats(threading.Thread):
             "children": {},
             "currentTaskFuncDesc": [],
             "ipAddress": "",
-            "isDirectCall": False,
+            "isDirectCall": True,
             "jobId": "",
             "numExecutedTasks": 0,
             "numLocalObjects": 0,
@@ -555,7 +555,7 @@ class NodeStats(threading.Thread):
                 self._addr_to_extra_info_dict[addr] = {
                     "jobId": actor_data["JobID"],
                     "state": actor_data["State"],
-                    "isDirectCall": actor_data["IsDirectCall"],
+                    "isDirectCall": True,
                     "timestamp": actor_data["Timestamp"]
                 }
 
@@ -599,7 +599,7 @@ class NodeStats(threading.Thread):
                             "jobId": ray.utils.binary_to_hex(
                                 actor_data.job_id),
                             "state": actor_data.state,
-                            "isDirectCall": actor_data.is_direct_call,
+                            "isDirectCall": True,
                             "timestamp": actor_data.timestamp
                         }
                     else:

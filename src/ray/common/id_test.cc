@@ -28,7 +28,6 @@ void TestReturnObjectId(const TaskID &task_id, int64_t return_index,
   ASSERT_TRUE(return_id.IsReturnObject());
   ASSERT_FALSE(return_id.IsPutObject());
   ASSERT_EQ(return_id.TaskId(), task_id);
-  ASSERT_TRUE(transport_type == return_id.GetTransportType());
   ASSERT_EQ(return_id.ObjectIndex(), return_index);
 }
 
@@ -40,7 +39,6 @@ void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
   ASSERT_FALSE(put_id.IsReturnObject());
   ASSERT_TRUE(put_id.IsPutObject());
   ASSERT_EQ(put_id.TaskId(), task_id);
-  ASSERT_TRUE(1 == put_id.GetTransportType());
   ASSERT_EQ(put_id.ObjectIndex(), put_index);
 }
 
