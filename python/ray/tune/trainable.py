@@ -125,7 +125,7 @@ class Trainable:
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to `self.logdir`.
+    directory of this process to ``self.logdir``.
 
     """
 
@@ -184,18 +184,23 @@ class Trainable:
 
     @classmethod
     def default_resource_request(cls, config):
-        """Returns the resource requirement for the given configuration.
+        """Provides a static resource requirement for the given configuration.
 
         This can be overriden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        Example:
-            >>> def default_resource_request(cls, config):
-            >>>     return Resources(
-            >>>         cpu=0,
-            >>>         gpu=0,
-            >>>         extra_cpu=config["workers"],
-            >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
+        .. code-block:: python
+
+            @classmethod
+            def default_resource_request(cls, config):
+                return Resources(
+                    cpu=0,
+                    gpu=0,
+                    extra_cpu=config["workers"],
+                    extra_gpu=int(config["use_gpu"]) * config["workers"])
+
+        Returns:
+            Resources: A Resources object consumed by Tune for queueing.
         """
         return None
 
@@ -329,7 +334,7 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint path or prefix that may be passed to restore().
+            str: Checkpoint path or prefix that may be passed to restore().
         """
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
@@ -657,6 +662,10 @@ class Trainable:
 
     def _log_result(self, result):
         """Subclasses can optionally override this to customize logging.
+
+        The logging here is done on the worker process rather than
+        the driver. You may want to turn off driver logging via the
+        ``loggers`` parameter in ``tune.run`` when overriding this function.
 
         Args:
             result (dict): Training result returned by _train().
