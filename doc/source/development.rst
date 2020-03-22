@@ -45,7 +45,7 @@ Developing Ray (Python Only)
 
 .. note:: Unless otherwise stated, directory and file paths are relative to the project root directory.
 
-RLlib, Tune, Autoscaler, and most Python files do not require you to build and compiling Ray. Follow these instructions to develop Ray's Python files locally.
+RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally.
 
 1. Pip install the **latest Ray wheels.** See :ref:`install-nightlies` for instructions.
 
@@ -60,7 +60,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 4. Run ``python python/ray/setup-dev.py``. This sets up links between the ``tune`` dir (among other directories) in your local repo and the one bundled with the ``ray`` package.
 
-.. warning:: Do not run ``pip uninstall ray`` if setting up your environment this way. To uninstall, you must ``rm -rf`` the installation site (usually a ``site-packages/ray`` location).
+.. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must ``rm -rf`` the installation site (usually a ``site-packages/ray`` location).
 
 
 Using a local repository for dependencies

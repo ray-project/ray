@@ -16,7 +16,7 @@ Developing Tune
 
 First, following the instructions in :ref:`python-develop` to develop Tune without compiling Ray.
 
-After Ray is set up, run ``pip install -r ray/python/ray/tune/requirements-dev.txt`` to install all packages required for development of Tune.
+After Ray is set up, run ``pip install -r ray/python/ray/tune/requirements-dev.txt`` to install all packages required for Tune development.
 
 Submitting and Merging a Contribution
 -------------------------------------
@@ -34,7 +34,7 @@ There are a couple steps to merge a contribution.
 2. Make sure all existing tests `pass <tune-contrib.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
    in the relevant file in ``tune/tests/``.
-4. Document the code. Public functions need to be documented, and remember to provide an usage
+4. Document the code. Public functions need to be documented, and remember to provide a usage
    example if applicable.
 5. Request code reviews from other contributors and address their comments. One fast way to get reviews is
    to help review others' code so that they return the favor. You should aim to improve the code as much as
