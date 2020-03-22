@@ -2,10 +2,10 @@ from gym.spaces import Discrete
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.framework import get_variable
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
@@ -101,7 +101,12 @@ class ParameterNoise(Exploration):
                     "type": "EpsilonGreedy",
                     "epsilon_schedule": {
                         "type": "PiecewiseSchedule",
-                        "endpoints": [(0, 1.0), (random_timesteps, 0.01)],
+                        # Step function (see [2]).
+                        "endpoints": [
+                            (0, 1.0),
+                            (random_timesteps + 1, 1.0),
+                            (random_timesteps + 2, 0.01)
+                        ],
                         "outside_value": 0.01
                     }
                 }
