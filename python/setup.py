@@ -177,7 +177,6 @@ requires = [
     "click",
     "colorama",
     "packaging",
-    "pytest",
     "pyyaml",
     "redis>=3.3.2",
     # NOTE: Don't upgrade the version of six! Doing so causes installation
