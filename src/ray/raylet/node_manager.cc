@@ -1918,7 +1918,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   // Determine which IDs should be marked as failed.
   std::vector<plasma::ObjectID> objects_to_fail;
   for (int64_t i = 0; i < num_returns; i++) {
-    objects_to_fail.push_back(spec.ReturnId(i, TaskTransportType::RAYLET).ToPlasmaId());
+    objects_to_fail.push_back(spec.ReturnId(i).ToPlasmaId());
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
@@ -1970,7 +1970,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
   // lookup callbacks are fired.
   auto task_marked_as_failed = std::make_shared<bool>(false);
   for (int64_t i = 0; i < num_returns; i++) {
-    const ObjectID object_id = spec.ReturnId(i, TaskTransportType::RAYLET);
+    const ObjectID object_id = spec.ReturnId(i);
     // Lookup the return value's locations.
     RAY_CHECK_OK(object_directory_->LookupLocations(
         object_id, [this, task_marked_as_failed, task](

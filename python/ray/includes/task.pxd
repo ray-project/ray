@@ -53,8 +53,8 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         uint64_t NumReturns() const
         c_bool ArgByRef(uint64_t arg_index) const
         int ArgIdCount(uint64_t arg_index) const
+        CObjectID ReturnId(uint64_t return_index) const
         CObjectID ArgId(uint64_t arg_index, uint64_t id_index) const
-        CObjectID ReturnIdForPlasma(uint64_t return_index) const
         const uint8_t *ArgData(uint64_t arg_index) const
         size_t ArgDataSize(uint64_t arg_index) const
         const uint8_t *ArgMetadata(uint64_t arg_index) const

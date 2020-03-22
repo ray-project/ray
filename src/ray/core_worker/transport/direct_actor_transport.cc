@@ -257,9 +257,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     if (objects_valid) {
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
-        ObjectID id = ObjectID::ForTaskReturn(
-            task_spec.TaskId(), /*index=*/i + 1,
-            /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
+        ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1);
         return_object->set_object_id(id.Binary());
 
         // The object is nullptr if it already existed in the object store.

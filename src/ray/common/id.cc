@@ -61,7 +61,8 @@ constexpr uint8_t kCreatedByTaskBitsOffset = 15;
 constexpr uint8_t kObjectTypeBitsOffset = 14;
 
 /// The bit offset of the flag `TransportType` in a flags bytes.
-constexpr uint8_t kTransportTypeBitsOffset = 11;
+// TODO(edoakes): this isn't used anymore.
+// constexpr uint8_t kTransportTypeBitsOffset = 11;
 
 /// The mask that is used to mask the flag `CreatedByTask`.
 constexpr ObjectIDFlagsType kCreatedByTaskFlagBitMask = 0x1 << kCreatedByTaskBitsOffset;
@@ -86,14 +87,6 @@ inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) 
   const ObjectIDFlagsType object_type_bits = static_cast<ObjectIDFlagsType>(object_type)
                                              << kObjectTypeBitsOffset;
   *flags = (*flags bitor object_type_bits);
-}
-
-inline void SetTransportTypeFlag(uint8_t transport_type, ObjectIDFlagsType *flags) {
-  // TODO(ekl) we should be masking for all the SET operations in this file.
-  auto mask = static_cast<ObjectIDFlagsType>(1) << kTransportTypeBitsOffset;
-  const ObjectIDFlagsType transport_type_bits =
-      static_cast<ObjectIDFlagsType>(transport_type) << kTransportTypeBitsOffset;
-  *flags = ((*flags bitand ~mask) bitor transport_type_bits);
 }
 
 inline bool CreatedByTask(ObjectIDFlagsType flags) {
@@ -292,15 +285,12 @@ TaskID ObjectID::TaskId() const {
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index,
-                          uint8_t transport_type) {
+ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index) {
   RAY_CHECK(put_index >= 1 && put_index <= kMaxObjectIndex) << "index=" << put_index;
 
   ObjectIDFlagsType flags = 0x0000;
   SetCreatedByTaskFlag(true, &flags);
   SetObjectTypeFlag(ObjectType::PUT_OBJECT, &flags);
-
-  SetTransportTypeFlag(transport_type, &flags);
 
   return GenerateObjectId(task_id.Binary(), flags, put_index);
 }
@@ -311,15 +301,13 @@ ObjectIDIndexType ObjectID::ObjectIndex() const {
   return index;
 }
 
-ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index,
-                                 uint8_t transport_type) {
+ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index) {
   RAY_CHECK(return_index >= 1 && return_index <= kMaxObjectIndex)
       << "index=" << return_index;
 
   ObjectIDFlagsType flags = 0x0000;
   SetCreatedByTaskFlag(true, &flags);
   SetObjectTypeFlag(ObjectType::RETURN_OBJECT, &flags);
-  SetTransportTypeFlag(transport_type, &flags);
 
   return GenerateObjectId(task_id.Binary(), flags, return_index);
 }
@@ -340,8 +328,7 @@ ObjectID ObjectID::FromRandom() {
 
 ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
   return ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_id),
-                                 /*return_index=*/1,
-                                 static_cast<int>(TaskTransportType::DIRECT));
+                                 /*return_index=*/1);
 }
 
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,

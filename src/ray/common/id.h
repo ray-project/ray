@@ -32,8 +32,6 @@
 
 namespace ray {
 
-enum class TaskTransportType { RAYLET, DIRECT };
-
 class TaskID;
 class WorkerID;
 class UniqueID;
@@ -307,31 +305,22 @@ class ObjectID : public BaseID<ObjectID> {
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param index What index of the object put in the task.
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index,
-                         uint8_t transport_type);
+  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
 
   /// Compute the object ID of an object returned by the task.
   ///
   /// \param task_id The task ID of the task that created the object.
   /// \param return_index What index of the object returned by in the task.
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index,
-                                uint8_t transport_type);
+  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index);
 
   /// Create an object id randomly.
   ///
   /// Warning: this can duplicate IDs after a fork() call. We assume this
   /// never happens.
-  ///
-  /// \param transport_type Which type of the transport that is used to
-  ///        transfer this object.
   ///
   /// \return A random object id.
   static ObjectID FromRandom();

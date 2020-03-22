@@ -54,8 +54,7 @@ void BuildCommonTaskSpec(
   // Compute return IDs.
   return_ids->resize(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] = ObjectID::ForTaskReturn(
-        task_id, i + 1, static_cast<int>(ray::TaskTransportType::DIRECT));
+    (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
   }
 }
 
@@ -440,8 +439,7 @@ Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::DIRECT));
+                                worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
                                      rpc_address_, CurrentCallSite(), object.GetSize());
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
@@ -477,8 +475,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           const std::vector<ObjectID> &contained_object_ids,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex(),
-                                static_cast<uint8_t>(TaskTransportType::DIRECT));
+                                worker_context_.GetNextPutIndex());
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   // Only add the object to the reference counter if it didn't already exist.
@@ -1073,7 +1070,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i, TaskTransportType::DIRECT));
+    return_ids.push_back(task_spec.ReturnId(i));
   }
 
   Status status;

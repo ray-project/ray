@@ -64,9 +64,8 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
   absl::MutexLock guard(&mutex_);
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
-  const ObjectID actor_creation_dummy_object_id = ObjectID::ForTaskReturn(
-      actor_creation_task_id, /*index=*/1,
-      /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1);
   builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id,
                            /*previous_actor_task_dummy_object_id=*/actor_cursor_,
                            task_counter_++);

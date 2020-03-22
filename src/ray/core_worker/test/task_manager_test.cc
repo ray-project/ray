@@ -72,7 +72,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
 
   rpc::PushTaskReply reply;
@@ -112,7 +112,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
@@ -148,7 +148,7 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   manager_.AddPendingTask(caller_id, caller_address, spec, "", num_retries);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
-  auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
+  auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
