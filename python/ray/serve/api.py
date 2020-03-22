@@ -148,7 +148,7 @@ def init(kv_store_connector=None,
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name, route=None, blocking=True):
+def create_endpoint(endpoint_name, route=None, methods=["GET"]):
     """Create a service endpoint given route_expression.
 
     Args:
@@ -159,7 +159,9 @@ def create_endpoint(endpoint_name, route=None, blocking=True):
         blocking (bool): If true, the function will wait for service to be
             registered before returning
     """
-    global_state.route_table.register_service(route, endpoint_name)
+    methods = [m.upper() for m in methods]
+    global_state.route_table.register_service(
+        route, endpoint_name, methods=methods)
 
 
 @_ensure_connected

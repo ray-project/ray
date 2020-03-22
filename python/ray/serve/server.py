@@ -75,7 +75,8 @@ class HTTPProxy:
                 return
 
             self.route_table_cache = (
-                self.serve_global_state.route_table.list_service())
+                self.serve_global_state.route_table.list_service(
+                    include_methods=True, include_headless=False))
 
             await asyncio.sleep(interval)
 
@@ -105,19 +106,40 @@ class HTTPProxy:
 
         return b"".join(body_buffer)
 
-    def _check_slo_ms(self, request_slo_ms):
-        if request_slo_ms is not None:
-            if len(request_slo_ms) != 1:
-                raise ValueError(
-                    "Multiple SLO specified, please specific only one.")
-            request_slo_ms = request_slo_ms[0]
-            request_slo_ms = float(request_slo_ms)
-            if request_slo_ms < 0:
-                raise ValueError(
-                    "Request SLO must be positive, it is {}".format(
-                        request_slo_ms))
-            return request_slo_ms
-        return None
+    def _parse_latency_slo(self, scope):
+        query_string = scope["query_string"].decode("ascii")
+        query_kwargs = parse_qs(query_string)
+
+        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
+        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
+        relative_slo_ms = self._validate_slo_ms(relative_slo_ms)
+        absolute_slo_ms = self._validate_slo_ms(absolute_slo_ms)
+        if relative_slo_ms is not None and absolute_slo_ms is not None:
+            raise ValueError("Both relative and absolute slo's"
+                             "cannot be specified.")
+        return relative_slo_ms, absolute_slo_ms
+
+    def _validate_slo_ms(self, request_slo_ms):
+        if request_slo_ms is None:
+            return None
+        if len(request_slo_ms) != 1:
+            raise ValueError(
+                "Multiple SLO specified, please specific only one.")
+        request_slo_ms = request_slo_ms[0]
+        request_slo_ms = float(request_slo_ms)
+        if request_slo_ms < 0:
+            raise ValueError("Request SLO must be positive, it is {}".format(
+                request_slo_ms))
+        return request_slo_ms
+
+    def _make_error_sender(self, scope, receive, send):
+        async def sender(error_message, status_code):
+            await JSONResponse(
+                {
+                    "error": error_message
+                }, status_code=status_code)(scope, receive, send)
+
+        return sender
 
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
@@ -127,6 +149,8 @@ class HTTPProxy:
             await self.handle_lifespan_message(scope, receive, send)
             return
 
+        error_sender = self._make_error_sender(scope, receive, send)
+
         assert scope["type"] == "http"
         current_path = scope["path"]
         if current_path == "/-/routes":
@@ -135,31 +159,29 @@ class HTTPProxy:
 
         # TODO(simon): Use werkzeug route mapper to support variable path
         if current_path not in self.route_table_cache:
-            error_message = ("Path {} not found. "
-                             "Please ping http://.../ for routing table"
-                             ).format(current_path)
-            await JSONResponse(
-                {
-                    "error": error_message
-                }, status_code=404)(scope, receive, send)
+            error_message = (
+                "Path {} not found. "
+                "Please ping http://.../-/routes for routing table"
+            ).format(current_path)
+            await error_sender(error_message, 404)
             return
 
-        endpoint_name = self.route_table_cache[current_path]
+        endpoint_name, methods_allowed = self.route_table_cache[current_path]
+
+        if scope["method"] not in methods_allowed:
+            error_message = ("Methods {} not allowed. "
+                             "Avaiable HTTP methods are {}.").format(
+                                 scope["method"], methods_allowed)
+            await error_sender(error_message, 405)
+            return
+
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         # get slo_ms before enqueuing the query
-        query_string = scope["query_string"].decode("ascii")
-        query_kwargs = parse_qs(query_string)
-        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
-        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
         try:
-            relative_slo_ms = self._check_slo_ms(relative_slo_ms)
-            absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
-            if relative_slo_ms is not None and absolute_slo_ms is not None:
-                raise ValueError("Both relative and absolute slo's"
-                                 "cannot be specified.")
+            relative_slo_ms, absolute_slo_ms = self._parse_latency_slo(scope)
         except ValueError as e:
-            await JSONResponse({"error": str(e)})(scope, receive, send)
+            await error_sender(str(e), 400)
             return
 
         # create objects necessary for enqueue
@@ -179,9 +201,8 @@ class HTTPProxy:
         result = actual_result
 
         if isinstance(result, ray.exceptions.RayTaskError):
-            await JSONResponse({
-                "error": "internal error, please use python API to debug"
-            })(scope, receive, send)
+            error_message = "Internal Error. Traceback: {}.".format(result)
+            await error_sender(error_message, 500)
         else:
             await JSONResponse({"result": result})(scope, receive, send)
 

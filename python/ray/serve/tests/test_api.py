@@ -27,7 +27,7 @@ def test_route_decorator(serve_instance):
 
 def test_e2e(serve_instance):
     serve.init()  # so we have access to global state
-    serve.create_endpoint("endpoint", "/api", blocking=True)
+    serve.create_endpoint("endpoint", "/api", methods=["GET", "POST"])
     result = serve.api._get_global_state().route_table.list_service()
     assert result["/api"] == "endpoint"
 
@@ -37,27 +37,31 @@ def test_e2e(serve_instance):
         try:
             resp = requests.get(
                 "http://127.0.0.1:8000/-/routes", timeout=0.5).json()
-            assert resp == result
+            assert resp == {"/api": ["endpoint", ["GET", "POST"]]}
             break
-        except Exception:
+        except Exception as e:
             time.sleep(timeout_sleep)
             timeout_sleep *= 2
             retry_count -= 1
             if retry_count == 0:
-                assert False, "Route table hasn't been updated after 3 tries."
+                assert False, ("Route table hasn't been updated after 3 tries."
+                               "The latest error was {}").format(e)
 
     def function(flask_request):
-        return "OK"
+        return flask_request.method
 
     serve.create_backend(function, "echo:v1")
     serve.link("endpoint", "echo:v1")
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
-    assert resp == "OK"
+    assert resp == "GET"
+
+    resp = requests.post("http://127.0.0.1:8000/api").json()["result"]
+    assert resp == "POST"
 
 
 def test_no_route(serve_instance):
-    serve.create_endpoint("noroute-endpoint", blocking=True)
+    serve.create_endpoint("noroute-endpoint")
     global_state = serve.api._get_global_state()
 
     result = global_state.route_table.list_service(include_headless=True)
