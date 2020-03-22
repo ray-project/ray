@@ -1,7 +1,7 @@
 import os
-import ray
 
 from dataset import Dataset
+
 
 class LocalDataset(Dataset):
     """
@@ -9,8 +9,8 @@ class LocalDataset(Dataset):
     """
 
     def __init__(self, loc, max_paths=None, transform=None):
-        super(LocalDataset, self).__init__(loc, remote=False, max_paths=max_paths, transform=transform)
-
+        super(LocalDataset, self).__init__(
+            loc, remote=False, max_paths=max_paths, transform=transform)
 
     def get_paths(self, loc, max_paths=None):
         paths = []
@@ -21,10 +21,7 @@ class LocalDataset(Dataset):
                     return paths
         return paths
 
-
     def load(self, path):
         with open(path, "rb") as f:
             bytes = f.read()
             return bytes, path
-
-

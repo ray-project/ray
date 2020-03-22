@@ -25,9 +25,9 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
             loc: Location of training data (i.e. root of training directory)
                 This is passed into get_paths
             remote: Whether dataset loading
-                should be parallelized on multiple workers/nodes. For example, if
-                only the driver has the necessary permissions to access the data,
-                remote should be False
+                should be parallelized on multiple workers/nodes. For example,
+                if only the driver has the necessary permissions to access
+                the data, remote should be False
             max_paths: Maximum number of paths to load (passed to `get_paths`)
 
         """
@@ -43,7 +43,6 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
         random.shuffle(data)
         self._data = data
 
-
     @abstractmethod
     def get_paths(self, loc, max_paths=None):
         """Should given a directory, this should return a list of paths to data points
@@ -58,7 +57,6 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
         """
         assert False, "get_paths must be defined."
 
-
     @abstractmethod
     def load(self, path):
         """Gets the data located at a single path
@@ -72,7 +70,6 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
         """
         assert False, "download must be defined"
 
-
     @abstractmethod
     def convert_data(self, data):
         """Preprocesses the input for a model. This will be run after shuffling.
@@ -81,8 +78,9 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
         Args:
             data: A single data point to be preprocessed
         """
-        assert False, "This method should be overridden. If you really don't want to do anypreprocessing, you can replace this with the identity function."
-
+        assert False, "This method should be overridden. if you really " \
+            "don't want to do any preprocessing, you can replace this " \
+            "with the identity function."
 
     @abstractmethod
     def convert_label(self, label):
@@ -92,8 +90,9 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
         Args:
             label: A single label point to be preprocessed
         """
-        assert False, "This method should be overridden. If you really don't want to do anypreprocessing, you can replace this with the identity function."
-
+        assert False, "This method should be overridden. if you really " \
+            "don't want to do any preprocessing, you can replace this " \
+            "with the identity function."
 
     def _convert(self, data, label):
         data, label = self.convert_data(data), self.convert_label(label)
@@ -101,33 +100,23 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
             data = self.transform(data)
         return data, label
 
-
     def get_data_loader(self, batch_size=32):
         materialized = list(self)
         loader = torch.utils.data.DataLoader(materialized, batch_size)
         return loader
 
-
     def get_sharded_loader(self, n, i, batch_size=32):
-        """Get the ith shard of the dataset assuming it is sharded into n pieces"""
-        data = self._data
-        if "world_rank" in config:
-            data = get_arr_partition(self._data, n, i)
-        else:
-            data = self._data
+        """Get the ith shard of the dataset assuming it is sharded into
+        n pieces"""
+        data = get_arr_partition(self._data, n, i)
         return torch.utils.data.DataLoader(data, batch_size)
-
 
     def __getitem__(self, idx):
         return self._convert(*ray.get(self._data[idx]))
 
-
     def __len__(self):
         return len(self._data)
-
 
     def __iter__(self):
         for id in self._data:
             yield self._convert(*ray.get(id))
-
-
