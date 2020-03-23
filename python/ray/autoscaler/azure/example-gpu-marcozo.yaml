@@ -3,11 +3,11 @@ cluster_name: default
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 0
+min_workers: 3
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 2
+max_workers: 3
 
 # The initial number of worker nodes to launch in addition to the head
 # node. When the cluster is first brought up (or when it is refreshed with a
@@ -46,24 +46,23 @@ docker:
 target_utilization_fraction: 0.8
 
 # If a node is idle for this many minutes, it will be removed.
-idle_timeout_minutes: 5
+idle_timeout_minutes: 60
 
 # Cloud-provider specific configuration.
 provider:
     type: azure
     # https://azure.microsoft.com/en-us/global-infrastructure/locations
-    location: westus2
-    resource_group: ray-cluster
+    location: southcentralus
+    resource_group: mc-ray-cluster11
     # set subscription id otherwise the default from az cli will be used
     # subscription_id: 00000000-0000-0000-0000-000000000000   
 
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
-    # you must specify paths to matching private and public key pair files
-    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
-    ssh_private_key: ~/.ssh/id_rsa
-    ssh_public_key: ~/.ssh/id_rsa.pub
+# By default Ray creates a new private keypair, but you can also use your own.
+#    ssh_private_key: /path/to/your/key.pem
+#    ssh_public_key: /path/to/your/public_key.pub
 
 # Provider-specific config for the head node, e.g. instance type. By default
 # Ray will auto-configure unspecified fields
@@ -73,13 +72,18 @@ auth:
 # Note: the Azure Python SDK expects all parameter keys to be in slug_style
 #       the styles of parameter values are not changed
 head_node:
-    azure_arm_parameters:
-        vmSize: Standard_D2s_v3
-        # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
-        imagePublisher: microsoft-dsvm
-        imageOffer: ubuntu-1804
-        imageSku: 1804-gen2
-        imageVersion: 20.02.01
+    hardware_profile:
+        vm_size: Standard_NC6
+    storage_profile:
+        os_disk:
+            create_option: FromImage
+            caching: ReadWrite
+        image_reference:
+            # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+            publisher: microsoft-dsvm
+            offer: ubuntu-1804
+            sku: 1804
+            version: 20.02.01
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
 # Ray will auto-configure unspecified fields
@@ -88,13 +92,21 @@ head_node:
 # Note: the Azure Python SDK expects all parameter keys to be in slug_style
 #       the styles of parameter values are not changed
 worker_nodes:
-    azure_arm_parameters:
-        vmSize: Standard_D2s_v3
-        # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
-        imagePublisher: microsoft-dsvm
-        imageOffer: ubuntu-1804
-        imageSku: 1804-gen2
-        imageVersion: 20.02.01
+    hardware_profile:
+        vm_size: Standard_NC6
+    storage_profile:
+        os_disk:
+            create_option: FromImage
+            caching: ReadWrite
+        image_reference:
+            # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+            publisher: microsoft-dsvm
+            offer: ubuntu-1804
+            sku: 1804
+            version: 20.02.01
+        # You can provision additional disk space as follows
+        # data_disks:
+        #    - disk_size_gb: 1024
     # run workers on spot instances by default
     priority: Spot
     eviction_policy: Deallocate
@@ -122,7 +134,8 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - echo 'conda activate py37_pytorch' >> ~/.bashrc
     - echo 'conda activate py37_tensorflow' >> ~/.bashrc
-    - pip install -U https://sdgraystorage.blob.core.windows.net/ray-wheels/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    # - pip install -U https://raywheels.blob.core.windows.net/ray/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    - pip install https://marcozopip.blob.core.windows.net/wheel/ray-0.9.0.dev0-cp37-cp37m-linux_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -138,9 +151,15 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - >
+      ulimit -n 65536; 
+      NUM_GPUS=`nvidia-smi -L | wc -l`;
+      ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --num-gpus=$NUM_GPUS
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - > 
+        ulimit -n 65536; 
+        NUM_GPUS=`nvidia-smi -L | wc -l`;
+        ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --num-gpus=$NUM_GPUS
