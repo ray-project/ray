@@ -25,12 +25,13 @@ namespace gcs {
 
 class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData> {
  public:
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable> ActorSubExecutor;
+  typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
+      ActorSubExecutor;
 
   virtual void SetUp() {
     AccessorTestBase<ActorID, ActorTableData>::SetUp();
 
-    actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->actor_table()));
+    actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->log_based_actor_table()));
 
     subscribe_ = [this](const ActorID &id, const ActorTableData &data) {
       const auto it = id_to_data_.find(id);
