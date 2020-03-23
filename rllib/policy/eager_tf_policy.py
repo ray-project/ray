@@ -458,11 +458,32 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def export_model(self, export_dir):
-            pass
+            """
+            Export tensorflow checkpoint to export_dir in eager mode,
+            the save model is in SavedModel format
+            Refer to: https://www.tensorflow.org/tutorials/keras/save_and_load#save_the_entire_model
+            """
+            try:
+                os.makedirs(export_dir)
+            except OSError as e:
+                # ignore error if export dir already exists
+                if e.errno != errno.EEXIST:
+                    raise
+
+            if hasattr(self.model, 'model'):
+                self.model.model.save(export_dir)
+            elif hasattr(self.model, 'base_model'):
+                self.model.base_model.save(export_dir)
+            else:
+                raise AttributeError('Could not find model or base model in the '
+                                     'model of the policy to export the checkpoint')
 
         @override(Policy)
-        def export_checkpoint(self, export_dir, filename_prefix="model"):
-            """Export tensorflow checkpoint to export_dir."""
+        def export_checkpoint(self, export_dir, filename_prefix="ckpt"):
+            """
+            Export tensorflow checkpoint to export_dir in eager mode,
+            Refer to: https://www.tensorflow.org/guide/eager#object-based_saving
+            """
             try:
                 os.makedirs(export_dir)
             except OSError as e:
@@ -473,12 +494,15 @@ def build_eager_tf_policy(name,
             save_path = os.path.join(export_dir, filename_prefix)
             # get the Keras model for checkpointing
             if hasattr(self.model, 'model'):
-                self.model.model.save_weights(save_path)
+                ckpt = tf.train.Checkpoint(optimizer=self._optimizer,
+                                           model=self.model.model)
             elif hasattr(self.model, 'base_model'):
-                self.model.base_model.save_weights(save_path)
+                ckpt = tf.train.Checkpoint(optimizer=self._optimizer,
+                                           model=self.model.base_model)
             else:
                 raise AttributeError('Could not find model or base model in the '
                                      'model of the policy to export the checkpoint')
+            ckpt.save(save_path)
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
