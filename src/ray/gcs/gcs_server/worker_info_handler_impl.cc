@@ -47,7 +47,7 @@ void DefaultWorkerInfoHandler::HandleRegisterWorker(
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   auto worker_info = MapFromProtobuf(request.worker_info());
 
-  auto on_done = [worker_id, reply, send_reply_callback](Status status) {
+  auto on_done = [worker_id, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to register worker " << worker_id;
     }
