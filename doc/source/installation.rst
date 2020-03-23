@@ -158,13 +158,6 @@ via pip.
 
   pip install ray[dashboard]
 
-If you are using Anaconda and have trouble installing ``psutil`` or
-``setproctitle``, the try
-
-.. code-block:: bash
-
-  conda install psutil setproctitle
-
 The command ``ray.init()`` or ``ray start --head`` will print out the address of
 the dashboard. For example,
 
