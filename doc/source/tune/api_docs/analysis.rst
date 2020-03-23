@@ -1,5 +1,8 @@
-Analysis (tune.analysis)
-========================
+Analysis/Logging (tune.analysis / tune.logger)
+==============================================
+
+Analyzing Results
+-----------------
 
 ExperimentAnalysis
 ~~~~~~~~~~~~~~~~~~

@@ -254,11 +254,9 @@ Getting Involved
    tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-design.rst
    tune-examples.rst
    tune/api_docs/overview.rst
    tune-contrib.rst
-.. tune-package-ref.rst
 
 .. toctree::
    :maxdepth: -1
