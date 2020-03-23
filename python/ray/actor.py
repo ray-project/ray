@@ -1,7 +1,6 @@
 import copy
 import inspect
 import logging
-import six
 import weakref
 
 from abc import ABCMeta, abstractmethod
@@ -963,7 +962,7 @@ Checkpoint = namedtuple(
 """A namedtuple that represents a checkpoint."""
 
 
-class Checkpointable(six.with_metaclass(ABCMeta, object)):
+class Checkpointable(metaclass=ABCMeta):
     """An interface that indicates an actor can be checkpointed."""
 
     @abstractmethod

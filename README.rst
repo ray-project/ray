@@ -182,7 +182,7 @@ RLlib Quick Start
 More Information
 ----------------
 
-- `Documentation`_, in particular `Building Ray and Contributing to Ray`_
+- `Documentation`_
 - `Tutorial`_
 - `Blog`_
 - `Ray paper`_
@@ -191,7 +191,6 @@ More Information
 - `Tune paper`_
 
 .. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
-.. _`Building Ray and Contributing to Ray`: https://ray.readthedocs.io/en/latest/development.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://ray-project.github.io/
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889

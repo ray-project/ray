@@ -155,8 +155,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsDirectCall() const;
 
-  bool IsDirectActorCreationCall() const;
-
   int MaxActorConcurrency() const;
 
   bool IsAsyncioActor() const;
