@@ -390,10 +390,11 @@ class TrialRunner:
         """Returns whether this runner has at least the specified resources."""
         return self.trial_executor.has_resources(resources)
 
-    def _stop_experiment_if_needed(self):
+    def _stop_experiment_if_needed(self, force=False):
         """Stops all trials if the user condition is satisfied."""
 
-        if self._stopper.stop_all():
+        if self._stopper.stop_all() or force:
+            self._search_alg.set_finished()
             [self.trial_executor.stop_trial(t) for t in self._trials]
             logger.info("All trials stopped due to ``stopper.stop_all``.")
 

@@ -58,6 +58,13 @@ class TuneClient:
             urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
 
+
+    def stop_experiment(self):
+        """Requests to stop trial by trial_id."""
+        response = requests.put(
+            urljoin(self._path, "experiment"))
+        return self._deserialize(response)
+
     @property
     def server_address(self):
         return self._tune_address
