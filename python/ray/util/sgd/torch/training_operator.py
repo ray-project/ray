@@ -84,6 +84,7 @@ class TrainingOperator:
                         "TrainingOperator if using multi-scheduler, "
                         "multi-model or multi-optimizer training/validation.")
         self.timers = TimerCollection()
+        self.reporters = []
         self.setup(config)
 
     def set_reporters(self, reporters):
