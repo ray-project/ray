@@ -48,7 +48,7 @@ if [[ "$platform" == "linux" ]]; then
   $PYTHON_EXE "$TEST_SCRIPT"
 
   # Run the UI test to make sure that the packaged UI works.
-  $PIP_CMD install -q aiohttp google grpcio psutil requests setproctitle
+  $PIP_CMD install -q aiohttp google grpcio requests
   $PYTHON_EXE "$UI_TEST_SCRIPT"
 
   # Check that the other wheels are present.
@@ -88,7 +88,7 @@ elif [[ "$platform" == "macosx" ]]; then
 
     if (( $(echo "$PY_MM >= 3.0" | bc) )); then
       # Run the UI test to make sure that the packaged UI works.
-      $PIP_CMD install -q aiohttp google grpcio psutil requests setproctitle
+      $PIP_CMD install -q aiohttp google grpcio requests
       $PYTHON_EXE "$UI_TEST_SCRIPT"
     fi
 

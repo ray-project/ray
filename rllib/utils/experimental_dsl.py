@@ -11,7 +11,7 @@ import time
 
 import ray
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
-from ray.util.iter_metrics import MetricsContext
+from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer, \
     ReplayBuffer
 from ray.rllib.evaluation.metrics import collect_episodes, \
@@ -109,7 +109,7 @@ def ParallelRollouts(workers: WorkerSet, mode="bulk_sync",
             while True:
                 yield workers.local_worker().sample()
 
-        return (LocalIterator(sampler, MetricsContext())
+        return (LocalIterator(sampler, SharedMetrics())
                 .for_each(report_timesteps))
 
     # Create a parallel iterator over generated experiences.
@@ -316,25 +316,21 @@ class CollectMetrics:
 
         # Add in iterator metrics.
         metrics = LocalIterator.get_metrics()
-        if metrics.parent_metrics:
-            print("TODO: support nested metrics better")
-        all_metrics = [metrics] + metrics.parent_metrics
         timers = {}
         counters = {}
         info = {}
-        for metrics in all_metrics:
-            info.update(metrics.info)
-            for k, counter in metrics.counters.items():
-                counters[k] = counter
-            for k, timer in metrics.timers.items():
-                timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
-                if timer.has_units_processed():
-                    timers["{}_throughput".format(k)] = round(
-                        timer.mean_throughput, 3)
-            res.update({
-                "num_healthy_workers": len(self.workers.remote_workers()),
-                "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
-            })
+        info.update(metrics.info)
+        for k, counter in metrics.counters.items():
+            counters[k] = counter
+        for k, timer in metrics.timers.items():
+            timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
+            if timer.has_units_processed():
+                timers["{}_throughput".format(k)] = round(
+                    timer.mean_throughput, 3)
+        res.update({
+            "num_healthy_workers": len(self.workers.remote_workers()),
+            "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
+        })
         res["timers"] = timers
         res["info"] = info
         res["info"].update(counters)
@@ -617,7 +613,7 @@ def LocalReplay(replay_buffer: ReplayBuffer, train_batch_size: int):
                 })
             yield MultiAgentBatch(samples, train_batch_size)
 
-    return LocalIterator(gen_replay, MetricsContext())
+    return LocalIterator(gen_replay, SharedMetrics())
 
 
 def Concurrently(ops: List[LocalIterator], mode="round_robin"):
@@ -743,4 +739,4 @@ def Dequeue(input_queue: queue.Queue, check=lambda: True):
                 yield _NextValueNotReady()
         raise RuntimeError("Error raised reading from queue")
 
-    return LocalIterator(base_iterator, MetricsContext())
+    return LocalIterator(base_iterator, SharedMetrics())
