@@ -102,11 +102,8 @@ class ParameterNoise(Exploration):
                     "epsilon_schedule": {
                         "type": "PiecewiseSchedule",
                         # Step function (see [2]).
-                        "endpoints": [
-                            (0, 1.0),
-                            (random_timesteps + 1, 1.0),
-                            (random_timesteps + 2, 0.01)
-                        ],
+                        "endpoints": [(0, 1.0), (random_timesteps + 1, 1.0),
+                                      (random_timesteps + 2, 0.01)],
                         "outside_value": 0.01
                     }
                 }

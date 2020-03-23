@@ -189,9 +189,9 @@ class DynamicTFPolicy(TFPolicy):
         # Using an exploration setup.
         sampled_action, sampled_action_logp = \
             self.exploration.get_exploration_action(
-            distribution_inputs=dist_inputs,
-            action_dist_class=dist_class,
-            timestep=timestep,
+                distribution_inputs=dist_inputs,
+                action_dist_class=dist_class,
+                timestep=timestep,
                 explore=explore)
 
         # Phase 1 init.
@@ -264,9 +264,8 @@ class DynamicTFPolicy(TFPolicy):
                                existing_inputs[len(self._loss_inputs) + i]))
         if rnn_inputs:
             rnn_inputs.append(("seq_lens", existing_inputs[-1]))
-        input_dict = OrderedDict(
-            [(k, existing_inputs[i])
-             for i, (k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
+        input_dict = OrderedDict([(k, existing_inputs[i]) for i, (
+            k, _) in enumerate(self._loss_inputs)] + rnn_inputs)
         instance = self.__class__(
             self.observation_space,
             self.action_space,

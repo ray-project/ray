@@ -47,8 +47,8 @@ class EpsilonGreedy(Exploration):
             PiecewiseSchedule(
                 endpoints=[
                     (0, initial_epsilon), (epsilon_timesteps, final_epsilon)],
-            outside_value=final_epsilon,
-            framework=self.framework)
+                outside_value=final_epsilon,
+                framework=self.framework)
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(

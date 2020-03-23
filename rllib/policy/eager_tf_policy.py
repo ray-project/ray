@@ -343,8 +343,8 @@ def build_eager_tf_policy(name,
                         **prev_batches)
                 # Get the exploration action from the forward results.
                 action, logp = self.exploration.get_exploration_action(
-                distribution_inputs=dist_inputs,
-                action_dist_class=self.dist_class,
+                    distribution_inputs=dist_inputs,
+                    action_dist_class=self.dist_class,
                     timestep=timestep
                     if timestep is not None else self.global_timestep,
                     explore=explore)

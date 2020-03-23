@@ -110,7 +110,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         with tf.variable_scope(POLICY_SCOPE) as scope:
             self._distribution_inputs, self.policy_model = \
                 self._build_policy_network(
-                self.cur_observations, observation_space, action_space)
+                    self.cur_observations, observation_space, action_space)
             self.policy_vars = scope_vars(scope.name)
         self.model = self.policy_model
 

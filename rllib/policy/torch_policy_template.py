@@ -118,17 +118,18 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, input_dict, state_batches, model,
+        def extra_action_out(self,
+                             input_dict,
+                             state_batches,
+                             model,
                              action_dist=None):
             with torch.no_grad():
                 if extra_action_out_fn:
                     stats_dict = extra_action_out_fn(
-                        self, input_dict, state_batches, model, action_dist
-                    )
+                        self, input_dict, state_batches, model, action_dist)
                 else:
                     stats_dict = TorchPolicy.extra_action_out(
-                        self, input_dict, state_batches, model, action_dist
-                    )
+                        self, input_dict, state_batches, model, action_dist)
                 return convert_to_non_torch_type(stats_dict)
 
         @override(TorchPolicy)
