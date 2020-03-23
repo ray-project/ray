@@ -66,8 +66,8 @@ extensions = [
 ]
 
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples"],  # path to example scripts
-    "gallery_dirs": ["auto_examples"],  # path where to save generated examples
+    "examples_dirs": ["../examples", "tune/guides"],  # path to example scripts
+    "gallery_dirs": ["auto_examples", "tune/generated_guides"],  # path where to save generated examples
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     # "filename_pattern": "tutorial.py",
