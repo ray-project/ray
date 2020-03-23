@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.msgpack.core.Preconditions;
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonPartition;
 import org.ray.streaming.python.stream.PythonStreamSource;
@@ -29,7 +29,7 @@ public class PythonGateway {
 
   private MsgPackSerializer serializer;
   private Map<String, Object> referenceMap;
-  private StreamingContext streamingContext;
+  private StreamContext streamContext;
 
   public PythonGateway() {
     serializer = new MsgPackSerializer();
@@ -37,23 +37,23 @@ public class PythonGateway {
     LOG.info("PythonGateway created");
   }
 
-  public byte[] createStreamingContext() {
-    streamingContext = StreamingContext.buildContext();
+  public byte[] createStreamContext() {
+    streamContext = StreamContext.buildContext();
     LOG.info("StreamContext created");
-    referenceMap.put(getReferenceId(streamingContext), streamingContext);
-    return serializer.serialize(getReferenceId(streamingContext));
+    referenceMap.put(getReferenceId(streamContext), streamContext);
+    return serializer.serialize(getReferenceId(streamContext));
   }
 
-  public StreamingContext getStreamingContext() {
-    return streamingContext;
+  public StreamContext getStreamContext() {
+    return streamContext;
   }
 
   public byte[] withConfig(byte[] confBytes) {
-    Preconditions.checkNotNull(streamingContext);
+    Preconditions.checkNotNull(streamContext);
     try {
       Map<String, String> config = (Map<String, String>) serializer.deserialize(confBytes);
       LOG.info("Set config {}", config);
-      streamingContext.withConfig(config);
+      streamContext.withConfig(config);
       // We can't use `return void`, that will make `ray.get()` hang forever.
       // We can't using `return new byte[0]`, that will make `ray::CoreWorker::ExecuteTask` crash.
       // So we `return new byte[1]` for method execution success.
@@ -65,10 +65,10 @@ public class PythonGateway {
   }
 
   public byte[] createPythonStreamSource(byte[] pySourceFunc) {
-    Preconditions.checkNotNull(streamingContext);
+    Preconditions.checkNotNull(streamContext);
     try {
       PythonStreamSource pythonStreamSource = PythonStreamSource.from(
-          streamingContext, PythonFunction.fromFunction(pySourceFunc));
+          streamContext, PythonFunction.fromFunction(pySourceFunc));
       referenceMap.put(getReferenceId(pythonStreamSource), pythonStreamSource);
       return serializer.serialize(getReferenceId(pythonStreamSource));
     } catch (Exception e) {
@@ -78,7 +78,7 @@ public class PythonGateway {
 
   public byte[] execute(byte[] jobNameBytes) {
     LOG.info("Starting executing");
-    streamingContext.execute((String) serializer.deserialize(jobNameBytes));
+    streamContext.execute((String) serializer.deserialize(jobNameBytes));
     // see `withConfig` method.
     return new byte[1];
   }

@@ -17,7 +17,7 @@ public class PythonGatewayTest {
   public void testPythonGateway() {
     MsgPackSerializer serializer = new MsgPackSerializer();
     PythonGateway gateway = new PythonGateway();
-    gateway.createStreamingContext();
+    gateway.createStreamContext();
     Map<String, String> config = new HashMap<>();
     config.put("k1", "v1");
     gateway.withConfig(serializer.serialize(config));
@@ -39,7 +39,7 @@ public class PythonGatewayTest {
     Object sinkPyFunc = serializer.deserialize(gateway.createPyFunc(mockSinkFunc));
     gateway.callMethod(
         serializer.serialize(Arrays.asList(partitionedStream, "sink", sinkPyFunc)));
-    List<StreamSink> streamSinks = gateway.getStreamingContext().getStreamSinks();
+    List<StreamSink> streamSinks = gateway.getStreamContext().getStreamSinks();
     assertEquals(streamSinks.size(), 1);
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(streamSinks, "py_job");
     JobGraph jobGraph = jobGraphBuilder.build();

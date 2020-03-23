@@ -1,7 +1,7 @@
 package org.ray.streaming.runtime.demo;
 
 import com.google.common.collect.ImmutableMap;
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.function.impl.SinkFunction;
@@ -29,14 +29,14 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
 
   @Test
   public void testWordCount() {
-    StreamingContext streamingContext = StreamingContext.buildContext();
+    StreamContext streamContext = StreamContext.buildContext();
     Map<String, String> config = new HashMap<>();
     config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
     config.put(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
-    streamingContext.withConfig(config);
+    streamContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");
@@ -51,7 +51,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
         .sink((SinkFunction<WordAndCount>)
             result -> wordCount.put(result.word, result.count));
 
-    streamingContext.execute("testWordCount");
+    streamContext.execute("testWordCount");
 
     // Sleep until the count for every word is computed.
     while (wordCount.size() < 2) {

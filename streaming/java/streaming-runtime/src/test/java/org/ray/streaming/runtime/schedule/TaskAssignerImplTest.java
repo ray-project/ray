@@ -3,7 +3,7 @@ package org.ray.streaming.runtime.schedule;
 import com.google.common.collect.Lists;
 import java.util.List;
 import org.ray.api.Ray;
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.DataStreamSink;
@@ -56,8 +56,8 @@ public class TaskAssignerImplTest extends BaseUnitTest {
   }
 
   public JobGraph buildDataSyncPlan() {
-    StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    StreamContext streamContext = StreamContext.buildContext();
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamContext,
         Lists.newArrayList("a", "b", "c"));
     DataStreamSink streamSink = dataStream.sink(LOGGER::info);
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));

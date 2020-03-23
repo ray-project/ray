@@ -17,7 +17,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.ActorCreationOptions.Builder;
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.stream.DataStreamSource;
@@ -150,15 +150,15 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     deleteResultFile(resultFile);
 
     Map<String, Integer> wordCount = new ConcurrentHashMap<>();
-    StreamingContext streamingContext = StreamingContext.buildContext();
+    StreamContext streamContext = StreamContext.buildContext();
     Map<String, String> config = new HashMap<>();
     config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
     config.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     config.put(Config.CHANNEL_SIZE, "100000");
-    streamingContext.withConfig(config);
+    streamContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");
@@ -177,7 +177,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
           serializeResultToFile(resultFile, wordCount);
         });
 
-    streamingContext.execute("testWordCount");
+    streamContext.execute("testWordCount");
 
     Map<String, Integer> checkWordCount =
         (Map<String, Integer>) deserializeResultFromFile(resultFile);

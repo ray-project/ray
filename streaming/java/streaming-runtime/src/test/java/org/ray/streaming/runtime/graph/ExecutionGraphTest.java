@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 
-import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.context.StreamContext;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.api.stream.StreamSink;
@@ -69,8 +69,8 @@ public class ExecutionGraphTest extends BaseUnitTest {
   }
 
   public static JobGraph buildJobGraph() {
-    StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
+    StreamContext streamContext = StreamContext.buildContext();
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
