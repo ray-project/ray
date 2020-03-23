@@ -5,13 +5,13 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/cluster_resource_scheduler.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
-#include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
 
 namespace ray {
 
@@ -74,32 +74,38 @@ class Worker {
   void WorkerLeaseGranted(const std::string &address, int port);
 
   // Setter, geter, and clear methods  for allocated_instances_.
-  void SetAllocatedInstances(std::shared_ptr<TaskResourceInstances> &allocated_instances) { 
-      allocated_instances_ = allocated_instances;
-  };                            
+  void SetAllocatedInstances(
+      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+    allocated_instances_ = allocated_instances;
+  };
 
-  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {return allocated_instances_; };    
-  
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
+    return allocated_instances_;
+  };
+
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
-  void SetLifetimeAllocatedInstances(std::shared_ptr<TaskResourceInstances> &allocated_instances) { 
+  void SetLifetimeAllocatedInstances(
+      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
-  };                                                   
-  
-  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {return lifetime_allocated_instances_; };    
-  
+  };
+
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
+    return lifetime_allocated_instances_;
+  };
+
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) { 
-    borrowed_cpu_instances_ = cpu_instances; 
+  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
+    borrowed_cpu_instances_ = cpu_instances;
   };
-  
-  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }; 
 
-  void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };   
+  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; };
+
+  void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };
 
   Task &GetAssignedTask() { return assigned_task_; };
-  
+
   void SetAssignedTask(Task &assigned_task) { assigned_task_ = assigned_task; };
 
   rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
@@ -146,10 +152,10 @@ class Worker {
   /// currently holds the lease on this worker, if any.
   rpc::Address owner_address_;
   /// The capacity of each resource instance allocated to this worker in order
-  /// to satisfy the resource requests of the task is currently running. 
+  /// to satisfy the resource requests of the task is currently running.
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
-  /// The capacity of each resource instance allocated to this worker 
-  /// when running as an actor. 
+  /// The capacity of each resource instance allocated to this worker
+  /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// CPUs borrowed by the worker. This happens in the following scenario:
   /// 1) Worker A is blocked, so it donates its CPUs back to the node.
