@@ -241,12 +241,13 @@ class ActorClassMetadata:
             the actor class definition could be exported multiple times by
             different workers.
         method_meta: The actor method metadata.
+        extra_envs: The extra envs will be set for this actor.
     """
 
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id,
                  max_reconstructions, num_cpus, num_gpus, memory,
-                 object_store_memory, resources):
+                 object_store_memory, resources, extra_envs):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -263,6 +264,7 @@ class ActorClassMetadata:
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
+        self.extra_envs = {} if extra_envs is None else extra_envs
 
 
 class ActorClass:
@@ -317,7 +319,8 @@ class ActorClass:
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id,
                                  max_reconstructions, num_cpus, num_gpus,
-                                 memory, object_store_memory, resources):
+                                 memory, object_store_memory, resources,
+                                 extra_envs):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
                 "_ray_from_function_descriptor"
@@ -346,7 +349,8 @@ class ActorClass:
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_reconstructions,
-            num_cpus, num_gpus, memory, object_store_memory, resources)
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            extra_envs)
 
         return self
 
@@ -409,7 +413,8 @@ class ActorClass:
                 is_direct_call=None,
                 max_concurrency=None,
                 name=None,
-                detached=False):
+                detached=False,
+                extra_envs=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -435,6 +440,7 @@ class ActorClass:
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver
                 exits.
+            extra_envs: The extra evns will be set for this actor.
 
         Returns:
             A handle to the newly created actor.
@@ -471,6 +477,9 @@ class ActorClass:
             raise ValueError("Detached actors must be named. "
                              "Please use Actor._remote(name='some_name') "
                              "to associate the name.")
+        
+        if extra_envs is None:
+            extra_envs = meta.extra_envs
 
         # Check whether the name is already taken.
         if name is not None:
@@ -562,7 +571,8 @@ class ActorClass:
                 detached,
                 is_asyncio,
                 # Store actor_method_cpu in actor handle's extension data.
-                extension_data=str(actor_method_cpu))
+                extension_data=str(actor_method_cpu),
+                extra_envs=extra_envs)
 
         actor_handle = ActorHandle(
             meta.language,
@@ -859,6 +869,7 @@ def modify_class(cls):
 
         def __ray_terminate__(self):
             worker = ray.worker.global_worker
+            ray.utils.reset_envs()
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
 
@@ -893,7 +904,7 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_reconstructions):
+               max_reconstructions, extra_envs):
     Class = modify_class(cls)
 
     if max_reconstructions is None:
@@ -907,7 +918,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
 
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
-        num_gpus, memory, object_store_memory, resources)
+        num_gpus, memory, object_store_memory, resources, extra_envs)
 
 
 def exit_actor():

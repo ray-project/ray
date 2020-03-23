@@ -60,7 +60,7 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 num_return_vals, max_calls, max_retries):
+                 num_return_vals, max_calls, max_retries, extra_envs):
         self._language = language
         self._function = function
         self._function_name = (
@@ -82,6 +82,7 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
+        self._extra_envs = {} if extra_envs is None else extra_envs
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray.signature.extract_signature(
@@ -148,7 +149,8 @@ class RemoteFunction:
                 memory=None,
                 object_store_memory=None,
                 resources=None,
-                max_retries=None):
+                max_retries=None,
+                extra_envs=None):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -184,6 +186,8 @@ class RemoteFunction:
             raise ValueError("Non-direct call tasks are no longer supported.")
         if max_retries is None:
             max_retries = self._max_retries
+        if extra_envs is None:
+            extra_envs = self._extra_envs
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -205,11 +209,11 @@ class RemoteFunction:
                     "cannot be executed locally."
                 object_ids = worker.local_mode_manager.execute(
                     self._function, self._function_descriptor, args, kwargs,
-                    num_return_vals)
+                    num_return_vals, extra_envs)
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._language, self._function_descriptor, list_args,
-                    num_return_vals, resources, max_retries)
+                    num_return_vals, resources, max_retries, extra_envs)
 
             if len(object_ids) == 1:
                 return object_ids[0]

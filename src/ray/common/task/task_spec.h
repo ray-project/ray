@@ -116,6 +116,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that are required to place a task on a node.
   const ResourceSet &GetRequiredPlacementResources() const;
 
+  const std::unordered_map<std::string, std::string> &GetExtraEnvs() const;
+
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
   ///

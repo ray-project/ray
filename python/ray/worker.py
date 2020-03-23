@@ -1688,7 +1688,8 @@ def make_decorator(num_return_vals=None,
                    max_calls=None,
                    max_retries=None,
                    max_reconstructions=None,
-                   worker=None):
+                   worker=None,
+                   extra_envs=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1700,7 +1701,7 @@ def make_decorator(num_return_vals=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries)
+                max_calls, max_retries, extra_envs)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1712,7 +1713,7 @@ def make_decorator(num_return_vals=None,
 
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_reconstructions)
+                                        max_reconstructions, extra_envs)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1764,6 +1765,7 @@ def remote(*args, **kwargs):
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and the maximum valid value is
       ray.ray_constants.INFINITE_RECONSTRUCTION.
+    * **extra_envs**: The extra envs setting for *remote functions* or *actors*
 
     This can be done as follows:
 
@@ -1827,6 +1829,7 @@ def remote(*args, **kwargs):
             "max_calls",
             "max_reconstructions",
             "max_retries",
+            "extra_envs"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -1847,6 +1850,7 @@ def remote(*args, **kwargs):
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
     max_retries = kwargs.get("max_retries")
+    extra_envs = kwargs.get("extra_envs")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -1858,4 +1862,5 @@ def remote(*args, **kwargs):
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
         max_retries=max_retries,
-        worker=worker)
+        worker=worker,
+        extra_envs=extra_envs)

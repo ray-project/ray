@@ -314,6 +314,39 @@ cdef deserialize_args(
     return ray.signature.recover_args(args)
 
 
+cdef prepare_extra_envs(
+        dict extra_envs,
+        unordered_map[c_string, c_string] &c_extra_envs):
+
+    if not extra_envs:
+        return ""
+
+    if "CUDA_VISIBLE_DEVICES" in extra_envs:
+            raise ValueError(
+                '"CUDA_VISIBLE_DEVICES" should not be set by user.')
+    for key, value in extra_envs.items():
+        if not (isinstance(value, str) and isinstance(value, str)):
+            raise ValueError("Extra envs key and value must be str.")
+        c_extra_envs[key.encode("ascii")] = value.encode("ascii")
+
+
+cdef dict deserialize_extra_envs(
+        unordered_map[c_string, c_string] &c_extra_envs):
+    cdef:
+        unordered_map[c_string, c_string].iterator iterator =\
+            c_extra_envs.begin()
+    if iterator == c_extra_envs.end():
+        return {}
+    
+    extra_envs = {}
+    while iterator != resource_mapping.end():
+            key = decode(dereference(iterator).first)
+            value = decode(dereference(iterator).second)
+            extra_envs[key] = value
+    
+    return extra_envs
+        
+
 cdef execute_task(
         CTaskType task_type,
         const CRayFunction &ray_function,
@@ -321,7 +354,8 @@ cdef execute_task(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
-        c_vector[shared_ptr[CRayObject]] *returns):
+        c_vector[shared_ptr[CRayObject]] *returns,
+        const unordered_map[c_string, c_string] &c_extra_envs):
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
@@ -332,9 +366,10 @@ cdef execute_task(
         JobID job_id = core_worker.get_current_job_id()
         CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
         CFiberEvent fiber_event
+        dict extra_envs = deserialize_extra_envs(c_extra_envs)
 
-    # Automatically restrict the GPUs available to this task.
-    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    # Set the extra envs and restrict the GPUs available to this task.
+    ray.utils.prepare_envs(extra_envs, ray.get_gpu_ids())
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
@@ -362,7 +397,12 @@ cdef execute_task(
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         title = "ray::{}()".format(function_name)
         next_title = "ray::IDLE"
-        function_executor = execution_info.function
+        def function_executor(*arguments, **kwarguments):
+            try:
+                return execution_info.function(*arguments, **kwarguments)
+            finally:
+                # reset the env setting for normal tasks
+                ray.utils.reset_envs()
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
@@ -496,6 +536,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns,
+        const unordered_map[c_string, c_string] &c_extra_envs,
         const CWorkerID &c_worker_id) nogil:
 
     with gil:
@@ -504,7 +545,8 @@ cdef CRayStatus task_execution_handler(
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, ray_function, c_resources, c_args,
-                             c_arg_reference_ids, c_return_ids, returns)
+                             c_arg_reference_ids, c_return_ids, c_extra_envs,
+                             returns)
             except Exception:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
@@ -817,13 +859,15 @@ cdef class CoreWorker:
                     args,
                     int num_return_vals,
                     resources,
-                    int max_retries):
+                    int max_retries,
+                    dict extra_envs):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
+            unordered_map[c_string, c_string] c_extra_envs
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -832,11 +876,12 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
+            prepare_extra_envs(extra_envs, c_extra_envs)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
-                    max_retries))
+                    max_retries, c_extra_envs))
 
             return VectorToObjectIDs(return_ids)
 
@@ -850,7 +895,8 @@ cdef class CoreWorker:
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_bool is_asyncio,
-                     c_string extension_data):
+                     c_string extension_data,
+                     dict extra_data):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -858,6 +904,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
+            unordered_map[c_string, c_string] c_extra_envs
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -865,6 +912,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
+            prepare_extra_envs(extra_envs, c_extra_envs)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
@@ -874,7 +922,7 @@ cdef class CoreWorker:
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
-                    &c_actor_id))
+                    &c_actor_id, c_extra_envs))
 
             return ActorID(c_actor_id.Binary())
 

@@ -288,6 +288,7 @@ def get_cuda_visible_devices():
 
 
 last_set_gpu_ids = None
+previous_extra_envs = None
 
 
 def set_cuda_visible_devices(gpu_ids):
@@ -303,6 +304,31 @@ def set_cuda_visible_devices(gpu_ids):
 
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
     last_set_gpu_ids = gpu_ids
+
+def prepare_envs(extra_envs, gpu_ids):
+    global previous_extra_envs
+    if extra_envs:
+        previous_extra_envs = {}
+        for k, v in extra_envs:
+            if k == "CUDA_VISIBLE_DEVICES":
+                logger.error(
+                    '"CUDA_VISIBLE_DEVICES" env should not be set by user')
+                continue
+            previous_extra_envs[k] = os.environ.get(k, None)
+            os.environ[k] = v
+
+    set_cuda_visible_devices(gpu_ids)
+
+
+def reset_envs():
+    global previous_extra_envs
+    if previous_extra_envs:
+        for k, v in previous_extra_envs:
+            if v is None:
+                del os.environ[k]
+            else:
+                os.environ[k] = v
+
 
 
 def resources_from_resource_arguments(

@@ -115,6 +115,8 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 15;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 16;
+  // extra envs
+  map<string, string> extra_envs = 17;
 }
 
 // Argument in the task.
