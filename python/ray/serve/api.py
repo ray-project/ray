@@ -9,15 +9,15 @@ import numpy as np
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_NURSERY_NAME)
-from ray.serve.global_state import (GlobalState, start_initial_state)
+from ray.serve.global_state import GlobalState, start_initial_state
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
-from ray.serve.utils import (block_until_http_ready, get_random_letters,
-                             expand)
+from ray.serve.utils import block_until_http_ready, get_random_letters, expand
 from ray.serve.exceptions import RayServeException, batch_annotation_not_found
 from ray.serve.backend_config import BackendConfig
 from ray.serve.policy import RoutePolicy
 from ray.serve.queues import Query
+
 global_state = None
 
 
@@ -61,19 +61,21 @@ def accept_batch(f):
     return f
 
 
-def init(kv_store_connector=None,
-         kv_store_path=None,
-         blocking=False,
-         start_server=True,
-         http_host=DEFAULT_HTTP_HOST,
-         http_port=DEFAULT_HTTP_PORT,
-         ray_init_kwargs={
-             "object_store_memory": int(1e8),
-             "num_cpus": max(cpu_count(), 8)
-         },
-         gc_window_seconds=3600,
-         queueing_policy=RoutePolicy.Random,
-         policy_kwargs={}):
+def init(
+        kv_store_connector=None,
+        kv_store_path=None,
+        blocking=False,
+        start_server=True,
+        http_host=DEFAULT_HTTP_HOST,
+        http_port=DEFAULT_HTTP_PORT,
+        ray_init_kwargs={
+            "object_store_memory": int(1e8),
+            "num_cpus": max(cpu_count(), 8)
+        },
+        gc_window_seconds=3600,
+        queueing_policy=RoutePolicy.Random,
+        policy_kwargs={},
+):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -127,7 +129,7 @@ def init(kv_store_connector=None,
         _, kv_store_path = mkstemp()
 
     # Serve has not been initialized, perform init sequence
-    # Todo, move the db to session_dir
+    # TODO move the db to session_dir
     #    ray.worker._global_node.address_info["session_dir"]
     def kv_store_connector(namespace):
         return SQLiteKVStore(namespace, db_path=kv_store_path)
@@ -172,8 +174,8 @@ def set_backend_config(backend_tag, backend_config):
         backend_tag(str): A registered backend.
         backend_config(BackendConfig) : Desired backend configuration.
     """
-    assert backend_tag in global_state.backend_table.list_backends(), (
-        "Backend {} is not registered.".format(backend_tag))
+    assert (backend_tag in global_state.backend_table.list_backends()
+            ), "Backend {} is not registered.".format(backend_tag)
     assert isinstance(backend_config,
                       BackendConfig), ("backend_config must be"
                                        " of instance BackendConfig")
@@ -214,8 +216,8 @@ def get_backend_config(backend_tag):
     Args:
         backend_tag(str): A registered backend.
     """
-    assert backend_tag in global_state.backend_table.list_backends(), (
-        "Backend {} is not registered.".format(backend_tag))
+    assert (backend_tag in global_state.backend_table.list_backends()
+            ), "Backend {} is not registered.".format(backend_tag)
     backend_config_dict = global_state.backend_table.get_info(backend_tag)
     return BackendConfig(**backend_config_dict)
 
@@ -252,8 +254,7 @@ def create_backend(func_or_class,
                                        " of instance BackendConfig")
 
     # Make sure the batch size is correct
-    should_accept_batch = (True if backend_config.max_batch_size is not None
-                           else False)
+    should_accept_batch = backend_config.max_batch_size is not None
     if should_accept_batch and not _backend_accept_batch(func_or_class):
         raise batch_annotation_not_found
     if _backend_accept_batch(func_or_class):
@@ -270,7 +271,10 @@ def create_backend(func_or_class,
         # on the left to make sure its methods are not overriden.
         @ray.remote
         class CustomActor(RayServeMixin, func_or_class):
-            pass
+            @wraps(func_or_class.__init__)
+            def __init__(self, *args, **kwargs):
+                init()  # serve init
+                super().__init__(*args, **kwargs)
 
         arg_list = actor_init_args
         # ignore lint on lambda expression
@@ -299,8 +303,8 @@ def create_backend(func_or_class,
 
 
 def _start_replica(backend_tag):
-    assert backend_tag in global_state.backend_table.list_backends(), (
-        "Backend {} is not registered.".format(backend_tag))
+    assert (backend_tag in global_state.backend_table.list_backends()
+            ), "Backend {} is not registered.".format(backend_tag)
 
     replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
 
@@ -330,11 +334,12 @@ def _start_replica(backend_tag):
 
 
 def _remove_replica(backend_tag):
-    assert backend_tag in global_state.backend_table.list_backends(), (
-        "Backend {} is not registered.".format(backend_tag))
-    assert len(global_state.backend_table.list_replicas(backend_tag)) > 0, (
-        "Backend {} does not have enough replicas to be removed.".format(
-            backend_tag))
+    assert (backend_tag in global_state.backend_table.list_backends()
+            ), "Backend {} is not registered.".format(backend_tag)
+    assert (
+        len(global_state.backend_table.list_replicas(backend_tag)) >
+        0), "Backend {} does not have enough replicas to be removed.".format(
+            backend_tag)
 
     replica_tag = global_state.backend_table.remove_replica(backend_tag)
     [replica_handle] = ray.get(
@@ -350,8 +355,9 @@ def _remove_replica(backend_tag):
 
     # Remove the replica from router.
     # This will also destory the actor handle.
-    ray.get(global_state.init_or_get_router()
-            .remove_and_destory_replica.remote(backend_tag, replica_handle))
+    ray.get(
+        global_state.init_or_get_router().remove_and_destory_replica.remote(
+            backend_tag, replica_handle))
 
 
 @_ensure_connected
@@ -362,8 +368,8 @@ def _scale(backend_tag, num_replicas):
         backend_tag (str): A registered backend.
         num_replicas (int): Desired number of replicas
     """
-    assert backend_tag in global_state.backend_table.list_backends(), (
-        "Backend {} is not registered.".format(backend_tag))
+    assert (backend_tag in global_state.backend_table.list_backends()
+            ), "Backend {} is not registered.".format(backend_tag)
     assert num_replicas >= 0, ("Number of replicas must be"
                                " greater than or equal to 0.")
 
@@ -433,7 +439,10 @@ def split(endpoint_name, traffic_policy_dictionary):
 
 
 @_ensure_connected
-def get_handle(endpoint_name, relative_slo_ms=None, absolute_slo_ms=None):
+def get_handle(endpoint_name,
+               relative_slo_ms=None,
+               absolute_slo_ms=None,
+               missing_ok=False):
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
@@ -442,18 +451,25 @@ def get_handle(endpoint_name, relative_slo_ms=None, absolute_slo_ms=None):
             queries fired using this handle. (Default: None)
         absolute_slo_ms(float): Specify absolute deadline in milliseconds for
             queries fired using this handle. (Default: None)
+        missing_ok (bool): If true, skip the check for the endpoint existence.
 
     Returns:
         RayServeHandle
     """
-    assert endpoint_name in expand(
-        global_state.route_table.list_service(include_headless=True).values())
+    if not missing_ok:
+        assert endpoint_name in expand(
+            global_state.route_table.list_service(
+                include_headless=True).values())
 
     # Delay import due to it's dependency on global_state
     from ray.serve.handle import RayServeHandle
 
-    return RayServeHandle(global_state.init_or_get_router(), endpoint_name,
-                          relative_slo_ms, absolute_slo_ms)
+    return RayServeHandle(
+        global_state.init_or_get_router(),
+        endpoint_name,
+        relative_slo_ms,
+        absolute_slo_ms,
+    )
 
 
 @_ensure_connected

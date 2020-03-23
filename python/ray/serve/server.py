@@ -26,6 +26,7 @@ class HTTPProxy:
 
         # Delay import due to GlobalState depends on HTTP actor
         from ray.serve.global_state import GlobalState
+
         self.serve_global_state = GlobalState()
         self.route_table_cache = dict()
 
@@ -98,9 +99,7 @@ class HTTPProxy:
     def _make_error_sender(self, scope, receive, send):
         async def sender(error_message, status_code):
             await Response(
-                {
-                    "error": error_message
-                }, status_code=status_code)(scope, receive, send)
+                error_message, status_code=status_code)(scope, receive, send)
 
         return sender
 
@@ -152,22 +151,21 @@ class HTTPProxy:
         # https://github.com/ray-project/ray/issues/6944
         # TODO(alind):  remove list enclosing after issue is fixed
         args = (scope, [http_body_bytes])
+        headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_in_object = RequestMetadata(
             endpoint_name,
             TaskContext.Web,
             relative_slo_ms=relative_slo_ms,
-            absolute_slo_ms=absolute_slo_ms)
+            absolute_slo_ms=absolute_slo_ms,
+            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
 
-        actual_result = await (self.serve_global_state.init_or_get_router()
-                               .enqueue_request.remote(request_in_object,
-                                                       *args))
-        result = actual_result
-
-        if isinstance(result, ray.exceptions.RayTaskError):
-            error_message = "Internal Error. Traceback: {}.".format(result)
-            await error_sender(error_message, 500)
-        else:
+        try:
+            result = await (self.serve_global_state.init_or_get_router()
+                            .enqueue_request.remote(request_in_object, *args))
             await Response(result)(scope, receive, send)
+        except Exception as e:
+            error_message = "Internal Error. Traceback: {}.".format(e)
+            await error_sender(error_message, 500)
 
 
 @ray.remote

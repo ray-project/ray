@@ -78,7 +78,7 @@ class ServeEncoder(json.JSONEncoder):
         if isinstance(o, bytes):
             return o.decode("utf-8")
         if pydantic is not None and isinstance(o, pydantic.BaseModel):
-            return o.json()
+            return o.dict()
         if isinstance(o, Exception):
             return str(o)
         if isinstance(o, np.ndarray):
