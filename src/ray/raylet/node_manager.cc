@@ -2832,7 +2832,6 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // So here we check for direct actor creation task explicitly to allow this case.
     auto iter = waiting_task_id_set.begin();
     while (iter != waiting_task_id_set.end()) {
-      // XXX
       if (IsActorCreationTask(*iter)) {
         RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
                        << " when handling object missing for " << object_id;

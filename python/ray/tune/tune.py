@@ -231,7 +231,6 @@ def run(run_or_experiment,
         >>>     }
         >>> )
     """
-    pass  # XXX: force CI
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
