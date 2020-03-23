@@ -129,12 +129,12 @@ LinUCBTSPolicy = build_torch_policy(
 
 UCB_CONFIG = copy.copy(DEFAULT_CONFIG)
 UCB_CONFIG["exploration_config"] = {
-    "type": "ray.rllib.contrib.bandits.exploration.UCB"
+    "type": UCB_PATH
 }
 
 TS_CONFIG = copy.copy(DEFAULT_CONFIG)
 TS_CONFIG["exploration_config"] = {
-    "type": "ray.rllib.contrib.bandits.exploration.ThompsonSampling"
+    "type": TS_PATH
 }
 
 
