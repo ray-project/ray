@@ -106,7 +106,7 @@ Event &EventQueue::Front() {
 }
 
 EventService::EventService(uint32_t event_size)
-    : worker_id_(CoreWorkerProcess::GetCoreWorker().GetWorkerID()),
+    : worker_id_(CoreWorkerProcess::IsInitialized() ? CoreWorkerProcess::GetCoreWorker().GetWorkerID() : WorkerID::Nil()),
       event_queue_(std::make_shared<EventQueue>(event_size)),
       stop_flag_(false) {}
 EventService::~EventService() {
@@ -157,7 +157,9 @@ void EventService::Execute(Event &event) {
 }
 
 void EventService::LoopThreadHandler() {
-  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id_);
+  if (CoreWorkerProcess::IsInitialized()) {
+    CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id_);
+  }
   while (true) {
     if (stop_flag_) {
       break;

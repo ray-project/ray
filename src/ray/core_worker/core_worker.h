@@ -159,6 +159,9 @@ class CoreWorkerProcess {
   /// This API is for driver only.
   static void Shutdown();
 
+  /// Where the current process has initialized for core worker.
+  static bool IsInitialized();
+
   /// Get the core worker associated with the current thread.
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
