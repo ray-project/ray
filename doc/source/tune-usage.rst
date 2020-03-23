@@ -660,42 +660,6 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
         sync_to_cloud=custom_sync_func,
     )
 
-Tune Client API
----------------
-
-You can interact with an ongoing experiment with the Tune Client API. The Tune Client API is organized around REST, which includes resource-oriented URLs, accepts form-encoded requests, returns JSON-encoded responses, and uses standard HTTP protocol.
-
-To allow Tune to receive and respond to your API calls, you have to start your experiment with ``with_server=True``:
-
-.. code-block:: python
-
-    tune.run(..., with_server=True, server_port=4321)
-
-The easiest way to use the Tune Client API is with the built-in TuneClient. To use TuneClient, verify that you have the ``requests`` library installed:
-
-.. code-block:: bash
-
-    $ pip install requests
-
-Then, on the client side, you can use the following class. If on a cluster, you may want to forward this port (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
-
-.. autoclass:: ray.tune.web_server.TuneClient
-    :members:
-
-For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
-
-The API also supports curl. Here are the examples for getting trials (``GET /trials/[:id]``):
-
-.. code-block:: bash
-
-    $ curl http://<address>:<port>/trials
-    $ curl http://<address>:<port>/trials/<trial_id>
-
-And stopping a trial (``PUT /trials/:id``):
-
-.. code-block:: bash
-
-    $ curl -X PUT http://<address>:<port>/trials/<trial_id>
 
 Debugging
 ---------
@@ -782,46 +746,6 @@ The default reporting style can also be overriden more broadly by extending the 
             print("\n".join([str(trial) for trial in trials]))
 
     tune.run(my_trainable, progress_reporter=CustomReporter())
-
-Tune CLI (Experimental)
------------------------
-
-``tune`` has an easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray. To do this, verify that you have the ``tabulate`` library installed:
-
-.. code-block:: bash
-
-    $ pip install tabulate
-
-Here are a few examples of command line calls.
-
-- ``tune list-trials``: List tabular information about trials within an experiment. Empty columns will be dropped by default. Add the ``--sort`` flag to sort the output by specific columns. Add the ``--filter`` flag to filter the output in the format ``"<column> <operator> <value>"``. Add the ``--output`` flag to write the trial information to a specific file (CSV or Pickle). Add the ``--columns`` and ``--result-columns`` flags to select specific columns to display.
-
-.. code-block:: bash
-
-    $ tune list-trials [EXPERIMENT_DIR] --output note.csv
-
-    +------------------+-----------------------+------------+
-    | trainable_name   | experiment_tag        | trial_id   |
-    |------------------+-----------------------+------------|
-    | MyTrainableClass | 0_height=40,width=37  | 87b54a1d   |
-    | MyTrainableClass | 1_height=21,width=70  | 23b89036   |
-    | MyTrainableClass | 2_height=99,width=90  | 518dbe95   |
-    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
-    | MyTrainableClass | 4_height=90,width=69  | ae4e02fb   |
-    +------------------+-----------------------+------------+
-    Dropped columns: ['status', 'last_update_time']
-    Please increase your terminal size to view remaining columns.
-    Output saved at: note.csv
-
-    $ tune list-trials [EXPERIMENT_DIR] --filter "trial_id == 7b99a28a"
-
-    +------------------+-----------------------+------------+
-    | trainable_name   | experiment_tag        | trial_id   |
-    |------------------+-----------------------+------------|
-    | MyTrainableClass | 3_height=54,width=21  | 7b99a28a   |
-    +------------------+-----------------------+------------+
-    Dropped columns: ['status', 'last_update_time']
-    Please increase your terminal size to view remaining columns.
 
 
 Further Questions or Issues?

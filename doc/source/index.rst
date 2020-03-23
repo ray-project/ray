@@ -256,8 +256,9 @@ Getting Involved
    tune-searchalg.rst
    tune-design.rst
    tune-examples.rst
-   tune-package-ref.rst
+   tune/api_docs/overview.rst
    tune-contrib.rst
+.. tune-package-ref.rst
 
 .. toctree::
    :maxdepth: -1
