@@ -19,10 +19,6 @@ For Ubuntu users, run the following commands:
   sudo apt-get update
   sudo apt-get install -y maven build-essential curl unzip psmisc python # we install python here because python2 is required to build the webui
 
-  # If you are not using Anaconda, you need the following.
-  sudo apt-get install python-dev  # For Python 2.
-  sudo apt-get install python3-dev  # For Python 3.
-
   pip install cython==0.29.0
 
 For macOS users, run the following commands:

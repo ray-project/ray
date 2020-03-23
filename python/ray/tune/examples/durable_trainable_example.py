@@ -8,7 +8,7 @@ from ray import tune
 from ray.tune import DurableTrainable
 from ray.tune.sync_client import get_sync_client
 
-import cloudpickle
+from ray import cloudpickle
 
 logger = logging.getLogger(__name__)
 
