@@ -260,8 +260,9 @@ cdef int prepare_resources(
     return 0
 
 
-cdef void prepare_args(
-        CoreWorker core_worker, args, c_vector[CTaskArg] *args_vector):
+cdef prepare_args(
+        CoreWorker core_worker,
+        Language language, args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
         int64_t put_threshold
@@ -277,6 +278,13 @@ cdef void prepare_args(
 
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
+            metadata = serialized_arg.metadata
+            if language != Language.PYTHON:
+                if metadata not in [
+                        ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
+                        ray_constants.OBJECT_METADATA_TYPE_RAW]:
+                    raise Exception("Can't transfer {} data to {}".format(
+                        metadata, language))
             size = serialized_arg.total_bytes
 
             # TODO(edoakes): any objects containing ObjectIDs are spilled to
@@ -291,7 +299,7 @@ cdef void prepare_args(
                     inlined_ids.push_back((<ObjectID>object_id).native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(serialized_arg.metadata),
+                        arg_data, string_to_buffer(metadata),
                         inlined_ids)))
                 inlined_ids.clear()
             else:
@@ -836,7 +844,7 @@ cdef class CoreWorker:
                 num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, args, &args_vector)
+            prepare_args(self, language, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
@@ -869,7 +877,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, args, &args_vector)
+            prepare_args(self, language, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
@@ -905,7 +913,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, args, &args_vector)
+            prepare_args(self, language, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitActorTask(
