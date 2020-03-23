@@ -1,7 +1,8 @@
 """Eager mode TF policy built using build_tf_policy().
 
 It supports both traced and non-traced eager execution modes."""
-
+import os
+import errno
 import logging
 import functools
 import numpy as np
@@ -460,8 +461,29 @@ def build_eager_tf_policy(name,
             pass
 
         @override(Policy)
-        def export_checkpoint(self, export_dir):
-            pass
+        def export_checkpoint(self, export_dir, filename_prefix="model"):
+            """Export tensorflow checkpoint to export_dir."""
+            try:
+                os.makedirs(export_dir)
+            except OSError as e:
+                # ignore error if export dir already exists
+                if e.errno != errno.EEXIST:
+                    raise
+
+            save_path = os.path.join(export_dir, filename_prefix)
+
+            if hasattr(self.model, 'model'):
+                # self.model.base_model.save_weights(save_path)
+                ckpt = tf.train.Checkpoint(optimizer=self._optimizer,
+                                           model=self.model.model)
+            elif hasattr(self.model, 'base_model'):
+                ckpt = tf.train.Checkpoint(optimizer=self._optimizer,
+                                           model=self.base_model.model)
+            else:
+                raise AttributeError('Could not find model or base model in the '
+                                     'model of the policy to export the checkpoint')
+
+            ckpt.save(save_path)
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
