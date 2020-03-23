@@ -11,6 +11,7 @@ ExperimentAnalysis
     :show-inheritance:
     :members:
 
+.. _analysis-docstring:
 
 Analysis
 ~~~~~~~~
@@ -18,9 +19,12 @@ Analysis
 .. autoclass:: ray.tune.Analysis
     :members:
 
+.. _loggers-docstring:
 
 Loggers (tune.logger)
 ---------------------
+
+.. _logger-interface:
 
 Logger
 ~~~~~~

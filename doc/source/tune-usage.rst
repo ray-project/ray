@@ -25,7 +25,7 @@ Training can be done with either the Trainable **Class API** or **function-based
 Trainable API
 ~~~~~~~~~~~~~
 
-The class-based API will require users to subclass ``ray.tune.Trainable``. The Trainable interface `can be found here <tune-package-ref.html#ray.tune.Trainable>`__.
+The class-based API will require users to subclass ``ray.tune.Trainable``. See the API documentation: :ref:`trainable-docstring`.
 
 Here is an example:
 
@@ -63,7 +63,7 @@ User-defined functions will need to have following signature and call ``tune.tra
             tune.track.log(**kwargs)
 
 
-Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be `found here <tune-package-ref.html#module-ray.tune.track>`__.
+Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller. ``tune.track`` documentation can be found here: :ref:`track-docstring`.
 
 Both the Trainable and function-based API will have `autofilled metrics <tune-usage.html#auto-filled-results>`__ in addition to the metrics reported.
 
@@ -185,7 +185,7 @@ You may want to get a summary of multiple experiments that point to the same ``l
     from ray.tune import Analysis
     analysis = Analysis("~/ray_results/example-experiment")
 
-See the `full documentation <tune-package-ref.html#ray.tune.Analysis>`_ for the ``Analysis`` object.
+See the full documentation for the ``Analysis`` object: :ref:`analysis-docstring`.
 
 
 Tune Search Space (Default)
@@ -209,7 +209,7 @@ Use ``tune.sample_from(<func>)`` to sample a value for a hyperparameter. The ``f
         }
     )
 
-Tune provides a couple helper functions for common parameter distributions, wrapping numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See the `Package Reference <tune-package-ref.html#ray.tune.uniform>`_ for more details.
+Tune provides a couple helper functions for common parameter distributions, wrapping numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See :ref:`tune-sample-docs` for more details.
 
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
@@ -616,7 +616,7 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
-These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+These loggers will be called along with the default Tune loggers. All loggers must inherit the Logger interface (:ref:`logger-interface`). Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
 MLFlow
 ~~~~~~

@@ -1,6 +1,11 @@
 Grid/Random Search
 ==================
 
+.. _tune-sample-docs:
+
+Random Distributions
+--------------------
+
 tune.randn
 ~~~~~~~~~~
 
@@ -25,6 +30,9 @@ tune.sample_from
 ~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.sample_from
+
+Grid Search
+-----------
 
 tune.grid_search
 ~~~~~~~~~~~~~~~~

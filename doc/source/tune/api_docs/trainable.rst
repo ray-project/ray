@@ -1,6 +1,8 @@
 Training (tune.Trainable, tune.track)
 =====================================
 
+.. _trainable-docstring:
+
 tune.Trainable
 ~~~~~~~~~~~~~~
 
@@ -13,6 +15,8 @@ tune.DurableTrainable
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.tune.DurableTrainable
+
+.. _track-docstring:
 
 tune.track
 ~~~~~~~~~~

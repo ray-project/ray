@@ -1,6 +1,13 @@
 Search Algorithms (tune.suggest)
 ================================
 
+.. _repeater-doc:
+
+Repeater
+--------
+
+.. autoclass:: ray.tune.suggest.Repeater
+
 AxSearch
 --------
 
@@ -54,8 +61,3 @@ SuggestionAlgorithm
     :members:
     :private-members:
     :show-inheritance:
-
-Repeater
---------
-
-.. autoclass:: ray.tune.suggest.Repeater
