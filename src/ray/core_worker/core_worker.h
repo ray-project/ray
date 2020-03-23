@@ -582,7 +582,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param spec[in] task_spec Task specification.
   /// \return Status.
-  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec);
+  Status ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                              const ActorID &actor_id = ActorID::Nil());
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),

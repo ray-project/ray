@@ -717,7 +717,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  RAY_LOG(INFO) << "Coreworker delete called... :(";
   // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
   // Should we just delete locally or ping the owner and delete globally?
   reference_counter_->DeleteReferences(object_ids);
@@ -798,8 +797,6 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   if (local_mode_enabled_) {
     return ExecuteTaskLocalMode(task_spec);
-    // Restore worker_context here
-    // return Status::NotImplemented("No core worker submit");
   } else if (task_options.is_direct_call) {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
     return direct_task_submitter_->SubmitTask(task_spec);
@@ -893,8 +890,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (local_mode_enabled_) {
-    SetActorId(actor_id);
-    return ExecuteTaskLocalMode(task_spec);
+    return ExecuteTaskLocalMode(task_spec, actor_id);
   }
   if (is_direct_call) {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec);
@@ -1014,9 +1010,8 @@ Status CoreWorker::AllocateReturnObjects(
   return_objects->resize(object_ids.size(), nullptr);
 
   absl::optional<rpc::Address> owner_address;
-  if (!worker_context_.GetCurrentTask()) {
+  if (local_mode_enabled_) {
     owner_address = rpc::Address();
-    RAY_LOG(ERROR) << "None existed";
   } else {
     absl::optional<rpc::Address> owner_address(
         worker_context_.GetCurrentTask()->CallerAddress());
@@ -1024,7 +1019,7 @@ Status CoreWorker::AllocateReturnObjects(
     if (owned_by_us) {
       owner_address.reset();
     }
-    RAY_LOG(ERROR) << "survived some dangers";
+    RAY_LOG(INFO) << "survived some dangers";
   }
 
   for (size_t i = 0; i < object_ids.size(); i++) {
@@ -1075,8 +1070,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     resource_ids_ = resource_ids;
   }
   // Remove Importance of
-  // worker_context_.SetCurrentTask(task_spec);
-  // SetCurrentTaskId(task_spec.TaskId());
+  if (!local_mode_enabled_) {
+    worker_context_.SetCurrentTask(task_spec);
+    SetCurrentTaskId(task_spec.TaskId());
+  }
   RAY_LOG(INFO) << "in execute task1.2";
   {
     absl::MutexLock lock(&mutex_);
@@ -1124,7 +1121,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
   absl::optional<rpc::Address> caller_address;
-  if (!worker_context_.GetCurrentTask()) {
+  if (local_mode_enabled_) {
     caller_address = absl::optional<rpc::Address>();
   } else {
     absl::optional<rpc::Address> caller_address(
@@ -1174,8 +1171,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
            "reference counting, and may cause problems in the object store.";
   }
 
-  // SetCurrentTaskId(TaskID::Nil());
-  // worker_context_.ResetCurrentTask(task_spec);
+  if (!local_mode_enabled_) {
+    SetCurrentTaskId(TaskID::Nil());
+    worker_context_.ResetCurrentTask(task_spec);
+  }
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = TaskSpecification();
@@ -1184,7 +1183,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   return status;
 }
 
-Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec) {
+// TODO(ilr): Restore worker_context here
+Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
+                                        const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
   auto return_objects = std::vector<std::shared_ptr<RayObject>>();
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
@@ -1192,7 +1193,12 @@ Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec) {
     reference_counter_->AddOwnedObject(task_spec.ReturnId(i, TaskTransportType::DIRECT),
                                        /*inner_ids=*/{}, GetCallerId(), rpc_address_);
   }
-  return ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs);
+  auto old_id = GetActorId();
+  SetActorId(actor_id);
+  auto status = ExecuteTask(task_spec, resource_ids, &return_objects, &borrowed_refs);
+  SetActorId(old_id);
+  // TODO(ilr): Maybe not necessary
+  return status;
 }
 
 Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
@@ -1480,7 +1486,9 @@ void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_cal
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
-  // RAY_CHECK(actor_id_.IsNil());
+  if (!local_mode_enabled_) {
+    RAY_CHECK(actor_id_.IsNil());
+  }
   actor_id_ = actor_id;
 }
 
