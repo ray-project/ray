@@ -40,21 +40,17 @@ class LinearDiscreteEnv(gym.Env):
 
         self._elapsed_steps = 0
         self._current_context = None
-        self._done = False
 
     def _sample_context(self):
         return np.random.normal(scale=1 / 3, size=(self.feature_dim, ))
 
     def reset(self):
         self._current_context = self._sample_context()
-        self._done = False
         return self._current_context
 
     def step(self, action):
         assert self._elapsed_steps is not None,\
             "Cannot call env.step() beforecalling reset()"
-        assert self._done is False,\
-            "Episode has ended. Please call env.reset() first"
         assert action < self.num_actions, "Invalid action."
 
         action = int(action)
@@ -70,8 +66,7 @@ class LinearDiscreteEnv(gym.Env):
 
         reward = rewards[action]
         self._current_context = self._sample_context()
-        self._done = False
-        return self._current_context, reward, self._done, {
+        return self._current_context, reward, True, {
             "regret": regret,
             "opt_action": opt_action
         }
@@ -115,7 +110,6 @@ class WheelBanditEnv(gym.Env):
         self.means = [self.mu_1] + 4 * [self.mu_2]
         self._elapsed_steps = 0
         self._current_context = None
-        self._done = False
 
     def _sample_context(self):
         while True:
@@ -125,14 +119,11 @@ class WheelBanditEnv(gym.Env):
 
     def reset(self):
         self._current_context = self._sample_context()
-        self._done = False
         return self._current_context
 
     def step(self, action):
         assert self._elapsed_steps is not None,\
             "Cannot call env.step() before calling reset()"
-        assert self._done is False,\
-            "Episode has ended. Please call env.reset() first"
 
         action = int(action)
         self._elapsed_steps += 1
@@ -171,8 +162,7 @@ class WheelBanditEnv(gym.Env):
         regret = rewards[opt_action] - reward
 
         self._current_context = self._sample_context()
-        self._done = False
-        return self._current_context, reward, self._done, {
+        return self._current_context, reward, True, {
             "regret": regret,
             "opt_action": opt_action
         }

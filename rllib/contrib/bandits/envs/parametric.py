@@ -124,7 +124,6 @@ class ParametricItemRecoEnv(gym.Env):
             regret = np.max(scores) - reward
             self.total_regret += regret
 
-            done = False
             info = {"regret": regret}
 
             self.current_user_id = np.random.randint(0, self.num_users)
@@ -137,7 +136,7 @@ class ParametricItemRecoEnv(gym.Env):
             }
             if self.num_users > 1:
                 obs["user"] = self.current_user_id
-            return obs, reward, done, info
+            return obs, reward, True, info
         else:
             # TODO(saurabh3949):Handle slate recommendation using a click model
             return None

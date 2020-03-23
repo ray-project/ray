@@ -1,4 +1,5 @@
 import copy
+import logging
 import time
 from enum import Enum
 
@@ -10,6 +11,7 @@ from ray.rllib.contrib.bandits.models.linear_regression import \
     DiscreteLinearModelThompsonSampling, \
     DiscreteLinearModelUCB, DiscreteLinearModel, \
     ParametricLinearModelThompsonSampling, ParametricLinearModelUCB
+from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
@@ -18,6 +20,8 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.annotations import override
 
+logger = logging.getLogger(__name__)
+
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
@@ -25,8 +29,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     "use_pytorch": True,
 
-    # Do online learning
-    "sample_batch_size": 1,
+    # Do online learning one step at a time.
+    "rollout_fragment_length": 1,
     "train_batch_size": 1,
 
     # Bandits cant afford to do one timestep per iteration as it is extremely
@@ -52,9 +56,17 @@ class BanditPolicyOverrides:
                                         {"type": "StochasticSampling"})
         if exploration_config[
                 "type"] == ImplicitExploration.ThompsonSampling.name:
-            exploration = ThompsonSampling(action_space, framework="torch")
+            exploration = ThompsonSampling(
+                action_space,
+                config.get("num_workers", 0),
+                config.get("worker_index", 0),
+                framework="torch")
         elif exploration_config["type"] == ImplicitExploration.UCB.name:
-            exploration = UCB(action_space, framework="torch")
+            exploration = UCB(
+                action_space,
+                config.get("num_workers", 0),
+                config.get("worker_index", 0),
+                framework="torch")
         else:
             return Policy._create_exploration(self, action_space, config)
 
@@ -75,10 +87,17 @@ class BanditPolicyOverrides:
                                train_batch[SampleBatch.REWARDS],
                                train_batch[SampleBatch.ACTIONS])
 
-        regret = sum(
-            row["infos"]["regret"] for row in postprocessed_batch.rows())
-        self.regrets.append(regret)
-        info["cumulative_regret"] = sum(self.regrets)
+        infos = postprocessed_batch["infos"]
+        if "regret" in infos[0]:
+            regret = sum(
+                row["infos"]["regret"] for row in postprocessed_batch.rows())
+            self.regrets.append(regret)
+            info["cumulative_regret"] = sum(self.regrets)
+        else:
+            if log_once("no_regrets"):
+                logger.warning(
+                    "The env did not report `regret` values in "
+                    "its `info` return, ignoring.")
         info["update_latency"] = time.time() - start
         return {LEARNER_STATS_KEY: info}
 
@@ -145,10 +164,11 @@ TS_CONFIG["exploration_config"] = {"type": "ThompsonSampling"}
 
 
 def get_stats(trainer):
+    env_metrics = trainer.collect_metrics()
     stats = trainer.optimizer.stats()
     # Uncomment if regret at each time step is needed
     # stats.update({"all_regrets": trainer.get_policy().regrets})
-    return stats
+    return dict(env_metrics, **stats)
 
 
 LinTSTrainer = build_trainer(
