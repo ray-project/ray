@@ -1,13 +1,11 @@
-Tune Design Guide
-=================
+Tune Internals
+==============
 
-In this part of the documentation, we overview the design and architecture
-of Tune.
+This page overviews the design and architectures of Tune and provides docstrings for internal components.
 
-.. image:: images/tune-arch.png
+.. image:: ../../images/tune-arch.png
 
 The blue boxes refer to internal components, and green boxes are public-facing.
-Please refer to the package reference for `user-facing APIs <tune-package-ref.html>`__.
 
 Main Components
 ---------------
@@ -32,6 +30,8 @@ The TrialRunner is also in charge of checkpointing the entire experiment executi
 upon each loop iteration. This allows users to restart their experiment
 in case of machine failure.
 
+See the docstring at :ref:`trialrunner-docstring`.
+
 Trial objects
 ~~~~~~~~~~~~~
 [`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__]
@@ -41,11 +41,16 @@ distributed/remote. Trial objects transition among
 the following states: ``"PENDING"``, ``"RUNNING"``, ``"PAUSED"``, ``"ERRORED"``, and
 ``"TERMINATED"``.
 
+See the docstring at :ref:`trial-docstring`.
+
 TrialExecutor
 ~~~~~~~~~~~~~
 [`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_executor.py>`__]
 The TrialExecutor is a component that interacts with the underlying execution framework.
 It also manages resources to ensure the cluster isn't overloaded. By default, the TrialExecutor uses Ray to execute trials.
+
+See the docstring at :ref:`raytrialexecutor-docstring`.
+
 
 SearchAlg
 ~~~~~~~~~
@@ -73,3 +78,51 @@ Trainable interface. If a function is provided. it is wrapped into a
 Trainable class, and the function itself is executed on a separate thread.
 
 Trainables will execute one step of ``train()`` before notifying the TrialRunner.
+
+
+.. _raytrialexecutor-docstring:
+
+RayTrialExecutor
+----------------
+
+.. autoclass:: ray.tune.ray_trial_executor.RayTrialExecutor
+    :show-inheritance:
+    :members:
+
+.. _trialexecutor-docstring:
+
+TrialExecutor
+-------------
+
+.. autoclass:: ray.tune.trial_executor.TrialExecutor
+    :members:
+
+.. _trialrunner-docstring:
+
+TrialRunner
+-----------
+
+.. autoclass:: ray.tune.trial_runner.TrialRunner
+
+.. _trial-docstring:
+
+Trial
+-----
+
+.. autoclass:: ray.tune.trial.Trial
+
+.. _resources-docstring:
+
+Resources
+---------
+
+.. autoclass:: ray.tune.resources.Resources
+
+
+
+Registry
+--------
+
+.. autofunction:: ray.tune.register_trainable
+
+.. autofunction:: ray.tune.register_env
