@@ -174,7 +174,6 @@ requires = [
     "numpy >= 1.16",
     "filelock",
     "jsonschema",
-    "funcsigs",
     "click",
     "colorama",
     "packaging",
