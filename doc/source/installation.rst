@@ -152,10 +152,12 @@ Installing Ray with Anaconda
 If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
+
   conda create --name ray
   conda activate ray
   conda install --name ray pip
   pip install ray
+
 Use ``pip list`` to confirm that ``ray`` is installed.
 
 .. _`Anaconda`: https://www.anaconda.com/
