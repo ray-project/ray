@@ -471,19 +471,14 @@ def build_eager_tf_policy(name,
                     raise
 
             save_path = os.path.join(export_dir, filename_prefix)
-
+            # get the Keras model for checkpointing
             if hasattr(self.model, 'model'):
-                # self.model.base_model.save_weights(save_path)
-                ckpt = tf.train.Checkpoint(optimizer=self._optimizer,
-                                           model=self.model.model)
+                self.model.model.save_weights(save_path)
             elif hasattr(self.model, 'base_model'):
-                ckpt = tf.train.Checkpoint(optimizer=self._optimizer,
-                                           model=self.base_model.model)
+                self.model.base_model.save_weights(save_path)
             else:
                 raise AttributeError('Could not find model or base model in the '
                                      'model of the policy to export the checkpoint')
-
-            ckpt.save(save_path)
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
