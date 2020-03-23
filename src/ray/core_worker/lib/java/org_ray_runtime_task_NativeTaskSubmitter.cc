@@ -81,7 +81,7 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
     resources = ToResources(env, java_resources);
   }
 
-  ray::TaskOptions task_options{numReturns, /*use_direct_call=*/true, resources};
+  ray::TaskOptions task_options{numReturns, resources};
   return task_options;
 }
 
@@ -109,7 +109,6 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
   ray::ActorCreationOptions actor_creation_options{
       static_cast<uint64_t>(max_reconstructions),
-      /*use_direct_call=*/true,
       static_cast<int>(max_concurrency),
       resources,
       resources,

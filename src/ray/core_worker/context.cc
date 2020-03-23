@@ -147,6 +147,7 @@ bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
          CurrentThreadIsMain();
 }
 
+// TODO(edoakes): simplify these checks now that we only support direct call mode.
 bool WorkerContext::CurrentActorIsDirectCall() const {
   return current_actor_is_direct_call_;
 }

@@ -677,12 +677,6 @@ def init(address=None,
     else:
         driver_mode = SCRIPT_MODE
 
-    if setproctitle is None:
-        logger.warning(
-            "WARNING: Not updating worker name since `setproctitle` is not "
-            "installed. Install this with `pip install setproctitle` "
-            "(or ray[debug]) to enable monitoring of worker processes.")
-
     if global_worker.connected:
         if ignore_reinit_error:
             logger.error("Calling ray.init() again after it has already been "
@@ -1142,8 +1136,7 @@ def connect(node,
         job_id = JobID.nil()
         # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
-        if setproctitle:
-            setproctitle.setproctitle("ray::IDLE")
+        setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
         if job_id is None:
             job_id = JobID.from_int(random.randint(1, 65535))
@@ -1344,11 +1337,9 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    if setproctitle:
-        setproctitle.setproctitle(title)
+    setproctitle.setproctitle(title)
     yield
-    if setproctitle:
-        setproctitle.setproctitle(next_title)
+    setproctitle.setproctitle(next_title)
 
 
 def register_custom_serializer(cls,

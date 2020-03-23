@@ -64,6 +64,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
+    FlushAll();
   }
 
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
@@ -313,6 +314,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     rpc::GcsNodeInfo gcs_node_info;
     gcs_node_info.set_node_id(node_id);
     gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
+    gcs_node_info.set_node_manager_address("127.0.0.1");
     return gcs_node_info;
   }
 

@@ -22,7 +22,7 @@ class TuneBOHB(SuggestionAlgorithm):
 
 
     Requires HpBandSter and ConfigSpace to be installed. You can install
-    HpBandSter and ConfigSpace with: `pip install hpbandster ConfigSpace`.
+    HpBandSter and ConfigSpace with: ``pip install hpbandster ConfigSpace``.
 
     This should be used in conjunction with HyperBandForBOHB.
 
@@ -38,23 +38,28 @@ class TuneBOHB(SuggestionAlgorithm):
             minimizing or maximizing the metric attribute.
 
     Example:
-        >>> import ConfigSpace as CS
-        >>> config_space = CS.ConfigurationSpace()
-        >>> config_space.add_hyperparameter(
-                CS.UniformFloatHyperparameter('width', lower=0, upper=20))
-        >>> config_space.add_hyperparameter(
-                CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
-        >>> config_space.add_hyperparameter(
-                CS.CategoricalHyperparameter(
-                    name='activation', choices=['relu', 'tanh']))
-        >>> algo = TuneBOHB(
-                config_space, max_concurrent=4, metric='mean_loss', mode='min')
-        >>> bohb = HyperBandForBOHB(
-                time_attr='training_iteration',
-                metric='mean_loss',
-                mode='min',
-                max_t=100)
-        >>> run(MyTrainableClass, scheduler=bohb, search_alg=algo)
+
+    .. code-block:: python
+
+        import ConfigSpace as CS
+
+        config_space = CS.ConfigurationSpace()
+        config_space.add_hyperparameter(
+            CS.UniformFloatHyperparameter('width', lower=0, upper=20))
+        config_space.add_hyperparameter(
+            CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
+        config_space.add_hyperparameter(
+            CS.CategoricalHyperparameter(
+                name='activation', choices=['relu', 'tanh']))
+
+        algo = TuneBOHB(
+            config_space, max_concurrent=4, metric='mean_loss', mode='min')
+        bohb = HyperBandForBOHB(
+            time_attr='training_iteration',
+            metric='mean_loss',
+            mode='min',
+            max_t=100)
+        run(MyTrainableClass, scheduler=bohb, search_alg=algo)
 
     """
 

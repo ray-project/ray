@@ -567,7 +567,12 @@ cdef void get_py_stack(c_string* stack_out) nogil:
     """
 
     with gil:
-        frame = inspect.currentframe()
+        try:
+            frame = inspect.currentframe()
+        except ValueError:  # overhead of exception handling is about 20us
+            stack_out[0] = "".encode("ascii")
+            return
+
         msg = ""
         while frame:
             filename = frame.f_code.co_filename
@@ -848,7 +853,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, True, c_resources)
+                num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
@@ -890,7 +895,7 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, True, max_concurrency,
+                        max_reconstructions, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     extension_data,
@@ -917,7 +922,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, False, c_resources)
+            task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)

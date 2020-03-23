@@ -172,7 +172,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(
         msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON,
                      ray::FunctionDescriptorBuilder::BuildPython("init", "", "", "")};
@@ -188,7 +188,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "execute_test", test, "", "")};
@@ -204,7 +204,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{1, true, resources};
+    TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "check_current_test_status", "", "", "")};
@@ -273,7 +273,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     ActorCreationOptions actor_options{
-        max_reconstructions,   is_direct_call,
+        max_reconstructions,
         /*max_concurrency*/ 1, resources,           resources, {},
         /*is_detached*/ false, /*is_asyncio*/ false};
 

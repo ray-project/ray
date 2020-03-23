@@ -32,6 +32,12 @@ class ActorInfoAccessor {
  public:
   virtual ~ActorInfoAccessor() = default;
 
+  /// Get all actor specification from GCS synchronously.
+  ///
+  /// \param actor_table_data_list The container to hold the actor specification.
+  /// \return Status
+  virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
+
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.

@@ -62,6 +62,7 @@ class RedisServiceManagerForTest : public ::testing::Test {
  public:
   static void SetUpTestCase();
   static void TearDownTestCase();
+  static void FlushAll();
 };
 
 }  // namespace ray
