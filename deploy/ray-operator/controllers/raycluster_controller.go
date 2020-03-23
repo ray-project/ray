@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,7 +69,10 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		}
 		log.Error(err, "Read request instance error!")
 		// Error reading the object - requeue the request.
-		return reconcile.Result{}, ignoreNotFound(err)
+		if !apierrs.IsNotFound(err) {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
 	}
 
 	log.Info("Print instance - ", "Instance.ToString", instance)
@@ -103,7 +107,7 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 
 	log.Info("Runtime Pods", "size", len(runtimePods.Items), "runtime pods namelist", runtimePodNameList)
 
-	// record pod need to be deleted
+	// Record that the pod needs to be deleted.
 	difference := runtimePodNameList.Difference(expectedPodNameList)
 
 	// fill replicas with runtime if exists or expectedPod if not exists
@@ -116,12 +120,21 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-	// create service for head
+	// Create the head node service.
 	if needServicePodMap.Cardinality() > 0 {
 		for elem := range needServicePodMap.Iterator().C {
 			podName := elem.(string)
 			svcConf := common.DefaultServiceConfig(*instance, podName)
 			rayPodSvc := common.ServiceForPod(svcConf)
+			blockOwnerDeletion := true
+			ownerReference :=  metav1.OwnerReference{
+				APIVersion: instance.APIVersion,
+				Kind: instance.Kind,
+				Name: instance.Name,
+				UID: instance.UID,
+				BlockOwnerDeletion: &blockOwnerDeletion,
+			}
+			rayPodSvc.OwnerReferences = append(rayPodSvc.OwnerReferences, ownerReference)
 			if errSvc := r.Create(context.TODO(), rayPodSvc); errSvc != nil {
 				if errors.IsAlreadyExists(errSvc) {
 					log.Info("Pod service already exist,no need to create")
@@ -135,20 +148,17 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-	// check pod and create one by one if not exist
+	// Check if each pod exists and if not, create it.
 	for i, replica := range replicas {
-		// create pod if not exist
 		if !utils.IsCreated(&replica) {
 			log.Info("Creating pod", "index", i, "create pod", replica.Name)
 			if err := r.Create(context.TODO(), &replica); err != nil {
 				return reconcile.Result{}, err
 			}
-			// pod created, no more work possible for this round
-			continue
 		}
 	}
 
-	// delete pods to desired state
+	// Delete pods if needed.
 	if difference.Cardinality() > 0 {
 		log.Info("difference", "pods", difference)
 		for _, runtimePod := range runtimePods.Items {
@@ -207,11 +217,4 @@ func (r *RayClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			OwnerType:    &rayiov1alpha1.RayCluster{},
 		}).
 		Complete(r)
-}
-
-func ignoreNotFound(err error) error {
-	if apierrs.IsNotFound(err) {
-		return nil
-	}
-	return err
 }

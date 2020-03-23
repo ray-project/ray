@@ -1,7 +1,6 @@
 import errno
 import logging
 import os
-import tree
 
 import numpy as np
 import ray
@@ -212,10 +211,8 @@ class TFPolicy(Policy):
             self._loss = loss
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
-            if g is not None
-        ]
+        self._grads_and_vars = [(g, v) for (g, v) in self.gradients(
+            self._optimizer, self._loss) if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
         # TODO(sven/ekl): Deprecate support for v1 models.
@@ -501,7 +498,7 @@ class TFPolicy(Policy):
 
         # build output signatures
         output_signature = self._extra_output_signature_def()
-        for i, a in enumerate(tree.flatten(self._sampled_action)):
+        for i, a in enumerate(tf.nest.flatten(self._sampled_action)):
             output_signature["actions_{}".format(i)] = \
                 tf.saved_model.utils.build_tensor_info(a)
 
@@ -671,10 +668,10 @@ class LearningRateSchedule:
     def __init__(self, lr, lr_schedule):
         self.cur_lr = tf.get_variable("lr", initializer=lr, trainable=False)
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr)
+            self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:
             self.lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1])
+                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
@@ -698,18 +695,21 @@ class EntropyCoeffSchedule:
             "entropy_coeff", initializer=entropy_coeff, trainable=False)
 
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff)
+            self.entropy_coeff_schedule = ConstantSchedule(
+                entropy_coeff, framework=None)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1])
+                    outside_value=entropy_coeff_schedule[-1][-1],
+                    framework=None)
             else:
                 # Implements previous version but enforces outside_value
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0)
+                    outside_value=0.0,
+                    framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):

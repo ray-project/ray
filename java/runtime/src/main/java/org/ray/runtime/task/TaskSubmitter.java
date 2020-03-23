@@ -1,7 +1,7 @@
 package org.ray.runtime.task;
 
 import java.util.List;
-import org.ray.api.RayActor;
+import org.ray.api.BaseActor;
 import org.ray.api.id.ObjectId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
@@ -30,7 +30,7 @@ public interface TaskSubmitter {
    * @param options Options for this actor creation task.
    * @return Handle to the actor.
    */
-  RayActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+  BaseActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       ActorCreationOptions options);
 
   /**
@@ -42,6 +42,6 @@ public interface TaskSubmitter {
    * @param options Options for this task.
    * @return Ids of the return objects.
    */
-  List<ObjectId> submitActorTask(RayActor actor, FunctionDescriptor functionDescriptor,
+  List<ObjectId> submitActorTask(BaseActor actor, FunctionDescriptor functionDescriptor,
       List<FunctionArg> args, int numReturns, CallOptions options);
 }

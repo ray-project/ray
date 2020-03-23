@@ -104,6 +104,27 @@ def checkpoint_deleter(trial_id, runner):
     return delete
 
 
+class TrialInfo:
+    """Serializable struct for holding information for a Trial.
+
+    Attributes:
+        trial_name (str): String name of the currernt trial.
+        trial_id (str): trial_id of the trial
+    """
+
+    def __init__(self, trial):
+        self._trial_name = str(trial)
+        self._trial_id = trial.trial_id
+
+    @property
+    def trial_name(self):
+        return self._trial_name
+
+    @property
+    def trial_id(self):
+        return self._trial_id
+
+
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -112,6 +133,19 @@ class Trial:
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
+
+    Attributes:
+        trainable_name (str): Name of the trainable object to be executed.
+        config (dict): Provided configuration dictionary with evaluated params.
+        trial_id (str): Unique identifier for the trial.
+        local_dir (str): Local_dir as passed to tune.run.
+        logdir (str): Directory where the trial logs are saved.
+        evaluated_params (dict): Evaluated parameters by search algorithm,
+        experiment_tag (str): Identifying trial name to show in the console.
+        resources (Resources): Amount of resources that this trial will use.
+        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
+        error_file (str): Path to the errors that this trial has raised.
+
     """
 
     PENDING = "PENDING"
@@ -207,10 +241,9 @@ class Trial:
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
             checkpoint_deleter(self._trainable_name(), self.runner))
-        checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
-        self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
 
         # Restoration fields
+        self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
 
@@ -239,14 +272,16 @@ class Trial:
     def checkpoint(self):
         """Returns the most recent checkpoint.
 
-        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
-        Otherwise, it is the most recent PERSISTENT checkpoint.
+        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
+        is returned.
         """
-        if self.status == Trial.PAUSED:
-            assert self.checkpoint_manager.newest_memory_checkpoint.value
-            return self.checkpoint_manager.newest_memory_checkpoint
+        if self.status == Trial.ERROR:
+            checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
-            return self.checkpoint_manager.newest_persistent_checkpoint
+            checkpoint = self.checkpoint_manager.newest_checkpoint
+        if checkpoint.value is None:
+            checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
+        return checkpoint
 
     @classmethod
     def generate_id(cls):

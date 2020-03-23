@@ -1,8 +1,8 @@
 Development Tips
 ================
 
-**Note:** Unless otherwise stated, directory and file paths are relative to the
-project root directory.
+.. note:: Unless otherwise stated, directory and file paths are relative to the project root directory.
+
 
 Compilation
 -----------
@@ -25,9 +25,9 @@ If you run into **Permission Denied** errors when running ``pip install``,
 you can try adding ``--user``. You may also need to run something like ``sudo
 chown -R $USER $HOME/anaconda3`` (substituting in the appropriate path).
 
-If you make changes to the C++ or Python files, you will need to run the 
-build so C++ code is recompiled and/or Python files are redeployed in 
-the ``python`` directory. However, you do not need to rerun 
+If you make changes to the C++ or Python files, you will need to run the
+build so C++ code is recompiled and/or Python files are redeployed in
+the ``python`` directory. However, you do not need to rerun
 ``pip install -e .``. Instead, you can recompile much more quickly by running
 the following:
 
@@ -37,6 +37,31 @@ the following:
 
 This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.
+
+.. _python-develop:
+
+Developing Ray (Python Only)
+----------------------------
+
+.. note:: Unless otherwise stated, directory and file paths are relative to the project root directory.
+
+RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally.
+
+1. Pip install the **latest Ray wheels.** See :ref:`install-nightlies` for instructions.
+
+2. Fork and clone the project to your machine. Connect your repository to the upstream (main project) ray repository.
+
+.. code-block:: shell
+
+    git clone https://github.com/[your username]/ray.git
+    cd ray
+    git remote add upstream https://github.com/ray-project/ray.git
+    # Make sure you are up-to-date on master.
+
+4. Run ``python python/ray/setup-dev.py``. This sets up links between the ``tune`` dir (among other directories) in your local repo and the one bundled with the ``ray`` package.
+
+.. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must ``rm -rf`` the installation site (usually a ``site-packages/ray`` location).
+
 
 Using a local repository for dependencies
 -----------------------------------------
@@ -165,7 +190,7 @@ Testing locally
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Suppose that one of the tests in a file of tests, e.g., 
+Suppose that one of the tests in a file of tests, e.g.,
 ``python/ray/tests/test_basic.py``, is failing. You can run just that
 test file locally as follows:
 
@@ -204,7 +229,7 @@ Alternatively, you can also run one specific C++ test. You can use:
 Building the Docs
 -----------------
 
-If you make changes that require documentation changes, don't forget to 
+If you make changes that require documentation changes, don't forget to
 update the documentation!
 
 When you make documentation changes, build them locally to verify they render
@@ -213,13 +238,13 @@ correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentat
 .. code-block:: shell
 
  cd doc
- pip install -r requirements-doc.txt 
+ pip install -r requirements-doc.txt
  make html
 
-Once done, the docs will be in ``doc/_build/html``. For example, on Mac 
-OSX, you can open the docs (assuming you are still in the ``doc`` 
+Once done, the docs will be in ``doc/_build/html``. For example, on Mac
+OSX, you can open the docs (assuming you are still in the ``doc``
 directory) using ``open _build/html/index.html``.
- 
+
 
 Creating a pull request
 -----------------------
@@ -227,7 +252,7 @@ Creating a pull request
 To create a pull request (PR) for your change, first go through the
 `PR template`_ checklist and ensure you've completed all the steps.
 
-When you push changes to GitHub, the formatting and verification script 
+When you push changes to GitHub, the formatting and verification script
 ``ci/travis/format.sh`` is run first. For pushing to your fork, you can
 skip this step with ``git push --no-verify``.
 
@@ -243,7 +268,7 @@ of the following tools. Installation commands are shown for convenience:
 **Note:** On MacOS X, don't use HomeBrew to install ``clang-format``, as the only version available is too new.
 
 The Ray project automatically runs continuous integration (CI) tests once a PR
-is opened using `Travis-CI <https://travis-ci.com/ray-project/ray/>`_ with 
+is opened using `Travis-CI <https://travis-ci.com/ray-project/ray/>`_ with
 multiple CI test jobs.
 
 
@@ -266,7 +291,7 @@ scripts. Some of the examples include:
     * ``python python/ray/serve/examples/echo_full.py``
 
 If a Travis-CI build exception doesn't appear to be related to your change,
-please visit `this link <https://ray-travis-tracker.herokuapp.com/>`_ to 
+please visit `this link <https://ray-travis-tracker.herokuapp.com/>`_ to
 check recent tests known to be flaky.
 
 
@@ -277,11 +302,11 @@ Installation instructions for the tools mentioned here are discussed above in
 `Creating a pull request`_.
 
 **Running the linter locally:** To run the Python linter on a specific file, run
-``flake8`` as in this example, ``flake8 python/ray/worker.py``. 
+``flake8`` as in this example, ``flake8 python/ray/worker.py``.
 
 **Autoformatting code**. We use `yapf <https://github.com/google/yapf>`_ for
 linting. The config file is ``.style.yapf``. We recommend running
-``scripts/yapf.sh`` prior to pushing a PR to format any changed files. Note 
+``scripts/yapf.sh`` prior to pushing a PR to format any changed files. Note
 that some projects, such as dataframes and rllib, are currently excluded.
 
 **Running CI linter:** The Travis CI linter script has multiple components to

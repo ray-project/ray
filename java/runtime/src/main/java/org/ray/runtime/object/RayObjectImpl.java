@@ -18,12 +18,12 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
    * Note, this is necessary for direct calls, in which case, it's not allowed to call `Ray.get` on
    * the same object twice.
    */
-  private T object;
+  private transient T object;
 
   /**
    * Whether the object is already gotten from the object store.
    */
-  private boolean objectGotten;
+  private transient boolean objectGotten;
 
   public RayObjectImpl(ObjectId id) {
     this.id = id;

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/task_manager.h"
 
 #include "ray/util/util.h"
@@ -12,7 +26,8 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 void TaskManager::AddPendingTask(const TaskID &caller_id,
                                  const rpc::Address &caller_address,
-                                 const TaskSpecification &spec, int max_retries) {
+                                 const TaskSpecification &spec,
+                                 const std::string &call_site, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
@@ -34,11 +49,16 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    task_deps.push_back(actor_creation_return_id);
+  }
   reference_counter_->UpdateSubmittedTaskReferences(task_deps);
 
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  if (spec.IsActorTask()) {
     num_returns--;
   }
   for (size_t i = 0; i < num_returns; i++) {
@@ -48,20 +68,28 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     // the inner IDs. Note that this RPC can be received *before* the
     // PushTaskReply.
     reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
-                                       /*inner_ids=*/{}, caller_id, caller_address);
+                                       /*inner_ids=*/{}, caller_id, caller_address,
+                                       call_site, -1);
   }
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
-  absl::MutexLock lock(&mu_);
-  if (pending_tasks_.empty()) {
-    shutdown();
-  } else {
-    RAY_LOG(WARNING)
-        << "This worker is still managing " << pending_tasks_.size()
-        << " in flight tasks, waiting for them to finish before shutting down.";
+  bool has_pending_tasks = false;
+  {
+    absl::MutexLock lock(&mu_);
+    if (!pending_tasks_.empty()) {
+      has_pending_tasks = true;
+      RAY_LOG(WARNING)
+          << "This worker is still managing " << pending_tasks_.size()
+          << " in flight tasks, waiting for them to finish before shutting down.";
+      shutdown_hook_ = shutdown;
+    }
   }
-  shutdown_hook_ = shutdown;
+
+  // Do not hold the lock when calling callbacks.
+  if (!has_pending_tasks) {
+    shutdown();
+  }
 }
 
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
@@ -88,6 +116,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
+    reference_counter_->UpdateObjectSize(object_id, return_object.size());
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.
@@ -179,10 +208,18 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
 }
 
 void TaskManager::ShutdownIfNeeded() {
-  absl::MutexLock lock(&mu_);
-  if (shutdown_hook_ && pending_tasks_.empty()) {
-    RAY_LOG(WARNING) << "All in flight tasks finished, shutting down worker.";
-    shutdown_hook_();
+  std::function<void()> shutdown_hook = nullptr;
+  {
+    absl::MutexLock lock(&mu_);
+    if (shutdown_hook_ && pending_tasks_.empty()) {
+      RAY_LOG(WARNING) << "All in flight tasks finished, worker will shut down after "
+                          "draining references.";
+      std::swap(shutdown_hook_, shutdown_hook);
+    }
+  }
+  // Do not hold the lock when calling callbacks.
+  if (shutdown_hook != nullptr) {
+    shutdown_hook();
   }
 }
 
@@ -210,6 +247,11 @@ void TaskManager::RemoveFinishedTaskReferences(
       plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
                                  inlined_ids.end());
     }
+  }
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id =
+        spec.ActorCreationDummyObjectId().WithTransportType(TaskTransportType::DIRECT);
+    plasma_dependencies.push_back(actor_creation_return_id);
   }
 
   std::vector<ObjectID> deleted;

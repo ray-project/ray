@@ -240,7 +240,10 @@ public class RunManager {
           gcsServerFile.getAbsolutePath(),
           String.format("--redis_address=%s", rayConfig.getRedisIp()),
           String.format("--redis_port=%d", rayConfig.getRedisPort()),
-          String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+          String.format("--config_list=%s",
+              rayConfig.rayletConfigParameters.entrySet().stream()
+                  .map(entry -> entry.getKey() + "," + entry.getValue()).collect(Collectors
+                      .joining(","))),
           String.format("--redis_password=%s", redisPasswordOption)
       );
       startProcess(command, null, "gcs_server");
@@ -316,7 +319,9 @@ public class RunManager {
         String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
         String.format("--static_resource_list=%s",
             ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
-        String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+        String.format("--config_list=%s", rayConfig.rayletConfigParameters.entrySet().stream()
+            .map(entry -> entry.getKey() + "," + entry.getValue())
+            .collect(Collectors.joining(","))),
         String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
         String.format("--java_worker_command=%s", buildWorkerCommand()),
         String.format("--redis_password=%s", redisPasswordOption)
@@ -378,8 +383,8 @@ public class RunManager {
       cmd.add("-Dray.redis.password=" + rayConfig.headRedisPassword);
     }
 
-    // Number of workers per Java worker process
-    cmd.add("-Dray.raylet.config.num_workers_per_process_java=RAY_WORKER_NUM_WORKERS_PLACEHOLDER");
+
+    cmd.add("RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER");
 
     cmd.addAll(rayConfig.jvmParameters);
 
