@@ -2,16 +2,16 @@
 
 It supports both traced and non-traced eager execution modes."""
 
-import logging
 import functools
+import logging
 import numpy as np
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
+    ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf

@@ -473,13 +473,16 @@ class Trainable:
         export model to local directory.
 
         Args:
-            export_formats (list): List of formats that should be exported.
+            export_formats (Union[list,str]): Format or list of (str) formats
+                that should be exported.
             export_dir (str): Optional dir to place the exported model.
                 Defaults to self.logdir.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
+        if isinstance(export_formats, str):
+            export_formats = [export_formats]
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 

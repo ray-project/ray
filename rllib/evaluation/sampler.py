@@ -1,7 +1,7 @@
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
-import six.moves.queue as queue
+import queue
 import threading
 import time
 
