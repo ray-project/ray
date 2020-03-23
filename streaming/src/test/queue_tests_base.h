@@ -319,6 +319,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         "127.0.0.1",                    // node_ip_address
         node_manager_port_,             // node_manager_port
         "queue_tests",                  // driver_name
+        "",                             // stdout_file
+        "",                             // stderr_file
         nullptr,                        // task_execution_callback
         nullptr,                        // check_signals
         nullptr,                        // gc_collect

@@ -197,6 +197,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string node_ip_address
         int node_manager_port
         c_string driver_name
+        c_string stdout_file
+        c_string stderr_file
         (CRayStatus(
             CTaskType task_type,
             const CRayFunction &ray_function,

@@ -285,6 +285,8 @@ class StreamingWorker {
         "127.0.0.1",         // node_ip_address
         node_manager_port,   // node_manager_port
         "",                  // driver_name
+        "",                  // stdout_file
+        "",                  // stderr_file
         std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6,
                   _7),  // task_execution_callback
         nullptr,        // check_signals

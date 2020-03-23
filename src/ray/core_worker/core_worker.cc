@@ -531,8 +531,13 @@ void CoreWorker::RegisterToGcs() {
     if (!options_.driver_name.empty()) {
       worker_info.emplace("name", options_.driver_name);
     }
-  } else {
-    // TOCHECK: How to fill `stdout_file` and `stderr_file` for a worker?
+  }
+
+  if (!options_.stdout_file.empty()) {
+    worker_info.emplace("stdout_file", options_.stdout_file);
+  }
+  if (!options_.stderr_file.empty()) {
+    worker_info.emplace("stderr_file", options_.stderr_file);
   }
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncRegisterWorker(options_.worker_type, worker_id,

@@ -1191,6 +1191,8 @@ def connect(node,
         node.redis_address, redis_password=node.redis_password)
 
     driver_name = ""
+    log_stdout_file = None
+    log_stderr_file = None
     if mode == SCRIPT_MODE:
         import __main__ as main
         driver_name = (main.__file__
@@ -1234,7 +1236,10 @@ def connect(node,
     worker.core_worker = ray._raylet.CoreWorker(
         (mode == SCRIPT_MODE), node.plasma_store_socket_name,
         node.raylet_socket_name, job_id, gcs_options, node.get_logs_dir_path(),
-        node.node_ip_address, node.node_manager_port, driver_name)
+        node.node_ip_address, node.node_manager_port, driver_name, ""
+        if log_stdout_file is None else os.path.abspath(
+            log_stdout_file.name), ""
+        if log_stderr_file is None else os.path.abspath(log_stderr_file.name))
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(

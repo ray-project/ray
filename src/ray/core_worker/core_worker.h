@@ -85,6 +85,10 @@ struct CoreWorkerOptions {
   int node_manager_port;
   /// The name of the driver.
   std::string driver_name;
+  /// The stdout file of this process.
+  std::string stdout_file;
+  /// The stderr file of this process.
+  std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
   /// Application-language callback to check for signals that have been received

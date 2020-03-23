@@ -112,6 +112,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitialize(
       JavaStringToNativeString(env, nodeIpAddress),  // node_ip_address
       static_cast<int>(nodeManagerPort),             // node_manager_port
       JavaStringToNativeString(env, driverName),     // driver_name
+      "",                                            // stdout_file
+      "",                                            // stderr_file
       task_execution_callback,                       // task_execution_callback
       nullptr,                                       // check_signals
       nullptr,                                       // gc_collect
