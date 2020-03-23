@@ -73,6 +73,46 @@ def test_metrics_union(ray_start_regular_shared):
     assert it3.take(10) == [1, 100, 3, 200, 6, 300, 10, 400]
 
 
+def test_metrics_union_recursive(ray_start_regular_shared):
+    it1 = from_items([1, 2, 3, 4], num_shards=1)
+    it2 = from_items([1, 2, 3, 4], num_shards=1)
+    it3 = from_items([1, 2, 3, 4], num_shards=1)
+
+    def foo_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["foo"] += 1
+        return metrics.counters["foo"]
+
+    def bar_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["bar"] += 1
+        return metrics.counters["bar"]
+
+    def baz_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["baz"] += 1
+        return metrics.counters["baz"]
+
+    def verify_metrics(x):
+        metrics = LocalIterator.get_metrics()
+        metrics.counters["n"] += 1
+        # Check the metrics context is shared recursively.
+        print(metrics.counters)
+        if metrics.counters["n"] >= 3:
+            assert "foo" in metrics.counters
+            assert "bar" in metrics.counters
+            assert "baz" in metrics.counters
+        return x
+
+    it1 = it1.gather_async().for_each(foo_metrics)
+    it2 = it2.gather_async().for_each(bar_metrics)
+    it3 = it3.gather_async().for_each(baz_metrics)
+    it12 = it1.union(it2, deterministic=True)
+    it123 = it12.union(it3, deterministic=True)
+    out = it123.for_each(verify_metrics)
+    assert out.take(20) == [1, 1, 1, 2, 2, 3, 2, 4, 3, 3, 4, 4]
+
+
 def test_from_items(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4])
     assert repr(it) == "ParallelIterator[from_items[int, 4, shards=2]]"

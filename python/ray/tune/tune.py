@@ -98,12 +98,11 @@ def run(run_or_experiment,
         trial_executor=None,
         raise_on_failed_trial=True,
         return_trials=False,
-        ray_auto_init=True,
-        sync_function=None):
+        ray_auto_init=True):
     """Executes training.
 
     Args:
-        run_or_experiment (function|class|str|Experiment): If
+        run_or_experiment (function | class | str | :class:`Experiment`): If
             function|class|str, this is the algorithm or model to train.
             This may refer to the name of a built-on algorithm
             (e.g. RLLib's DQN or PPO), a user-defined trainable
@@ -112,11 +111,11 @@ def run(run_or_experiment,
             If Experiment, then Tune will execute training based on
             Experiment.spec.
         name (str): Name of experiment.
-        stop (dict|callable): The stopping criteria. If dict, the keys may be
-            any field in the return result of 'train()', whichever is
-            reached first. If function, it must take (trial_id, result) as
-            arguments and return a boolean (True if trial should be stopped,
-            False otherwise). This can also be a subclass of
+        stop (dict | callable | :class:`Stopper`): Stopping criteria. If dict,
+            the keys may be any field in the return result of 'train()',
+            whichever is reached first. If function, it must take (trial_id,
+            result) as arguments and return a boolean (True if trial should be
+            stopped, False otherwise). This can also be a subclass of
             ``ray.tune.Stopper``, which allows users to implement
             custom experiment-wide stopping (i.e., stopping an entire Tune
             run based on some time constraint).
@@ -211,14 +210,12 @@ def run(run_or_experiment,
         ray_auto_init (bool): Automatically starts a local Ray cluster
             if using a RayTrialExecutor (which is the default) and
             if Ray is not initialized. Defaults to True.
-        sync_function: Deprecated. See `sync_to_cloud` and
-            `sync_to_driver`.
 
     Returns:
-        List of Trial objects.
+        ExperimentAnalysis: Object for experiment analysis.
 
     Raises:
-        TuneError if any trials failed and `raise_on_failed_trial` is True.
+        TuneError: Any trials failed and `raise_on_failed_trial` is True.
 
     Examples:
         >>> tune.run(mytrainable, scheduler=PopulationBasedTraining())
@@ -266,8 +263,7 @@ def run(run_or_experiment,
                 checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
-                restore=restore,
-                sync_function=sync_function)
+                restore=restore)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 

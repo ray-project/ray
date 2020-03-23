@@ -40,13 +40,20 @@ class AxSearch(SuggestionAlgorithm):
             trial results in the optimization process.
 
 
-    Example:
-        >>> parameters = [
-        >>>     {"name": "x1", "type": "range", "bounds": [0.0, 1.0]},
-        >>>     {"name": "x2", "type": "range", "bounds": [0.0, 1.0]},
-        >>> ]
-        >>> algo = AxSearch(parameters=parameters,
-        >>>     objective_name="hartmann6", max_concurrent=4)
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.suggest.ax import AxSearch
+
+        parameters = [
+            {"name": "x1", "type": "range", "bounds": [0.0, 1.0]},
+            {"name": "x2", "type": "range", "bounds": [0.0, 1.0]},
+        ]
+
+        algo = AxSearch(parameters=parameters,
+            objective_name="hartmann6", max_concurrent=4)
+        tune.run(my_func, algo=algo)
+
     """
 
     def __init__(self, ax_client, max_concurrent=10, mode="max", **kwargs):
