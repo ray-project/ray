@@ -95,9 +95,8 @@ class BanditPolicyOverrides:
             info["cumulative_regret"] = sum(self.regrets)
         else:
             if log_once("no_regrets"):
-                logger.warning(
-                    "The env did not report `regret` values in "
-                    "its `info` return, ignoring.")
+                logger.warning("The env did not report `regret` values in "
+                               "its `info` return, ignoring.")
         info["update_latency"] = time.time() - start
         return {LEARNER_STATS_KEY: info}
 
