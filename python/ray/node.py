@@ -400,8 +400,8 @@ class Node:
         result = socket_path
         if sys.platform == "win32":
             if socket_path is None:
-                result = "tcp://{}:{}".format(
-                    self._localhost, self._get_unused_port())
+                result = "tcp://{}:{}".format(self._localhost,
+                                              self._get_unused_port())
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
