@@ -41,7 +41,7 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-ldl"],
     linkshared = 1,
-    linkstatic = 1,
+    linkstatic = False,
     visibility = ["//visibility:public"],
     deps = [
         "libray_api_header",
@@ -73,7 +73,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "api_test",
     srcs = glob([
         "src/ray/test/*.cc",
