@@ -165,7 +165,7 @@ public class MessagePackSerializer {
             Preconditions.checkState(data != null && data.length == 2);
             Integer crossTypeId = ((Number) data[0]).intValue();
             Object[] crossData = (Object[]) data[1];
-            // Get type by type id and call KEY_FROM_CROSS_DATA method with cross data on it.
+            // Get type by type id and call KEY_FROM_CROSS_DATA method with cross data.
             Class<?> crossType = CrossTypeManager.get(crossTypeId);
             Method fromCrossData = crossType.getDeclaredMethod(
                 CrossTypeManager.KEY_FROM_CROSS_DATA, Object[].class);
@@ -202,11 +202,12 @@ public class MessagePackSerializer {
       byte[] msgpackBytes = packer.toByteArray();
       // Serialize MessagePack bytes length.
       MessageBufferPacker headerPacker = MessagePack.newDefaultBufferPacker();
+      Preconditions.checkState(msgpackBytes.length >= MESSAGE_PACK_OFFSET);
       headerPacker.packLong(msgpackBytes.length - MESSAGE_PACK_OFFSET);
       byte[] msgpackBytesLength = headerPacker.toByteArray();
       // Check serialized MessagePack bytes length is valid.
       Preconditions.checkState(msgpackBytesLength.length <= MESSAGE_PACK_OFFSET);
-      // Write MessagePack bytes length to reserved buffer at the beginning.
+      // Write MessagePack bytes length to reserved buffer.
       System.arraycopy(msgpackBytesLength, 0, msgpackBytes, 0, msgpackBytesLength.length);
       return msgpackBytes;
     } catch (Exception e) {
@@ -228,7 +229,6 @@ public class MessagePackSerializer {
       MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(bs, MESSAGE_PACK_OFFSET,
           msgpackBytesLength.intValue());
       Value v = unpacker.unpackValue();
-      // Handle null has not class.
       if (type == null) {
         type = Object.class;
       }

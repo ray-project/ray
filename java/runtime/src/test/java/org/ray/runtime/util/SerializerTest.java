@@ -100,11 +100,5 @@ public class SerializerTest {
       Assert.assertEquals(((B) foo.toCrossData()[0]).toCrossData()[0], ((B) bar.toCrossData()[0]).toCrossData()[0]);
       Assert.assertEquals(foo.toCrossData()[1], bar.toCrossData()[1]);
     }
-
-
-//    {
-//      Map<String, Integer> foo = ImmutableMap.of("1", 1, "2", 2);
-//      Map<String, Integer> bar = Serializer.decode(Serializer.encode(foo), foo.getClass());
-//    }
   }
 }

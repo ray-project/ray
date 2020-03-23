@@ -15,7 +15,7 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
 
   /**
    * Cache the result of `Ray.get()`.
-   * <p>
+   *
    * Note, this is necessary for direct calls, in which case, it's not allowed to call `Ray.get` on
    * the same object twice.
    */

@@ -310,8 +310,8 @@ cdef class Pickle5Writer:
         self._curr_buffer_addr += view.len
         self.buffers.push_back(view)
 
-    # DO NOT declare arguments as c_string which will
-    # copy data from Python to C++
+    # DO NOT declare arguments as c_string because this will result in
+    # copying data from Python to C++
     def get_total_bytes(self, msgpack_bytes, inband):
         if inband is None:
             self._total_bytes = kMessagePackOffset + len(msgpack_bytes)
@@ -342,8 +342,8 @@ cdef class Pickle5Writer:
         self._total_bytes = self._protobuf_offset + protobuf_bytes
         return self._total_bytes
 
-    # DO NOT declare arguments as c_string which will
-    # copy data from Python to C++
+    # DO NOT declare arguments as c_string because this will result in
+    # copying data from Python to C++
     cdef void write_to(self, msgpack_bytes, inband,
                        shared_ptr[CBuffer] data, int memcopy_threads):
         cdef uint8_t *ptr = data.get().Data()
