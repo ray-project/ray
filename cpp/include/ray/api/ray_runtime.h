@@ -8,16 +8,16 @@
 #include <vector>
 
 #include <ray/api/wait_result.h>
-#include <ray/core.h>
+#include "ray/core.h"
 
 namespace ray {
 namespace api {
 
-struct member_function_ptr_holder {
+struct MemberFunctionPtrHolder {
   uintptr_t value[2];
 };
 
-struct remote_function_ptr_holder {
+struct RemoteFunctionPtrHolder {
   uintptr_t value[2];
 };
 
@@ -32,11 +32,11 @@ class RayRuntime {
   virtual WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
                           int64_t timeout_ms) = 0;
 
-  virtual ObjectID Call(remote_function_ptr_holder &fptr,
+  virtual ObjectID Call(RemoteFunctionPtrHolder &fptr,
                         std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual ActorID CreateActor(remote_function_ptr_holder &fptr,
+  virtual ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
                               std::shared_ptr<msgpack::sbuffer> args) = 0;
-  virtual ObjectID CallActor(const remote_function_ptr_holder &fptr, const ActorID &actor,
+  virtual ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
                              std::shared_ptr<msgpack::sbuffer> args) = 0;
 };
 }  // namespace api

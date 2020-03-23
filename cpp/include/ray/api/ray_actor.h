@@ -1,47 +1,48 @@
 
 #pragma once
 
-#include <ray/core.h>
+#include "ray/core.h"
 
 namespace ray {
 namespace api {
 
 #include <ray/api/generated/actor_funcs.generated.h>
 
-template <typename O>
+/// A handle to an actor which can be used to invoke a remote actor method, with the
+/// `Call` method. \param <ActorType> The type of the concrete actor class. Note, the
+/// `Call` method is defined in actor_call.generated.h.
+template <typename ActorType>
 class RayActor {
  public:
   RayActor();
 
   RayActor(const ActorID &id);
 
-  RayActor(const ActorID &&id);
-
+  /// Get a untyped ID of the actor
   const ActorID &ID() const;
 
+  /// Include the `Call` methods for calling remote functions.
 #include <ray/api/generated/actor_call.generated.h>
 
+  /// Make RayActor serializable
   MSGPACK_DEFINE(id_);
 
  private:
   ActorID id_;
 };
 
-template <typename O>
-RayActor<O>::RayActor() {}
+// ---------- implementation ----------
 
-template <typename O>
-RayActor<O>::RayActor(const ActorID &id) {
+template <typename ActorType>
+RayActor<ActorType>::RayActor() {}
+
+template <typename ActorType>
+RayActor<ActorType>::RayActor(const ActorID &id) {
   id_ = id;
 }
 
-template <typename O>
-RayActor<O>::RayActor(const ActorID &&id) {
-  id_ = std::move(id);
-}
-
-template <typename O>
-const ActorID &RayActor<O>::ID() const {
+template <typename ActorType>
+const ActorID &RayActor<ActorType>::ID() const {
   return id_;
 }
 

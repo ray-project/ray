@@ -2,12 +2,11 @@
 
 #include <boost/asio/thread_pool.hpp>
 #include <memory>
-#include <mutex>
 #include <queue>
-
-#include <ray/core.h>
+#include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
-#include "task_executer.h"
+#include "ray/core.h"
+#include "task_executor.h"
 #include "task_submitter.h"
 
 namespace ray {
@@ -19,7 +18,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitTask(const InvocationSpec &invocation);
 
-  ActorID CreateActor(remote_function_ptr_holder &fptr,
+  ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
                       std::shared_ptr<msgpack::sbuffer> args);
 
   ObjectID SubmitActorTask(const InvocationSpec &invocation);
@@ -27,13 +26,11 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
  private:
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actorContexts_;
 
-  std::mutex actorContextsMutex_;
+  absl::Mutex actorContextsMutex_;
 
-  std::unique_ptr<boost::asio::thread_pool> pool_;
+  std::unique_ptr<boost::asio::thread_pool> thread_pool_;
 
   ObjectID Submit(const InvocationSpec &invocation, TaskType type);
-
-  ObjectID BuildReturnId(const TaskID &taskId);
 };
 }  // namespace api
 }  // namespace ray

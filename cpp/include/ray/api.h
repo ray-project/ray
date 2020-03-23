@@ -7,8 +7,8 @@
 #include <ray/api/generated/create_funcs.generated.h>
 #include <ray/api/generated/funcs.generated.h>
 #include <ray/api/ray_runtime.h>
-#include <ray/core.h>
 #include <msgpack.hpp>
+#include "ray/core.h"
 namespace ray {
 namespace api {
 
@@ -20,12 +20,6 @@ class RayActor;
 class WaitResult;
 
 class Ray {
-  template <typename T>
-  friend class RayObject;
-
-  template <typename O>
-  friend class RayActor;
-
  public:
   /// Initialize Ray runtime.
   static void Init();
@@ -33,12 +27,12 @@ class Ray {
   /// Store an object in the object store.
   ///
   /// \param[in] obj The object which should be stored.
-  /// \return RayObject which like a future and provide a 'Get' method.
+  /// \return RayObject A reference to the object in the object store.
   template <typename T>
   static RayObject<T> Put(const T &obj);
 
   /// Get a list of objects from the object store.
-  /// This method will be blocked until all the objects ready.
+  /// This method will be blocked until all the objects are ready.
   ///
   /// \param[in] ids The object id array which should be got.
   /// \return shared pointer array of the result.
@@ -46,7 +40,7 @@ class Ray {
   static std::vector<std::shared_ptr<T>> Get(const std::vector<ObjectID> &ids);
 
   /// Get a list of objects from the object store.
-  /// This method will be blocked until all the objects ready.
+  /// This method will be blocked until all the objects are ready.
   ///
   /// \param[in] objects The object array which should be got.
   /// \return shared pointer array of the result.
@@ -58,51 +52,50 @@ class Ray {
   ///
   /// \param[in] ids The object id array which should be waited.
   /// \param[in] num_objects The minimum number of objects to wait.
-  /// \param[in] timeout_ms The maximum wait time.
+  /// \param[in] timeout_ms The maximum wait time in milliseconds.
   /// \return Two arrays, one containing locally available objects, one containing the
   /// rest.
   static WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
                          int64_t timeout_ms);
 
-/// Include all the Call method which should be auto genrated.
-/// Call a general remote fucntion.
-///
-/// \param[in] func The function pointer to be remote execution.
-/// \param[in] arg The function args.
-/// \return RayObject.
+/// Include the `Call` methods for calling remote functions.
 #include "api/generated/call_funcs.generated.h"
 
-/// Include all the Call method which should be auto genrated.
-/// Call a factory method which create an actor and return an actor pointer.
-///
-/// \param[in] func The function pointer to be remote execution.
-/// \param[in] arg The function args.
-/// \return RayActor.
+/// Include the `CreateActor` methods for calling remote functions.
 #include "api/generated/create_actors.generated.h"
 
  private:
-  static RayRuntime *impl_;
+  static RayRuntime *runtime_;
 
   /// Used by RayObject to implement .Get()
   template <typename T>
   static std::shared_ptr<T> Get(const RayObject<T> &object);
 
-  template <typename R, typename Arg1Type, typename Arg2Type, typename... OtherArgTypes>
-  static RayObject<R> CallInternal(Arg1Type &arg1, Arg2Type &arg2,
-                                   OtherArgTypes &... args);
-
-  template <typename R, typename Arg1Type, typename Arg2Type, typename... OtherArgTypes>
-  static RayActor<R> CreateActorInternal(Arg1Type &arg1, Arg2Type &arg2,
-                                         OtherArgTypes &... args);
-
-  template <typename R, typename O, typename Arg1Type, typename Arg2Type,
+  template <typename ReturnType, typename Arg1Type, typename Arg2Type,
             typename... OtherArgTypes>
-  static RayObject<R> CallActorInternal(Arg1Type &actorFunc, Arg2Type &execFunc,
-                                        RayActor<O> &actor, OtherArgTypes &... args);
+  static RayObject<ReturnType> CallInternal(Arg1Type &arg1, Arg2Type &arg2,
+                                            OtherArgTypes &... args);
+
+  template <typename ReturnType, typename Arg1Type, typename Arg2Type,
+            typename... OtherArgTypes>
+  static RayActor<ReturnType> CreateActorInternal(Arg1Type &arg1, Arg2Type &arg2,
+                                                  OtherArgTypes &... args);
+
+  template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type,
+            typename... OtherArgTypes>
+  static RayObject<ReturnType> CallActorInternal(Arg1Type &actor_func, Arg2Type &execFunc,
+                                                 RayActor<ActorType> &actor,
+                                                 OtherArgTypes &... args);
 
 /// Include all the Call method which should be auto genrated.
 /// Used by RayActor to implement .Call()
 #include "api/generated/call_actors.generated.h"
+
+  template <typename T>
+  friend class RayObject;
+
+  template <typename ActorType>
+  friend class RayActor;
 };
 
 }  // namespace api
@@ -119,13 +112,13 @@ namespace ray {
 namespace api {
 
 template <typename T>
-inline static std::vector<ObjectID> RayObjectToObjectID(
-    const std::vector<RayObject<T>> &rayObjects) {
-  std::vector<ObjectID> unqueIds;
-  for (auto it = rayObjects.begin(); it != rayObjects.end(); it++) {
-    unqueIds.push_back(it->ID());
+inline static std::vector<ObjectID> RayObjectsToObjectIDs(
+    const std::vector<RayObject<T>> &ray_objects) {
+  std::vector<ObjectID> object_ids;
+  for (auto it = ray_objects.begin(); it != ray_objects.end(); it++) {
+    object_ids.push_back(it->ID());
   }
-  return unqueIds;
+  return object_ids;
 }
 
 template <typename T>
@@ -133,89 +126,95 @@ inline RayObject<T> Ray::Put(const T &obj) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Serializer::Serialize(packer, obj);
-  auto id = impl_->Put(buffer);
+  auto id = runtime_->Put(buffer);
   return RayObject<T>(id);
 }
 
 template <typename T>
 inline std::shared_ptr<T> Ray::Get(const RayObject<T> &object) {
-  auto data = impl_->Get(object.ID());
+  auto packed_object = runtime_->Get(object.ID());
   msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(data->size());
-  memcpy(unpacker.buffer(), data->data(), data->size());
-  unpacker.buffer_consumed(data->size());
-  std::shared_ptr<T> rt(new T);
-  Serializer::Deserialize(unpacker, *rt);
-  return rt;
+  unpacker.reserve_buffer(packed_object->size());
+  memcpy(unpacker.buffer(), packed_object->data(), packed_object->size());
+  unpacker.buffer_consumed(packed_object->size());
+  std::shared_ptr<T> return_object(new T);
+  Serializer::Deserialize(unpacker, return_object.get());
+  return return_object;
 }
 
 template <typename T>
 inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids) {
-  auto result = impl_->Get(ids);
-  std::vector<std::shared_ptr<T>> rt;
+  auto result = runtime_->Get(ids);
+  std::vector<std::shared_ptr<T>> return_objects;
+  return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
     msgpack::unpacker unpacker;
     unpacker.reserve_buffer((*it)->size());
     memcpy(unpacker.buffer(), (*it)->data(), (*it)->size());
     unpacker.buffer_consumed((*it)->size());
     std::shared_ptr<T> obj(new T);
-    Serializer::Deserialize(unpacker, *obj);
-    rt.push_back(obj);
+    Serializer::Deserialize(unpacker, obj.get());
+    return_objects.push_back(obj);
   }
-  return rt;
+  return return_objects;
 }
 
 template <typename T>
 inline std::vector<std::shared_ptr<T>> Ray::Get(
     const std::vector<RayObject<T>> &objects) {
-  auto uniqueVector = RayObjectToObjectID<T>(objects);
-  return Get<T>(uniqueVector);
+  auto object_ids = RayObjectsToObjectIDs<T>(objects);
+  return Get<T>(object_ids);
 }
 
 inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
                             int64_t timeout_ms) {
-  return impl_->Wait(ids, num_objects, timeout_ms);
+  return runtime_->Wait(ids, num_objects, timeout_ms);
 }
 
-template <typename R, typename Arg1Type, typename Arg2Type, typename... OtherArgTypes>
-inline RayObject<R> Ray::CallInternal(Arg1Type &arg1, Arg2Type &arg2,
-                                      OtherArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(arg1);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(arg2);
-  auto id = impl_->Call(ptr, buffer);
-  return RayObject<R>(std::move(id));
-}
-
-template <typename R, typename Arg1Type, typename Arg2Type, typename... OtherArgTypes>
-inline RayActor<R> Ray::CreateActorInternal(Arg1Type &arg1, Arg2Type &arg2,
-                                            OtherArgTypes &... args) {
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Arguments::WrapArgs(packer, args...);
-  remote_function_ptr_holder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(arg1);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(arg2);
-  auto id = impl_->CreateActor(ptr, buffer);
-  return RayActor<R>(std::move(id));
-}
-
-template <typename R, typename O, typename Arg1Type, typename Arg2Type,
+template <typename ReturnType, typename Arg1Type, typename Arg2Type,
           typename... OtherArgTypes>
-inline RayObject<R> Ray::CallActorInternal(Arg1Type &actorFunc, Arg2Type &execFunc,
-                                           RayActor<O> &actor, OtherArgTypes &... args) {
+inline RayObject<ReturnType> Ray::CallInternal(Arg1Type &func, Arg2Type &execFunc,
+                                               OtherArgTypes &... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::WrapArgs(packer, args...);
-  remote_function_ptr_holder ptr;
-  member_function_ptr_holder holder = *(member_function_ptr_holder *)(&actorFunc);
+  RemoteFunctionPtrHolder ptr;
+  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(execFunc);
+  auto returned_object_id = runtime_->Call(ptr, buffer);
+  return RayObject<ReturnType>(returned_object_id);
+}
+
+template <typename ReturnType, typename Arg1Type, typename Arg2Type,
+          typename... OtherArgTypes>
+inline RayActor<ReturnType> Ray::CreateActorInternal(Arg1Type &create_func,
+                                                     Arg2Type &execFunc,
+                                                     OtherArgTypes &... args) {
+  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
+  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
+  Arguments::WrapArgs(packer, args...);
+  RemoteFunctionPtrHolder ptr;
+  ptr.value[0] = reinterpret_cast<uintptr_t>(create_func);
+  ptr.value[1] = reinterpret_cast<uintptr_t>(execFunc);
+  auto returned_actor_id = runtime_->CreateActor(ptr, buffer);
+  return RayActor<ReturnType>(returned_actor_id);
+}
+
+template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type,
+          typename... OtherArgTypes>
+inline RayObject<ReturnType> Ray::CallActorInternal(Arg1Type &actor_func,
+                                                    Arg2Type &execFunc,
+                                                    RayActor<ActorType> &actor,
+                                                    OtherArgTypes &... args) {
+  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
+  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
+  Arguments::WrapArgs(packer, args...);
+  RemoteFunctionPtrHolder ptr;
+  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
   ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
   ptr.value[1] = reinterpret_cast<uintptr_t>(execFunc);
-  auto id = impl_->CallActor(ptr, actor.ID(), buffer);
-  return RayObject<R>(std::move(id));
+  auto returned_object_id = runtime_->CallActor(ptr, actor.ID(), buffer);
+  return RayObject<ReturnType>(returned_object_id);
 }
 
 #include <ray/api/generated/exec_funcs.generated.h>

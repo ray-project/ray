@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <ray/api/ray_exception.h>
 #include <msgpack.hpp>
 
 namespace ray {
@@ -18,21 +19,16 @@ class Serializer {
                         const OtherArgTypes &... args);
 
   template <typename T>
-  static void Deserialize(msgpack::unpacker &unpacker, T &val);
+  static void Deserialize(msgpack::unpacker &unpacker, T *val);
 
   static void Deserialize(msgpack::unpacker &unpacker);
 
   template <typename Arg1Type, typename... OtherArgTypes>
-  static void Deserialize(msgpack::unpacker &unpacker, Arg1Type &arg1,
-                          OtherArgTypes &... args);
+  static void Deserialize(msgpack::unpacker &unpacker, Arg1Type *arg1,
+                          OtherArgTypes *... args);
 };
-}  // namespace api
-}  // namespace ray
 
-namespace ray {
-namespace api {
-
-using namespace ::ray;
+// ---------- implementation ----------
 
 template <typename T>
 inline void Serializer::Serialize(msgpack::packer<msgpack::sbuffer> &packer,
@@ -52,22 +48,22 @@ inline void Serializer::Serialize(msgpack::packer<msgpack::sbuffer> &packer,
 }
 
 template <typename T>
-inline void Serializer::Deserialize(msgpack::unpacker &unpacker, T &val) {
+inline void Serializer::Deserialize(msgpack::unpacker &unpacker, T *val) {
   msgpack::object_handle oh;
   bool result = unpacker.next(oh);
   if (result == false) {
-    throw "unpack error";
+    throw RayException("unpack error");
   }
   msgpack::object obj = oh.get();
-  obj.convert(val);
+  obj.convert(*val);
   return;
 }
 
 inline void Serializer::Deserialize(msgpack::unpacker &unpacker) { return; }
 
 template <typename Arg1Type, typename... OtherArgTypes>
-inline void Serializer::Deserialize(msgpack::unpacker &unpacker, Arg1Type &arg1,
-                                    OtherArgTypes &... args) {
+inline void Serializer::Deserialize(msgpack::unpacker &unpacker, Arg1Type *arg1,
+                                    OtherArgTypes *... args) {
   Deserialize(unpacker, arg1);
   Deserialize(unpacker, args...);
   return;

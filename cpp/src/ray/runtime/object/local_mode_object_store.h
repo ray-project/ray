@@ -2,8 +2,8 @@
 #pragma once
 
 #include <unordered_map>
-
-#include <ray/core.h>
+#include "absl/synchronization/mutex.h"
+#include "ray/core.h"
 
 #include "object_store.h"
 
@@ -11,26 +11,21 @@ namespace ray {
 namespace api {
 
 class LocalModeObjectStore : public ObjectStore {
- private:
-  std::unordered_map<ObjectID, std::shared_ptr<msgpack::sbuffer>> data_;
-
-  std::mutex dataMutex_;
-
-  WaitResult WaitInternal(const std::vector<ObjectID> &objects, int num_objects,
-                          int64_t timeout_ms);
-
  public:
-  void PutRaw(const ObjectID &objectId, std::shared_ptr<msgpack::sbuffer> data);
-
-  void Del(const ObjectID &objectId);
-
-  std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &objectId, int timeoutMs);
-
-  std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
-      const std::vector<ObjectID> &objects, int timeoutMs);
-
   WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
                   int64_t timeout_ms);
+
+ private:
+  void PutRaw(const ObjectID &object_id, std::shared_ptr<msgpack::sbuffer> data);
+
+  std::shared_ptr<msgpack::sbuffer> GetRaw(const ObjectID &object_id, int timeout_ms);
+
+  std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
+      const std::vector<ObjectID> &objects, int timeout_ms);
+
+  std::unordered_map<ObjectID, std::shared_ptr<msgpack::sbuffer>> object_pool_;
+
+  absl::Mutex dataMutex_;
 };
 
 }  // namespace api

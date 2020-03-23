@@ -8,3 +8,4 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
+#include "ray/util/logging.h"

@@ -3,30 +3,36 @@
 // TODO(Guyang Song): code generation
 
 // 0 args
-template <typename R, typename O>
-static RayObject<R> Call(ActorFunc0<O, R> actorFunc, RayActor<O> &actor);
+template <typename ReturnType, typename ActorType>
+static RayObject<ReturnType> Call(ActorFunc0<ActorType, ReturnType> actor_func,
+                                  RayActor<ActorType> &actor);
 
-// 1 args
-template <typename R, typename O, typename T1>
-static RayObject<R> Call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor, T1 arg1);
+// 1 arg
+template <typename ReturnType, typename ActorType, typename Arg1Type>
+static RayObject<ReturnType> Call(ActorFunc1<ActorType, ReturnType, Arg1Type> actor_func,
+                                  RayActor<ActorType> &actor, Arg1Type arg1);
 
-template <typename R, typename O, typename T1>
-static RayObject<R> Call(ActorFunc1<O, R, T1> actorFunc, RayActor<O> &actor,
-                         RayObject<T1> &arg1);
+template <typename ReturnType, typename ActorType, typename Arg1Type>
+static RayObject<ReturnType> Call(ActorFunc1<ActorType, ReturnType, Arg1Type> actor_func,
+                                  RayActor<ActorType> &actor, RayObject<Arg1Type> &arg1);
 
 // 2 args
-template <typename R, typename O, typename T1, typename T2>
-static RayObject<R> Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T1 arg1,
-                         T2 arg2);
+template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
+static RayObject<ReturnType> Call(
+    ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
+    RayActor<ActorType> &actor, Arg1Type arg1, Arg2Type arg2);
 
-template <typename R, typename O, typename T1, typename T2>
-static RayObject<R> Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor,
-                         RayObject<T1> &arg1, T2 arg2);
+template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
+static RayObject<ReturnType> Call(
+    ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
+    RayActor<ActorType> &actor, RayObject<Arg1Type> &arg1, Arg2Type arg2);
 
-template <typename R, typename O, typename T1, typename T2>
-static RayObject<R> Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor, T1 arg1,
-                         RayObject<T2> &arg2);
+template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
+static RayObject<ReturnType> Call(
+    ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
+    RayActor<ActorType> &actor, Arg1Type arg1, RayObject<Arg2Type> &arg2);
 
-template <typename R, typename O, typename T1, typename T2>
-static RayObject<R> Call(ActorFunc2<O, R, T1, T2> actorFunc, RayActor<O> &actor,
-                         RayObject<T1> &arg1, RayObject<T2> &arg2);
+template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
+static RayObject<ReturnType> Call(
+    ActorFunc2<ActorType, ReturnType, Arg1Type, Arg2Type> actor_func,
+    RayActor<ActorType> &actor, RayObject<Arg1Type> &arg1, RayObject<Arg2Type> &arg2);

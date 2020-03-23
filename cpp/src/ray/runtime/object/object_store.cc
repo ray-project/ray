@@ -7,20 +7,18 @@
 namespace ray {
 namespace api {
 
-const int getTimeoutMs = 1000;
-
-void ObjectStore::Put(const ObjectID &objectId, std::shared_ptr<msgpack::sbuffer> data) {
-  PutRaw(objectId, data);
+void ObjectStore::Put(const ObjectID &object_id, std::shared_ptr<msgpack::sbuffer> data) {
+  PutRaw(object_id, data);
 }
 
-std::shared_ptr<msgpack::sbuffer> ObjectStore::Get(const ObjectID &objectId,
-                                                   int timeoutMs) {
-  return GetRaw(objectId, timeoutMs);
+std::shared_ptr<msgpack::sbuffer> ObjectStore::Get(const ObjectID &object_id,
+                                                   int timeout_ms) {
+  return GetRaw(object_id, timeout_ms);
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> ObjectStore::Get(
-    const std::vector<ObjectID> &objects, int timeoutMs) {
-  return GetRaw(objects, timeoutMs);
+    const std::vector<ObjectID> &objects, int timeout_ms) {
+  return GetRaw(objects, timeout_ms);
 }
 }  // namespace api
 }  // namespace ray

@@ -6,11 +6,13 @@
 
 #include <msgpack.hpp>
 
-#include <ray/core.h>
+#include "ray/core.h"
 
 namespace ray {
 namespace api {
 
+/// Represents an object in the object store..
+/// \param <T> The type of object.
 template <typename T>
 class RayObject {
  public:
@@ -18,31 +20,26 @@ class RayObject {
 
   RayObject(const ObjectID &id);
 
-  RayObject(const ObjectID &&id);
-
-  const ObjectID &ID() const;
-
-  std::shared_ptr<T> Get() const;
-
   bool operator==(const RayObject<T> &object) const;
 
+  /// Get a untyped ID of the object
+  const ObjectID &ID() const;
+
+  /// Get the object from the object store.
+  /// This method will be blocked until the object are ready.
+  ///
+  /// \return shared pointer of the result.
+  std::shared_ptr<T> Get() const;
+
+  /// Make RayObject serializable
   MSGPACK_DEFINE(id_);
 
  private:
   ObjectID id_;
-
-  template <typename TO>
-  std::shared_ptr<TO> DoGet() const;
 };
-
-}  // namespace api
-}  // namespace ray
 
 // ---------- implementation ----------
 #include <ray/api.h>
-
-namespace ray {
-namespace api {
 
 template <typename T>
 RayObject<T>::RayObject() {}
@@ -53,8 +50,8 @@ RayObject<T>::RayObject(const ObjectID &id) {
 }
 
 template <typename T>
-RayObject<T>::RayObject(const ObjectID &&id) {
-  id_ = std::move(id);
+inline bool RayObject<T>::operator==(const RayObject<T> &object) const {
+  return id_ == object.id_;
 }
 
 template <typename T>
@@ -64,23 +61,7 @@ const ObjectID &RayObject<T>::ID() const {
 
 template <typename T>
 inline std::shared_ptr<T> RayObject<T>::Get() const {
-  return DoGet<T>();
-}
-
-template <typename T>
-template <typename TO>
-inline std::shared_ptr<TO> RayObject<T>::DoGet() const {
   return Ray::Get(*this);
 }
-
-template <typename T>
-inline bool RayObject<T>::operator==(const RayObject<T> &object) const {
-  if (id_ == object.ID()) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
 }  // namespace api
 }  // namespace ray

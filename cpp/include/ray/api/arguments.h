@@ -17,13 +17,19 @@ class Arguments {
   template <typename Arg1Type, typename... OtherArgTypes>
   static void WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1Type &arg1,
                        OtherArgTypes &... args);
-};
-}  // namespace api
-}  // namespace ray
 
+  static void UnwrapArgs(msgpack::unpacker &unpacker);
+
+  template <typename Arg1Type>
+  static void UnwrapArgs(msgpack::unpacker &unpacker, std::shared_ptr<Arg1Type> *arg1);
+
+  template <typename Arg1Type, typename... OtherArgTypes>
+  static void UnwrapArgs(msgpack::unpacker &unpacker, std::shared_ptr<Arg1Type> *arg1,
+                         std::shared_ptr<OtherArgTypes> *... args);
+};
+
+// --------- inline implementation ------------
 #include <typeinfo>
-namespace ray {
-namespace api {
 
 inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer) {}
 
@@ -48,6 +54,30 @@ inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer, Arg1T
                                 OtherArgTypes &... args) {
   WrapArgs(packer, arg1);
   WrapArgs(packer, args...);
+}
+
+inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker) {}
+
+template <typename Arg1Type>
+inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
+                                  std::shared_ptr<Arg1Type> *arg1) {
+  bool is_ray_object;
+  Serializer::Deserialize(unpacker, &is_ray_object);
+  if (is_ray_object) {
+    RayObject<Arg1Type> ray_object;
+    Serializer::Deserialize(unpacker, &ray_object);
+    *arg1 = ray_object.Get();
+  } else {
+    Serializer::Deserialize(unpacker, arg1);
+  }
+}
+
+template <typename Arg1Type, typename... OtherArgTypes>
+inline void Arguments::UnwrapArgs(msgpack::unpacker &unpacker,
+                                  std::shared_ptr<Arg1Type> *arg1,
+                                  std::shared_ptr<OtherArgTypes> *... args) {
+  UnwrapArgs(unpacker, arg1);
+  UnwrapArgs(unpacker, args...);
 }
 
 }  // namespace api

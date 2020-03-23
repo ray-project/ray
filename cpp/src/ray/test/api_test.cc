@@ -6,36 +6,36 @@
 
 using namespace ray::api;
 
-int Foo0() { return 1; }
-int Foo(int x) { return x + 1; }
+int Return1() { return 1; }
+int Plus1(int x) { return x + 1; }
 
-int Bar(int x, int y) { return x + y; }
+int Plus(int x, int y) { return x + y; }
 
-class FooTest {
+class Counter {
  public:
   int count;
 
   MSGPACK_DEFINE(count);
 
-  FooTest() { count = 0; }
+  Counter() { count = 0; }
 
-  static FooTest *Create() {
-    FooTest *fooTest = new FooTest();
-    return fooTest;
+  static Counter *FactoryCreate() {
+    Counter *counter = new Counter();
+    return counter;
   }
 
-  int Foo(int x) { return x + 1; }
+  int Plus1(int x) { return x + 1; }
 
-  int Bar(int x, int y) { return x + y; }
+  int Plus(int x, int y) { return x + y; }
 
   int Add(int x) {
     count += x;
     return count;
   }
 
-  static int Foo_s(int x) { return x + 1; }
+  static int Plus1S(int x) { return x + 1; }
 
-  static int Bar_s(int x, int y) { return x + y; }
+  static int PlusS(int x, int y) { return x + y; }
 };
 
 TEST(ray_api_test_case, Put_test) {
@@ -48,17 +48,14 @@ TEST(ray_api_test_case, Put_test) {
 
 TEST(ray_api_test_case, wait_test) {
   Ray::Init();
-  auto r0 = Ray::Call(Foo0);
-  auto r1 = Ray::Call(Foo, 3);
-  auto r2 = Ray::Call(Bar, 2, 3);
-  std::vector<ObjectID> vector;
-  vector.push_back(r0.ID());
-  vector.push_back(r1.ID());
-  vector.push_back(r2.ID());
-  WaitResult result = Ray::Wait(vector, 3, 1000);
-  EXPECT_EQ(result.readys.size(), 3);
-  EXPECT_EQ(result.remains.size(), 0);
-  std::vector<std::shared_ptr<int>> getResult = Ray::Get<int>(vector);
+  auto r0 = Ray::Call(Return1);
+  auto r1 = Ray::Call(Plus1, 3);
+  auto r2 = Ray::Call(Plus, 2, 3);
+  std::vector<ObjectID> objects = {r0.ID(), r1.ID(), r2.ID()};
+  WaitResult result = Ray::Wait(objects, 3, 1000);
+  EXPECT_EQ(result.ready.size(), 3);
+  EXPECT_EQ(result.unready.size(), 0);
+  std::vector<std::shared_ptr<int>> getResult = Ray::Get<int>(objects);
   EXPECT_EQ(getResult.size(), 3);
   EXPECT_EQ(*getResult[0], 1);
   EXPECT_EQ(*getResult[1], 4);
@@ -66,16 +63,16 @@ TEST(ray_api_test_case, wait_test) {
 }
 
 TEST(ray_api_test_case, Call_with_value_test) {
-  auto r0 = Ray::Call(Foo0);
-  auto r1 = Ray::Call(Foo, 3);
-  auto r2 = Ray::Call(Bar, 2, 3);
+  auto r0 = Ray::Call(Return1);
+  auto r1 = Ray::Call(Plus1, 3);
+  auto r2 = Ray::Call(Plus, 2, 3);
 
   int result0 = *(r0.Get());
   int result1 = *(r1.Get());
   int result2 = *(r2.Get());
 
-  auto r3 = Ray::Call(FooTest::Foo_s, 3);
-  auto r4 = Ray::Call(FooTest::Bar_s, 3, 4);
+  auto r3 = Ray::Call(Counter::Plus1S, 3);
+  auto r4 = Ray::Call(Counter::PlusS, 3, 4);
 
   int result3 = *(r3.Get());
   int result4 = *(r4.Get());
@@ -88,11 +85,11 @@ TEST(ray_api_test_case, Call_with_value_test) {
 }
 
 TEST(ray_api_test_case, Call_with_object_test) {
-  auto rt0 = Ray::Call(Foo0);
-  auto rt1 = Ray::Call(Foo, rt0);
-  auto rt2 = Ray::Call(Bar, rt1, 3);
-  auto rt3 = Ray::Call(FooTest::Foo_s, 3);
-  auto rt4 = Ray::Call(FooTest::Bar_s, rt2, rt3);
+  auto rt0 = Ray::Call(Return1);
+  auto rt1 = Ray::Call(Plus1, rt0);
+  auto rt2 = Ray::Call(Plus, rt1, 3);
+  auto rt3 = Ray::Call(Counter::Plus1S, 3);
+  auto rt4 = Ray::Call(Counter::PlusS, rt2, rt3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -109,13 +106,13 @@ TEST(ray_api_test_case, Call_with_object_test) {
 
 TEST(ray_api_test_case, actor) {
   Ray::Init();
-  RayActor<FooTest> actor = Ray::CreateActor(FooTest::Create);
-  auto rt1 = actor.Call(&FooTest::Foo, 3);
-  auto rt2 = actor.Call(&FooTest::Bar, 3, rt1);
-  auto rt3 = actor.Call(&FooTest::Add, 1);
-  auto rt4 = actor.Call(&FooTest::Add, 2);
-  auto rt5 = actor.Call(&FooTest::Add, 3);
-  auto rt6 = actor.Call(&FooTest::Add, rt5);
+  RayActor<Counter> actor = Ray::CreateActor(Counter::FactoryCreate);
+  auto rt1 = actor.Call(&Counter::Plus1, 3);
+  auto rt2 = actor.Call(&Counter::Plus, 3, rt1);
+  auto rt3 = actor.Call(&Counter::Add, 1);
+  auto rt4 = actor.Call(&Counter::Add, 2);
+  auto rt5 = actor.Call(&Counter::Add, 3);
+  auto rt6 = actor.Call(&Counter::Add, rt5);
 
   int return1 = *(rt1.Get());
   int return2 = *(rt2.Get());
@@ -134,18 +131,18 @@ TEST(ray_api_test_case, actor) {
 
 TEST(ray_api_test_case, compare_with_future) {
   // future from a packaged_task
-  std::packaged_task<int(int)> task(Foo);
+  std::packaged_task<int(int)> task(Plus1);
   std::future<int> f1 = task.get_future();
   std::thread t(std::move(task), 1);
   int rt1 = f1.get();
 
   // future from an async()
-  std::future<int> f2 = std::async(std::launch::async, Foo, 1);
+  std::future<int> f2 = std::async(std::launch::async, Plus1, 1);
   int rt2 = f2.get();
 
   // Ray API
   Ray::Init();
-  auto f3 = Ray::Call(Foo, 1);
+  auto f3 = Ray::Call(Plus1, 1);
   int rt3 = *f3.Get();
 
   EXPECT_EQ(rt1, 2);

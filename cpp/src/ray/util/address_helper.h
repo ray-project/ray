@@ -6,9 +6,9 @@ namespace ray {
 namespace api {
 
 /// A base address which is used to calculate function offset
-extern uintptr_t dylib_base_addr;
+extern uintptr_t dynamic_library_base_addr;
 
 /// A fixed C language function which help to get infomation from dladdr
-extern "C" void AddressHelperInit();
+extern "C" void GenerateBaseAddressOfCurrentLibrary();
 }  // namespace api
 }  // namespace ray

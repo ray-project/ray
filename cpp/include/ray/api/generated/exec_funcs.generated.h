@@ -1,294 +1,159 @@
+/// This file is auto-generated. DO NOT EDIT.
+/// The following execution functions are wrappers of remote functions.
+/// Execution functions make remote functions executable in distributed system.
+/// NormalExecFunction the wrapper of normal remote function.
+/// CreateActorExecFunction the wrapper of actor creation function.
+/// ActorExecFunction the wrapper of actor member function.
 
 // TODO(Guyang Song): code generation
 
-// 0 args
-template <typename RT>
-std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, long func_offset,
-                                               std::shared_ptr<msgpack::sbuffer> args) {
-  RT rt;
-  typedef RT (*FUNC)();
-  FUNC func = (FUNC)(base_addr + func_offset);
-  rt = (*func)();
+template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
+std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer, TaskType task_type,
+    std::shared_ptr<OtherArgTypes> &... args) {
+  msgpack::unpacker unpacker;
+  unpacker.reserve_buffer(args_buffer->size());
+  memcpy(unpacker.buffer(), args_buffer->data(), args_buffer->size());
+  unpacker.buffer_consumed(args_buffer->size());
+  Arguments::UnwrapArgs(unpacker, &args...);
 
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, rt);
-  return buffer;
+  ReturnType return_value;
+  typedef ReturnType (*Func)(OtherArgTypes...);
+  Func func = (Func)(base_addr + func_offset);
+  return_value = (*func)(*args...);
+
+  std::shared_ptr<msgpack::sbuffer> returnBuffer(new msgpack::sbuffer());
+  msgpack::packer<msgpack::sbuffer> packer(returnBuffer.get());
+  Serializer::Serialize(packer, (CastReturnType)(return_value));
+
+  return returnBuffer;
 }
 
-// 1 args
-template <typename RT, typename T1>
-std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, long func_offset,
-                                               std::shared_ptr<msgpack::sbuffer> args) {
-  RT rt;
-  T1 t1;
+template <typename ReturnType, typename ActorType, typename... OtherArgTypes>
+std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    std::shared_ptr<msgpack::sbuffer> &actor_buffer,
+    std::shared_ptr<OtherArgTypes> &... args) {
+  msgpack::unpacker actor_unpacker;
+  actor_unpacker.reserve_buffer(actor_buffer->size());
+  memcpy(actor_unpacker.buffer(), actor_buffer->data(), actor_buffer->size());
+  actor_unpacker.buffer_consumed(actor_buffer->size());
+  uintptr_t actor_ptr;
+  Serializer::Deserialize(actor_unpacker, &actor_ptr);
+  ActorType *actor_object = (ActorType *)actor_ptr;
+
   msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args->size());
-  memcpy(unpacker.buffer(), args->data(), args->size());
-  unpacker.buffer_consumed(args->size());
+  unpacker.reserve_buffer(args_buffer->size());
+  memcpy(unpacker.buffer(), args_buffer->data(), args_buffer->size());
+  unpacker.buffer_consumed(args_buffer->size());
+  Arguments::UnwrapArgs(unpacker, &args...);
 
-  bool rayObjectFlag1;
-  Serializer::Deserialize(unpacker, rayObjectFlag1);
-  if (rayObjectFlag1) {
-    RayObject<T1> rayObject1;
-    Serializer::Deserialize(unpacker, rayObject1);
-    t1 = *rayObject1.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t1);
-  }
-  typedef RT (*FUNC)(T1);
-  FUNC func = (FUNC)(base_addr + func_offset);
-  rt = (*func)(t1);
+  ReturnType return_value;
+  typedef ReturnType (ActorType::*Func)(OtherArgTypes...);
+  MemberFunctionPtrHolder holder;
+  holder.value[0] = base_addr + func_offset;
+  holder.value[1] = 0;
+  Func func = *((Func *)&holder);
+  return_value = (actor_object->*func)(*args...);
 
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, rt);
-  return buffer;
-}
-
-// 2 args
-template <typename RT, typename T1, typename T2>
-std::shared_ptr<msgpack::sbuffer> ExecFunction(uintptr_t base_addr, long func_offset,
-                                               std::shared_ptr<msgpack::sbuffer> args,
-                                               TaskType type) {
-  RT rt;
-  T1 t1;
-  T2 t2;
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args->size());
-  memcpy(unpacker.buffer(), args->data(), args->size());
-  unpacker.buffer_consumed(args->size());
-
-  bool rayObjectFlag1;
-  bool rayObjectFlag2;
-  Serializer::Deserialize(unpacker, rayObjectFlag1);
-  if (rayObjectFlag1) {
-    RayObject<T1> rayObject1;
-    Serializer::Deserialize(unpacker, rayObject1);
-    t1 = *rayObject1.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t1);
-  }
-  Serializer::Deserialize(unpacker, rayObjectFlag2);
-  if (rayObjectFlag2) {
-    RayObject<T2> rayObject2;
-    Serializer::Deserialize(unpacker, rayObject2);
-    t2 = *rayObject2.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t2);
-  }
-  typedef RT (*FUNC)(T1, T2);
-  FUNC func = (FUNC)(base_addr + func_offset);
-  rt = (*func)(t1, t2);
-
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, rt);
-  return buffer;
+  std::shared_ptr<msgpack::sbuffer> returnBuffer(new msgpack::sbuffer());
+  msgpack::packer<msgpack::sbuffer> packer(returnBuffer.get());
+  Serializer::Serialize(packer, return_value);
+  return returnBuffer;
 }
 
 // 0 args
-template <typename RT>
-std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
-    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args) {
-  RT rt;
-  typedef RT (*FUNC)();
-  FUNC func = (FUNC)(base_addr + func_offset);
-  rt = (*func)();
-
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, (uintptr_t)(rt));
-  return buffer;
+template <typename ReturnType>
+std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+  return ExecuteNormalFunction<ReturnType, ReturnType>(
+      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK);
 }
 
-// 1 args
-template <typename RT, typename T1>
-std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
-    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args) {
-  RT rt;
-  T1 t1;
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args->size());
-  memcpy(unpacker.buffer(), args->data(), args->size());
-  unpacker.buffer_consumed(args->size());
-
-  bool rayObjectFlag1;
-  Serializer::Deserialize(unpacker, rayObjectFlag1);
-  if (rayObjectFlag1) {
-    RayObject<T1> rayObject1;
-    Serializer::Deserialize(unpacker, rayObject1);
-    t1 = *rayObject1.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t1);
-  }
-  typedef RT (*FUNC)(T1);
-  FUNC func = (FUNC)(base_addr + func_offset);
-  rt = (*func)(t1);
-
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, (uintptr_t)(rt));
-  return buffer;
+// 1 arg
+template <typename ReturnType, typename Arg1Type>
+std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+  std::shared_ptr<Arg1Type> arg1_ptr;
+  return ExecuteNormalFunction<ReturnType, ReturnType>(
+      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK, arg1_ptr);
 }
 
 // 2 args
-template <typename RT, typename T1, typename T2>
-std::shared_ptr<msgpack::sbuffer> CreateActorexecFunction(
-    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args) {
-  RT rt;
-  T1 t1;
-  T2 t2;
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args->size());
-  memcpy(unpacker.buffer(), args->data(), args->size());
-  unpacker.buffer_consumed(args->size());
-
-  bool rayObjectFlag1;
-  bool rayObjectFlag2;
-  Serializer::Deserialize(unpacker, rayObjectFlag1);
-  if (rayObjectFlag1) {
-    RayObject<T1> rayObject1;
-    Serializer::Deserialize(unpacker, rayObject1);
-    t1 = *rayObject1.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t1);
-  }
-  Serializer::Deserialize(unpacker, rayObjectFlag2);
-  if (rayObjectFlag2) {
-    RayObject<T2> rayObject2;
-    Serializer::Deserialize(unpacker, rayObject2);
-    t2 = *rayObject2.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t2);
-  }
-  typedef RT (*FUNC)(T1, T2);
-  FUNC func = (FUNC)(base_addr + func_offset);
-  rt = (*func)(t1, t2);
-
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, (uintptr_t)(rt));
-  return buffer;
+template <typename ReturnType, typename Arg1Type, typename Arg2Type>
+std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+  std::shared_ptr<Arg1Type> arg1_ptr;
+  std::shared_ptr<Arg2Type> arg2_ptr;
+  return ExecuteNormalFunction<ReturnType, ReturnType>(
+      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK, arg1_ptr, arg2_ptr);
 }
 
 // 0 args
-template <typename RT, typename O>
-std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
-    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args,
-    std::shared_ptr<msgpack::sbuffer> object) {
-  msgpack::unpacker actor_unpacker;
-  actor_unpacker.reserve_buffer(object->size());
-  memcpy(actor_unpacker.buffer(), object->data(), object->size());
-  actor_unpacker.buffer_consumed(object->size());
-  uintptr_t actor_ptr;
-  Serializer::Deserialize(actor_unpacker, actor_ptr);
-  O *actor_object = (O *)actor_ptr;
-
-  RT rt;
-  typedef RT (O::*FUNC)();
-  member_function_ptr_holder holder;
-  holder.value[0] = base_addr + func_offset;
-  holder.value[1] = 0;
-  FUNC func = *((FUNC *)&holder);
-  rt = (actor_object->*func)();
-
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, rt);
-  return buffer;
+template <typename ReturnType>
+std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+  return ExecuteNormalFunction<ReturnType, uintptr_t>(base_addr, func_offset, args_buffer,
+                                                      TaskType::ACTOR_CREATION_TASK);
 }
 
-// 1 args
-template <typename RT, typename O, typename T1>
-std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
-    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args,
-    std::shared_ptr<msgpack::sbuffer> object) {
-  msgpack::unpacker actor_unpacker;
-  actor_unpacker.reserve_buffer(object->size());
-  memcpy(actor_unpacker.buffer(), object->data(), object->size());
-  actor_unpacker.buffer_consumed(object->size());
-  uintptr_t actor_ptr;
-  Serializer::Deserialize(actor_unpacker, actor_ptr);
-  O *actor_object = (O *)actor_ptr;
-
-  RT rt;
-  T1 t1;
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args->size());
-  memcpy(unpacker.buffer(), args->data(), args->size());
-  unpacker.buffer_consumed(args->size());
-
-  bool rayObjectFlag1;
-  Serializer::Deserialize(unpacker, rayObjectFlag1);
-  if (rayObjectFlag1) {
-    RayObject<T1> rayObject1;
-    Serializer::Deserialize(unpacker, rayObject1);
-    t1 = *rayObject1.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t1);
-  }
-  typedef RT (O::*FUNC)(T1);
-  member_function_ptr_holder holder;
-  holder.value[0] = base_addr + func_offset;
-  holder.value[1] = 0;
-  FUNC func = *((FUNC *)&holder);
-  rt = (actor_object->*func)(t1);
-
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, rt);
-  return buffer;
+// 1 arg
+template <typename ReturnType, typename Arg1Type>
+std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+  std::shared_ptr<Arg1Type> arg1_ptr;
+  return ExecuteNormalFunction<ReturnType, uintptr_t>(
+      base_addr, func_offset, args_buffer, TaskType::ACTOR_CREATION_TASK, arg1_ptr);
 }
 
 // 2 args
-template <typename RT, typename O, typename T1, typename T2>
-std::shared_ptr<msgpack::sbuffer> ActorexecFunction(
-    uintptr_t base_addr, long func_offset, std::shared_ptr<msgpack::sbuffer> args,
-    std::shared_ptr<msgpack::sbuffer> object) {
-  msgpack::unpacker actor_unpacker;
-  actor_unpacker.reserve_buffer(object->size());
-  memcpy(actor_unpacker.buffer(), object->data(), object->size());
-  actor_unpacker.buffer_consumed(object->size());
-  uintptr_t actor_ptr;
-  Serializer::Deserialize(actor_unpacker, actor_ptr);
-  O *actor_object = (O *)actor_ptr;
+template <typename ReturnType, typename Arg1Type, typename Arg2Type>
+std::shared_ptr<msgpack::sbuffer> CreateActorExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer) {
+  std::shared_ptr<Arg1Type> arg1_ptr;
+  std::shared_ptr<Arg2Type> arg2_ptr;
+  return ExecuteNormalFunction<ReturnType, uintptr_t>(base_addr, func_offset, args_buffer,
+                                                      TaskType::ACTOR_CREATION_TASK,
+                                                      arg1_ptr, arg2_ptr);
+}
 
-  RT rt;
-  T1 t1;
-  T2 t2;
-  msgpack::unpacker unpacker;
-  unpacker.reserve_buffer(args->size());
-  memcpy(unpacker.buffer(), args->data(), args->size());
-  unpacker.buffer_consumed(args->size());
+// 0 args
+template <typename ReturnType, typename ActorType>
+std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
+  return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
+                                                     actor_buffer);
+}
 
-  bool rayObjectFlag1;
-  bool rayObjectFlag2;
-  Serializer::Deserialize(unpacker, rayObjectFlag1);
-  if (rayObjectFlag1) {
-    RayObject<T1> rayObject1;
-    Serializer::Deserialize(unpacker, rayObject1);
-    t1 = *rayObject1.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t1);
-  }
-  Serializer::Deserialize(unpacker, rayObjectFlag2);
-  if (rayObjectFlag2) {
-    RayObject<T2> rayObject2;
-    Serializer::Deserialize(unpacker, rayObject2);
-    t2 = *rayObject2.Get();
-  } else {
-    Serializer::Deserialize(unpacker, t2);
-  }
-  typedef RT (O::*FUNC)(T1, T2);
-  member_function_ptr_holder holder;
-  holder.value[0] = base_addr + func_offset;
-  holder.value[1] = 0;
-  FUNC func = *((FUNC *)&holder);
-  rt = (actor_object->*func)(t1, t2);
+// 1 arg
+template <typename ReturnType, typename ActorType, typename Arg1Type>
+std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
+  std::shared_ptr<Arg1Type> arg1_ptr;
+  return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
+                                                     actor_buffer, arg1_ptr);
+}
 
-  std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
-  msgpack::packer<msgpack::sbuffer> packer(buffer.get());
-  Serializer::Serialize(packer, rt);
-  return buffer;
+// 2 args
+template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type>
+std::shared_ptr<msgpack::sbuffer> ActorExecFunction(
+    uintptr_t base_addr, size_t func_offset,
+    std::shared_ptr<msgpack::sbuffer> &args_buffer,
+    std::shared_ptr<msgpack::sbuffer> &actor_buffer) {
+  std::shared_ptr<Arg1Type> arg1_ptr;
+  std::shared_ptr<Arg2Type> arg2_ptr;
+  return ExecuteActorFunction<ReturnType, ActorType>(base_addr, func_offset, args_buffer,
+                                                     actor_buffer, arg1_ptr, arg2_ptr);
 }

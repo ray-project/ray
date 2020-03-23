@@ -4,7 +4,7 @@
 load("//bazel:ray.bzl", "COPTS")
 
 cc_library(
-    name = "libray_api_hdr",
+    name = "libray_api_header",
     hdrs = glob([
         "include/ray/*.h",
         "include/ray/**/*.h",
@@ -42,12 +42,15 @@ cc_binary(
     linkopts = ["-ldl"],
     linkshared = 1,
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
-        "libray_api_hdr",
+        "libray_api_header",
         "//:core_worker_lib",
         "//:ray_common",
+        "//:ray_util",
         "@boost//:asio",
         "@boost//:thread",
+        "@com_google_absl//absl/synchronization",
         "@msgpack",
     ],
 )
@@ -62,52 +65,22 @@ cc_binary(
     testonly = 1,
     srcs = [
         "src/example/example.cc",
-        "src/example/example.h",
     ],
     copts = COPTS,
     deps = [
-        "libray_api_hdr",
+        "libray_api_header",
         "ray_api",
     ],
 )
 
 cc_binary(
     name = "api_test",
-    testonly = 1,
-    srcs = [
-        "src/ray/test/api_test.cc",
-    ],
+    srcs = glob([
+        "src/ray/test/*.cc",
+    ]),
     copts = COPTS,
     deps = [
-        "libray_api_hdr",
-        "ray_api",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
-    name = "wrap_test",
-    testonly = 1,
-    srcs = [
-        "src/ray/test/wrap_test.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        "libray_api_hdr",
-        "ray_api",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_binary(
-    name = "slow_function_test",
-    testonly = 1,
-    srcs = [
-        "src/ray/test/slow_function_test.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        "libray_api_hdr",
+        "libray_api_header",
         "ray_api",
         "@com_google_googletest//:gtest_main",
     ],
