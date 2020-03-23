@@ -1,4 +1,4 @@
-from local_dataset import LocalDataset
+from ray.util.sgd.data.local_dataset import LocalDataset
 from PIL import Image
 import io
 import os
