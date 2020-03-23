@@ -47,6 +47,16 @@ void RedisServiceManagerForTest::TearDownTestCase() {
   usleep(100 * 1000);
 }
 
+void RedisServiceManagerForTest::FlushAll() {
+  std::string flush_all_redis_command =
+      REDIS_CLIENT_EXEC_PATH + " -p " + std::to_string(REDIS_SERVER_PORT) + " flushall";
+  RAY_LOG(INFO) << "Cleaning up redis with command: " << flush_all_redis_command;
+  if (system(flush_all_redis_command.c_str()) != 0) {
+    RAY_LOG(WARNING) << "Failed to flush redis. The redis process may no longer exist.";
+  }
+  usleep(100 * 1000);
+}
+
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
   int wait_time = 0;
   while (true) {

@@ -1102,7 +1102,7 @@ def start_dashboard(require_webui,
         webui_dependencies_present = False
         warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
+            "as well as 'pip install aiohttp grpcio'.")
         if require_webui:
             raise ImportError(warning_message)
         else:
