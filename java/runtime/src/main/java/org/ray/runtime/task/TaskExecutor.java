@@ -57,7 +57,7 @@ public abstract class TaskExecutor {
   }
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
-                                          List<NativeRayObject> argsBytes) {
+      List<NativeRayObject> argsBytes) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
@@ -82,7 +82,8 @@ public abstract class TaskExecutor {
         actor = currentActor;
 
       }
-      Object[] args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes(), rayFunction.classLoader);
+      Object[] args = ArgumentsBuilder
+          .unwrap(argsBytes, rayFunction.executable.getParameterTypes(), rayFunction.classLoader);
       // Execute the task.
       Object result;
       if (!rayFunction.isConstructor()) {

@@ -1,7 +1,7 @@
 package org.ray.runtime.object;
 
-import java.util.ArrayList;
 import java.util.Arrays;
+
 import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
@@ -38,8 +38,8 @@ public class ObjectSerializer {
    * @param classLoader The classLoader of the object.
    * @return The deserialized object.
    */
-  public static Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId, Class<?> objectType,
-      ClassLoader classLoader) {
+  public static Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId,
+      Class<?> objectType, ClassLoader classLoader) {
     byte[] meta = nativeRayObject.metadata;
     byte[] data = nativeRayObject.data;
 
@@ -47,7 +47,8 @@ public class ObjectSerializer {
       // If meta is not null, deserialize the object from meta.
       if (Arrays.equals(meta, OBJECT_METADATA_TYPE_RAW)) {
         return data;
-      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) || Arrays.equals(meta, OBJECT_METADATA_TYPE_JAVA)) {
+      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
+          Arrays.equals(meta, OBJECT_METADATA_TYPE_JAVA)) {
         return Serializer.decode(data, objectType, classLoader);
       } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
         return new RayWorkerException();
@@ -58,7 +59,8 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
         return Serializer.decode(data, objectType, classLoader);
       } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_PYTHON)) {
-        throw new IllegalArgumentException("Can't deserialize Python object: " + objectId.toString());
+        throw new IllegalArgumentException("Can't deserialize Python object: " + objectId
+            .toString());
       }
       throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
     } else {
@@ -87,7 +89,8 @@ public class ObjectSerializer {
     } else {
       Serializer.Meta meta = new Serializer.Meta();
       byte[] serializedBytes = Serializer.encode(object, meta);
-      return new NativeRayObject(serializedBytes, meta.isCrossLanguage ? OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
+      return new NativeRayObject(serializedBytes, meta.isCrossLanguage ?
+          OBJECT_METADATA_TYPE_CROSS_LANGUAGE : OBJECT_METADATA_TYPE_JAVA);
     }
   }
 }

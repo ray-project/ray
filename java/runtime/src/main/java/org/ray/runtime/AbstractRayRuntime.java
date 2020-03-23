@@ -103,22 +103,22 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Class<?>[] returnTypes;
     if (func instanceof RayFuncVoid) {
-      returnTypes = new Class<?>[] {};
+      returnTypes = new Class<?>[]{};
     } else {
       Class<?> returnType = ((Method) rayFunction.executable).getReturnType();
-      returnTypes = new Class<?>[] {returnType};
+      returnTypes = new Class<?>[]{returnType};
     }
     return callNormalFunction(functionDescriptor, args, returnTypes, options);
   }
 
   @Override
   public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
-                        CallOptions options) {
+      CallOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
         pyRemoteFunction.moduleName,
         "",
         pyRemoteFunction.functionName);
-  	// Python functions always have a return value, even if it's `None`.
+    // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(functionDescriptor, args,
         /*returnTypes=*/new Class<?>[]{pyRemoteFunction.returnType}, options);
   }
@@ -129,10 +129,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Class<?>[] returnTypes;
     if (func instanceof RayFuncVoid) {
-      returnTypes = new Class<?>[] {};
+      returnTypes = new Class<?>[]{};
     } else {
       Class<?> returnType = ((Method) rayFunction.executable).getReturnType();
-      returnTypes = new Class<?>[] {returnType};
+      returnTypes = new Class<?>[]{returnType};
     }
     return callActorFunction(actor, functionDescriptor, args, returnTypes);
   }
@@ -158,7 +158,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   @Override
   public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
-                                ActorCreationOptions options) {
+      ActorCreationOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
         pyActorClass.moduleName,
         pyActorClass.className,

@@ -1,8 +1,8 @@
 package org.ray.runtime.serializer;
 
 import java.lang.reflect.Method;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class CrossTypeManager {
   public static final int TYPE_ID_ACTOR_HANDLE = 1;

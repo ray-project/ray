@@ -7,8 +7,9 @@ import org.ray.runtime.actor.NativeRayActorSerializer;
 /**
  * Java object serialization TODO: use others (e.g. Arrow) for higher performance
  */
+// FST is much better than Fst, e.g. FSTConfiguration
+@SuppressWarnings("checkstyle:AbbreviationAsWordInName")
 public class FSTSerializer {
-
   private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal.withInitial(() -> {
     FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
     conf.registerSerializer(NativeRayActor.class, new NativeRayActorSerializer(), true);
