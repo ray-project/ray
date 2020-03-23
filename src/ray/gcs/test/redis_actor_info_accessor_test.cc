@@ -79,7 +79,7 @@ TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
 
   WaitPendingDone(wait_pending_timeout_);
 
-  // get
+  // async get
   for (const auto &elem : id_to_data_) {
     ++pending_count_;
     RAY_CHECK_OK(actor_accessor.AsyncGet(
@@ -93,6 +93,15 @@ TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
   }
 
   WaitPendingDone(wait_pending_timeout_);
+
+  // sync get
+  std::vector<ActorTableData> actor_table_data_list;
+  RAY_CHECK_OK(actor_accessor.GetAll(&actor_table_data_list));
+  ASSERT_EQ(id_to_data_.size(), actor_table_data_list.size());
+  for (auto &data : actor_table_data_list) {
+    ActorID actor_id = ActorID::FromBinary(data.actor_id());
+    ASSERT_TRUE(id_to_data_.count(actor_id) != 0);
+  }
 }
 
 TEST_F(ActorInfoAccessorTest, Subscribe) {
