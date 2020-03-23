@@ -171,6 +171,48 @@ LineageCache::LineageCache(const ClientID &self_node_id,
                            uint64_t max_lineage_size)
     : self_node_id_(self_node_id), gcs_client_(gcs_client) {}
 
+/// A helper function to add some uncommitted lineage to the local cache.
+void LineageCache::AddUncommittedLineage(const TaskID &task_id,
+                                         const Lineage &uncommitted_lineage) {
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
+  RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << self_node_id_;
+  // If the entry is not found in the lineage to merge, then we stop since
+  // there is nothing to copy into the merged lineage.
+  auto entry = uncommitted_lineage.GetEntry(task_id);
+  if (!entry) {
+    return;
+  }
+  RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED);
+
+  // Insert a copy of the entry into our cache.
+  const auto &parent_ids = entry->GetParentTaskIds();
+  // If the insert is successful, then continue the DFS. The insert will fail
+  // if the new entry has an equal or lower GCS status than the current entry
+  // in our cache. This also prevents us from traversing the same node twice.
+  if (lineage_.SetEntry(entry->TaskData(), entry->GetStatus())) {
+    RAY_CHECK(SubscribeTask(task_id));
+    for (const auto &parent_id : parent_ids) {
+      AddUncommittedLineage(parent_id, uncommitted_lineage);
+    }
+  }
+}
+
+bool LineageCache::CommitTask(const Task &task) {
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
+  const TaskID task_id = task.GetTaskSpecification().TaskId();
+  RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << self_node_id_;
+
+  if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED) ||
+      lineage_.GetEntry(task_id)->GetStatus() == GcsStatus::UNCOMMITTED) {
+    // Attempt to flush the task if the task is uncommitted.
+    FlushTask(task_id);
+    return true;
+  } else {
+    // The task was already committing (COMMITTING).
+    return false;
+  }
+}
+
 void LineageCache::FlushAllUncommittedTasks() {
   size_t num_flushed = 0;
   for (const auto &entry : lineage_.GetEntries()) {
