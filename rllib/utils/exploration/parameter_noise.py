@@ -145,38 +145,12 @@ class ParameterNoise(Exploration):
 
         explore = explore if explore is not None else \
             self.policy_config["explore"]
-        if explore:
-            # We don't explore by default AND weights are currently noise-free:
-            # Apply stored noise.
-            if not self.default_explore and \
-                    not self.weights_are_currently_noisy:
-                self._add_stored_noise(tf_sess=tf_sess)
-        else:
-            # We expolore by default AND noise is currently in place:
-            # Remove it.
-            if self.default_explore and self.weights_are_currently_noisy:
-                self._remove_noise(tf_sess=tf_sess)
-
-    @override(Exploration)
-    def after_forward_pass(self,
-                           *,
-                           distribution_inputs,
-                           action_dist_class,
-                           timestep=None,
-                           explore=None,
-                           tf_sess=None):
-        explore = explore if explore is not None else \
-            self.policy_config["explore"]
-        if explore:
-            # Default is not to explore -> Remove noise.
-            if not self.default_explore:
-                self._remove_noise(tf_sess=tf_sess)
-            # Default is to explore. Don't do anything.
-        else:
-            # Default is to explore. Add noise again.
-            if self.default_explore:
-                self._add_stored_noise(tf_sess=tf_sess)
-            # Default is not to explore. Don't do anything.
+        # Add noise if necessary.
+        if explore and not self.weights_are_currently_noisy:
+            self._add_stored_noise(tf_sess=tf_sess)
+        # Remove noise if necessary.
+        elif not explore and self.weights_are_currently_noisy:
+            self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
     def get_exploration_action(self,
