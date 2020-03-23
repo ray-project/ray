@@ -1,4 +1,4 @@
-"""A very simple contextual bandit example with 2 arms."""
+"""A very simple contextual bandit example with 3 arms."""
 
 import argparse
 import random
@@ -9,11 +9,11 @@ from gym.spaces import Discrete, Box
 from ray import tune
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop-at-reward", type=float, default=10)
+parser.add_argument("--stop-at-reward", type=float, default=1)
 parser.add_argument("--run", type=str, default="contrib/LinUCB")
 
 
-class SimpleContextBandit(gym.Env):
+class SimpleContextualBandit(gym.Env):
     def __init__(self, config=None):
         self.action_space = Discrete(3)
         self.observation_space = Box(low=-1., high=1., shape=(2, ))
@@ -25,13 +25,13 @@ class SimpleContextBandit(gym.Env):
 
     def step(self, action):
         rewards_for_context = {
-            -1.: [0, 5, 10],
-            1.: [10, 5, 0],
+            -1.: [0, .5, 1],
+            1.: [1, .5, 0],
         }
         reward = rewards_for_context[self.cur_context][action]
         return (np.array([-self.cur_context, self.cur_context]), reward, True,
                 {
-                    "regret": 10 - reward
+                    "regret": 1 - reward
                 })
 
 
@@ -43,5 +43,5 @@ if __name__ == "__main__":
             "episode_reward_mean": args.stop_at_reward,
         },
         config={
-            "env": SimpleContextBandit,
+            "env": SimpleContextualBandit,
         })
