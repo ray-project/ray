@@ -46,9 +46,6 @@ class Categorical(TFActionDistribution):
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
         assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-        shape = inputs.shape.as_list() if isinstance(inputs, tf.Tensor) else \
-            inputs.shape
-        self.n = shape[-1]
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)
@@ -83,9 +80,7 @@ class Categorical(TFActionDistribution):
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
-        sample = tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
-        # Stability in case self.inputs have very extreme values.
-        return tf.minimum(tf.cast(self.n, sample.dtype), sample)
+        return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
 
     @staticmethod
     @override(ActionDistribution)
