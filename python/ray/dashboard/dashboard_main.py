@@ -1,4 +1,3 @@
-import argparse
 import os
 import traceback
 
@@ -7,6 +6,7 @@ import ray
 
 import ray.ray_constants as ray_constants
 from ray.dashboard.dashboard import Dashboard
+
 
 @click.command()
 @click.option(
@@ -48,13 +48,8 @@ from ray.dashboard.dashboard import Dashboard
     type=str,
     default=None,
     help="Specify the path of the temporary directory use by Ray process.")
-def main(host,
-         port,
-         redis_address,
-         redis_password,
-         logging_level,
-         logging_format,
-         temp_dir):
+def main(host, port, redis_address, redis_password, logging_level,
+         logging_format, temp_dir):
     ray.utils.setup_logger(logging_level, logging_format)
 
     metrics_export_address = os.environ.get("METRICS_EXPORT_ADDRESS")

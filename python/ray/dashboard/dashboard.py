@@ -120,8 +120,8 @@ async def json_response(is_dev, result=None, error=None,
 class DashboardController(BaseDashboardController):
     def __init__(self, redis_address, redis_password):
         self.node_stats = NodeStats(redis_address, redis_password)
-        self.raylet_stats = RayletStats(redis_address,
-                                        redis_password=redis_password)
+        self.raylet_stats = RayletStats(
+            redis_address, redis_password=redis_password)
         if Analysis is not None:
             self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
 
@@ -362,9 +362,7 @@ class MetricsExportHandler:
     async def enable_export_metrics(self, req) -> aiohttp.web.Response:
         if self.metrics_export_client.enabled:
             return await json_response(
-                self.is_dev,
-                result={"url": None},
-                error="Already enabled")
+                self.is_dev, result={"url": None}, error="Already enabled")
 
         succeed = self.metrics_export_client.start_exporting_metrics()
         if not succeed:
@@ -397,12 +395,11 @@ class MetricsExportHandler:
 
 
 def setup_metrics_export_routes(app: aiohttp.web.Application,
-                                  handler: MetricsExportHandler):
+                                handler: MetricsExportHandler):
     """Routes that require dynamically changing class attributes."""
     app.router.add_get("/api/enable_hostsed_dashboard",
                        handler.enable_export_metrics)
-    app.router.add_get("/api/dashboard_url",
-                       handler.get_dashboard_address)
+    app.router.add_get("/api/dashboard_url", handler.get_dashboard_address)
     app.router.add_get("/dashboard", handler.redirect_to_dashboard)
 
 
@@ -509,17 +506,14 @@ class Dashboard:
         self.metrics_export_address = metrics_export_address
         if self.metrics_export_address:
             self.metrics_export_client = MetricsExportClient(
-                metrics_export_address,
-                self.dashboard_controller,
-                self.dashboard_id
-            )
+                metrics_export_address, self.dashboard_controller,
+                self.dashboard_id)
             self.metrics_export_handler = MetricsExportHandler(
                 self.dashboard_controller,
                 self.metrics_export_client,
                 self.dashboard_id,
                 is_dev=self.is_dev)
-            setup_metrics_export_routes(self.app,
-                                          self.metrics_export_handler)
+            setup_metrics_export_routes(self.app, self.metrics_export_handler)
 
         # Setup Dashboard Routes
         build_dir = setup_static_dir(self.app)
@@ -949,7 +943,7 @@ class TuneCollector(threading.Thread):
         self._data_lock = threading.Lock()
         self._reload_interval = reload_interval
         self._available = False
-        
+
         os.makedirs(self._logdir, exist_ok=True)
         super().__init__()
 

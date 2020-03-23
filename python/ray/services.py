@@ -1083,12 +1083,8 @@ def start_dashboard(require_webui,
         os.path.dirname(os.path.abspath(__file__)),
         "dashboard/dashboard_main.py")
     command = [
-        sys.executable,
-        "-u",
-        dashboard_filepath,
-        "--host={}".format(host),
-        "--port={}".format(port),
-        "--redis-address={}".format(redis_address),
+        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
+        "--port={}".format(port), "--redis-address={}".format(redis_address),
         "--temp-dir={}".format(temp_dir)
     ]
     if redis_password:

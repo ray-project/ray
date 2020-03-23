@@ -1,6 +1,4 @@
-import json
 import logging
-import requests
 import threading
 import time
 
@@ -41,13 +39,8 @@ class Exporter(threading.Thread):
 
     def export(self, ray_config, node_info, raylet_info, tune_info,
                tune_availability):
-        post_ingest(self.export_address,
-                    self.dashboard_id,
-                    self.access_token,
-                    ray_config,
-                    node_info,
-                    raylet_info,
-                    tune_info,
+        post_ingest(self.export_address, self.dashboard_id, self.access_token,
+                    ray_config, node_info, raylet_info, tune_info,
                     tune_availability)
 
     def run(self):

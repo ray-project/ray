@@ -1,7 +1,5 @@
-import json
 import logging
 import re
-import requests
 
 from ray.dashboard.metrics_exporter.api import post_auth
 from ray.dashboard.metrics_exporter.exporter import Exporter
@@ -12,13 +10,15 @@ logger = logging.getLogger(__name__)
 # Copied from Django URL validation.
 def validate_url(url):
     regex = re.compile(
-            r'^(?:http)s?://' # http:// or https://
-            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
-            r'localhost|' #localhost...
-            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
-            r'(?::\d+)?' # optional port
-            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-    
+        r"^(?:http)s?://"  # http:// or https://
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)"
+        r"+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
+        r"localhost|"  # localhost...
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+        r"(?::\d+)?"  # optional port
+        r"(?:/?|[/?]\S+)$",
+        re.IGNORECASE)
+
     if re.match(regex, url) is None:
         raise ValueError("URL {} is invalid. "
                          "Follow http(s)://(domain|localhost|ip):[port][/]"
@@ -45,12 +45,12 @@ class MetricsExportClient:
         self.exporter = None
 
         # URLs
-        self.url = validate_url(address)
-        self.auth_url = "{}/auth".format(self.url)
-        self.ingestor_url = "{}/ingest".format(self.url)
+        self.metrics_export_address = validate_url(address)
+        self.auth_url = "{}/auth".format(self.metrics_export_address)
+        self.ingestor_url = "{}/ingest".format(self.metrics_export_address)
 
         # Data obtained from requests.
-        self._dashboard_url = None        
+        self._dashboard_url = None
         self.auth_info = None
 
         # Client states
@@ -65,12 +65,12 @@ class MetricsExportClient:
         auth_info = post_auth(self.auth_url, self.dashboard_id)
         if auth_info is None:
             return False
-        
+
         dashboard_url = auth_info.get("dashboard_url", None)
         # TODO(sang): Switch to schema validation.
         if dashboard_url is None:
             logger.error("Dashboard URL wasn't included in auth info {}"
-                        .format(self.auth_info))
+                         .format(self.auth_info))
             return False
 
         self.auth_info = auth_info
@@ -87,7 +87,7 @@ class MetricsExportClient:
         return self._dashboard_url
 
     def start_exporting_metrics(self):
-        """Create a thread to export metrics. 
+        """Create a thread to export metrics.
 
         Once this function succeeds, it should not be called again.
 
@@ -97,7 +97,7 @@ class MetricsExportClient:
         assert not self.is_exporting_started
         if not self.is_authenticated:
             succeed = self._authenticate()
-            if not succeed: 
+            if not succeed:
                 return False
 
         # Exporter is a Python thread that keeps exporting metrics with
