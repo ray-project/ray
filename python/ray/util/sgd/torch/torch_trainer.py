@@ -426,7 +426,7 @@ class TorchTrainer:
 
         if not self.handlers:
             success = check_for_failure(worker_trains)
-            return success, ray.get(worker_trains)
+            return success, worker_trains
 
         unfinished = worker_trains
         try:
