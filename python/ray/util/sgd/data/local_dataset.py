@@ -1,6 +1,6 @@
 import os
 
-from dataset import Dataset
+from ray.util.sgd.data.dataset import Dataset
 
 
 class LocalDataset(Dataset):

@@ -4,7 +4,7 @@ import random
 import ray
 import torch
 
-from utils import get_arr_partition
+from ray.util.sgd.data.utils import get_arr_partition
 
 
 @ray.remote
@@ -108,7 +108,8 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
     def get_sharded_loader(self, n, i, batch_size=32):
         """Get the ith shard of the dataset assuming it is sharded into
         n pieces"""
-        data = get_arr_partition(self._data, n, i)
+        converter = lambda x: self._convert(*ray.get(x))
+        data = list(map(converter, get_arr_partition(self._data, n, i)))
         return torch.utils.data.DataLoader(data, batch_size)
 
     def __getitem__(self, idx):
