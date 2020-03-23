@@ -209,7 +209,7 @@ Use ``tune.sample_from(<func>)`` to sample a value for a hyperparameter. The ``f
         }
     )
 
-Tune provides a couple helper functions for common parameter distributions, wrapping numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See :ref:`tune-sample-docs` for more details.
+Tune provides a couple of helper functions for common parameter distributions, wrapping numpy random utilities such as ``np.random.uniform``, ``np.random.choice``, and ``np.random.randn``. See :ref:`tune-sample-docs` for more details.
 
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
