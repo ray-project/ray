@@ -23,7 +23,7 @@ from custom_directives import CustomGalleryItemDirective
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
 MOCK_MODULES = [
-    "blist", "gym", "gym.spaces", "ray._raylet", "ray.core.generated",
+    "blist", "gym", "gym.spaces", "psutil". "ray._raylet", "ray.core.generated",
     "ray.core.generated.gcs_pb2", "ray.core.generated.ray.protocol.Task",
     "scipy", "scipy.signal", "scipy.stats", "tensorflow_probability",
     "tensorflow", "tensorflow.contrib", "tensorflow.contrib.all_reduce",
