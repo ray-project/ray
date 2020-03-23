@@ -64,11 +64,13 @@ class TqdmReporter:
         if training_op.world_rank != 0:
             return
 
+        pbar_metrics = {}
+        if "train_loss" in metrics:
+            pbar_metrics["loss"] = metrics["train_loss"]
+
         self._send_logs({
             "batch_idx": batch_info["batch_idx"],
-            "pbar_metrics": {
-                "loss": metrics["train_loss"]
-            }
+            "pbar_metrics": pbar_metrics
         })
 
 
