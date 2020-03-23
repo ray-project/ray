@@ -159,18 +159,25 @@ cdef class MessagePackSerializer(object):
         def _default(obj):
             cross_typeid = getattr(obj, '__cross_typeid__', None)
             if cross_typeid is not None:
-                state = msgpack.dumps(obj.__to_cross_data__(), use_bin_type=True)
-                return msgpack.ExtType(kCrossLanguageTypeExtensionId, [cross_typeid, state])
+                state = msgpack.dumps(obj.__to_cross_data__(),
+                                      use_bin_type=True)
+                return msgpack.ExtType(kCrossLanguageTypeExtensionId,
+                                       [cross_typeid, state])
             if python_serializer is not None:
-                return msgpack.ExtType(kLanguageSpecificTypeExtensionId, msgpack.dumps(python_serializer(obj)))
+                return msgpack.ExtType(kLanguageSpecificTypeExtensionId,
+                                       msgpack.dumps(python_serializer(obj)))
             return obj
         try:
-            # If we let strict_types is False, then whether list or tuple will be packed to
-            # a message pack array. So, they can't be distinguished when unpacking.
-            return msgpack.dumps(o, default=_default, use_bin_type=True, strict_types=True)
+            # If we let strict_types is False, then whether list or tuple will
+            # be packed to a message pack array. So, they can't be
+            # distinguished when unpacking.
+            return msgpack.dumps(o, default=_default,
+                                 use_bin_type=True, strict_types=True)
         except ValueError as ex:
-            # msgpack can't handle recursive objects, so we serialize them by python serializer, e.g. pickle.
-            return msgpack.dumps(_default(o), default=_default, use_bin_type=True, strict_types=True)
+            # msgpack can't handle recursive objects, so we serialize them by
+            # python serializer, e.g. pickle.
+            return msgpack.dumps(_default(o), default=_default,
+                                 use_bin_type=True, strict_types=True)
 
     @classmethod
     def loads(cls, s, python_deserializer=None):
@@ -183,13 +190,15 @@ cdef class MessagePackSerializer(object):
                 cross_typeid, state = msgpack.loads(data, raw=False)
                 cross_type = cls._cross_type_tables.get(cross_typeid, None)
                 if cross_type is None:
-                    raise Exception('Unrecognized ext type id: {}'.format(code))
+                    raise Exception('Unrecognized ext type id: {}'
+                                    .format(code))
                 return cross_type.__from_cross_data__(state)
         try:
-            gc.disable() # Performance optimization for msgpack.
+            gc.disable()  # Performance optimization for msgpack.
             return msgpack.loads(s, ext_hook=_ext_hook, raw=False)
         finally:
             gc.enable()
+
 
 # See 'serialization.proto' for the memory layout in the Plasma buffer.
 def unpack_pickle5_buffers(Buffer buf, metadata):
@@ -301,14 +310,17 @@ cdef class Pickle5Writer:
         self._curr_buffer_addr += view.len
         self.buffers.push_back(view)
 
-    # DO NOT declare arguments as c_string which will copy data from Python to C++
+    # DO NOT declare arguments as c_string which will
+    # copy data from Python to C++
     def get_total_bytes(self, msgpack_bytes, inband):
         if inband is None:
             self._total_bytes = kMessagePackOffset + len(msgpack_bytes)
             return self._total_bytes
         cdef:
             size_t protobuf_bytes = 0
-            uint64_t inband_data_offset = kMessagePackOffset + len(msgpack_bytes) + sizeof(int64_t) * 2
+            uint64_t inband_data_offset = (kMessagePackOffset +
+                                           len(msgpack_bytes) +
+                                           sizeof(int64_t) * 2)
             uint64_t raw_buffers_offset = padded_length_u64(
                 inband_data_offset + len(inband), kMajorBufferAlign)
         self.python_object.set_inband_data_offset(inband_data_offset)
@@ -330,7 +342,8 @@ cdef class Pickle5Writer:
         self._total_bytes = self._protobuf_offset + protobuf_bytes
         return self._total_bytes
 
-    # DO NOT declare arguments as c_string which will copy data from Python to C++
+    # DO NOT declare arguments as c_string which will
+    # copy data from Python to C++
     cdef void write_to(self, msgpack_bytes, inband,
                        shared_ptr[CBuffer] data, int memcopy_threads):
         cdef uint8_t *ptr = data.get().Data()
@@ -346,7 +359,8 @@ cdef class Pickle5Writer:
         msgpack_bytes_length = len(msgpack_bytes)
         header_bytes = msgpack.dumps(msgpack_bytes_length)
         memcpy(ptr, <char*>header_bytes, len(header_bytes))
-        memcpy(ptr + kMessagePackOffset, <char*>msgpack_bytes, msgpack_bytes_length)
+        memcpy(ptr + kMessagePackOffset,
+               <char*>msgpack_bytes, msgpack_bytes_length)
         if inband is None:
             return
         # Write protobuf size for deserialization.

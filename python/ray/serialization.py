@@ -10,12 +10,15 @@ from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
     PlasmaObjectNotAvailable,
-    RayTaskError,
     RayActorError,
     RayWorkerError,
     UnreconstructableError,
 )
-from ray._raylet import Pickle5Writer, unpack_pickle5_buffers, MessagePackSerializer
+from ray._raylet import (
+    Pickle5Writer,
+    unpack_pickle5_buffers,
+    MessagePackSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,8 @@ class SerializedObject:
 
 
 class Pickle5SerializedObject(SerializedObject):
-    def __init__(self, metadata, msgpack_bytes, inband, writer, contained_object_ids):
+    def __init__(self, metadata, msgpack_bytes, inband, writer,
+                 contained_object_ids):
         super(Pickle5SerializedObject, self).__init__(metadata,
                                                       contained_object_ids)
         self.msgpack_bytes = msgpack_bytes
@@ -65,7 +69,8 @@ class Pickle5SerializedObject(SerializedObject):
     @property
     def total_bytes(self):
         if self._total_bytes is None:
-            self._total_bytes = self.writer.get_total_bytes(self.msgpack_bytes, self.inband)
+            self._total_bytes = self.writer.get_total_bytes(
+                self.msgpack_bytes, self.inband)
         return self._total_bytes
 
 
@@ -256,7 +261,8 @@ class SerializationContext:
 
     def _deserialize_pickle5_data(self, data, metadata):
         try:
-            msgpack_bytes, in_band, buffers = unpack_pickle5_buffers(data, metadata)
+            msgpack_bytes, in_band, buffers = unpack_pickle5_buffers(
+                data, metadata)
             if in_band is not None:
                 if len(buffers) > 0:
                     python_objects = pickle.loads(in_band, buffers=buffers)
@@ -268,7 +274,8 @@ class SerializationContext:
             def _python_deserializer(index):
                 return python_objects[index]
 
-            obj = MessagePackSerializer.loads(msgpack_bytes, _python_deserializer)
+            obj = MessagePackSerializer.loads(msgpack_bytes,
+                                              _python_deserializer)
         # cloudpickle does not provide error types
         except pickle.pickle.PicklingError:
             raise DeserializationError()
@@ -276,8 +283,10 @@ class SerializationContext:
 
     def _deserialize_object(self, data, metadata, object_id):
         if metadata:
-            if metadata in [ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
-                            ray_constants.OBJECT_METADATA_TYPE_PYTHON]:
+            if metadata in [
+                    ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
+                    ray_constants.OBJECT_METADATA_TYPE_PYTHON
+            ]:
                 return self._deserialize_pickle5_data(data, metadata)
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.OBJECT_METADATA_TYPE_RAW:
@@ -289,7 +298,9 @@ class SerializationContext:
             try:
                 error_type = int(metadata)
             except Exception:
-                raise Exception("Can't deserialize object: {}, metadata: {}".format(object_id, metadata))
+                raise Exception(
+                    "Can't deserialize object: {}, metadata: {}".format(
+                        object_id, metadata))
 
             if error_type == ErrorType.Value("WORKER_DIED"):
                 return RayWorkerError()
@@ -377,13 +388,17 @@ class SerializationContext:
                     python_objects.append(o)
                     return index
 
-                msgpack_bytes = MessagePackSerializer.dumps(value, _python_serializer)
+                msgpack_bytes = MessagePackSerializer.dumps(
+                    value, _python_serializer)
                 if python_objects:
                     metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
                     inband = pickle.dumps(
-                        python_objects, protocol=5, buffer_callback=writer.buffer_callback)
+                        python_objects,
+                        protocol=5,
+                        buffer_callback=writer.buffer_callback)
                 else:
-                    metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+                    metadata = \
+                        ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
                     inband = None
             except Exception as e:
                 self.get_and_clear_contained_object_ids()
