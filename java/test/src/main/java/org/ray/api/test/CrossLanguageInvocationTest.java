@@ -137,7 +137,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     Assert.assertEquals(res.get(), "3".getBytes());
   }
 
-  public static Object[] pack(int i, String s, float f, Object[] o) {
+  public static Object[] pack(int i, String s, double f, Object[] o) {
     // This function will be called from test_cross_language_invocation.py
     return new Object[]{i, s, f, o};
   }
