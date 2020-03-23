@@ -6,7 +6,6 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils import try_import_tf, try_import_tfp, SMALL_NUMBER, \
     MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.utils.tf_ops import get_shape
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -47,7 +46,9 @@ class Categorical(TFActionDistribution):
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
         assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-        self.n = get_shape(inputs, unknown_value=-1)[-1]
+        shape = inputs.shape.as_list() if isinstance(inputs, tf.Tensor) else \
+            inputs.shape
+        self.n = shape[-1]
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)

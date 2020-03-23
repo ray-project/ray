@@ -114,20 +114,3 @@ def scope_vars(scope, trainable_only=False):
         tf.GraphKeys.TRAINABLE_VARIABLES
         if trainable_only else tf.GraphKeys.VARIABLES,
         scope=scope if isinstance(scope, str) else scope.name)
-
-
-def get_shape(x, unknown_value=-1):
-    """Returns the shape of x as tuple.
-
-    Replaces possible ? dims as None or -1.
-
-    Args:
-        x (Union[tf.Tensor,np.ndarray]): The input to get the shape for.
-
-    Returns:
-        Tuple(int): The shape as tuple.
-    """
-    shape = x.shape
-    if isinstance(x, tf.Tensor):
-        shape = shape.as_list()
-    return tuple(s if s not in [None, -1] else unknown_value for s in shape)

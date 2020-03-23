@@ -131,7 +131,7 @@ def model_import_test(algo, config, env):
 
     agent_cls = get_agent_class(algo)
 
-    for fw in ["torch", "eager", "tf"]:
+    for fw in ["tf", "torch", "eager"]:
         print("framework={}".format(fw))
 
         config["use_pytorch"] = fw == "torch"
@@ -143,6 +143,10 @@ def model_import_test(algo, config, env):
         if fw == "eager":
             eager_mode_ctx = eager_mode()
             eager_mode_ctx.__enter__()
+            assert tf.executing_eagerly()
+        elif fw == "tf":
+            assert not tf.executing_eagerly()
+
         agent = agent_cls(config, env)
 
         def current_weight(agent):
