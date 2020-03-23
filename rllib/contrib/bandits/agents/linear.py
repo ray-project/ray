@@ -44,35 +44,11 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class ImplicitExploration(Enum):
-    ThompsonSampling = 1
-    UCB = 2
+TS_PATH = "ray.rllib.contrib.bandits.exploration.ThompsonSampling"
+UCB_PATH = "ray.rllib.contrib.bandits.exploration.UCB"
 
 
 class BanditPolicyOverrides:
-    @override(Policy)
-    def _create_exploration(self, action_space, config):
-        exploration_config = config.get("exploration_config",
-                                        {"type": "StochasticSampling"})
-        if exploration_config[
-                "type"] == ImplicitExploration.ThompsonSampling.name:
-            exploration = ThompsonSampling(
-                action_space,
-                config.get("num_workers", 0),
-                config.get("worker_index", 0),
-                framework="torch")
-        elif exploration_config["type"] == ImplicitExploration.UCB.name:
-            exploration = UCB(
-                action_space,
-                config.get("num_workers", 0),
-                config.get("worker_index", 0),
-                framework="torch")
-        else:
-            return Policy._create_exploration(self, action_space, config)
-
-        config["exploration_config"] = exploration
-        return exploration
-
     @override(TorchPolicy)
     def learn_on_batch(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
@@ -116,15 +92,14 @@ def make_model_and_action_dist(policy, obs_space, action_space, config):
 
     # TODO: Have a separate model catalogue for bandits
     if exploration_config:
-        if exploration_config[
-                "type"] == ImplicitExploration.ThompsonSampling.name:
+        if exploration_config["type"] == TS_PATH:
             if isinstance(original_space, spaces.Dict):
                 assert "item" in original_space.spaces, \
                     "Cannot find 'item' key in observation space"
                 model_cls = ParametricLinearModelThompsonSampling
             else:
                 model_cls = DiscreteLinearModelThompsonSampling
-        elif exploration_config["type"] == ImplicitExploration.UCB.name:
+        elif exploration_config["type"] == UCB_PATH:
             if isinstance(original_space, spaces.Dict):
                 assert "item" in original_space.spaces, \
                     "Cannot find 'item' key in observation space"
@@ -156,10 +131,12 @@ LinUCBTSPolicy = build_torch_policy(
     mixins=[BanditPolicyOverrides])
 
 UCB_CONFIG = copy.copy(DEFAULT_CONFIG)
-UCB_CONFIG["exploration_config"] = {"type": "UCB"}
+UCB_CONFIG["exploration_config"] = {
+    "type": "ray.rllib.contrib.bandits.exploration.UCB"}
 
 TS_CONFIG = copy.copy(DEFAULT_CONFIG)
-TS_CONFIG["exploration_config"] = {"type": "ThompsonSampling"}
+TS_CONFIG["exploration_config"] = {
+    "type": "ray.rllib.contrib.bandits.exploration.ThompsonSampling"}
 
 
 def get_stats(trainer):

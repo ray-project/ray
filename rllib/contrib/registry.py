@@ -17,13 +17,13 @@ def _import_alphazero():
     return AlphaZeroTrainer
 
 
-def _import_lints():
-    from ray.rllib.contrib.bandits.agents import LinTSTrainer
+def _import_bandit_lints():
+    from ray.rllib.contrib.bandits.agents.linear import LinTSTrainer
     return LinTSTrainer
 
 
-def _import_linucb():
-    from ray.rllib.contrib.bandits.agents import LinUCBTrainer
+def _import_bandit_linucb():
+    from ray.rllib.contrib.bandits.agents.linear import LinUCBTrainer
     return LinUCBTrainer
 
 
@@ -31,6 +31,6 @@ CONTRIBUTED_ALGORITHMS = {
     "contrib/RandomAgent": _import_random_agent,
     "contrib/MADDPG": _import_maddpg,
     "contrib/AlphaZero": _import_alphazero,
-    "contrib/LinTS": _import_lints,
-    "contrib/LinUCB": _import_linucb,
+    "contrib/LinTS": _import_bandit_lints,
+    "contrib/LinUCB": _import_bandit_linucb
 }
