@@ -200,7 +200,6 @@ class RemoteFunction:
             else:
                 list_args = ray.signature.flatten_args(
                     self._function_signature, args, kwargs)
-
             if worker.mode == ray.worker.LOCAL_MODE:
                 assert not self._is_cross_language, \
                     "Cross language remote function " \

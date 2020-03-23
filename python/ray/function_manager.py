@@ -344,9 +344,11 @@ class FunctionActorManager:
         # 2) And a previous task started a background thread, which didn't
         #    finish before the task finished, and still uses Ray API
         #    after that.
-        assert not self._worker.current_job_id.is_nil(), (
-            "You might have started a background thread in a non-actor task, "
-            "please make sure the thread finishes before the task finishes.")
+        if self._worker.mode != ray.LOCAL_MODE:
+            assert not self._worker.current_job_id.is_nil(), (
+                "You might have started a background thread in a non-actor task, "
+                "please make sure the thread finishes before the task finishes."
+            )
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())

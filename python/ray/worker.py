@@ -731,7 +731,7 @@ def init(address=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local or local_mode,
+            load_code_from_local=load_code_from_local,
             use_pickle=use_pickle,
             _internal_config=_internal_config,
         )
@@ -1115,12 +1115,11 @@ def connect(node,
 
     ray._raylet.set_internal_config(internal_config)
 
-    if mode is not LOCAL_MODE:
-        # Create a Redis client to primary.
-        # The Redis client can safely be shared between threads. However,
-        # that is not true of Redis pubsub clients. See the documentation at
-        # https://github.com/andymccurdy/redis-py#thread-safety.
-        worker.redis_client = node.create_redis_client()
+    # Create a Redis client to primary.
+    # The Redis client can safely be shared between threads. However,
+    # that is not true of Redis pubsub clients. See the documentation at
+    # https://github.com/andymccurdy/redis-py#thread-safety.
+    worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
     if mode is SCRIPT_MODE:
@@ -1225,6 +1224,9 @@ def connect(node,
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     elif LOCAL_MODE:
+        worker.redis_client.hmset(b"Workers:" + worker.worker_id, {
+            "node_ip_address": node.node_ip_address,
+        })
         pass
     else:
         raise ValueError(
@@ -1254,9 +1256,9 @@ def connect(node,
         ray.internal.free([temporary_object_id])
 
         # Start the import thread
-        worker.import_thread = import_thread.ImportThread(
-            worker, mode, worker.threads_stopped)
-        worker.import_thread.start()
+    worker.import_thread = import_thread.ImportThread(worker, mode,
+                                                      worker.threads_stopped)
+    worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would

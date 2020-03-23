@@ -374,6 +374,13 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_nested_functions(ray_start_regular):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
@@ -423,6 +430,13 @@ def test_nested_functions(ray_start_regular):
     assert ray.get(factorial_odd.remote(5)) == 120
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_ray_recursive_objects(ray_start_regular):
     class ClassA:
         pass
