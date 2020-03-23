@@ -783,6 +783,12 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         self.policy_map[policy_id].export_model(export_dir)
 
     @DeveloperAPI
+    def import_policy_model_from_h5(self,
+                                    import_file,
+                                    policy_id=DEFAULT_POLICY_ID):
+        self.policy_map[policy_id].import_model_from_h5(import_file)
+
+    @DeveloperAPI
     def export_policy_checkpoint(self,
                                  export_dir,
                                  filename_prefix="model",
