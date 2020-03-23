@@ -167,21 +167,6 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
 }
 
-TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
-  LocalDependencyResolver resolver(store, task_finisher);
-  ObjectID obj1 = ObjectID::FromRandom();
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
-  // We ignore and don't block on plasma dependencies.
-  ASSERT_TRUE(ok);
-  ASSERT_EQ(resolver.NumPendingTasks(), 0);
-  ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
-}
-
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
