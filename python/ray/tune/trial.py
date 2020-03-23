@@ -102,6 +102,27 @@ def checkpoint_deleter(trial_id, runner):
     return delete
 
 
+class TrialInfo:
+    """Serializable struct for holding information for a Trial.
+
+    Attributes:
+        trial_name (str): String name of the currernt trial.
+        trial_id (str): trial_id of the trial
+    """
+
+    def __init__(self, trial):
+        self._trial_name = str(trial)
+        self._trial_id = trial.trial_id
+
+    @property
+    def trial_name(self):
+        return self._trial_name
+
+    @property
+    def trial_id(self):
+        return self._trial_id
+
+
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -110,6 +131,19 @@ class Trial:
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
+
+    Attributes:
+        trainable_name (str): Name of the trainable object to be executed.
+        config (dict): Provided configuration dictionary with evaluated params.
+        trial_id (str): Unique identifier for the trial.
+        local_dir (str): Local_dir as passed to tune.run.
+        logdir (str): Directory where the trial logs are saved.
+        evaluated_params (dict): Evaluated parameters by search algorithm,
+        experiment_tag (str): Identifying trial name to show in the console.
+        resources (Resources): Amount of resources that this trial will use.
+        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
+        error_file (str): Path to the errors that this trial has raised.
+
     """
 
     PENDING = "PENDING"

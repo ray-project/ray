@@ -17,7 +17,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
 }
 
 void GcsNodeManager::HandleHeartbeat(const ClientID &node_id,
-                                     rpc::HeartbeatTableData &&heartbeat_data) {
+                                     const rpc::HeartbeatTableData &heartbeat_data) {
   heartbeats_[node_id] = num_heartbeats_timeout_;
   heartbeat_buffer_[node_id] = heartbeat_data;
 }

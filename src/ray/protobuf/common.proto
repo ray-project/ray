@@ -235,6 +235,24 @@ message ViewData {
   repeated Measure measures = 2;
 }
 
+// Debug info for a referenced object.
+message ObjectRefInfo {
+  // Object id that is referenced.
+  bytes object_id = 1;
+  // Language call site of the object reference (i.e., file and line number).
+  string call_site = 2;
+  // Size of the object if this core worker is the owner, otherwise -1.
+  int64 object_size = 3;
+  // Number of local references to the object.
+  int64 local_ref_count = 4;
+  // Number of references in submitted tasks.
+  int64 submitted_task_ref_count = 5;
+  // Object ids that contain this object.
+  repeated bytes contained_in_owned = 6;
+  // True if this object is pinned in memory by the current process.
+  bool pinned_in_memory = 7;
+}
+
 // Debug info returned from the core worker.
 message CoreWorkerStats {
   // Debug string of the currently executing task.
@@ -265,4 +283,6 @@ message CoreWorkerStats {
   int32 num_executed_tasks = 14;
   // Actor constructor.
   string actor_title = 15;
+  // Local reference table.
+  repeated ObjectRefInfo object_refs = 16;
 }

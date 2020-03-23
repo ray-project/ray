@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
-import org.ray.api.RayActor;
+import org.ray.api.BaseActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
@@ -135,7 +135,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(RayActor<?> actor, boolean noReconstruction) {
+  public void killActor(BaseActor actor, boolean noReconstruction) {
     nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes(), noReconstruction);
   }
 

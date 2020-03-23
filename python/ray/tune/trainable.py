@@ -18,7 +18,7 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
-                             TRAINING_ITERATION, RESULT_DUPLICATE)
+                             TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class Trainable:
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to `self.logdir`.
+    directory of this process to ``self.logdir``.
 
     """
 
@@ -147,6 +147,7 @@ class Trainable:
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
+        trial_info = self.config.pop(TRIAL_INFO, None)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -167,6 +168,7 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+        self._trial_info = trial_info
 
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
@@ -182,18 +184,23 @@ class Trainable:
 
     @classmethod
     def default_resource_request(cls, config):
-        """Returns the resource requirement for the given configuration.
+        """Provides a static resource requirement for the given configuration.
 
         This can be overriden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        Example:
-            >>> def default_resource_request(cls, config):
-            >>>     return Resources(
-            >>>         cpu=0,
-            >>>         gpu=0,
-            >>>         extra_cpu=config["workers"],
-            >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
+        .. code-block:: python
+
+            @classmethod
+            def default_resource_request(cls, config):
+                return Resources(
+                    cpu=0,
+                    gpu=0,
+                    extra_cpu=config["workers"],
+                    extra_gpu=int(config["use_gpu"]) * config["workers"])
+
+        Returns:
+            Resources: A Resources object consumed by Tune for queueing.
         """
         return None
 
@@ -207,7 +214,7 @@ class Trainable:
         return ""
 
     def current_ip(self):
-        logger.warning("Getting current IP.")
+        logger.info("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
@@ -327,7 +334,7 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint path or prefix that may be passed to restore().
+            str: Checkpoint path or prefix that may be passed to restore().
         """
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
@@ -512,6 +519,30 @@ class Trainable:
         return os.path.join(self._logdir, "")
 
     @property
+    def trial_name(self):
+        """Trial name for the corresponding trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            name = self.trial_name
+        """
+        return self._trial_info.trial_name
+
+    @property
+    def trial_id(self):
+        """Trial ID for the corresponding trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            trial_id = self.trial_id
+        """
+        return self._trial_info.trial_id
+
+    @property
     def iteration(self):
         """Current training iteration.
 
@@ -631,6 +662,10 @@ class Trainable:
 
     def _log_result(self, result):
         """Subclasses can optionally override this to customize logging.
+
+        The logging here is done on the worker process rather than
+        the driver. You may want to turn off driver logging via the
+        ``loggers`` parameter in ``tune.run`` when overriding this function.
 
         Args:
             result (dict): Training result returned by _train().

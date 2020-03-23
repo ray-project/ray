@@ -385,7 +385,7 @@ cc_library(
         ],
         exclude = [
             "src/ray/raylet/mock_gcs_client.cc",
-            "src/ray/raylet/monitor_main.cc",
+            "src/ray/raylet/monitor*.cc",
             "src/ray/raylet/*_test.cc",
             "src/ray/raylet/main.cc",
         ],
@@ -1187,6 +1187,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
         "python/ray/autoscaler/aws/example-full.yaml",
+        "python/ray/autoscaler/azure/example-full.yaml",
         "python/ray/autoscaler/gcp/example-full.yaml",
         "python/ray/autoscaler/local/example-full.yaml",
         "python/ray/cloudpickle/*.py",

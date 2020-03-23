@@ -70,6 +70,9 @@ message PinObjectIDsReply {
 }
 
 message GetNodeStatsRequest {
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 1;
 }
 
 message WorkerStats {
@@ -79,6 +82,8 @@ message WorkerStats {
   bool is_driver = 2;
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 3;
+  // Error string if fetching core worker stats failed.
+  string fetch_error = 4;
 }
 
 message GetNodeStatsReply {
@@ -95,6 +100,15 @@ message GlobalGCRequest {
 message GlobalGCReply {
 }
 
+message FormatGlobalMemoryInfoRequest {
+}
+
+message FormatGlobalMemoryInfoReply {
+  // A tabular summary of the memory stats. To get this data in structured form, you
+  // can instead use GetNodeStats() directly.
+  string memory_summary = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
@@ -109,4 +123,7 @@ service NodeManagerService {
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
   // Trigger garbage collection in all workers across the cluster.
   rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
+  // Get global object reference stats in formatted form.
+  rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
+      returns (FormatGlobalMemoryInfoReply);
 }

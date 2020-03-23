@@ -41,6 +41,9 @@ def validate_trainable(trainable_name):
 def register_trainable(name, trainable):
     """Register a trainable function or class.
 
+    This enables a class or function to be accessed on every Ray process
+    in the cluster.
+
     Args:
         name (str): Name to register.
         trainable (obj): Function or tune.Trainable class. Functions must
@@ -69,6 +72,9 @@ def register_trainable(name, trainable):
 
 def register_env(name, env_creator):
     """Register a custom environment for use with RLlib.
+
+    This enables the environment to be accessed on every Ray process
+    in the cluster.
 
     Args:
         name (str): Name to register.
