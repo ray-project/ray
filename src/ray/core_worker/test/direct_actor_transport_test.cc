@@ -81,8 +81,9 @@ class DirectActorSubmitterTest : public ::testing::Test {
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
-        submitter_(address_, [&](const rpc::Address &addr) { return worker_client_; },
-                   store_, task_finisher_) {}
+        submitter_(
+            address_, [&](const rpc::Address &addr) { return worker_client_; }, store_,
+            task_finisher_) {}
 
   rpc::Address address_;
   std::shared_ptr<MockWorkerClient> worker_client_;

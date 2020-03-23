@@ -98,9 +98,7 @@ void CoreWorkerProcess::Shutdown() {
   instance_.reset();
 }
 
-bool CoreWorkerProcess::IsInitialized() {
-  return instance_ != nullptr;
-}
+bool CoreWorkerProcess::IsInitialized() { return instance_ != nullptr; }
 
 CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     : options_(options),
