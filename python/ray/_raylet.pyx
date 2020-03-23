@@ -314,16 +314,16 @@ cdef deserialize_args(
     return ray.signature.recover_args(args)
 
 
-cdef prepare_extra_envs(
+cdef void prepare_extra_envs(
         dict extra_envs,
         unordered_map[c_string, c_string] &c_extra_envs):
 
     if not extra_envs:
-        return ""
+        return
 
     if "CUDA_VISIBLE_DEVICES" in extra_envs:
-            raise ValueError(
-                '"CUDA_VISIBLE_DEVICES" should not be set by user.')
+        raise ValueError(
+            '"CUDA_VISIBLE_DEVICES" should not be set by user.')
     for key, value in extra_envs.items():
         if not (isinstance(value, str) and isinstance(value, str)):
             raise ValueError("Extra envs key and value must be str.")
@@ -331,21 +331,22 @@ cdef prepare_extra_envs(
 
 
 cdef dict deserialize_extra_envs(
-        unordered_map[c_string, c_string] &c_extra_envs):
+        const unordered_map[c_string, c_string] &c_extra_envs):
     cdef:
-        unordered_map[c_string, c_string].iterator iterator =\
-            c_extra_envs.begin()
-    if iterator == c_extra_envs.end():
+        unordered_map[c_string, c_string].const_iterator iterator =\
+            c_extra_envs.const_begin()
+    if iterator == c_extra_envs.const_end():
         return {}
-    
+
     extra_envs = {}
-    while iterator != resource_mapping.end():
-            key = decode(dereference(iterator).first)
-            value = decode(dereference(iterator).second)
-            extra_envs[key] = value
-    
+    while iterator != c_extra_envs.const_end():
+        key = decode(dereference(iterator).first)
+        value = decode(dereference(iterator).second)
+        extra_envs[key] = value
+        postincrement(iterator)
+
     return extra_envs
-        
+
 
 cdef execute_task(
         CTaskType task_type,
@@ -353,9 +354,9 @@ cdef execute_task(
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
+        const unordered_map[c_string, c_string] &c_extra_envs,
         const c_vector[CObjectID] &c_return_ids,
-        c_vector[shared_ptr[CRayObject]] *returns,
-        const unordered_map[c_string, c_string] &c_extra_envs):
+        c_vector[shared_ptr[CRayObject]] *returns):
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
@@ -368,8 +369,10 @@ cdef execute_task(
         CFiberEvent fiber_event
         dict extra_envs = deserialize_extra_envs(c_extra_envs)
 
-    # Set the extra envs and restrict the GPUs available to this task.
-    ray.utils.prepare_envs(extra_envs, ray.get_gpu_ids())
+    # Automatically restrict the GPUs available to this task.
+    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    # Set the extra envs
+    ray.utils.prepare_envs(extra_envs)
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
@@ -398,8 +401,11 @@ cdef execute_task(
         title = "ray::{}()".format(function_name)
         next_title = "ray::IDLE"
         def function_executor(*arguments, **kwarguments):
+
             try:
                 return execution_info.function(*arguments, **kwarguments)
+            except Exception:
+                raise
             finally:
                 # reset the env setting for normal tasks
                 ray.utils.reset_envs()
@@ -534,9 +540,9 @@ cdef CRayStatus task_execution_handler(
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
+        const unordered_map[c_string, c_string] &c_extra_envs,
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns,
-        const unordered_map[c_string, c_string] &c_extra_envs,
         const CWorkerID &c_worker_id) nogil:
 
     with gil:
@@ -545,7 +551,7 @@ cdef CRayStatus task_execution_handler(
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, ray_function, c_resources, c_args,
-                             c_arg_reference_ids, c_return_ids, c_extra_envs,
+                             c_arg_reference_ids, c_extra_envs, c_return_ids,
                              returns)
             except Exception:
                 traceback_str = traceback.format_exc() + (
@@ -860,7 +866,7 @@ cdef class CoreWorker:
                     int num_return_vals,
                     resources,
                     int max_retries,
-                    dict extra_envs):
+                    extra_envs):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
@@ -896,7 +902,7 @@ cdef class CoreWorker:
                      c_bool is_detached,
                      c_bool is_asyncio,
                      c_string extension_data,
-                     dict extra_data):
+                     extra_envs):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -921,8 +927,7 @@ cdef class CoreWorker:
                         max_reconstructions, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
-                    extension_data,
-                    &c_actor_id, c_extra_envs))
+                    extension_data, c_extra_envs, &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
 

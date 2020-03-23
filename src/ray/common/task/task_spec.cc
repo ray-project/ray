@@ -148,8 +148,9 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
-const std::unordered_map<std::string, std::string> &GetExtraEnvs() const {
-  return *MapFromProtobuf(message_->extra_envs());
+const std::unordered_map<std::string, std::string> TaskSpecification::GetExtraEnvs()
+    const {
+  return MapFromProtobuf(message_->extra_envs());
 }
 
 bool TaskSpecification::IsDriverTask() const {

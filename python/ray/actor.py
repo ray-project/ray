@@ -317,10 +317,9 @@ class ActorClass:
                             self.__ray_metadata__.class_name))
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id,
-                                 max_reconstructions, num_cpus, num_gpus,
-                                 memory, object_store_memory, resources,
-                                 extra_envs):
+    def _ray_from_modified_class(
+            cls, modified_class, class_id, max_reconstructions, num_cpus,
+            num_gpus, memory, object_store_memory, resources, extra_envs):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
                 "_ray_from_function_descriptor"
@@ -355,16 +354,16 @@ class ActorClass:
         return self
 
     @classmethod
-    def _ray_from_function_descriptor(cls, language,
-                                      actor_creation_function_descriptor,
-                                      max_reconstructions, num_cpus, num_gpus,
-                                      memory, object_store_memory, resources):
+    def _ray_from_function_descriptor(
+            cls, language, actor_creation_function_descriptor,
+            max_reconstructions, num_cpus, num_gpus, memory,
+            object_store_memory, resources, extra_envs):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_reconstructions, num_cpus, num_gpus, memory,
-            object_store_memory, resources)
+            object_store_memory, resources, extra_envs)
 
         return self
 
@@ -477,7 +476,7 @@ class ActorClass:
             raise ValueError("Detached actors must be named. "
                              "Please use Actor._remote(name='some_name') "
                              "to associate the name.")
-        
+
         if extra_envs is None:
             extra_envs = meta.extra_envs
 
@@ -518,6 +517,8 @@ class ActorClass:
         if worker.mode == ray.LOCAL_MODE:
             assert not meta.is_cross_language, \
                 "Cross language ActorClass cannot be executed locally."
+            assert not extra_envs, \
+                "Set extra envs is not allowed for locally mode."
             actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))

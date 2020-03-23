@@ -51,6 +51,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
+         const std::unordered_map<std::string, std::string> &extra_envs,
          const std::vector<ObjectID> &return_ids,
          std::vector<std::shared_ptr<ray::RayObject>> *results,
          const ray::WorkerID &worker_id) {

@@ -283,7 +283,7 @@ class StreamingWorker {
     worker_ = std::make_shared<CoreWorker>(
         WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
         JobID::FromInt(1), gcs_options, "", "127.0.0.1", node_manager_port,
-        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7));
+        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8));
 
     RayFunction reader_async_call_func{ray::Language::PYTHON,
                                        ray::FunctionDescriptorBuilder::BuildPython(
@@ -315,6 +315,7 @@ class StreamingWorker {
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
+                     const std::unordered_map<std::string, std::string> &extra_envs,
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Only one arg param used in streaming.

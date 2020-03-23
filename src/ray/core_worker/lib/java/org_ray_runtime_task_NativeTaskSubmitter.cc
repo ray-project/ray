@@ -134,10 +134,11 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
+  const std::unordered_map<std::string, std::string> exra_envs;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
   auto status = GetCoreWorker(nativeCoreWorkerPointer)
                     .SubmitTask(ray_function, task_args, task_options, &return_ids,
-                                /*max_retries=*/0);
+                                /*max_retries=*/0, exra_envs);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
 
@@ -152,10 +153,11 @@ Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
   auto task_args = ToTaskArgs(env, args);
   auto actor_creation_options = ToActorCreationOptions(env, actorCreationOptions);
 
+  const std::unordered_map<std::string, std::string> extra_envs;
   ray::ActorID actor_id;
   auto status = GetCoreWorker(nativeCoreWorkerPointer)
                     .CreateActor(ray_function, task_args, actor_creation_options,
-                                 /*extension_data*/ "", &actor_id);
+                                 /*extension_data*/ "", extra_envs, &actor_id);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ActorID>(env, actor_id);

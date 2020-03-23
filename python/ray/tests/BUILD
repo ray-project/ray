@@ -407,3 +407,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_extra_envs",
+    size = "small",
+    srcs = ["test_extra_envs.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)

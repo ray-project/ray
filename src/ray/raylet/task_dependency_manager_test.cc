@@ -110,7 +110,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
   builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON,
                             FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                             JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
-                            num_returns, {}, {});
+                            num_returns, {}, {}, {});
   builder.SetActorCreationTaskSpec(ActorID::Nil(), 1, {}, 1, false, false);
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);

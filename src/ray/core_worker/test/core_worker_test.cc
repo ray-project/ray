@@ -77,9 +77,10 @@ ActorID CreateActorHelper(CoreWorker &worker,
                                      /*is_asyncio*/ false};
 
   // Create an actor.
+  const std::unordered_map<std::string, std::string> extra_envs;
   ActorID actor_id;
-  RAY_CHECK_OK(
-      worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
+  RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, /*extension_data*/ "",
+                                  extra_envs, &actor_id));
   return actor_id;
 }
 
@@ -345,8 +346,9 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
                                                   "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
-      RAY_CHECK_OK(
-          driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0));
+      const std::unordered_map<std::string, std::string> extra_envs;
+      RAY_CHECK_OK(driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
+                                     extra_envs));
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -617,6 +619,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::unordered_map<std::string, double> resources;
+  std::unordered_map<std::string, std::string> extra_envs;
   ActorCreationOptions actor_options{0,
                                      1,
                                      resources,
@@ -644,7 +647,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     TaskSpecBuilder builder;
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), address, num_returns, resources, resources);
+                              RandomTaskId(), address, num_returns, resources, resources,
+                              extra_envs);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {

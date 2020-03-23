@@ -68,7 +68,8 @@ def java_function(class_name, function_name):
         None,  # resources,
         None,  # num_return_vals,
         None,  # max_calls,
-        None)  # max_retries)
+        None,  # max_retries,
+        None)  # extra_envs)
 
 
 def java_actor_class(class_name):
@@ -81,4 +82,5 @@ def java_actor_class(class_name):
         None,  # num_gpus,
         None,  # memory,
         None,  # object_store_memory,
-        None)  # resources,
+        None,  # resources,
+        None)  # extra_envs

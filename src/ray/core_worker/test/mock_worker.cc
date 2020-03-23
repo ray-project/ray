@@ -34,10 +34,11 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
              int node_manager_port, const gcs::GcsClientOptions &gcs_options)
-      : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromInt(1), gcs_options, /*log_dir=*/"",
-                /*node_id_address=*/"127.0.0.1", node_manager_port,
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7)) {}
+      : worker_(
+            WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+            JobID::FromInt(1), gcs_options, /*log_dir=*/"",
+            /*node_id_address=*/"127.0.0.1", node_manager_port,
+            std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8)) {}
 
   void StartExecutingTasks() { worker_.StartExecutingTasks(); }
 
@@ -46,6 +47,7 @@ class MockWorker {
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
+                     const std::unordered_map<std::string, std::string> &extra_envs,
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.

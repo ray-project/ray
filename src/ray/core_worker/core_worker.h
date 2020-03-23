@@ -61,6 +61,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
+      const std::unordered_map<std::string, std::string> &extra_envs,
       const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results, const ray::WorkerID &worker_id)>;
 
@@ -377,8 +378,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     const std::string &extension_data, ActorID *actor_id,
-                     const std::unordered_map<std::string, std::string> &extra_envs);
+                     const std::string &extension_data,
+                     const std::unordered_map<std::string, std::string> &extra_envs,
+                     ActorID *actor_id);
 
   /// Submit an actor task.
   ///

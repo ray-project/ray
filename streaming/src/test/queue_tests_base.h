@@ -277,8 +277,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     // Create an actor.
     ActorID actor_id;
-    RAY_CHECK_OK(
-        worker.CreateActor(func, args, actor_options, /*extension_data*/ "", &actor_id));
+    const std::unordered_map<std::string, std::string> extra_envs;
+    RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, /*extension_data*/ "",
+                                    extra_envs, &actor_id));
     return actor_id;
   }
 

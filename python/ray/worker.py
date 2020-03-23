@@ -1820,16 +1820,9 @@ def remote(*args, **kwargs):
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
-            "num_return_vals",
-            "num_cpus",
-            "num_gpus",
-            "memory",
-            "object_store_memory",
-            "resources",
-            "max_calls",
-            "max_reconstructions",
-            "max_retries",
-            "extra_envs"
+            "num_return_vals", "num_cpus", "num_gpus", "memory",
+            "object_store_memory", "resources", "max_calls",
+            "max_reconstructions", "max_retries", "extra_envs"
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None

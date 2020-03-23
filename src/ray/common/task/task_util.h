@@ -30,7 +30,7 @@ class TaskSpecBuilder {
       const rpc::Address &caller_address, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::shared_ptr<RayObject> &extra_envs) {
+      const std::unordered_map<std::string, std::string> &extra_envs) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_language(language);
     *message_->mutable_function_descriptor() = function_descriptor->GetMessage();

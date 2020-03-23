@@ -207,9 +207,11 @@ class RemoteFunction:
                 assert not self._is_cross_language, \
                     "Cross language remote function " \
                     "cannot be executed locally."
+                assert not extra_envs, \
+                    "Set extra envs is not allowed for locally mode."
                 object_ids = worker.local_mode_manager.execute(
                     self._function, self._function_descriptor, args, kwargs,
-                    num_return_vals, extra_envs)
+                    num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._language, self._function_descriptor, list_args,
