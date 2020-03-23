@@ -29,7 +29,7 @@ class DistributedTorchRunner(TorchRunner):
             raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
         self.backend = backend
 
-    def setup(self, url, world_rank, world_size, batch_logs_reporter):
+    def setup(self, url, world_rank, world_size):
         """Connects to the distributed PyTorch backend and initializes the model.
 
         Args:
@@ -38,7 +38,7 @@ class DistributedTorchRunner(TorchRunner):
             world_size (int): the total number of runners.
         """
         self._setup_distributed_pytorch(url, world_rank, world_size)
-        self._setup_training(batch_logs_reporter)
+        self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
         self.world_rank = world_rank
@@ -51,7 +51,7 @@ class DistributedTorchRunner(TorchRunner):
             rank=world_rank,
             world_size=world_size)
 
-    def _setup_training(self, batch_logs_reporter):
+    def _setup_training(self):
         logger.debug("Creating model")
         self.models = self.model_creator(self.config)
         if not isinstance(self.models, collections.Iterable):
@@ -85,7 +85,6 @@ class DistributedTorchRunner(TorchRunner):
             world_rank=self.world_rank,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
-        self.training_operator._set_batch_logs_reporter(batch_logs_reporter)
 
     def _initialize_dataloaders(self):
         super(DistributedTorchRunner, self)._initialize_dataloaders()
