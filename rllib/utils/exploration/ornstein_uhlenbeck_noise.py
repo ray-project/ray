@@ -21,6 +21,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
     def __init__(self,
                  action_space,
                  *,
+                 framework,
                  ou_theta=0.15,
                  ou_sigma=0.2,
                  ou_base_scale=0.1,
@@ -29,7 +30,6 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                  final_scale=0.02,
                  scale_timesteps=10000,
                  scale_schedule=None,
-                 framework="tf",
                  **kwargs):
         """Initializes an Ornstein-Uhlenbeck Exploration object.
 

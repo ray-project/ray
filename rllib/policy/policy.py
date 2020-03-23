@@ -51,10 +51,12 @@ class Policy(metaclass=ABCMeta):
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
-        self.exploration = self._create_exploration(action_space, config)
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
+        # The action distribution class to use for action sampling, if any.
+        # Child classes may set this.
+        self.dist_class = None
 
     @abstractmethod
     @DeveloperAPI
@@ -165,6 +167,38 @@ class Policy(metaclass=ABCMeta):
             {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
+    def compute_distribution_inputs(self,
+                                    obs_batch,
+                                    state_batches=None,
+                                    prev_action_batch=None,
+                                    prev_reward_batch=None,
+                                    explore=True,
+                                    timestep=None,
+                                    is_training=True):
+        """Computes inputs to action distribution for a given observation.
+
+        Args:
+            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            state_batches (Optional[list]): List of RNN state input batches,
+                if any.
+            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+                action values.
+            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+                rewards.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            timestep (int): The current (sampling) time step.
+
+        Returns:
+            Tuple:
+            - distribution_inputs (np.ndarray): Batch of distribution
+                inputs.
+            - distribution_class (type): The distirbution class to instantiate.
+            - states_out (List[np.ndarray]): List internal states outputs.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     def compute_log_likelihoods(self,
                                 actions,
                                 obs_batch,
@@ -214,7 +248,8 @@ class Policy(metaclass=ABCMeta):
         Returns:
             SampleBatch: Postprocessed sample batch.
         """
-        return sample_batch
+        # Call our Exploration object's postprocess method.
+        return self.exploration.postprocess_trajectory(self, sample_batch)
 
     @DeveloperAPI
     def learn_on_batch(self, samples):
@@ -283,27 +318,6 @@ class Policy(metaclass=ABCMeta):
             any: Serializable information on the `self.exploration` object.
         """
         return self.exploration.get_info()
-
-    @DeveloperAPI
-    def get_exploration_state(self):
-        """Returns the current exploration state of this policy.
-
-        This state depends on the policy's Exploration object.
-
-        Returns:
-            any: Serializable copy or view of the current exploration state.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def set_exploration_state(self, exploration_state):
-        """Sets the current exploration state of this Policy.
-
-        Arguments:
-            exploration_state (any): Serializable copy or view of the new
-                exploration state.
-        """
-        raise NotImplementedError
 
     @DeveloperAPI
     def is_recurrent(self):
@@ -375,23 +389,26 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    def _create_exploration(self, action_space, config):
+    def _create_exploration(self):
         """Creates the Policy's Exploration object.
 
         This method only exists b/c some Trainers do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTfPolicy.
         TODO(sven): unify these cases."""
+        if getattr(self, "exploration", None) is not None:
+            return self.exploration
+
         exploration = from_config(
             Exploration,
-            config.get("exploration_config", {"type": "StochasticSampling"}),
-            action_space=action_space,
-            num_workers=config.get("num_workers", 0),
-            worker_index=config.get("worker_index", 0),
+            self.config.get("exploration_config",
+                            {"type": "StochasticSampling"}),
+            action_space=self.action_space,
+            policy_config=self.config,
+            model=getattr(self, "model", None),
+            num_workers=self.config.get("num_workers", 0),
+            worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
-        # If config is further passed around, it'll contain an already
-        # instantiated object.
-        config["exploration_config"] = exploration
         return exploration
 
 

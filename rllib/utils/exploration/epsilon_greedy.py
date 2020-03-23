@@ -4,8 +4,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration, TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
-from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -21,31 +21,32 @@ class EpsilonGreedy(Exploration):
 
     def __init__(self,
                  action_space,
+                 *,
+                 framework,
                  initial_epsilon=1.0,
                  final_epsilon=0.05,
                  epsilon_timesteps=int(1e5),
                  epsilon_schedule=None,
-                 framework="tf",
                  **kwargs):
         """Create an EpsilonGreedy exploration class.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
             initial_epsilon (float): The initial epsilon value to use.
             final_epsilon (float): The final epsilon value to use.
             epsilon_timesteps (int): The time step after which epsilon should
                 always be `final_epsilon`.
             epsilon_schedule (Optional[Schedule]): An optional Schedule object
                 to use (instead of constructing one from the given parameters).
-            framework (Optional[str]): One of None, "tf", "torch".
         """
         assert framework is not None
         super().__init__(
             action_space=action_space, framework=framework, **kwargs)
 
-        self.epsilon_schedule = epsilon_schedule or PiecewiseSchedule(
-            endpoints=[(0, initial_epsilon),
-                       (epsilon_timesteps, final_epsilon)],
+        self.epsilon_schedule = \
+            from_config(Schedule, epsilon_schedule, framework=framework) or \
+            PiecewiseSchedule(
+                endpoints=[
+                    (0, initial_epsilon), (epsilon_timesteps, final_epsilon)],
             outside_value=final_epsilon,
             framework=self.framework)
 
@@ -55,9 +56,9 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
+                               *,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
-                               model: ModelV2,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
 

@@ -348,7 +348,7 @@ py_test(
         "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'",
+        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -883,7 +883,7 @@ py_test(
 py_test(
     name = "policy/tests/test_compute_log_likelihoods",
     tags = ["policy"],
-    size = "small",
+    size = "medium",
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
@@ -966,7 +966,7 @@ py_test(
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_eager_support.py"]
 )
 
@@ -1353,7 +1353,8 @@ sh_test(
 )
 
 py_test(
-    name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
+    name = "examples/rock_paper_scissors_multiagent",
+    main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
     size = "large",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],

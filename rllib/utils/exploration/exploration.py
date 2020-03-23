@@ -1,8 +1,9 @@
 from gym.spaces import Space
+from typing import Union
+
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
-from ray.rllib.models.modelv2 import ModelV2
-from typing import Union
 
 tf = try_import_tf()
 
@@ -17,25 +18,57 @@ class Exploration:
 
     def __init__(self,
                  action_space: Space,
-                 num_workers: int,
-                 worker_index: int,
-                 framework: str = "tf"):
+                 *,
+                 policy_config: dict = None,
+                 model: ModelV2 = None,
+                 framework: str,
+                 num_workers: int = 0,
+                 worker_index: int = 0):
         """
         Args:
             action_space (Space): The action space in which to explore.
+            policy_config (dict): The Policy's config dict.
+            model (ModelV2): The Policy's model.
+            framework (str): One of "tf" or "torch".
+            policy_config (Optional[dict]): An optional policy config dict.
             num_workers (int): The overall number of workers used.
             worker_index (int): The index of the worker using this class.
-            framework (str): One of "tf" or "torch".
         """
         self.action_space = action_space
+        self.policy_config = policy_config
+        self.model = model
         self.num_workers = num_workers
         self.worker_index = worker_index
         self.framework = check_framework(framework)
 
+    def before_forward_pass(self,
+                            obs_batch,
+                            *,
+                            state_batches=None,
+                            seq_lens=None,
+                            timestep=None,
+                            explore=None,
+                            tf_sess=None,
+                            **kwargs):
+        """May be overridden to perform preparations before a forward pass.
+
+        Args:
+            obs_batch (dict): The observations batch.
+            state_batches (Optional[List[TensorType]]): The list of internal
+                state batches to pass through the model.
+            seq_lens (Optional[List[TensorType]]): The sequence lengths for the
+                RNN case.
+            timestep (Optional[TensorType]): An optional timestep tensor.
+            explore (Optional[TensorType]): An optional explore boolean flag.
+            tf_sess (Optional[tf.Session]): The tf-session object to use.
+            **kwargs: Forward compatibility kwargs.
+        """
+        pass
+
     def get_exploration_action(self,
+                               *,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
-                               model: ModelV2,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         """Returns a (possibly) exploratory action and its log-likelihood.
@@ -49,7 +82,6 @@ class Exploration:
                 (e.g. q-values or PG-logits).
             action_dist_class (class): The action distribution class
                 to use.
-            model (ModelV2): The Model object.
             timestep (int|TensorType): The current sampling time step. It can
                 be a tensor for TF graph mode, otherwise an integer.
             explore (bool): True: "Normal" exploration behavior.
@@ -64,24 +96,49 @@ class Exploration:
         """
         pass
 
-    def get_loss_exploration_term(self,
-                                  model_output: TensorType,
-                                  model: ModelV2,
-                                  action_dist: type,
-                                  action_sample: TensorType = None):
-        """Returns an extra loss term to be added to a loss.
+    def on_episode_start(self,
+                         policy,
+                         *,
+                         environment=None,
+                         episode=None,
+                         tf_sess=None):
+        """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
-            model_output (TensorType): The Model's output Tensor(s).
-            model (ModelV2): The Model object.
-            action_dist: The ActionDistribution object resulting from
-                `model_output`. TODO: Or the class?
-            action_sample (TensorType): An optional action sample.
-
-        Returns:
-            TensorType: The extra loss term to add to the loss.
+            policy (Policy): The Policy object that holds this Exploration.
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
         """
-        pass  # TODO(sven): implement for some example Exploration class.
+        pass
+
+    def on_episode_end(self,
+                       policy,
+                       *,
+                       environment=None,
+                       episode=None,
+                       tf_sess=None):
+        """Handles necessary exploration logic at the end of an episode.
+
+        Args:
+            policy (Policy): The Policy object that holds this Exploration.
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
+        """
+        pass
+
+    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+        """Handles post-processing of done episode trajectories.
+
+        Changes the given batch in place.
+
+        Args:
+            policy (Policy): The owning policy object.
+            sample_batch (SampleBatch): The SampleBatch object to post-process.
+            tf_sess (Optional[tf.Session]): An optional tf.Session object.
+        """
+        return sample_batch
 
     def get_info(self):
         """Returns a description of the current exploration state.

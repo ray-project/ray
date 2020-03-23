@@ -10,6 +10,10 @@ class TestPolicy(Policy):
     and implements all other abstract methods of Policy with "pass".
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exploration = self._create_exploration()
+
     @override(Policy)
     def compute_actions(self,
                         obs_batch,
