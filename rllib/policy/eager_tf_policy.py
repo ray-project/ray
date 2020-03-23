@@ -2,8 +2,8 @@
 
 It supports both traced and non-traced eager execution modes."""
 
-import logging
 import functools
+import logging
 import numpy as np
 
 from ray.util.debug import log_once
@@ -456,16 +456,11 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def export_model(self, export_dir):
-            tf.saved_model.save(self.model, export_dir)
+            pass
 
         @override(Policy)
         def export_checkpoint(self, export_dir):
-            chkpoint = tf.train.Checkpoint()
-
-        @override(Policy)
-        def import_model_from_h5(self, import_file):
-            """Imports weights into tf model."""
-            return self.model.import_from_h5(import_file)
+            pass
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)

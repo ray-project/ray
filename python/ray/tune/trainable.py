@@ -697,16 +697,3 @@ class Trainable:
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
-
-    def _import_model(self, import_format, import_file):
-        """Subclasses should override this to import model.
-
-        Args:
-            import_format (str): The format of the given file.
-                Currently, only support "h5".
-            import_file (str): File to import weights from.
-
-        Return:
-            Model: The imported model.
-        """
-        return None
