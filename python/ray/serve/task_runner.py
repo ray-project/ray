@@ -114,7 +114,12 @@ class RayServeMixin:
                                     "The avaiable methods are {}".format(
                                         method_name, dir(self)))
 
-        return getattr(self, method_name)
+        if method_name != "__call__":
+            return getattr(self, method_name)
+        else:
+            # For simple callables, we should just return the object so
+            # signature recoding will continue to funciton.
+            return self
 
     def _ray_serve_count_num_positional(self, f):
         signature = inspect.signature(f)
