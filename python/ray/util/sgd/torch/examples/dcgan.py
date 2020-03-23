@@ -242,7 +242,8 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
         num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
-        backend="nccl" if use_gpu else "gloo")
+        backend="nccl" if use_gpu else "gloo",
+        tqdm=True)
 
     from tabulate import tabulate
     pbar = trange(5, unit="epoch")
