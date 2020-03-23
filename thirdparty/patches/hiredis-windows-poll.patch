@@ -7,7 +7,7 @@ diff --git deps/hiredis/net.c deps/hiredis/net.c
 +    fd_set wset;
 +
 +    FD_ZERO(&wset);
-+    FD_SET(c->fd, &wset);
++    FD_SET(_get_osfhandle(c->fd), &wset);
 +#else
      struct pollfd   wfd[1];
  
@@ -20,7 +20,7 @@ diff --git deps/hiredis/net.c deps/hiredis/net.c
  
 +#ifdef _WINSOCKAPI_
 +        struct timeval tv = { msec / 1000, (msec % 1000) * 1000 };
-+        res = select(c->fd + 1, NULL, &wset, NULL, msec >= 0 ? &tv : NULL);
++        res = select(_get_osfhandle(c->fd) + 1, NULL, &wset, NULL, msec >= 0 ? &tv : NULL);
 +#else
 +        res = poll(wfd, 1, msec);
 +#endif

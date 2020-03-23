@@ -1,12 +1,26 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/transport/direct_task_transport.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
-#include "src/ray/util/test_util.h"
 
 namespace ray {
 
@@ -125,7 +139,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(mem->Put(*data, obj1).ok());
+  ASSERT_TRUE(mem->Put(*data, obj1));
 
   // Test getting an already existing object.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj1) != nullptr);
@@ -134,7 +148,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   // Testing getting an object that doesn't exist yet causes promotion.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
   ASSERT_TRUE(num_plasma_puts == 0);
-  ASSERT_TRUE(mem->Put(*data, obj2).ok());
+  ASSERT_FALSE(mem->Put(*data, obj2));
   ASSERT_TRUE(num_plasma_puts == 1);
 
   // The next time you get it, it's already there so no need to promote.
@@ -177,7 +191,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
-  ASSERT_TRUE(store->Put(data, obj1).ok());
+  ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
@@ -199,8 +213,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
-  ASSERT_TRUE(store->Put(*data, obj1).ok());
-  ASSERT_TRUE(store->Put(*data, obj2).ok());
+  ASSERT_TRUE(store->Put(*data, obj1));
+  ASSERT_TRUE(store->Put(*data, obj2));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
@@ -230,8 +244,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1).ok());
-  ASSERT_TRUE(store->Put(*data, obj2).ok());
+  ASSERT_TRUE(store->Put(*data, obj1));
+  ASSERT_TRUE(store->Put(*data, obj2));
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
   ASSERT_TRUE(ok);
@@ -259,8 +273,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  ASSERT_TRUE(store->Put(*data, obj1).ok());
-  ASSERT_TRUE(store->Put(*data, obj2).ok());
+  ASSERT_TRUE(store->Put(*data, obj1));
+  ASSERT_TRUE(store->Put(*data, obj2));
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
   ASSERT_TRUE(ok);
@@ -684,16 +698,16 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   ObjectID plasma2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   // Ensure the data is already present in the local store for direct call objects.
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(store->Put(*data, direct1).ok());
-  ASSERT_TRUE(store->Put(*data, direct2).ok());
+  ASSERT_TRUE(store->Put(*data, direct1));
+  ASSERT_TRUE(store->Put(*data, direct2));
 
   // Force plasma objects to be promoted.
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
-  ASSERT_TRUE(store->Put(plasma_data, plasma1).ok());
-  ASSERT_TRUE(store->Put(plasma_data, plasma2).ok());
+  ASSERT_TRUE(store->Put(plasma_data, plasma1));
+  ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
   TaskSpecification same_deps_1 = BuildTaskSpec(resources1, descriptor1);
   same_deps_1.GetMutableMessage().add_args()->add_object_ids(direct1.Binary());

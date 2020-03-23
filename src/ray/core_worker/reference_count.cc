@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/reference_count.h"
 
 #define PRINT_REF_COUNT(it)                                                              \
@@ -9,11 +23,32 @@
                  << (it->second.contained_in_borrowed_id.has_value()                     \
                          ? *it->second.contained_in_borrowed_id                          \
                          : ObjectID::Nil())                                              \
-                 << " contains: " << it->second.contains.size();
+                 << " contains: " << it->second.contains.size()                          \
+                 << " lineage_ref_count: " << it->second.lineage_ref_count;
 
 namespace {}  // namespace
 
 namespace ray {
+
+void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
+  absl::MutexLock lock(&mutex_);
+  if (object_id_refs_.empty()) {
+    shutdown();
+  } else {
+    RAY_LOG(WARNING)
+        << "This worker is still managing " << object_id_refs_.size()
+        << " objects, waiting for them to go out of scope before shutting down.";
+  }
+  shutdown_hook_ = shutdown;
+}
+
+void ReferenceCounter::ShutdownIfNeeded() {
+  if (shutdown_hook_ && object_id_refs_.empty()) {
+    RAY_LOG(WARNING)
+        << "All object references have gone out of scope, shutting down worker.";
+    shutdown_hook_();
+  }
+}
 
 ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
@@ -72,10 +107,50 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
   return true;
 }
 
+void ReferenceCounter::AddObjectRefStats(
+    const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+    rpc::CoreWorkerStats *stats) const {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &ref : object_id_refs_) {
+    auto ref_proto = stats->add_object_refs();
+    ref_proto->set_object_id(ref.first.Binary());
+    ref_proto->set_call_site(ref.second.call_site);
+    ref_proto->set_object_size(ref.second.object_size);
+    ref_proto->set_local_ref_count(ref.second.local_ref_count);
+    ref_proto->set_submitted_task_ref_count(ref.second.submitted_task_ref_count);
+    auto it = pinned_objects.find(ref.first);
+    if (it != pinned_objects.end()) {
+      ref_proto->set_pinned_in_memory(true);
+      // If some info isn't available, fallback to getting it from the pinned info.
+      if (ref.second.object_size <= 0) {
+        ref_proto->set_object_size(it->second.first);
+      }
+      if (ref.second.call_site.empty()) {
+        ref_proto->set_call_site(it->second.second);
+      }
+    }
+    for (const auto &obj_id : ref.second.contained_in_owned) {
+      ref_proto->add_contained_in_owned(obj_id.Binary());
+    }
+  }
+  // Also include any unreferenced objects that are pinned in memory.
+  for (const auto &entry : pinned_objects) {
+    if (object_id_refs_.find(entry.first) == object_id_refs_.end()) {
+      auto ref_proto = stats->add_object_refs();
+      ref_proto->set_object_id(entry.first.Binary());
+      ref_proto->set_object_size(entry.second.first);
+      ref_proto->set_call_site(entry.second.second);
+      ref_proto->set_pinned_in_memory(true);
+    }
+  }
+}
+
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const std::vector<ObjectID> &inner_ids,
                                       const TaskID &owner_id,
-                                      const rpc::Address &owner_address) {
+                                      const rpc::Address &owner_address,
+                                      const std::string &call_site,
+                                      const int64_t object_size) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
@@ -83,7 +158,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
-  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
+  object_id_refs_.emplace(object_id,
+                          Reference(owner_id, owner_address, call_site, object_size));
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -91,12 +167,21 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
+void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    it->second.object_size = object_size;
+  }
+}
+
+void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
+                                         const std::string &call_site) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
-    it = object_id_refs_.emplace(object_id, Reference()).first;
+    it = object_id_refs_.emplace(object_id, Reference(call_site, -1)).first;
   }
   it->second.local_ref_count++;
   RAY_LOG(DEBUG) << "Add local reference " << object_id;
@@ -131,6 +216,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &argument_id : argument_ids_to_add) {
+    RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       // This happens if a large argument is transparently passed by reference
@@ -138,13 +224,20 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
       it = object_id_refs_.emplace(argument_id, Reference()).first;
     }
     it->second.submitted_task_ref_count++;
+    // The lineage ref will get released once the task finishes and cannot be
+    // retried again.
+    it->second.lineage_ref_count++;
   }
-  RemoveSubmittedTaskReferences(argument_ids_to_remove, deleted);
+  // Release the submitted task ref and the lineage ref for any argument IDs
+  // whose values were inlined.
+  RemoveSubmittedTaskReferences(argument_ids_to_remove, /*release_lineage=*/true,
+                                deleted);
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, const rpc::Address &worker_addr,
-    const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> &argument_ids, bool release_lineage,
+    const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
+    std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
@@ -158,19 +251,63 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
     MergeRemoteBorrowers(argument_id, worker_addr, refs);
   }
 
-  RemoveSubmittedTaskReferences(argument_ids, deleted);
+  RemoveSubmittedTaskReferences(argument_ids, release_lineage, deleted);
+}
+
+void ReferenceCounter::ReleaseLineageReferences(
+    const std::vector<ObjectID> &argument_ids) {
+  absl::MutexLock lock(&mutex_);
+  ReleaseLineageReferencesInternal(argument_ids);
+}
+
+void ReferenceCounter::ReleaseLineageReferencesInternal(
+    const std::vector<ObjectID> &argument_ids) {
+  for (const ObjectID &argument_id : argument_ids) {
+    auto it = object_id_refs_.find(argument_id);
+    if (it == object_id_refs_.end()) {
+      // References can get evicted early when lineage pinning is disabled.
+      RAY_CHECK(!lineage_pinning_enabled_);
+      continue;
+    }
+
+    if (it->second.lineage_ref_count == 0) {
+      // References can get evicted early when lineage pinning is disabled.
+      RAY_CHECK(!lineage_pinning_enabled_);
+      continue;
+    }
+
+    RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
+    it->second.lineage_ref_count--;
+    if (it->second.lineage_ref_count == 0) {
+      // Don't have to pass in a deleted vector here because the reference
+      // cannot have gone out of scope here since we are only modifying the
+      // lineage ref count.
+      DeleteReferenceInternal(it, nullptr);
+    }
+  }
 }
 
 void ReferenceCounter::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> &argument_ids, bool release_lineage,
+    std::vector<ObjectID> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {
+    RAY_LOG(DEBUG) << "Releasing ref for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
                        << argument_id;
       return;
     }
+    RAY_CHECK(it->second.submitted_task_ref_count > 0);
     it->second.submitted_task_ref_count--;
+    if (release_lineage) {
+      if (it->second.lineage_ref_count > 0) {
+        it->second.lineage_ref_count--;
+      } else {
+        // References can get evicted early when lineage pinning is disabled.
+        RAY_CHECK(!lineage_pinning_enabled_);
+      }
+    }
     if (it->second.RefCount() == 0) {
       DeleteReferenceInternal(it, deleted);
     }
@@ -203,7 +340,7 @@ void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids)
     }
     it->second.local_ref_count = 0;
     it->second.submitted_task_ref_count = 0;
-    if (distributed_ref_counting_enabled_ && !it->second.CanDelete()) {
+    if (distributed_ref_counting_enabled_ && !it->second.OutOfScope()) {
       RAY_LOG(ERROR)
           << "ray.internal.free does not currently work for objects that are still in "
              "scope when distributed reference "
@@ -227,8 +364,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Whether it is safe to unpin the value.
   bool should_delete_value = false;
-  // Whether it is safe to delete the Reference.
-  bool should_delete_reference = false;
 
   // If distributed ref counting is not enabled, then delete the object as soon
   // as its local ref count goes to 0.
@@ -238,11 +373,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     should_delete_value = true;
   }
 
-  if (it->second.CanDelete()) {
+  if (it->second.OutOfScope()) {
     // If distributed ref counting is enabled, then delete the object once its
     // ref count across all processes is 0.
     should_delete_value = true;
-    should_delete_reference = true;
     for (const auto &inner_id : it->second.contains) {
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it != object_id_refs_.end()) {
@@ -275,9 +409,18 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       deleted->push_back(id);
     }
   }
-  if (should_delete_reference) {
+  if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
+    // TODO(swang): Update lineage_ref_count for nested objects?
+    if (on_lineage_released_ && it->second.owned_by_us) {
+      RAY_LOG(DEBUG) << "Releasing lineage for object " << id;
+      std::vector<ObjectID> ids_to_release;
+      on_lineage_released_(id, &ids_to_release);
+      ReleaseLineageReferencesInternal(ids_to_release);
+    }
+
     object_id_refs_.erase(it);
+    ShutdownIfNeeded();
   }
 }
 
@@ -576,7 +719,7 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
     // the object was zero. Also, we should have stripped all distributed ref
     // count information and returned it to the owner. Therefore, it should be
     // okay to delete the object, if it wasn't already deleted.
-    RAY_CHECK(it->second.CanDelete());
+    RAY_CHECK(it->second.OutOfScope());
   }
   // Send the owner information about any new borrowers.
   ReferenceTableToProto(borrowed_refs, reply->mutable_borrowed_refs());
@@ -626,6 +769,12 @@ void ReferenceCounter::SetRefRemovedCallback(
     }
     it->second.on_ref_removed = ref_removed_callback;
   }
+}
+
+void ReferenceCounter::SetReleaseLineageCallback(
+    const LineageReleasedCallback &callback) {
+  RAY_CHECK(on_lineage_released_ == nullptr);
+  on_lineage_released_ = callback;
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

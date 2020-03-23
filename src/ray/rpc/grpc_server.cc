@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "src/ray/rpc/grpc_server.h"
 
 #include <grpcpp/impl/service_type.h>
@@ -50,10 +64,14 @@ void GrpcServer::Run() {
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
   // Create calls for all the server call factories.
-  for (auto &entry : server_call_factories_and_concurrencies_) {
-    for (int i = 0; i < entry.second; i++) {
-      // Create and request calls from the factory.
-      entry.first->CreateCall();
+  for (auto &entry : server_call_factories_) {
+    for (int i = 0; i < num_threads_; i++) {
+      // Create a buffer of 100 calls for each RPC handler.
+      // TODO(edoakes): a small buffer should be fine and seems to have better
+      // performance, but we don't currently handle backpressure on the client.
+      for (int j = 0; j < 100; j++) {
+        entry->CreateCall();
+      }
     }
   }
   // Start threads that polls incoming requests.
@@ -68,7 +86,7 @@ void GrpcServer::RegisterService(GrpcService &service) {
   services_.emplace_back(service.GetGrpcService());
 
   for (int i = 0; i < num_threads_; i++) {
-    service.InitServerCallFactories(cqs_[i], &server_call_factories_and_concurrencies_);
+    service.InitServerCallFactories(cqs_[i], &server_call_factories_);
   }
 }
 

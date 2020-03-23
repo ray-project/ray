@@ -329,11 +329,12 @@ def test_incorrect_method_calls(ray_start_regular):
 
 
 def test_worker_raising_exception(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_calls=2)
     def f():
         # This is the only reasonable variable we can set here that makes the
         # execute_task function fail after the task got executed.
-        ray.experimental.signal.reset = None
+        worker = ray.worker.global_worker
+        worker.function_actor_manager.increase_task_counter = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.
@@ -938,6 +939,47 @@ def test_fill_object_store_exception(shutdown_only):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
 
 
+def test_fill_object_store_lru_fallback(shutdown_only):
+    ray.init(num_cpus=2, object_store_memory=10**8, lru_evict=True)
+
+    @ray.remote
+    def expensive_task():
+        return np.zeros((10**8) // 2, dtype=np.uint8)
+
+    oids = []
+    for _ in range(3):
+        oid = expensive_task.remote()
+        ray.get(oid)
+        oids.append(oid)
+
+    @ray.remote
+    class LargeMemoryActor:
+        def some_expensive_task(self):
+            return np.zeros(10**8 // 2, dtype=np.uint8)
+
+        def test(self):
+            return 1
+
+    actor = LargeMemoryActor.remote()
+    for _ in range(3):
+        oid = actor.some_expensive_task.remote()
+        ray.get(oid)
+        oids.append(oid)
+    # Make sure actor does not die
+    ray.get(actor.test.remote())
+
+    for _ in range(3):
+        oid = ray.put(np.zeros(10**8 // 2, dtype=np.uint8))
+        ray.get(oid)
+        oids.append(oid)
+
+    # NOTE: Needed to unset the config set by the lru_evict flag, for Travis.
+    ray._raylet.set_internal_config({
+        "object_pinning_enabled": 1,
+        "object_store_full_max_retries": 5,
+    })
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 1,
@@ -970,38 +1012,6 @@ def test_eviction(ray_start_cluster):
     # exception.
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(dependent_task.remote(obj))
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 1,
-        "num_cpus": 2,
-    }, {
-        "num_nodes": 2,
-        "num_cpus": 1,
-    }],
-    indirect=True)
-def test_serialized_id_eviction(ray_start_cluster):
-    @ray.remote
-    def large_object():
-        return np.zeros(10 * 1024 * 1024)
-
-    @ray.remote
-    def get(obj_ids):
-        obj_id = obj_ids[0]
-        assert (isinstance(ray.get(obj_id), np.ndarray))
-        # Wait for the object to be evicted.
-        ray.internal.free(obj_id)
-        while ray.worker.global_worker.core_worker.object_exists(obj_id):
-            time.sleep(1)
-        with pytest.raises(ray.exceptions.UnreconstructableError):
-            ray.get(obj_id)
-        print("get done", obj_ids)
-
-    obj = large_object.remote()
-    result = get.remote([obj])
-    ray.internal.free(obj)
-    ray.get(result)
 
 
 @pytest.mark.parametrize(
@@ -1100,23 +1110,21 @@ def test_fate_sharing(ray_start_cluster):
         pid = ray.get(a.get_pid.remote())
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(
-            lambda: not child_resource_available(), timeout_ms=10000)
+        assert wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         os.kill(pid, 9)
-        assert wait_for_condition(child_resource_available, timeout_ms=10000)
+        assert wait_for_condition(child_resource_available)
 
     # Test fate sharing if the parent node dies.
     def test_node_failure(node_to_kill, use_actors):
         a = Actor.options(resources={"parent": 1}).remote()
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(
-            lambda: not child_resource_available(), timeout_ms=10000)
+        assert wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
-        assert wait_for_condition(child_resource_available, timeout_ms=10000)
+        assert wait_for_condition(child_resource_available)
         return node_to_kill
 
     test_process_failure(use_actors=True)

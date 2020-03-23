@@ -203,7 +203,7 @@ class TBXLogger(Logger):
 
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if type(value) in VALID_SUMMARY_TYPES:
+            if type(value) in VALID_SUMMARY_TYPES and not np.isnan(value):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)

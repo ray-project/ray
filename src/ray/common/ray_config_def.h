@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // This header file is used to avoid code duplication.
 // It can be included multiple times in ray_config.h, and each inclusion
 // could use a different definition of the RAY_CONFIG macro.
@@ -58,7 +72,12 @@ RAY_CONFIG(bool, object_pinning_enabled, true)
 /// cluster and all objects that contain it are also out of scope. If this flag
 /// is off and object_pinning_enabled is turned on, then an object will not be
 /// LRU evicted until it is out of scope on the CREATOR of the ObjectID.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
+RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
+
+/// Whether to record the creation sites of object references. This adds more
+/// information to `ray memstat`, but introduces a little extra overhead when
+/// creating object references.
+RAY_CONFIG(bool, record_ref_creation_sites, true)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -72,7 +91,7 @@ RAY_CONFIG(bool, distributed_ref_counting_enabled, false)
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_timeout_milliseconds.
-RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
+RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 
 /// If object_pinning_enabled is on, then objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
@@ -81,6 +100,8 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, -1)
 /// is flushed. To disable eager eviction, set free_objects_period_milliseconds
 /// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
+
+RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
@@ -237,7 +258,11 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
-RAY_CONFIG(int64_t, gcs_service_connect_wait_milliseconds, 100)
+/// Waiting time for each gcs service connection.
+RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
+/// The interval at which the gcs server will check if redis has gone down.
+/// When this happens, gcs server will kill itself.
+RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
@@ -245,3 +270,6 @@ RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
 /// Duration to sleep after failing to put an object in plasma because it is full.
 /// This will be exponentially increased for each retry.
 RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+
+/// Duration to wait between retries for failed tasks.
+RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)

@@ -414,11 +414,16 @@ class ParallelIterator(Generic[T]):
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, MetricsContext(), name=name)
 
-    def gather_async(self) -> "LocalIterator[T]":
+    def gather_async(self, async_queue_depth=1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
+
+        Arguments:
+            async_queue_depth (int): The max number of async requests in flight
+                per actor. Increasing this improves the amount of pipeline
+                parallelism in the iterator.
 
         Examples:
             >>> it = from_range(100, 1).gather_async()
@@ -430,16 +435,19 @@ class ParallelIterator(Generic[T]):
             ... 1
         """
 
-        metrics = MetricsContext()
+        if async_queue_depth < 1:
+            raise ValueError("queue depth must be positive")
 
         def base_iterator(timeout=None):
+            metrics = LocalIterator.get_metrics()
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
                 all_actors.extend(actor_set.actors)
             futures = {}
-            for a in all_actors:
-                futures[a.par_iter_next.remote()] = a
+            for _ in range(async_queue_depth):
+                for a in all_actors:
+                    futures[a.par_iter_next.remote()] = a
             while futures:
                 pending = list(futures)
                 if timeout is None:
@@ -455,7 +463,7 @@ class ParallelIterator(Generic[T]):
                 for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
-                        metrics.cur_actor = actor
+                        metrics.current_actor = actor
                         yield ray.get(obj_id)
                         futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
@@ -465,7 +473,7 @@ class ParallelIterator(Generic[T]):
                     yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
-        return LocalIterator(base_iterator, metrics, name=name)
+        return LocalIterator(base_iterator, MetricsContext(), name=name)
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
@@ -638,7 +646,13 @@ class LocalIterator(Generic[T]):
                 if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
-                    yield fn(item)
+                    # Keep retrying the function until it returns a valid
+                    # value. This allows for non-blocking functions.
+                    while True:
+                        result = fn(item)
+                        yield result
+                        if not isinstance(result, _NextValueNotReady):
+                            break
 
         if hasattr(fn, LocalIterator.ON_FETCH_START_HOOK_NAME):
             unwrapped = apply_foreach
@@ -758,6 +772,17 @@ class LocalIterator(Generic[T]):
         it.name = self.name + ".combine()"
         return it
 
+    def zip_with_source_actor(self):
+        def zip_with_source(item):
+            metrics = LocalIterator.get_metrics()
+            if metrics.current_actor is None:
+                raise ValueError("Could not identify source actor of item")
+            return metrics.current_actor, item
+
+        it = self.for_each(zip_with_source)
+        it.name = self.name + ".zip_with_source_actor()"
+        return it
+
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
         out = []
@@ -776,65 +801,104 @@ class LocalIterator(Generic[T]):
             if i >= n:
                 break
 
-    def union(self, other: "LocalIterator[T]",
+    def duplicate(self, n) -> List["LocalIterator[T]"]:
+        """Copy this iterator `n` times, duplicating the data.
+
+        Returns:
+            List[LocalIterator[T]]: multiple iterators that each have a copy
+                of the data of this iterator.
+        """
+
+        if n < 2:
+            raise ValueError("Number of copies must be >= 2")
+
+        queues = []
+        for _ in range(n):
+            queues.append(collections.deque())
+
+        def fill_next(timeout):
+            self.timeout = timeout
+            item = next(self)
+            for q in queues:
+                q.append(item)
+
+        def make_next(i):
+            def gen(timeout):
+                while True:
+                    if len(queues[i]) == 0:
+                        fill_next(timeout)
+                    yield queues[i].popleft()
+
+            return gen
+
+        iterators = []
+        for i in range(n):
+            iterators.append(
+                LocalIterator(
+                    make_next(i),
+                    self.metrics, [],
+                    name=self.name + ".duplicate[{}]".format(i)))
+
+        return iterators
+
+    def union(self, *others: "LocalIterator[T]",
               deterministic: bool = False) -> "LocalIterator[T]":
-        """Return an iterator that is the union of this and the other.
+        """Return an iterator that is the union of this and the others.
 
         If deterministic=True, we alternate between reading from one iterator
-        and the other. Otherwise we return items from iterators as they
+        and the others. Otherwise we return items from iterators as they
         become ready.
         """
 
-        if not isinstance(other, LocalIterator):
-            raise ValueError(
-                "other must be of type LocalIterator, got {}".format(
-                    type(other)))
+        for it in others:
+            if not isinstance(it, LocalIterator):
+                raise ValueError(
+                    "other must be of type LocalIterator, got {}".format(
+                        type(it)))
 
         if deterministic:
             timeout = None
         else:
             timeout = 0
 
-        it1 = LocalIterator(
-            self.base_iterator,
-            self.metrics,
-            self.local_transforms,
-            timeout=timeout)
-        it2 = LocalIterator(
-            other.base_iterator,
-            other.metrics,
-            other.local_transforms,
-            timeout=timeout)
-        active = [it1, it2]
+        active = []
+        shared_metrics = MetricsContext()
+        for it in [self] + list(others):
+            active.append(
+                LocalIterator(
+                    it.base_iterator,
+                    shared_metrics,
+                    it.local_transforms,
+                    timeout=timeout))
 
         def build_union(timeout=None):
             while True:
                 for it in list(active):
                     # Yield items from the iterator until _NextValueNotReady is
                     # found, then switch to the next iterator.
+                    # To avoid starvation, we yield at most max_yield items per
+                    # iterator before switching.
+                    if deterministic:
+                        max_yield = 1  # Forces round robin.
+                    else:
+                        max_yield = 20
                     try:
-                        while True:
+                        for _ in range(max_yield):
                             item = next(it)
                             if isinstance(item, _NextValueNotReady):
                                 break
                             else:
                                 yield item
-                            if deterministic:
-                                break
                     except StopIteration:
                         active.remove(it)
                 if not active:
                     break
 
-        # TODO(ekl) is this the best way to represent union() of metrics?
-        new_ctx = MetricsContext()
-        new_ctx.parent_metrics.append(self.metrics)
-        new_ctx.parent_metrics.append(other.metrics)
-
         return LocalIterator(
             build_union,
-            new_ctx, [],
-            name="LocalUnion[{}, {}]".format(self, other))
+            shared_metrics, [],
+            name="LocalUnion[{}, {}]".format(self, ", ".join(map(str,
+                                                                 others))))
 
 
 class ParallelIteratorWorker(object):

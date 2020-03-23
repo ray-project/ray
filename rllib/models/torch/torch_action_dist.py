@@ -12,7 +12,8 @@ class TorchDistributionWrapper(ActionDistribution):
 
     @override(ActionDistribution)
     def __init__(self, inputs, model):
-        inputs = torch.Tensor(inputs)
+        if not isinstance(inputs, torch.Tensor):
+            inputs = torch.Tensor(inputs)
         super().__init__(inputs, model)
         # Store the last sample here.
         self.last_sample = None
@@ -44,9 +45,12 @@ class TorchCategorical(TorchDistributionWrapper):
     """Wrapper class for PyTorch Categorical distribution."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs, model):
+    def __init__(self, inputs, model=None, temperature=1.0):
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+        inputs /= temperature
         super().__init__(inputs, model)
-        self.dist = torch.distributions.categorical.Categorical(logits=inputs)
+        self.dist = torch.distributions.categorical.Categorical(
+            logits=self.inputs)
 
     @override(ActionDistribution)
     def deterministic_sample(self):

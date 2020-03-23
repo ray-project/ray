@@ -11,6 +11,11 @@ class RayError(Exception):
     pass
 
 
+class RayConnectionError(RayError):
+    """Raised when ray is not yet connected but needs to be."""
+    pass
+
+
 class RayTaskError(RayError):
     """Indicates that a task threw an exception during execution.
 
@@ -129,7 +134,17 @@ class ObjectStoreFullError(RayError):
     This is raised if the attempt to store the object fails
     because the object store is full even after multiple retries.
     """
-    pass
+
+    def __str__(self):
+        return super(ObjectStoreFullError, self).__str__() + (
+            "\n"
+            "The local object store is full of objects that are still in scope"
+            " and cannot be evicted. Try increasing the object store memory "
+            "available with ray.init(object_store_memory=<bytes>). "
+            "You can also try setting an option to fallback to LRU eviction "
+            "when the object store is full by calling "
+            "ray.init(lru_evict=True). See also: "
+            "https://ray.readthedocs.io/en/latest/memory-management.html.")
 
 
 class UnreconstructableError(RayError):
