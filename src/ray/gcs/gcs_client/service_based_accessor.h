@@ -99,7 +99,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   typedef SubscriptionExecutor<ActorID, ActorTableData, LogBasedActorTable>
       ActorSubscriptionExecutor;
-  ActorSubscriptionExecutor log_based_actor_sub_executor_;
+  ActorSubscriptionExecutor actor_sub_executor_;
 
   Sequencer<ActorID> sequencer_;
 };
