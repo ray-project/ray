@@ -19,12 +19,14 @@ class RequestMetadata:
                  service,
                  request_context,
                  relative_slo_ms=None,
-                 absolute_slo_ms=None):
+                 absolute_slo_ms=None,
+                 call_method="__call__"):
 
         self.service = service
         self.request_context = request_context
         self.relative_slo_ms = relative_slo_ms
         self.absolute_slo_ms = absolute_slo_ms
+        self.call_method = call_method
 
     def adjust_relative_slo_ms(self) -> float:
         """Normalize the input latency objective to absoluate timestamp.
