@@ -9,7 +9,7 @@ from gym.spaces import Discrete, Box
 from ray import tune
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--stop-at-reward", type=float, default=1)
+parser.add_argument("--stop-at-reward", type=float, default=10)
 parser.add_argument("--run", type=str, default="contrib/LinUCB")
 
 
@@ -25,13 +25,13 @@ class SimpleContextualBandit(gym.Env):
 
     def step(self, action):
         rewards_for_context = {
-            -1.: [0, .5, 1],
-            1.: [1, .5, 0],
+            -1.: [-10, 0, 10],
+            1.: [10, 0, -10],
         }
         reward = rewards_for_context[self.cur_context][action]
         return (np.array([-self.cur_context, self.cur_context]), reward, True,
                 {
-                    "regret": 1 - reward
+                    "regret": 10 - reward
                 })
 
 
