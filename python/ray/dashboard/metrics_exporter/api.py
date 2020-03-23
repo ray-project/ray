@@ -58,5 +58,6 @@ def post_ingest(export_address: str, dashboard_id: str, access_token: str,
                      "URL: {}.\n"
                      "Status code: {}".format(export_address,
                                               response.status_code))
+        return None
 
     return response.json()
