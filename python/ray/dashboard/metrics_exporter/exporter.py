@@ -4,6 +4,8 @@ import requests
 import threading
 import time
 
+from ray.dashboard.metrics_exporter.api import post_ingest
+
 logger = logging.getLogger(__file__)
 
 
@@ -27,6 +29,8 @@ class Exporter(threading.Thread):
                  dashboard_controller,
                  update_frequency=1.0):
         assert update_frequency >= 1.0
+        assert access_token is not None
+
         self.dashboard_id = dashboard_id
         self.dashboard_controller = dashboard_controller
         self.export_address = export_address
@@ -37,27 +41,14 @@ class Exporter(threading.Thread):
 
     def export(self, ray_config, node_info, raylet_info, tune_info,
                tune_availability):
-        try:
-            response = requests.post(
-                self.export_address,
-                data=json.dumps({
-                    "cluster_id": self.dashboard_id,
-                    "access_token": self.access_token,
-                    "ray_config": ray_config,
-                    "node_info": node_info,
-                    "raylet_info": raylet_info,
-                    "tune_info": tune_info,
-                    "tune_availability": tune_availability
-                }))
-        except requests.exceptions.HTTPError as e:
-            logger.error("Failed to export metrics due to "
-                        "an error: {}".format(e))
-
-        if response.status_code != 200:
-            logger.error("Failed to export metrics\n"
-                         "URL: {}.\n"
-                         "Status code: {}"
-                         .format(self.export_address, response.status_code))
+        post_ingest(self.export_address,
+                    self.dashboard_id,
+                    self.access_token,
+                    ray_config,
+                    node_info,
+                    raylet_info,
+                    tune_info,
+                    tune_availability)
 
     def run(self):
         while True:

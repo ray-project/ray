@@ -354,9 +354,10 @@ class MetricsExportHandler:
                  metrics_export_client: MetricsExportClient,
                  dashboard_id,
                  is_dev=False):
+        assert metrics_export_client is not None
+        self.metrics_export_client = metrics_export_client
         self.dashboard_controller = dashboard_controller
         self.is_dev = is_dev
-        self.metrics_export_client = metrics_export_client
 
     async def enable_export_metrics(self, req) -> aiohttp.web.Response:
         if self.metrics_export_client.enabled:
@@ -505,12 +506,13 @@ class Dashboard:
             self.dashboard_controller, is_dev=self.is_dev)
 
         # Setup Metrics exporting service if necessary.
-        self.metrics_export_client = MetricsExportClient(
-            metrics_export_address,
-            self.dashboard_controller,
-            self.dashboard_id
-        )
-        if metrics_export_address:
+        self.metrics_export_address = metrics_export_address
+        if self.metrics_export_address:
+            self.metrics_export_client = MetricsExportClient(
+                metrics_export_address,
+                self.dashboard_controller,
+                self.dashboard_id
+            )
             self.metrics_export_handler = MetricsExportHandler(
                 self.dashboard_controller,
                 self.metrics_export_client,
@@ -551,7 +553,7 @@ class Dashboard:
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
-        if self.metrics_export_client.enabled:
+        if self.metrics_export_address:
             self.metrics_export_client.start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
