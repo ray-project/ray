@@ -131,7 +131,7 @@ def model_import_test(algo, config, env):
 
     agent_cls = get_agent_class(algo)
 
-    for fw in ["eager", "tf", "torch"]:
+    for fw in ["tf", "torch"]:
         print("framework={}".format(fw))
 
         config["use_pytorch"] = fw == "torch"
