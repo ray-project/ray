@@ -254,9 +254,8 @@ Getting Involved
    tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-design.rst
    tune-examples.rst
-   tune-package-ref.rst
+   tune/api_docs/overview.rst
    tune-contrib.rst
 
 .. toctree::
