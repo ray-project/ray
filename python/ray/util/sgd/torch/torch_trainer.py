@@ -424,10 +424,11 @@ class TorchTrainer:
             for w in self.workers
         ]
 
-        unfinished = worker_trains
         if not self.handlers:
-            return check_for_failure(unfinished)
+            success = check_for_failure(worker_trains)
+            return success, ray.get(worker_trains)
 
+        unfinished = worker_trains
         try:
             while len(unfinished) > 0:
                 finished, unfinished = ray.wait(
