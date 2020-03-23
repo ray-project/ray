@@ -20,12 +20,13 @@ class SuggestionAlgorithm(SearchAlgorithm):
     `suggest` will be passed a trial_id, which will be used in
     subsequent notifications.
 
-    Example:
-        >>> suggester = SuggestionAlgorithm()
-        >>> suggester.add_configurations({ ... })
-        >>> new_parameters = suggester.suggest()
-        >>> suggester.on_trial_complete(trial_id, result)
-        >>> better_parameters = suggester.suggest()
+    .. code-block:: python
+
+        suggester = SuggestionAlgorithm()
+        suggester.add_configurations({ ... })
+        new_parameters = suggester.suggest()
+        suggester.on_trial_complete(trial_id, result)
+        better_parameters = suggester.suggest()
     """
 
     def __init__(self, metric=None, mode="max", use_early_stopped_trials=True):

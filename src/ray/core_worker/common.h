@@ -99,14 +99,11 @@ class TaskArg {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, bool is_direct_call,
-              std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), is_direct_call(is_direct_call), resources(resources) {}
+  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
+      : num_returns(num_returns), resources(resources) {}
 
   /// Number of returns of this task.
   int num_returns = 1;
-  /// Whether to use the direct task transport.
-  bool is_direct_call = false;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
 };
@@ -114,14 +111,12 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
-                       int max_concurrency,
+  ActorCreationOptions(uint64_t max_reconstructions, int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
                        bool is_detached, bool is_asyncio)
       : max_reconstructions(max_reconstructions),
-        is_direct_call(is_direct_call),
         max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
@@ -132,9 +127,6 @@ struct ActorCreationOptions {
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
   const uint64_t max_reconstructions = 0;
-  /// Whether to use direct actor call. If this is set to true, callers will submit
-  /// tasks directly to the created actor without going through raylet.
-  const bool is_direct_call = false;
   /// The max number of concurrent tasks to run on this direct call actor.
   const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.
@@ -147,7 +139,7 @@ struct ActorCreationOptions {
   /// Whether to keep the actor persistent after driver exit. If true, this will set
   /// the worker to not be destroyed after the driver shutdown.
   const bool is_detached = false;
-  /// Whether to use async mode of direct actor call. is_direct_call must be true.
+  /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
 };
 
