@@ -179,7 +179,8 @@ class AzureNodeProvider(NodeProvider):
         resource_group = self.provider_config["resource_group"]
 
         # load the template
-        template_path = os.path.join(os.path.dirname(__file__), 'azure-vm-template.json')
+        template_path = os.path.join(
+            os.path.dirname(__file__), 'azure-vm-template.json')
         with open(template_path, 'r') as template_file_fd:
             template = json.load(template_file_fd)
 
@@ -192,26 +193,29 @@ class AzureNodeProvider(NodeProvider):
         unique_id = uuid4().hex[:VM_NAME_UUID_LEN]
 
         parameters = node_config['azure_arm_parameters'].copy()
-        parameters["vmName"] = "{name}-{id}".format(name=name_tag, id=unique_id)
-        parameters["provisionPublicIp"] = not self.provider_config.get("use_internal_ips", False)
+        parameters["vmName"] = "{name}-{id}".format(
+            name=name_tag, id=unique_id)
+        parameters["provisionPublicIp"] = not self.provider_config.get(
+            "use_internal_ips", False)
         parameters["vmTags"] = config_tags
         parameters["vmCount"] = count
 
         deployment_properties = {
             'mode': DeploymentMode.incremental,
             'template': template,
-            'parameters': {k: {'value': v} for k, v in parameters.items()}
+            'parameters': {k: {
+                'value': v
+            }
+                           for k, v in parameters.items()}
         }
 
         deployment_async_operation = self.resource_client.deployments.create_or_update(
-            resource_group,
-            'ray-vm-{}'.format(name_tag),
-            deployment_properties
-        )
+            resource_group, 'ray-vm-{}'.format(name_tag),
+            deployment_properties)
 
         # TODO: we could get the private/public ips back directly
         deployment_async_operation.wait()
-       
+
     @synchronized
     def set_node_tags(self, node_id, tags):
         """Sets the tag values (string dict) for the specified node."""

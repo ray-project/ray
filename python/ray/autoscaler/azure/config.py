@@ -55,33 +55,33 @@ def _configure_resource_group(config):
 
     logger.info("Creating/Updating Resource Group: %s", resource_group)
     resource_client.resource_groups.create_or_update(
-    resource_group_name=resource_group, parameters=params)
+        resource_group_name=resource_group, parameters=params)
 
     # load the template
-    template_path = os.path.join(os.path.dirname(__file__), 'azure-config-template.json')
+    template_path = os.path.join(
+        os.path.dirname(__file__), 'azure-config-template.json')
     with open(template_path, 'r') as template_file_fd:
         template = json.load(template_file_fd)
 
     # choose a random subnet
     random.seed(resource_group)
-    parameters = {
-        "subnet": "10.{}.0.0/16".format(random.randint(0, 254))
-    }
+    parameters = {"subnet": "10.{}.0.0/16".format(random.randint(0, 254))}
 
     deployment_properties = {
         'mode': DeploymentMode.incremental,
         'template': template,
-        'parameters': {k: {'value': v} for k, v in parameters.items()}
+        'parameters': {k: {
+            'value': v
+        }
+                       for k, v in parameters.items()}
     }
 
     deployment_async_operation = resource_client.deployments.create_or_update(
-        resource_group,
-        'ray-config',
-        deployment_properties
-    )
+        resource_group, 'ray-config', deployment_properties)
     deployment_async_operation.wait()
 
     return config
+
 
 def _configure_key_pair(config):
     ssh_user = config["auth"]["ssh_user"]
@@ -114,4 +114,3 @@ def _configure_key_pair(config):
         config[node_type]["azure_arm_parameters"]["publicKey"] = public_key
 
     return config
-
