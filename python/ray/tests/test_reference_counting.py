@@ -33,12 +33,8 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
     if succeed:
         ray.get(oid)
     else:
-        if oid.is_direct_call_type():
-            with pytest.raises(ray.exceptions.RayTimeoutError):
-                ray.get(oid, timeout=0.1)
-        else:
-            with pytest.raises(ray.exceptions.UnreconstructableError):
-                ray.get(oid)
+        with pytest.raises(ray.exceptions.RayTimeoutError):
+            ray.get(oid, timeout=0.1)
 
 
 def _check_refcounts(expected):
