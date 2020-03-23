@@ -1,12 +1,10 @@
 import copy
 import logging
 import time
-from enum import Enum
 
 from gym import spaces
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.contrib.bandits.exploration import ThompsonSampling, UCB
 from ray.rllib.contrib.bandits.models.linear_regression import \
     DiscreteLinearModelThompsonSampling, \
     DiscreteLinearModelUCB, DiscreteLinearModel, \
@@ -14,7 +12,7 @@ from ray.rllib.contrib.bandits.models.linear_regression import \
 from ray.util.debug import log_once
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import restore_original_dimensions
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -42,7 +40,6 @@ DEFAULT_CONFIG = with_common_config({
 
 # __sphinx_doc_end__
 # yapf: enable
-
 
 TS_PATH = "ray.rllib.contrib.bandits.exploration.ThompsonSampling"
 UCB_PATH = "ray.rllib.contrib.bandits.exploration.UCB"
@@ -132,11 +129,13 @@ LinUCBTSPolicy = build_torch_policy(
 
 UCB_CONFIG = copy.copy(DEFAULT_CONFIG)
 UCB_CONFIG["exploration_config"] = {
-    "type": "ray.rllib.contrib.bandits.exploration.UCB"}
+    "type": "ray.rllib.contrib.bandits.exploration.UCB"
+}
 
 TS_CONFIG = copy.copy(DEFAULT_CONFIG)
 TS_CONFIG["exploration_config"] = {
-    "type": "ray.rllib.contrib.bandits.exploration.ThompsonSampling"}
+    "type": "ray.rllib.contrib.bandits.exploration.ThompsonSampling"
+}
 
 
 def get_stats(trainer):
