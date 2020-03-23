@@ -108,7 +108,11 @@ class Dataset(ABC, torch.utils.data.IterableDataset):
     def get_sharded_loader(self, n, i, batch_size=32):
         """Get the ith shard of the dataset assuming it is sharded into
         n pieces"""
-        converter = lambda x: self._convert(*ray.get(x))
+
+        def converter(x):
+            data, label = ray.get(x)
+            return self._convert(data, label)
+
         data = list(map(converter, get_arr_partition(self._data, n, i)))
         return torch.utils.data.DataLoader(data, batch_size)
 

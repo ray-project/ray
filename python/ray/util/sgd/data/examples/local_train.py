@@ -1,18 +1,16 @@
 import os
 import ray
 
-from ray.util.sgd.data import Dataset
 from ray.util.sgd.data import ImageNetDataset
 
-from ray.util.sgd.torch import (TorchTrainer, TorchTrainable)
-from ray.util.sgd.torch.resnet import ResNet50
+from ray.util.sgd.torch import TorchTrainer
 
 import torch
 import torch.nn as nn
 
-
 MODEL_IN_DIMS = (3, 224, 224)
 NUM_ACTORS = 4
+
 
 def initialization_hook():
     print("NCCL DEBUG SET")
@@ -33,18 +31,19 @@ def scheduler_creator(optimizer, config):
 
 
 def model_creator(_config):
-    # return ResNet50(None)
     from timm import models
     return models.res2net50_26w_4s()
 
 
 def make_data_creator(train_set, valid_set):
     def data_creator(config):
-        train_loader = train_set.get_sharded_loader(NUM_ACTORS, config["world_rank"])
-        valid_loader = valid_set.get_sharded_loader(NUM_ACTORS, config["world_rank"])
+        train_loader = train_set.get_sharded_loader(NUM_ACTORS,
+                                                    config["world_rank"])
+        valid_loader = valid_set.get_sharded_loader(NUM_ACTORS,
+                                                    config["world_rank"])
         return train_loader, valid_loader
-    return data_creator
 
+    return data_creator
 
 
 if __name__ == "__main__":
@@ -61,9 +60,15 @@ if __name__ == "__main__":
     from timm.data import transforms_factory
     transform = transforms_factory.create_transform(MODEL_IN_DIMS)
 
-    train_dataset = ImageNetDataset(train_loc, "train", max_paths=10000, transform=transform)
+    train_dataset = ImageNetDataset(
+        train_loc, "train", max_paths=10000, transform=transform)
     print("Done loading training dataset: ", len(train_dataset))
-    valid_dataset = ImageNetDataset(valid_loc, "validate", val_sol_path=val_sol_path, max_paths=10000, transform=transform)
+    valid_dataset = ImageNetDataset(
+        valid_loc,
+        "validate",
+        val_sol_path=val_sol_path,
+        max_paths=10000,
+        transform=transform)
     print("Done loading validation dataset: ", len(valid_dataset))
     data_creator = make_data_creator(train_dataset, valid_dataset)
 
@@ -91,9 +96,3 @@ if __name__ == "__main__":
     # print(trainer1.validate())
     # trainer1.shutdown()
     # print("success!")
-
-
-
-
-
-
