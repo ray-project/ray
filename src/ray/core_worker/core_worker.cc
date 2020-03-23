@@ -115,7 +115,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
-  RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
   if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
     gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
@@ -169,6 +168,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_port(core_worker_server_.GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
+  RAY_LOG(INFO) << "Initializing worker at address: " << rpc_address_.ip_address() << ":"
+                << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
+                << ", raylet " << local_raylet_id;
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
