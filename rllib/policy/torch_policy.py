@@ -296,15 +296,20 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def export_model(self, export_dir):
-        """TODO: implement for torch.
+        """TODO(sven): implement for torch.
         """
         raise NotImplementedError
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
-        """TODO: implement for torch.
+        """TODO(sven): implement for torch.
         """
         raise NotImplementedError
+
+    @override(Policy)
+    def import_model_from_h5(self, import_file):
+        """Imports weights into torch model."""
+        return self.model.import_from_h5(import_file)
 
 
 @DeveloperAPI

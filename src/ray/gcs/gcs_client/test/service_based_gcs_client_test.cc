@@ -653,6 +653,11 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
   TearDownTestCase();
 
+  // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
+  // detects that the redis is failure and then stop itself.
+  auto interval_ms = RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds();
+  std::this_thread::sleep_for(std::chrono::milliseconds(3 * interval_ms));
+
   // Check if gcs server has exited.
   RAY_CHECK(gcs_server_->IsStopped());
 }
