@@ -109,7 +109,8 @@ class CoreWorkerTest : public ::testing::Test {
     }
 
     // start gcs server
-    if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+    if (getenv(kRayGcsServiceEnabled) == nullptr ||
+        strcmp(getenv(kRayGcsServiceEnabled), "true") == 0) {
       gcs_server_pid_ = StartGcsServer("127.0.0.1");
     } else {
       // core worker test relies on node resources. It's important that one raylet can
@@ -643,8 +644,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     TaskSpecBuilder builder;
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), address, num_returns, /*is_direct*/ false,
-                              resources, resources);
+                              RandomTaskId(), address, num_returns, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {

@@ -1,5 +1,5 @@
 import logging
-import six.moves.queue as queue
+import queue
 import threading
 import traceback
 

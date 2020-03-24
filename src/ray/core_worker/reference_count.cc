@@ -567,8 +567,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
     auto inserted = it->second.borrowers.insert(worker_addr).second;
     // If we are the owner of id, then send WaitForRefRemoved to borrower.
     if (inserted) {
-      RAY_LOG(DEBUG) << "Adding borrower " << worker_addr.ip_address << " to id "
-                     << object_id;
+      RAY_LOG(DEBUG) << "Adding borrower " << worker_addr.ip_address << ":"
+                     << worker_addr.port << " to id " << object_id;
       new_borrowers.push_back(worker_addr);
     }
   }
@@ -577,8 +577,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
   for (const auto &nested_borrower : borrower_ref.borrowers) {
     auto inserted = it->second.borrowers.insert(nested_borrower).second;
     if (inserted) {
-      RAY_LOG(DEBUG) << "Adding borrower " << nested_borrower.ip_address << " to id "
-                     << object_id;
+      RAY_LOG(DEBUG) << "Adding borrower " << nested_borrower.ip_address << ":"
+                     << nested_borrower.port << " to id " << object_id;
       new_borrowers.push_back(nested_borrower);
     }
   }
@@ -682,8 +682,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
     // We do not own object_id. This is the case where we returned an object ID
     // from a task, and the task's caller executed in a remote process.
     for (const auto &inner_id : inner_ids) {
-      RAY_LOG(DEBUG) << "Adding borrower " << owner_address.ip_address << " to id "
-                     << inner_id << ", borrower owns outer ID " << object_id;
+      RAY_LOG(DEBUG) << "Adding borrower " << owner_address.ip_address << ":"
+                     << owner_address.port << " to id " << inner_id
+                     << ", borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
       RAY_CHECK(inner_it != object_id_refs_.end());
       // Add the task's caller as a borrower.
@@ -750,6 +751,8 @@ void ReferenceCounter::SetRefRemovedCallback(
   }
 
   if (it->second.RefCount() == 0) {
+    RAY_LOG(DEBUG) << "Ref count for borrowed object " << object_id
+                   << " is already 0, responding to WaitForRefRemoved";
     // We already stopped borrowing the object ID. Respond to the owner
     // immediately.
     ref_removed_callback(object_id);
