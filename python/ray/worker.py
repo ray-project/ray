@@ -1222,14 +1222,18 @@ def connect(node,
             # Redirect stdout/stderr at the file descriptor level. If we simply
             # set sys.stdout and sys.stderr, then logging from C++ can fail to
             # be redirected.
-            os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
-            os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
+            if log_stdout_file is not None:
+                os.dup2(log_stdout_file.fileno(), sys.stdout.fileno())
+            if log_stderr_file is not None:
+                os.dup2(log_stderr_file.fileno(), sys.stderr.fileno())
             # We also manually set sys.stdout and sys.stderr because that seems
             # to have an affect on the output buffering. Without doing this,
             # stdout and stderr are heavily buffered resulting in seemingly
             # lost logging statements.
-            sys.stdout = log_stdout_file
-            sys.stderr = log_stderr_file
+            if log_stdout_file is not None:
+                sys.stdout = log_stdout_file
+            if log_stderr_file is not None:
+                sys.stderr = log_stderr_file
             # This should always be the first message to appear in the worker's
             # stdout and stderr log files. The string "Ray worker pid:" is
             # parsed in the log monitor process.
@@ -1238,8 +1242,14 @@ def connect(node,
             sys.stdout.flush()
             sys.stderr.flush()
 
-            worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
-            worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
+            worker_dict["stdout_file"] = os.path.abspath(
+                (log_stdout_file
+                 if log_stdout_file is not None
+                 else sys.stdout).name)
+            worker_dict["stderr_file"] = os.path.abspath(
+                (log_stderr_file
+                 if log_stderr_file is not None
+                 else sys.stderr).name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     else:
         raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
