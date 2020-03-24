@@ -579,13 +579,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
             obs_batch = [t.obs for t in eval_data]
             prev_action_batch = [t.prev_action for t in eval_data]
             prev_reward_batch = [t.prev_reward for t in eval_data]
-            policy.exploration.before_forward_pass(
-                obs_batch=obs_batch,
-                state_batches=rnn_in_cols,
-                prev_action_batch=prev_action_batch,
-                prev_reward_batch=prev_reward_batch,
-                timestep=policy.global_timestep,
-                tf_sess=policy.get_session())
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
                 obs_batch=obs_batch,

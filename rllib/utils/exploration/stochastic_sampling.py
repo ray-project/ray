@@ -1,5 +1,6 @@
 from typing import Union
 
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
@@ -21,9 +22,9 @@ class StochasticSampling(Exploration):
 
     def __init__(self,
                  action_space,
-                 model,
                  *,
-                 framework,
+                 framework: str,
+                 model: ModelV2,
                  static_params=None,
                  time_dependent_params=None,
                  **kwargs):

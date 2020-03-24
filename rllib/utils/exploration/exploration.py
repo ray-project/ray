@@ -19,11 +19,11 @@ class Exploration:
     def __init__(self,
                  action_space: Space,
                  *,
-                 policy_config: dict = None,
-                 model: ModelV2 = None,
                  framework: str,
-                 num_workers: int = 0,
-                 worker_index: int = 0):
+                 num_workers: int,
+                 worker_index: int,
+                 policy_config: dict,
+                 model: ModelV2):
         """
         Args:
             action_space (Space): The action space in which to explore.

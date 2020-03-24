@@ -1,5 +1,6 @@
 from typing import Union
 
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
@@ -23,8 +24,8 @@ class GaussianNoise(Exploration):
     def __init__(self,
                  action_space,
                  *,
-                 model,
-                 framework,
+                 framework: str,
+                 model: ModelV2,
                  random_timesteps=1000,
                  stddev=0.1,
                  initial_scale=1.0,

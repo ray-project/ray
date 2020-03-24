@@ -12,6 +12,7 @@ torch, _ = try_import_torch()
 
 @DeveloperAPI
 def build_torch_policy(name,
+                       *,
                        loss_fn,
                        get_default_config=None,
                        stats_fn=None,
@@ -21,6 +22,8 @@ def build_torch_policy(name,
                        optimizer_fn=None,
                        before_init=None,
                        after_init=None,
+                       action_sampling_fn=None,
+                       action_distribution_fn=None,
                        make_model_and_action_dist=None,
                        mixins=None):
     """Helper function for creating a torch policy at runtime.
@@ -45,6 +48,12 @@ def build_torch_policy(name,
             policy init that takes the same arguments as the policy constructor
         after_init (func): optional function to run at the end of policy init
             that takes the same arguments as the policy constructor
+        action_sampling_fn (Optional[callable]): A callable returning a sampled
+            action and its log-likelihood given some (obs and state) inputs.
+        action_distribution_fn (Optional[callable]): A callable returning
+            distribution inputs (parameters), a dist-class to generate an
+            action distribution object from, and internal-state outputs (or an
+            empty list if not applicable).
         make_model_and_action_dist (func): optional func that takes the same
             arguments as policy init and returns a tuple of model instance and
             torch action distribution class. If not specified, the default

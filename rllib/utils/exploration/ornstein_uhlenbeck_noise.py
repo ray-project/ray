@@ -21,7 +21,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
     def __init__(self,
                  action_space,
                  *,
-                 framework,
+                 framework: str,
                  ou_theta=0.15,
                  ou_sigma=0.2,
                  ou_base_scale=0.1,
@@ -58,13 +58,13 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         """
         super().__init__(
             action_space,
+            framework=framework,
             random_timesteps=random_timesteps,
             initial_scale=initial_scale,
             final_scale=final_scale,
             scale_timesteps=scale_timesteps,
             scale_schedule=scale_schedule,
             stddev=1.0,  # Force `self.stddev` to 1.0.
-            framework=framework,
             **kwargs)
         self.ou_theta = ou_theta
         self.ou_sigma = ou_sigma

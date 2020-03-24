@@ -2,6 +2,7 @@ from gym.spaces import Discrete
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -30,9 +31,9 @@ class ParameterNoise(Exploration):
     def __init__(self,
                  action_space,
                  *,
-                 policy_config,
-                 model,
-                 framework,
+                 framework: str,
+                 policy_config: dict,
+                 model: ModelV2,
                  initial_stddev=1.0,
                  random_timesteps=10000,
                  sub_exploration=None,
