@@ -54,6 +54,7 @@ class LoggerSuite(unittest.TestCase):
         logger.on_result(result(2, 4, score=[1, 2, 3], hello={"world": 1}))
         logger.close()
 
+
 if __name__ == "__main__":
     import pytest
     import sys

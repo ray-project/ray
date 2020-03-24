@@ -419,8 +419,8 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored on %s from checkpoint: %s", self.get_current_ip(),
-                    checkpoint_path)
+        logger.info("Restored on %s from checkpoint: %s",
+                    self.get_current_ip(), checkpoint_path)
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
