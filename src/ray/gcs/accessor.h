@@ -32,6 +32,12 @@ class ActorInfoAccessor {
  public:
   virtual ~ActorInfoAccessor() = default;
 
+  /// Get all actor specification from GCS synchronously.
+  ///
+  /// \param actor_table_data_list The container to hold the actor specification.
+  /// \return Status
+  virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
+
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
@@ -107,10 +113,11 @@ class ActorInfoAccessor {
   /// Get actor checkpoint data from GCS asynchronously.
   ///
   /// \param checkpoint_id The ID of checkpoint to lookup in GCS.
+  /// \param actor_id The ID of actor that this checkpoint belongs to.
   /// \param callback The callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id,
+      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointData> &callback) = 0;
 
   /// Get actor checkpoint id data from GCS asynchronously.

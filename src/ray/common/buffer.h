@@ -116,7 +116,9 @@ class LocalMemoryBuffer : public Buffer {
 /// reference to a plasma object (via the underlying plasma::PlasmaBuffer).
 class PlasmaBuffer : public Buffer {
  public:
-  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer) : buffer_(buffer) {}
+  PlasmaBuffer(std::shared_ptr<arrow::Buffer> buffer,
+               std::function<void(PlasmaBuffer *)> on_delete = nullptr)
+      : buffer_(buffer), on_delete_(on_delete) {}
 
   uint8_t *Data() const override { return const_cast<uint8_t *>(buffer_->data()); }
 
@@ -126,10 +128,18 @@ class PlasmaBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return true; }
 
+  ~PlasmaBuffer() {
+    if (on_delete_ != nullptr) {
+      on_delete_(this);
+    }
+  };
+
  private:
   /// shared_ptr to arrow buffer which can potentially hold a reference
   /// for the object (when it's a plasma::PlasmaBuffer).
   std::shared_ptr<arrow::Buffer> buffer_;
+  /// Callback to run on destruction.
+  std::function<void(PlasmaBuffer *)> on_delete_;
 };
 
 }  // namespace ray

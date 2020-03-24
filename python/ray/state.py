@@ -318,9 +318,9 @@ class GlobalState:
             return {}
         gcs_entries = gcs_utils.GcsEntry.FromString(message)
 
-        assert len(gcs_entries.entries) == 1
+        assert len(gcs_entries.entries) > 0
         actor_table_data = gcs_utils.ActorTableData.FromString(
-            gcs_entries.entries[0])
+            gcs_entries.entries[-1])
 
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
@@ -333,7 +333,7 @@ class GlobalState:
                 "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port
             },
-            "IsDirectCall": actor_table_data.is_direct_call,
+            "IsDirectCall": True,
             "State": actor_table_data.state,
             "Timestamp": actor_table_data.timestamp,
         }

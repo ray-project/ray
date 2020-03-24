@@ -100,13 +100,13 @@ class Worker:
         return return_filters
 
     def rollout(self, timestep_limit, add_noise=False):
-        rollout_rewards, rollout_length = policies.rollout(
+        rollout_rewards, rollout_fragment_length = policies.rollout(
             self.policy,
             self.env,
             timestep_limit=timestep_limit,
             add_noise=add_noise,
             offset=self.config["offset"])
-        return rollout_rewards, rollout_length
+        return rollout_rewards, rollout_fragment_length
 
     def do_rollouts(self, params, timestep_limit=None):
         # Set the network weights.

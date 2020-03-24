@@ -52,13 +52,8 @@ const slice = createSlice({
       state.rayletInfo = action.payload.rayletInfo;
       state.lastUpdatedAt = Date.now();
     },
-    setTuneInfo: (
-      state,
-      action: PayloadAction<{
-        tuneInfo: TuneJobResponse;
-      }>
-    ) => {
-      state.tuneInfo = action.payload.tuneInfo;
+    setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
+      state.tuneInfo = action.payload;
       state.lastUpdatedAt = Date.now();
     },
     setTuneAvailability: (

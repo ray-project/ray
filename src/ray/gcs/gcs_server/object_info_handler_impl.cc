@@ -22,7 +22,8 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
     const GetObjectLocationsRequest &request, GetObjectLocationsReply *reply,
     SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  RAY_LOG(DEBUG) << "Getting object locations, object id = " << object_id;
+  RAY_LOG(DEBUG) << "Getting object locations, job id = " << object_id.TaskId().JobId()
+                 << ", object id = " << object_id;
 
   auto on_done = [reply, object_id, send_reply_callback](
                      Status status, const std::vector<rpc::ObjectTableData> &result) {
@@ -32,9 +33,10 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
       }
     } else {
       RAY_LOG(ERROR) << "Failed to get object locations: " << status.ToString()
+                     << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Objects().AsyncGetLocations(object_id, on_done);
@@ -42,7 +44,8 @@ void DefaultObjectInfoHandler::HandleGetObjectLocations(
     on_done(status, std::vector<rpc::ObjectTableData>());
   }
 
-  RAY_LOG(DEBUG) << "Finished getting object locations, object id = " << object_id;
+  RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
+                 << object_id.TaskId().JobId() << ", object id = " << object_id;
 }
 
 void DefaultObjectInfoHandler::HandleAddObjectLocation(
@@ -50,15 +53,16 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
     SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Adding object location, object id = " << object_id
-                 << ", node id = " << node_id;
+  RAY_LOG(DEBUG) << "Adding object location, job id = " << object_id.TaskId().JobId()
+                 << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [object_id, node_id, send_reply_callback](Status status) {
+  auto on_done = [object_id, node_id, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
+                     << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Objects().AsyncAddLocation(object_id, node_id, on_done);
@@ -66,7 +70,8 @@ void DefaultObjectInfoHandler::HandleAddObjectLocation(
     on_done(status);
   }
 
-  RAY_LOG(DEBUG) << "Finished adding object location, object id = " << object_id
+  RAY_LOG(DEBUG) << "Finished adding object location, job id = "
+                 << object_id.TaskId().JobId() << ", object id = " << object_id
                  << ", node id = " << node_id;
 }
 
@@ -75,15 +80,16 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
     SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Removing object location, object id = " << object_id
-                 << ", node id = " << node_id;
+  RAY_LOG(DEBUG) << "Removing object location, job id = " << object_id.TaskId().JobId()
+                 << ", object id = " << object_id << ", node id = " << node_id;
 
-  auto on_done = [object_id, node_id, send_reply_callback](Status status) {
+  auto on_done = [object_id, node_id, reply, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to remove object location: " << status.ToString()
+                     << ", job id = " << object_id.TaskId().JobId()
                      << ", object id = " << object_id << ", node id = " << node_id;
     }
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Objects().AsyncRemoveLocation(object_id, node_id, on_done);
@@ -91,7 +97,8 @@ void DefaultObjectInfoHandler::HandleRemoveObjectLocation(
     on_done(status);
   }
 
-  RAY_LOG(DEBUG) << "Finished removing object location, object id = " << object_id
+  RAY_LOG(DEBUG) << "Finished removing object location, job id = "
+                 << object_id.TaskId().JobId() << ", object id = " << object_id
                  << ", node id = " << node_id;
 }
 

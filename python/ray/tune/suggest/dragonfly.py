@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class DragonflySearch(SuggestionAlgorithm):
     """A wrapper around Dragonfly to provide trial suggestions.
 
-    Requires Dragonfly to be installed.
+    Requires Dragonfly to be installed via ``pip install dragonfly-opt``.
 
     Parameters:
         optimizer (dragonfly.opt.BlackboxOptimiser): Optimizer provided
@@ -40,33 +40,39 @@ class DragonflySearch(SuggestionAlgorithm):
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
 
-    Example:
-        >>> from dragonfly.opt.gp_bandit import EuclideanGPBandit
-        >>> from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
-        >>> from dragonfly import load_config
-        >>> domain_vars = [{
-                "name": "LiNO3_vol",
-                "type": "float",
-                "min": 0,
-                "max": 7
-            }, {
-                "name": "Li2SO4_vol",
-                "type": "float",
-                "min": 0,
-                "max": 7
-            }, {
-                "name": "NaClO4_vol",
-                "type": "float",
-                "min": 0,
-                "max": 7
-            }]
+    .. code-block:: python
 
-        >>> domain_config = load_config({"domain": domain_vars})
-        >>> func_caller = EuclideanFunctionCaller(None,
-                domain_config.domain.list_of_domains[0])
-        >>> optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-        >>> algo = DragonflySearch(optimizer, max_concurrent=4,
-                metric="objective", mode="max")
+        from ray import tune
+        from dragonfly.opt.gp_bandit import EuclideanGPBandit
+        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
+        from dragonfly import load_config
+
+        domain_vars = [{
+            "name": "LiNO3_vol",
+            "type": "float",
+            "min": 0,
+            "max": 7
+        }, {
+            "name": "Li2SO4_vol",
+            "type": "float",
+            "min": 0,
+            "max": 7
+        }, {
+            "name": "NaClO4_vol",
+            "type": "float",
+            "min": 0,
+            "max": 7
+        }]
+
+        domain_config = load_config({"domain": domain_vars})
+        func_caller = EuclideanFunctionCaller(None,
+            domain_config.domain.list_of_domains[0])
+        optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
+
+        algo = DragonflySearch(optimizer, max_concurrent=4,
+            metric="objective", mode="max")
+
+        tune.run(my_func, algo=algo)
     """
 
     def __init__(self,
@@ -93,8 +99,10 @@ class DragonflySearch(SuggestionAlgorithm):
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         self._initial_points = []
+        self._opt = optimizer
+        self._opt.initialise()
         if points_to_evaluate and evaluated_rewards:
-            optimizer.tell(points_to_evaluate, evaluated_rewards)
+            self._opt.tell([(points_to_evaluate, evaluated_rewards)])
         elif points_to_evaluate:
             self._initial_points = points_to_evaluate
         self._max_concurrent = max_concurrent
@@ -104,8 +112,6 @@ class DragonflySearch(SuggestionAlgorithm):
             self._metric_op = -1.
         elif mode == "max":
             self._metric_op = 1.
-        self._opt = optimizer
-        self._opt.initialise()
         self._live_trial_mapping = {}
         super(DragonflySearch, self).__init__(
             metric=self._metric, mode=mode, **kwargs)

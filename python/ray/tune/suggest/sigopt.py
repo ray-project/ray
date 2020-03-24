@@ -30,27 +30,30 @@ class SigOptSearch(SuggestionAlgorithm):
             minimizing or maximizing the metric attribute.
 
     Example:
-        >>> space = [
-        >>>     {
-        >>>         'name': 'width',
-        >>>         'type': 'int',
-        >>>         'bounds': {
-        >>>             'min': 0,
-        >>>             'max': 20
-        >>>         },
-        >>>     },
-        >>>     {
-        >>>         'name': 'height',
-        >>>         'type': 'int',
-        >>>         'bounds': {
-        >>>             'min': -100,
-        >>>             'max': 100
-        >>>         },
-        >>>     },
-        >>> ]
-        >>> algo = SigOptSearch(
-        >>>     space, name="SigOpt Example Experiment",
-        >>>     max_concurrent=1, metric="mean_loss", mode="min")
+
+    .. code-block:: python
+
+        space = [
+            {
+                'name': 'width',
+                'type': 'int',
+                'bounds': {
+                    'min': 0,
+                    'max': 20
+                },
+            },
+            {
+                'name': 'height',
+                'type': 'int',
+                'bounds': {
+                    'min': -100,
+                    'max': 100
+                },
+            },
+        ]
+        algo = SigOptSearch(
+            space, name="SigOpt Example Experiment",
+            max_concurrent=1, metric="mean_loss", mode="min")
     """
 
     def __init__(self,

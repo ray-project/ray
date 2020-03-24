@@ -17,10 +17,10 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
-#include "src/ray/util/test_util.h"
 
 namespace ray {
 
@@ -293,7 +293,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   rpc::Address empty_address;
   builder.SetCommonTaskSpec(TaskID::Nil(), Language::PYTHON, function_descriptor,
                             JobID::Nil(), TaskID::Nil(), 0, TaskID::Nil(), empty_address,
-                            1, true, resources, resources);
+                            1, resources, resources);
   return builder.Build();
 }
 

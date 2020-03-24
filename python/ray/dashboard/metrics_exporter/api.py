@@ -1,4 +1,9 @@
-import requests
+try:
+    import requests  # `requests` is not part of stdlib.
+except ImportError:
+    requests = None
+    logger.exception("Couldn't import `requests` library. "
+                     "Be sure to install it on the client side.")
 
 from ray.dashboard.metrics_exporter.schema import AuthRequest, AuthResponse
 from ray.dashboard.metrics_exporter.schema import IngestRequest, IngestResponse

@@ -66,7 +66,12 @@ void GrpcServer::Run() {
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_) {
     for (int i = 0; i < num_threads_; i++) {
-      entry->CreateCall();
+      // Create a buffer of 100 calls for each RPC handler.
+      // TODO(edoakes): a small buffer should be fine and seems to have better
+      // performance, but we don't currently handle backpressure on the client.
+      for (int j = 0; j < 100; j++) {
+        entry->CreateCall();
+      }
     }
   }
   // Start threads that polls incoming requests.

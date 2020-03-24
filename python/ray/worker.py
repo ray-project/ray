@@ -42,6 +42,7 @@ from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
+    RayConnectionError,
     RayError,
     RayTaskError,
     ObjectStoreFullError,
@@ -108,7 +109,6 @@ class Worker:
         self.mode = None
         self.cached_functions_to_run = []
         self.actor_init_error = None
-        self.make_actor = None
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
@@ -496,10 +496,6 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
-class RayConnectionError(Exception):
-    pass
-
-
 def print_failed_task(task_status):
     """Print information about failed tasks.
 
@@ -550,7 +546,8 @@ def init(address=None,
          temp_dir=None,
          load_code_from_local=False,
          use_pickle=True,
-         _internal_config=None):
+         _internal_config=None,
+         lru_evict=False):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -646,6 +643,12 @@ def init(address=None,
         use_pickle: Deprecated.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
+        lru_evict (bool): If True, when an object store is full, it will evict
+            objects in LRU order to make more space and when under memory
+            pressure, ray.UnreconstructableError may be thrown. If False, then
+            reference counting will be used to decide which objects are safe to
+            evict and when under memory pressure, ray.ObjectStoreFullError may
+            be thrown.
 
     Returns:
         Address information about the started processes.
@@ -674,12 +677,6 @@ def init(address=None,
     else:
         driver_mode = SCRIPT_MODE
 
-    if setproctitle is None:
-        logger.warning(
-            "WARNING: Not updating worker name since `setproctitle` is not "
-            "installed. Install this with `pip install setproctitle` "
-            "(or ray[debug]) to enable monitoring of worker processes.")
-
     if global_worker.connected:
         if ignore_reinit_error:
             logger.error("Calling ray.init() again after it has already been "
@@ -694,6 +691,18 @@ def init(address=None,
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
+
+    _internal_config = (json.loads(_internal_config)
+                        if _internal_config else {})
+    # Set the internal config options for LRU eviction.
+    if lru_evict:
+        # Turn off object pinning.
+        if _internal_config.get("object_pinning_enabled", False):
+            raise Exception(
+                "Object pinning cannot be enabled if using LRU eviction.")
+        _internal_config["object_pinning_enabled"] = False
+        _internal_config["object_store_full_max_retries"] = -1
+        _internal_config["free_objects_period_milliseconds"] = 1000
 
     global _global_node
     if driver_mode == LOCAL_MODE:
@@ -779,8 +788,9 @@ def init(address=None,
             raise ValueError("When connecting to an existing cluster, "
                              "raylet_socket_name must not be provided.")
         if _internal_config is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "_internal_config must not be provided.")
+            logger.warning(
+                "When connecting to an existing cluster, "
+                "_internal_config must match the cluster's _internal_config.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -789,7 +799,8 @@ def init(address=None,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local)
+            load_code_from_local=load_code_from_local,
+            _internal_config=_internal_config)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -804,8 +815,7 @@ def init(address=None,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
         job_id=job_id,
-        internal_config=json.loads(_internal_config)
-        if _internal_config else {})
+        internal_config=_internal_config)
 
     for hook in _post_init_hooks:
         hook()
@@ -866,6 +876,7 @@ def shutdown(exiting_interpreter=False):
 atexit.register(shutdown, True)
 
 
+# TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
@@ -1125,8 +1136,7 @@ def connect(node,
         job_id = JobID.nil()
         # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
-        if setproctitle:
-            setproctitle.setproctitle("ray::IDLE")
+        setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
         if job_id is None:
             job_id = JobID.from_int(random.randint(1, 65535))
@@ -1352,11 +1362,9 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    if setproctitle:
-        setproctitle.setproctitle(title)
+    setproctitle.setproctitle(title)
     yield
-    if setproctitle:
-        setproctitle.setproctitle(next_title)
+    setproctitle.setproctitle(next_title)
 
 
 def register_custom_serializer(cls,
@@ -1427,6 +1435,10 @@ def show_in_webui(message, key="", dtype="text"):
     worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
+# Global varaible to make sure we only send out the warning once
+blocking_get_inside_async_warned = False
+
+
 def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
@@ -1436,7 +1448,7 @@ def get(object_ids, timeout=None):
     object has been created). If object_ids is a list, then the objects
     corresponding to each object in the list will be returned.
 
-    This method will error will error if it's running inside async context,
+    This method will issue a warning if it's running inside async context,
     you can use ``await object_id`` instead of ``ray.get(object_id)``. For
     a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
 
@@ -1461,9 +1473,13 @@ def get(object_ids, timeout=None):
     if hasattr(
             worker,
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
-        raise RayError("Using blocking ray.get inside async actor. "
-                       "This blocks the event loop. Please "
-                       "use `await` on object id with asyncio.gather.")
+        global blocking_get_inside_async_warned
+        if not blocking_get_inside_async_warned:
+            logger.warning("Using blocking ray.get inside async actor. "
+                           "This blocks the event loop. Please use `await` "
+                           "on object id with asyncio.gather if you want to "
+                           "yield execution to the event loop instead.")
+            blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
         is_individual_id = isinstance(object_ids, ray.ObjectID)
@@ -1521,12 +1537,13 @@ def put(value, weakref=False):
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
-                    "store was full of pinned objects. If you are putting "
-                    "and holding references to a lot of object ids, consider "
-                    "ray.put(value, weakref=True) to allow object data to "
-                    "be evicted early.")
+                    "store was full of pinned objects.")
                 raise
         return object_id
+
+
+# Global variable to make sure we only send out the warning once.
+blocking_wait_inside_async_warned = False
 
 
 def wait(object_ids, num_returns=1, timeout=None):
@@ -1547,8 +1564,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
 
-    This method will error if it's running inside an async context. Instead of
-    ``ray.wait(object_ids)``, you can use ``await asyncio.wait(object_ids)``.
+    This method will issue a warning if it's running inside an async context.
+    Instead of ``ray.wait(object_ids)``, you can use
+    ``await asyncio.wait(object_ids)``.
 
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
@@ -1566,9 +1584,12 @@ def wait(object_ids, num_returns=1, timeout=None):
     if hasattr(worker,
                "core_worker") and worker.core_worker.current_actor_is_asyncio(
                ) and timeout != 0:
-        raise RayError("Using blocking ray.wait inside async method. "
-                       "This blocks the event loop. Please use `await` "
-                       "on object id with asyncio.wait. ")
+        global blocking_wait_inside_async_warned
+        if not blocking_wait_inside_async_warned:
+            logger.warning("Using blocking ray.wait inside async method. "
+                           "This blocks the event loop. Please use `await` "
+                           "on object id with asyncio.wait. ")
+            blocking_wait_inside_async_warned = True
 
     if isinstance(object_ids, ObjectID):
         raise TypeError(
@@ -1642,8 +1663,9 @@ def kill(actor):
         raise ValueError("ray.kill() only supported for actors. "
                          "Got: {}.".format(type(actor)))
 
-    worker = ray.worker.get_global_worker()
-    worker.core_worker.kill_actor(actor._ray_actor_id)
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    worker.core_worker.kill_actor(actor._ray_actor_id, False)
 
 
 def _mode(worker=global_worker):
@@ -1655,10 +1677,6 @@ def _mode(worker=global_worker):
     cannot be serialized.
     """
     return worker.mode
-
-
-def get_global_worker():
-    return global_worker
 
 
 def make_decorator(num_return_vals=None,
@@ -1692,9 +1710,9 @@ def make_decorator(num_return_vals=None,
                 raise TypeError("The keyword 'max_calls' is not "
                                 "allowed for actors.")
 
-            return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     memory, object_store_memory, resources,
-                                     max_reconstructions)
+            return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
+                                        memory, object_store_memory, resources,
+                                        max_reconstructions)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1782,7 +1800,7 @@ def remote(*args, **kwargs):
     work and then shut down. If you want to kill them immediately, you can
     also call ``ray.kill(actor)``.
     """
-    worker = get_global_worker()
+    worker = global_worker
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.

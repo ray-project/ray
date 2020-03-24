@@ -37,6 +37,16 @@
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 
+namespace boost {
+
+namespace system {
+
+class error_code;
+
+}  // namespace system
+
+}  // namespace boost
+
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
@@ -238,6 +248,8 @@ inline void Status::operator=(const Status &s) {
     CopyFrom(s.state_);
   }
 }
+
+Status boost_to_ray_status(const boost::system::error_code &error);
 
 }  // namespace ray
 

@@ -17,7 +17,7 @@ public class StressTest extends BaseTest {
     return x;
   }
 
-  @Test(enabled = false)
+  @Test
   public void testSubmittingTasks() {
     TestUtils.skipTestUnderSingleProcess();
     for (int numIterations : ImmutableList.of(1, 10, 100, 1000)) {
@@ -35,7 +35,7 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test(enabled = false)
+  @Test
   public void testDependency() {
     TestUtils.skipTestUnderSingleProcess();
     RayObject<Integer> x = Ray.call(StressTest::echo, 1);
@@ -74,7 +74,7 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test(enabled = false)
+  @Test
   public void testSubmittingManyTasksToOneActor() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Actor> actor = Ray.createActor(Actor::new);
@@ -89,7 +89,7 @@ public class StressTest extends BaseTest {
     }
   }
 
-  @Test(enabled = false)
+  @Test
   public void testPuttingAndGettingManyObjects() {
     TestUtils.skipTestUnderSingleProcess();
     Integer objectToPut = 1;

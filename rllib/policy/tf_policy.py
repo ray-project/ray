@@ -1,7 +1,6 @@
 import errno
 import logging
 import os
-import tree
 
 import numpy as np
 import ray
@@ -212,10 +211,8 @@ class TFPolicy(Policy):
             self._loss = loss
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
-            if g is not None
-        ]
+        self._grads_and_vars = [(g, v) for (g, v) in self.gradients(
+            self._optimizer, self._loss) if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
         # TODO(sven/ekl): Deprecate support for v1 models.
@@ -367,6 +364,14 @@ class TFPolicy(Policy):
             saver = tf.train.Saver()
             saver.save(self._sess, save_path)
 
+    @override(Policy)
+    def import_model_from_h5(self, import_file):
+        """Imports weights into tf model."""
+        # Make sure the session is the right one (see issue #7046).
+        with self._sess.graph.as_default():
+            with self._sess.as_default():
+                return self.model.import_from_h5(import_file)
+
     @DeveloperAPI
     def copy(self, existing_inputs):
         """Creates a copy of self using existing input placeholders.
@@ -493,7 +498,7 @@ class TFPolicy(Policy):
 
         # build output signatures
         output_signature = self._extra_output_signature_def()
-        for i, a in enumerate(tree.flatten(self._sampled_action)):
+        for i, a in enumerate(tf.nest.flatten(self._sampled_action)):
             output_signature["actions_{}".format(i)] = \
                 tf.saved_model.utils.build_tensor_info(a)
 

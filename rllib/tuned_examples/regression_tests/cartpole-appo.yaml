@@ -5,7 +5,7 @@ cartpole-appo:
         episode_reward_mean: 100
         timesteps_total: 100000
     config:
-        sample_batch_size: 10
+        rollout_fragment_length: 10
         train_batch_size: 10
         num_envs_per_worker: 5
         num_workers: 1
