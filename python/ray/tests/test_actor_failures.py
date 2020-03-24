@@ -22,7 +22,8 @@ from ray.test_utils import (relevant_errors, wait_for_condition,
 
 @pytest.fixture
 def ray_checkpointable_actor_cls(request):
-    checkpoint_dir = "/tmp/ray_temp_checkpoint_dir/"
+    checkpoint_dir = os.path.join(ray.utils.get_user_temp_dir(),
+                                  "ray_temp_checkpoint_dir") + os.sep
     if not os.path.isdir(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 
@@ -197,10 +198,83 @@ def test_actor_reconstruction_without_task(ray_start_regular):
     # Kill the actor.
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
+
     # Wait until the actor is reconstructed.
-    assert wait_for_condition(
-        lambda: ray.worker.global_worker.core_worker.object_exists(obj_ids[1]),
-        timeout_ms=5000)
+    def check_reconstructed():
+        worker = ray.worker.global_worker
+        return worker.core_worker.object_exists(obj_ids[1])
+
+    assert wait_for_condition(check_reconstructed)
+
+
+def test_caller_actor_reconstruction(ray_start_regular):
+    """Test tasks from a reconstructed actor can be correctly processed
+       by the receiving actor."""
+
+    @ray.remote(max_reconstructions=1)
+    class ReconstructableActor:
+        """An actor that will be reconstructed at most once."""
+
+        def __init__(self, actor):
+            self.actor = actor
+
+        def increase(self):
+            return ray.get(self.actor.increase.remote())
+
+        def get_pid(self):
+            return os.getpid()
+
+    @ray.remote(max_reconstructions=1)
+    class Actor:
+        """An actor that will be reconstructed at most once."""
+
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+    remote_actor = Actor.remote()
+    actor = ReconstructableActor.remote(remote_actor)
+    # Call increase 3 times
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+
+    # kill the actor.
+    # TODO(zhijunfu): use ray.kill instead.
+    kill_actor(actor)
+
+    # Check that we can still call the actor.
+    assert ray.get(actor.increase.remote()) == 4
+
+
+def test_caller_task_reconstruction(ray_start_regular):
+    """Test a retried task from a dead worker can be correctly processed
+       by the receiving actor."""
+
+    @ray.remote(max_retries=5)
+    def RetryableTask(actor):
+        value = ray.get(actor.increase.remote())
+        if value > 2:
+            return value
+        else:
+            os._exit(0)
+
+    @ray.remote(max_reconstructions=1)
+    class Actor:
+        """An actor that will be reconstructed at most once."""
+
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+    remote_actor = Actor.remote()
+
+    assert ray.get(RetryableTask.remote(remote_actor)) == 3
 
 
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):

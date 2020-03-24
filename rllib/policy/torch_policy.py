@@ -259,15 +259,20 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def export_model(self, export_dir):
-        """TODO: implement for torch.
+        """TODO(sven): implement for torch.
         """
         raise NotImplementedError
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
-        """TODO: implement for torch.
+        """TODO(sven): implement for torch.
         """
         raise NotImplementedError
+
+    @override(Policy)
+    def import_model_from_h5(self, import_file):
+        """Imports weights into torch model."""
+        return self.model.import_from_h5(import_file)
 
 
 @DeveloperAPI
@@ -278,10 +283,10 @@ class LearningRateSchedule:
     def __init__(self, lr, lr_schedule):
         self.cur_lr = lr
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr)
+            self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:
             self.lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1])
+                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
@@ -304,18 +309,21 @@ class EntropyCoeffSchedule:
         self.entropy_coeff = entropy_coeff
 
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff)
+            self.entropy_coeff_schedule = ConstantSchedule(
+                entropy_coeff, framework=None)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1])
+                    outside_value=entropy_coeff_schedule[-1][-1],
+                    framework=None)
             else:
                 # Implements previous version but enforces outside_value
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0)
+                    outside_value=0.0,
+                    framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):

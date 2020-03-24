@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_REDIS_CONTEXT_H
 #define RAY_GCS_REDIS_CONTEXT_H
 
@@ -48,10 +62,13 @@ class CallbackReply {
   ///
   /// Note that this will return an empty string if
   /// the type of this reply is `nil` or `status`.
-  std::string ReadAsString() const;
+  const std::string &ReadAsString() const;
 
   /// Read this reply data as pub-sub data.
-  std::string ReadAsPubsubData() const;
+  const std::string &ReadAsPubsubData() const;
+
+  /// Read this reply data as a string array.
+  const std::vector<std::string> &ReadAsStringArray() const;
 
  private:
   /// Flag indicating the type of reply this represents.
@@ -63,9 +80,12 @@ class CallbackReply {
   /// Reply data if reply_type_ is REDIS_REPLY_STATUS.
   Status status_reply_;
 
-  /// Reply data if reply_type_ is REDIS_REPLY_STRING or REDIS_REPLY_ARRAY.
-  /// Note that REDIS_REPLY_ARRAY is only used for pub-sub data.
+  /// Reply data if reply_type_ is REDIS_REPLY_STRING.
   std::string string_reply_;
+
+  /// Reply data if reply_type_ is REDIS_REPLY_ARRAY.
+  /// Note this is used when get actor table data.
+  std::vector<std::string> string_array_reply_;
 };
 
 /// Every callback should take in a vector of the results from the Redis
@@ -153,6 +173,12 @@ class RedisContext {
                                          const TablePrefix prefix,
                                          const TablePubsub pubsub_channel,
                                          int log_length = -1);
+
+  /// Run an arbitrary Redis command synchronously.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return CallbackReply(The reply from redis).
+  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
 
   /// Run an operation on some table key.
   ///

@@ -38,6 +38,7 @@ import ray.ray_constants as ray_constants
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
     from ray.tune import Analysis
+    from tensorboard import program
 except ImportError:
     Analysis = None
 
@@ -754,6 +755,7 @@ class TuneCollector(threading.Thread):
         self._data_lock = threading.Lock()
         self._reload_interval = reload_interval
         self._available = False
+        self._tensor_board_started = False
 
     def get_stats(self):
         with self._data_lock:
@@ -787,6 +789,13 @@ class TuneCollector(threading.Thread):
             df = analysis.dataframe()
             if len(df) == 0:
                 continue
+
+            # start TensorBoard server if not started yet
+            if not self._tensor_board_started:
+                tb = program.TensorBoard()
+                tb.configure(argv=[None, "--logdir", self._logdir])
+                tb.launch()
+                self._tensor_board_started = True
 
             self._available = True
 
@@ -830,8 +839,10 @@ class TuneCollector(threading.Thread):
 
         # clean data into a form that front-end client can handle
         for trial, details in trial_details.items():
-            details["start_time"] = str(
-                round(os.path.getctime(details["logdir"]), 3))
+            ts = os.path.getctime(details["logdir"])
+            formatted_time = datetime.datetime.fromtimestamp(ts).strftime(
+                "%Y-%m-%d %H:%M:%S")
+            details["start_time"] = formatted_time
             details["params"] = {}
             details["metrics"] = {}
 
@@ -842,12 +853,12 @@ class TuneCollector(threading.Thread):
             # group together config attributes
             for key in config_keys:
                 new_name = key[7:]
-                details["params"][new_name] = str(details[key])
+                details["params"][new_name] = details[key]
                 details.pop(key)
 
             # group together metric attributes
             for key in metric_keys:
-                details["metrics"][key] = str(details[key])
+                details["metrics"][key] = details[key]
                 details.pop(key)
 
             if details["done"]:

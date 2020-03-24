@@ -29,7 +29,6 @@ def reap_process_group(*args):
     signal.signal(signal.SIGTERM, sigterm_handler)
 
     # Our parent must have died, SIGTERM the group (including ourselves).
-    # TODO(mehrdadn): killpg isn't supported on Windows.
     os.killpg(0, signal.SIGTERM)
 
 

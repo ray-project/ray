@@ -2,7 +2,6 @@ import atexit
 import collections
 import datetime
 import errno
-import json
 import os
 import logging
 import signal
@@ -15,6 +14,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
+import ray.utils
 from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory, try_to_symlink
 
@@ -66,8 +66,8 @@ class Node:
             self._register_shutdown_hooks()
 
         self.head = head
-        self.kernel_fate_share = (spawn_reaper
-                                  and ray.utils.detect_fate_sharing_support())
+        self.kernel_fate_share = bool(
+            spawn_reaper and ray.utils.detect_fate_sharing_support())
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
@@ -83,7 +83,7 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir="/tmp/ray",
+            temp_dir=ray.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -91,8 +91,7 @@ class Node:
         self._resource_spec = None
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = (json.loads(ray_params._internal_config)
-                        if ray_params._internal_config else None)
+        self._config = ray_params._internal_config
 
         if head:
             redis_client = None
@@ -315,7 +314,7 @@ class Node:
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name="/tmp/ray"):
+    def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
 
         Args:
@@ -328,6 +327,8 @@ class Node:
                 the same name, the returned name will look like
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
+        if directory_name is None:
+            directory_name = ray.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -397,7 +398,8 @@ class Node:
         """
         if socket_path is not None:
             if os.path.exists(socket_path):
-                raise Exception("Socket file {} exists!".format(socket_path))
+                raise RuntimeError(
+                    "Socket file {} exists!".format(socket_path))
             socket_dir = os.path.dirname(socket_path)
             try_to_create_directory(socket_dir)
             return socket_path
@@ -619,9 +621,11 @@ class Node:
 
         if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
             self.start_gcs_server()
+        else:
+            self.start_raylet_monitor()
 
         self.start_monitor()
-        self.start_raylet_monitor()
+
         if self._ray_params.include_webui:
             self.start_dashboard(require_webui=True)
         elif self._ray_params.include_webui is None:
@@ -677,9 +681,10 @@ class Node:
             # Handle the case where the process has already exited.
             if process.poll() is not None:
                 if check_alive:
-                    raise Exception("Attempting to kill a process of type "
-                                    "'{}', but this process is already dead."
-                                    .format(process_type))
+                    raise RuntimeError(
+                        "Attempting to kill a process of type "
+                        "'{}', but this process is already dead."
+                        .format(process_type))
                 else:
                     continue
 
@@ -696,7 +701,7 @@ class Node:
                     if process_info.stderr_file is not None:
                         with open(process_info.stderr_file, "r") as f:
                             message += "\nPROCESS STDERR:\n" + f.read()
-                    raise Exception(message)
+                    raise RuntimeError(message)
                 continue
 
             if process_info.use_valgrind_profiler:

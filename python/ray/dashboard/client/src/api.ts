@@ -219,8 +219,8 @@ export interface TuneTrial {
   status: string;
   trial_id: string;
   job_id: string;
-  params: { [key: string]: string };
-  metrics: { [key: string]: string };
+  params: { [key: string]: string | number };
+  metrics: { [key: string]: string | number };
 }
 
 export interface TuneJobResponse {

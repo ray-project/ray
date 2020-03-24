@@ -5,9 +5,9 @@ import inspect
 import logging
 import numpy as np
 import os
-import six
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -27,6 +27,20 @@ linux_prctl = None
 # We keep a global job object to tie its lifetime to that of our own process.
 win32_job = None
 win32_AssignProcessToJobObject = None
+
+
+def get_user_temp_dir():
+    if sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+        # Ideally we wouldn't need this fallback, but keep it for now for
+        # for compatibility
+        tempdir = os.path.join(os.sep, "tmp")
+    else:
+        tempdir = tempfile.gettempdir()
+    return tempdir
+
+
+def get_ray_temp_dir():
+    return os.path.join(get_user_temp_dir(), "ray")
 
 
 def _random_string():
@@ -208,32 +222,14 @@ def decode(byte_str, allow_none=False):
 def ensure_str(s, encoding="utf-8", errors="strict"):
     """Coerce *s* to `str`.
 
-    To keep six with lower version, see Issue 4169, we copy this function
-    from six == 1.12.0.
-
-    TODO(yuhguo): remove this function when six >= 1.12.0.
-
-    For Python 2:
-      - `unicode` -> encoded to `str`
-      - `str` -> `str`
-
-    For Python 3:
       - `str` -> `str`
       - `bytes` -> decoded to `str`
     """
-    if six.PY3:
-        text_type = str
-        binary_type = bytes
+    if isinstance(s, str):
+        return s
     else:
-        text_type = unicode  # noqa: F821
-        binary_type = str
-    if not isinstance(s, (text_type, binary_type)):
-        raise TypeError("not expecting type '%s'" % type(s))
-    if six.PY2 and isinstance(s, text_type):
-        s = s.encode(encoding, errors)
-    elif six.PY3 and isinstance(s, binary_type):
-        s = s.decode(encoding, errors)
-    return s
+        assert isinstance(s, bytes)
+        return s.decode(encoding, errors)
 
 
 def binary_to_object_id(binary_object_id):
