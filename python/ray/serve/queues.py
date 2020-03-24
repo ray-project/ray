@@ -17,8 +17,12 @@ from ray.serve.utils import logger
 
 
 class Query:
-    def __init__(self, request_args, request_kwargs, request_context,
-                 request_slo_ms):
+    def __init__(self,
+                 request_args,
+                 request_kwargs,
+                 request_context,
+                 request_slo_ms,
+                 call_method="__call__"):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
         self.request_context = request_context
@@ -28,6 +32,8 @@ class Query:
         # Service level objective in milliseconds. This is expected to be the
         # absolute time since unix epoch.
         self.request_slo_ms = request_slo_ms
+
+        self.call_method = call_method
 
     def ray_serialize(self):
         # NOTE: this method is needed because Query need to be serialized and
@@ -175,8 +181,12 @@ class CentralizedQueues:
         else:
             request_slo_ms = request_in_object.adjust_relative_slo_ms()
         request_context = request_in_object.request_context
-        query = Query(request_args, request_kwargs, request_context,
-                      request_slo_ms)
+        query = Query(
+            request_args,
+            request_kwargs,
+            request_context,
+            request_slo_ms,
+            call_method=request_in_object.call_method)
         await self.service_queues[service].put(query)
         await self.flush()
 
@@ -298,8 +308,15 @@ class CentralizedQueues:
                 requests = [
                     buffer_queue.pop(0) for _ in range(real_batch_size)
                 ]
-                future = worker._ray_serve_call.remote(requests).as_future()
-                future.add_done_callback(
-                    _make_future_unwrapper(
-                        client_futures=[req.async_future for req in requests],
-                        host_future=future))
+
+                # split requests by method type
+                requests_group = defaultdict(list)
+                for request in requests:
+                    requests_group[request.call_method].append(request)
+
+                for group in requests_group.values():
+                    future = worker._ray_serve_call.remote(group).as_future()
+                    future.add_done_callback(
+                        _make_future_unwrapper(
+                            client_futures=[req.async_future for req in group],
+                            host_future=future))

@@ -1,7 +1,6 @@
 import copy
 import logging
 import os
-import six
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
@@ -189,7 +188,7 @@ class Experiment:
             A string representing the trainable identifier.
         """
 
-        if isinstance(run_object, six.string_types):
+        if isinstance(run_object, str):
             return run_object
         elif isinstance(run_object, sample_from):
             logger.warning("Not registering trainable. Resolving as variant.")

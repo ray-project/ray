@@ -746,6 +746,84 @@ Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
   return Table<TaskID, TaskLeaseData>::Subscribe(job_id, client_id, on_subscribe, done);
 }
 
+std::vector<ActorID> SyncGetAllActorID(redisContext *redis_context,
+                                       const std::string &table_prefix) {
+  std::unordered_set<ActorID> actor_id_set;
+  size_t cursor = 0;
+  do {
+    auto r = redisCommand(redis_context, "SCAN %d match %s* count 100", cursor,
+                          table_prefix.c_str());
+    auto reply = reinterpret_cast<redisReply *>(r);
+    RAY_CHECK(reply != nullptr && reply->type == REDIS_REPLY_ARRAY);
+    RAY_CHECK(reply->elements == 2);
+
+    // current cursor
+    redisReply *cursor_reply = reply->element[0];
+    RAY_CHECK(cursor_reply != nullptr && cursor_reply->type == REDIS_REPLY_STRING);
+    cursor = std::stoi(std::string(cursor_reply->str, cursor_reply->len));
+
+    // actor ids
+    redisReply *array_reply = reply->element[1];
+    RAY_CHECK(array_reply != nullptr && array_reply->type == REDIS_REPLY_ARRAY);
+    for (size_t i = 0; i < array_reply->elements; ++i) {
+      redisReply *id_reply = array_reply->element[i];
+      RAY_CHECK(id_reply != nullptr && id_reply->type == REDIS_REPLY_STRING);
+      auto id_with_prefix = std::string(id_reply->str, id_reply->len);
+      // The key of actor_checkpoint table and actor_checkpoint_id table have the same
+      // prefix of `ACTOR`, so we should check the length of the key to filter them.
+      if (id_with_prefix.size() == table_prefix.size() + ActorID::Size()) {
+        auto id = ActorID::FromBinary(id_with_prefix.substr(table_prefix.size()));
+        actor_id_set.emplace(id);
+      }
+    }
+  } while (cursor != 0);
+  std::vector<ActorID> actor_id_list;
+  actor_id_list.reserve(actor_id_set.size());
+  actor_id_list.insert(actor_id_list.end(), actor_id_set.begin(), actor_id_set.end());
+  return actor_id_list;
+}
+
+std::vector<ActorID> LogBasedActorTable::GetAllActorID() {
+  auto redis_context = client_->primary_context()->sync_context();
+  return SyncGetAllActorID(redis_context, TablePrefix_Name(prefix_));
+}
+
+Status LogBasedActorTable::Get(const ray::ActorID &actor_id,
+                               ray::rpc::ActorTableData *actor_table_data) {
+  RAY_CHECK(actor_table_data != nullptr);
+  auto key = TablePrefix_Name(prefix_) + actor_id.Binary();
+  auto reply = GetRedisContext(actor_id)->RunArgvSync({"LRANGE", key, "-1", "-1"});
+  if (!reply || reply->IsNil()) {
+    return Status::IOError("Failed to get actor data by actor_id " + actor_id.Hex());
+  }
+
+  const auto &data_list = reply->ReadAsStringArray();
+  if (data_list.empty()) {
+    return Status::IOError("Failed to get actor data by actor_id " + actor_id.Hex());
+  }
+
+  RAY_CHECK(data_list.size() == 1);
+  actor_table_data->ParseFromString(data_list.front());
+  return Status::OK();
+}
+
+std::vector<ActorID> ActorTable::GetAllActorID() {
+  auto redis_context = client_->primary_context()->sync_context();
+  return SyncGetAllActorID(redis_context, TablePrefix_Name(prefix_));
+}
+
+Status ActorTable::Get(const ray::ActorID &actor_id,
+                       ray::rpc::ActorTableData *actor_table_data) {
+  RAY_CHECK(actor_table_data != nullptr);
+  auto key = TablePrefix_Name(prefix_) + actor_id.Binary();
+  auto reply = GetRedisContext(actor_id)->RunArgvSync({"GET", key});
+  if (!reply || reply->IsNil()) {
+    return Status::IOError("Failed to get actor data by actor_id " + actor_id.Hex());
+  }
+  actor_table_data->ParseFromString(reply->ReadAsString());
+  return Status::OK();
+}
+
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id,
@@ -795,6 +873,7 @@ template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
 template class Table<WorkerID, WorkerFailureData>;
+template class Table<ActorID, ActorTableData>;
 
 template class Log<ClientID, ResourceTableData>;
 template class Hash<ClientID, ResourceTableData>;

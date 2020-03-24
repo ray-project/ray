@@ -3,7 +3,6 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import random
-import six
 import sys
 import threading
 import time
@@ -365,10 +364,6 @@ def test_illegal_api_calls(ray_start_regular):
         ray.get(3)
 
 
-# TODO(hchen): This test currently doesn't work in Python 2. This is likely
-# because plasma client isn't thread-safe. This needs to be fixed from the
-# Arrow side. See #4107 for relevant discussions.
-@pytest.mark.skipif(six.PY2, reason="Doesn't work in Python 2.")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
