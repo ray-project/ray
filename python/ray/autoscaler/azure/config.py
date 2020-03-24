@@ -65,15 +65,13 @@ def _configure_resource_group(config):
 
     # choose a random subnet
     random.seed(resource_group)
-    parameters = {"subnet": "10.{}.0.0/16".format(random.randint(0, 254))}
+    # start at 1 to avoid most likely collision at 0
+    parameters = {"subnet": "10.{}.0.0/16".format(random.randint(1, 254))}
 
     deployment_properties = {
         'mode': DeploymentMode.incremental,
         'template': template,
-        'parameters': {k: {
-            'value': v
-        }
-                       for k, v in parameters.items()}
+        'parameters': {k: { 'value': v } for k, v in parameters.items()}
     }
 
     deployment_async_operation = resource_client.deployments.create_or_update(
@@ -85,29 +83,21 @@ def _configure_resource_group(config):
 
 def _configure_key_pair(config):
     ssh_user = config["auth"]["ssh_user"]
-    private_key_path = config["auth"].get("ssh_private_key")
-    if private_key_path:
-        # skip key generation if it is manually specified
-        assert os.path.exists(private_key_path), (
-            "Could not find private ssh key: {}".format(private_key_path))
+    # search if the keys exist
+    for key_type in ["ssh_private_key", "ssh_public_key"]:
+        try:
+            key_path = os.path.expanduser(config["auth"][key_type])
+        except KeyError:
+            raise Exception("Config must define {}".format(key_type))
+        except TypeError:
+            raise Exception("Invalid config value for {}".format(key_type))
+        
+        assert os.path.exists(key_path), (
+            "Could not find ssh key: {}".format(key_path))
 
-        # make sure public key also exists
-        public_key_path = config["auth"]["ssh_public_key"]
-        assert os.path.exists(public_key_path), (
-            "Could not find public ssh key: {}".format(public_key_path))
-    else:
-        resource_group = config["provider"]["resource_group"]
-
-        # look for an existing key pair
-        key_name = "ray_azure_{}_{}".format(resource_group, ssh_user)
-        public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
-        private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
-
-    logger.info("Found SSH key pair: %s", key_name)
-    with open(public_key_path, "r") as f:
-        public_key = f.read()
-
-    config["auth"]["ssh_private_key"] = private_key_path
+        if key_type == "ssh_public_key":
+            with open(key_path, "r") as f:
+                public_key = f.read()
 
     for node_type in ["head_node", "worker_nodes"]:
         config[node_type]["azure_arm_parameters"]["adminUsername"] = ssh_user
