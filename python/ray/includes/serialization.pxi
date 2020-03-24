@@ -219,7 +219,7 @@ def unpack_pickle5_buffers(Buffer buf, metadata):
     header_unpacker = msgpack.Unpacker()
     header_unpacker.feed(c_string(<char*>data, kMessagePackOffset))
     msgpack_bytes_length = header_unpacker.unpack()
-    assert kMessagePackOffset + msgpack_bytes_length <= size
+    assert kMessagePackOffset + msgpack_bytes_length <= <int64_t>size
     msgpack_bytes.append(<char*>(data + kMessagePackOffset),
                          <size_t>msgpack_bytes_length)
     if metadata == ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE:
