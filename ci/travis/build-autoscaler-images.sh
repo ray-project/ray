@@ -26,8 +26,10 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
 
     # We have a branch build, e.g. release/v0.7.0
     if [[ "$TRAVIS_BRANCH" != "master" ]]; then
-       docker tag rayproject/autoscaler:$commit_sha rayproject/autoscaler:$TRAVIS_BRANCH
-       docker push rayproject/autoscaler:$TRAVIS_BRANCH
+       # Replace / in branch name to - so it is legal tag name
+       normalized_branch_name=$(echo $TRAVIS_BRANCH | sed -e "s/\//-/")
+       docker tag rayproject/autoscaler:$commit_sha rayproject/autoscaler:$normalized_branch_name
+       docker push rayproject/autoscaler:$normalized_branch_name
     else
        docker tag rayproject/autoscaler:$commit_sha rayproject/autoscaler:latest
        docker push rayproject/autoscaler:latest
