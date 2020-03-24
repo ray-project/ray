@@ -13,7 +13,7 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
 
     docker build -q -t rayproject/base-deps docker/base-deps
 
-    wheel="ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl"
+    wheel=$(cd $ROOT_DIR/.whl; ls | grep cp36m-manylinux)
     commit_sha=$(echo $TRAVIS_COMMIT | head -c 6)
     cp -r $ROOT_DIR/.whl $ROOT_DIR/docker/autoscaler/.whl
 
