@@ -150,7 +150,11 @@ class Reporter:
         ]
 
     def get_load_avg(self):
-        load = os.getloadavg()
+        if sys.platform == "win32":
+            cpu_percent = psutil.cpu_percent()
+            load = (cpu_percent, cpu_percent, cpu_percent)
+        else:
+            load = os.getloadavg()
         per_cpu_load = tuple((round(x / self.cpu_counts[0], 2) for x in load))
         return load, per_cpu_load
 
