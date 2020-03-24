@@ -77,7 +77,7 @@ extras = {
     "debug": [],
     "dashboard": [],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate", "tensorboardX"]
+    "tune": ["tabulate", "tensorboardX", "pandas]
 }
 
 extras["rllib"] = extras["tune"] + [

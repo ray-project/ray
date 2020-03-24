@@ -1,6 +1,7 @@
-import unittest
+import requests
 import socket
 import subprocess
+import unittest
 import json
 
 import ray
@@ -118,6 +119,22 @@ class TuneServerSuite(unittest.TestCase):
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
             len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
+
+    def testStopExperiment(self):
+        """Check if Stop Trial works."""
+        runner, client = self.basicSetup()
+        for i in range(2):
+            runner.step()
+        all_trials = client.get_all_trials()["trials"]
+        self.assertEqual(
+            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 1)
+
+        client.stop_experiment()
+        runner.step()
+        self.assertTrue(runner.is_finished())
+        self.assertRaises(
+            requests.exceptions.ReadTimeout,
+            lambda: client.get_all_trials(timeout=1))
 
     def testCurlCommand(self):
         """Check if Stop Trial works."""

@@ -105,12 +105,6 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 experiment_tag=tag,
                 trial_id=trial_id)
 
-    def is_finished(self):
-        return self._finished
-
-    def set_finished(self):
-        self._finished = True
-
     def suggest(self, trial_id):
         """Queries the algorithm to retrieve the next set of parameters.
 
