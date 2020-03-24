@@ -168,9 +168,7 @@ def ray_deps_setup():
             "//thirdparty/patches:arrow-headers-unused.patch",
             "//thirdparty/patches:arrow-windows-export.patch",
             "//thirdparty/patches:arrow-windows-nonstdc.patch",
-            "//thirdparty/patches:arrow-windows-sigpipe.patch",
             "//thirdparty/patches:arrow-windows-socket.patch",
-            "//thirdparty/patches:arrow-windows-dlmalloc.patch",
             "//thirdparty/patches:arrow-windows-tcp.patch",
         ],
     )

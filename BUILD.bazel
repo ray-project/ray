@@ -778,6 +778,7 @@ cc_library(
         "@plasma//:common_fbs",
         "@plasma//:plasma_fbs",
         "@plasma//:plasma_server_upstream",
+        "@//:platform_shims",
     ],
 )
 

@@ -1211,6 +1211,10 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 }
 
 void PlasmaStoreRunner::Start() {
+#ifdef _WINSOCKAPI_
+  WSADATA wsadata;
+  WSAStartup(MAKEWORD(2, 2), &wsadata);
+#endif
    // Get external store
   std::shared_ptr<plasma::ExternalStore> external_store{nullptr};
   if (!external_store_endpoint_.empty()) {
@@ -1228,7 +1232,11 @@ void PlasmaStoreRunner::Start() {
 
   // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
   // to a client that has already died, the store could die.
-  signal(SIGPIPE, SIG_IGN);
+#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
+   // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
+   // to a client that has already died, the store could die.
+   signal(SIGPIPE, SIG_IGN);
+#endif
   signal(SIGTERM, HandleSignal);
 
   // Create the event loop.
@@ -1249,7 +1257,7 @@ void PlasmaStoreRunner::Start() {
   plasma::PlasmaAllocator::Free(
       pointer, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
 
-  int socket = BindIpcSock(socket_name_.c_str(), true);
+  int socket = ConnectOrListenIpcSock(socket_name_, true);
   // TODO(pcm): Check return value.
   ARROW_CHECK(socket >= 0);
 
@@ -1259,7 +1267,9 @@ void PlasmaStoreRunner::Start() {
   loop_->Start();
 
   Shutdown();
-
+#ifdef _WINSOCKAPI_
+  WSACleanup();
+#endif
   ArrowLog::UninstallSignalAction();
   ArrowLog::ShutDownArrowLog();
 }
