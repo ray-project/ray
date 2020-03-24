@@ -107,6 +107,15 @@ class TestDistributions(unittest.TestCase):
 
         for fw in ["tf", "eager", "torch"]:
             print("framework={}".format(fw))
+
+            eager_ctx = None
+            if fw == "eager":
+                eager_ctx = eager_mode()
+                eager_ctx.__enter__()
+                assert tf.executing_eagerly()
+            elif fw == "tf":
+                assert not tf.executing_eagerly()
+
             cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Batch of size=n and deterministic.
@@ -127,16 +136,21 @@ class TestDistributions(unittest.TestCase):
             if fw == "tf":
                 with tf.Session() as sess:
                     values = sess.run(values)
+            else:
+                values = values.numpy()
             self.assertTrue(np.max(values) < high)
             self.assertTrue(np.min(values) > low)
 
             check(np.mean(values), expected.mean(), decimals=1)
 
             # Test log-likelihood outputs.
-            sampled_action_logp = squashed_distribution.sampled_action_logp()
+            sampled_action_logp = squashed_distribution.logp(
+                values if fw != "torch" else torch.Tensor(values))
             if fw == "tf":
                 with tf.Session() as sess:
                     sampled_action_logp = sess.run(sampled_action_logp)
+            else:
+                sampled_action_logp = sampled_action_logp.numpy()
             # Convert to parameters for distr.
             stds = np.exp(
                 np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
@@ -148,7 +162,7 @@ class TestDistributions(unittest.TestCase):
             log_prob = log_prob_unsquashed - \
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
-            check(np.mean(sampled_action_logp), np.mean(log_prob), rtol=0.01)
+            check(np.mean(sampled_action_logp), np.mean(log_prob), rtol=0.02)
 
             # NN output.
             means = np.array([[0.1, 0.2, 0.3, 0.4, 50.0],
@@ -175,8 +189,12 @@ class TestDistributions(unittest.TestCase):
                 np.sum(np.log(1 - np.tanh(unsquashed_values) ** 2),
                        axis=-1)
 
-            out = squashed_distribution.logp(values)
+            out = squashed_distribution.logp(
+                values if fw != "torch" else torch.Tensor(values))
             check(out, log_prob)
+
+            if eager_ctx:
+                eager_ctx.__exit__(None, None, None)
 
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf-eager only)."""

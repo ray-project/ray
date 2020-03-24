@@ -5,6 +5,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
+from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
 
@@ -172,7 +173,8 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
             high (float): The highest possible sampling value
                 (excluding this value).
         """
-        mean, log_std = torch.split(inputs, split_size_or_sections=2, dim=-1)
+        super().__init__(inputs, model)
+        mean, log_std = torch.chunk(self.inputs, 2, dim=-1)
         # Clip `scale` values (coming from NN) to reasonable values.
         log_std = torch.clamp(
             log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
@@ -181,7 +183,6 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high
-        super().__init__(inputs, model)
 
     @override(TorchDistributionWrapper)
     def sampled_action_logp(self):
@@ -196,8 +197,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        mean = self.dist.mean()
-        return self._squash(mean)
+        return self._squash(self.dist.mean)
 
     @override(TorchDistributionWrapper)
     def sample(self):
@@ -225,6 +225,4 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
                self.low
 
     def _unsquash(self, values):
-        return torch.atanh((values - self.low) /
-                             (self.high - self.low) * 2.0 - 1.0)
-
+        return atanh((values - self.low) / (self.high - self.low) * 2.0 - 1.0)

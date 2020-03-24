@@ -52,3 +52,7 @@ def convert_to_non_torch_type(stats):
             return item
 
     return tree.map_structure(mapping, stats)
+
+
+def atanh(x):
+    return 0.5 * torch.log((1 + x) / (1 - x))
