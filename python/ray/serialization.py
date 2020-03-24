@@ -10,6 +10,7 @@ from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
     PlasmaObjectNotAvailable,
+    RayTaskError,
     RayActorError,
     RayWorkerError,
     UnreconstructableError,
@@ -302,7 +303,14 @@ class SerializationContext:
                     "Can't deserialize object: {}, metadata: {}".format(
                         object_id, metadata))
 
-            if error_type == ErrorType.Value("WORKER_DIED"):
+            # RayTaskError is serialized with pickle5 in the data field.
+            # TODO (kfstorm): exception serialization should be language
+            # independent.
+            if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
+                obj = self._deserialize_pickle5_data(data, metadata)
+                assert isinstance(obj, RayTaskError)
+                return obj
+            elif error_type == ErrorType.Value("WORKER_DIED"):
                 return RayWorkerError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
@@ -405,6 +413,12 @@ class SerializationContext:
                 raise e
             finally:
                 self.set_out_of_band_serialization()
+
+            # Only RayTaskError is possible to be serialized here. We don't
+            # need to deal with other exception types here.
+            if isinstance(value, RayTaskError):
+                metadata = str(ErrorType.Value(
+                    "TASK_EXECUTION_EXCEPTION")).encode("ascii")
 
             return Pickle5SerializedObject(
                 metadata, msgpack_bytes, inband, writer,
