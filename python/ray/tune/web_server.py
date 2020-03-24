@@ -145,7 +145,6 @@ def RunnerHandler(runner):
                 resource = {}
 
                 if self.path.endswith("stop_experiment"):
-                    print("requesting experiment stop")
                     runner.request_stop_experiment()
                     trials = list(runner.get_trials())
                 else:
