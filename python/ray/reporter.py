@@ -6,6 +6,7 @@ import traceback
 import time
 import datetime
 import grpc
+import socket
 import subprocess
 import sys
 from concurrent import futures
@@ -91,7 +92,7 @@ class Reporter:
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
         self.ip = ray.services.get_node_ip_address()
-        self.hostname = os.uname().nodename
+        self.hostname = socket.gethostname()
 
         _ = psutil.cpu_percent()  # For initialization
 
