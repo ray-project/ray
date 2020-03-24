@@ -761,23 +761,23 @@ cc_library(
             "src/ray/plasma/*.h",
         ],
     ),
-    copts = COPTS  + ["-I@plasma//:cpp/src/"],
+    copts = COPTS + ["-I@plasma//:cpp/src/"],
     includes = [
-        "@boost//:asio",
-        "src/ray",
         "cpp/src/",
+        "src/ray",
+        "@boost//:asio",
     ],
     strip_include_prefix = "src/ray",
     visibility = ["//visibility:public"],
     deps = [
-        "@com_github_ray_project_ray//:platform_shims",
         "@boost//:asio",
+        "@com_github_ray_project_ray//:platform_shims",
         "@com_google_googletest//:gtest",
         "@plasma//:ae",
         "@plasma//:arrow",
-        "@plasma//:plasma_server_upstream",
         "@plasma//:common_fbs",
         "@plasma//:plasma_fbs",
+        "@plasma//:plasma_server_upstream",
     ],
 )
 
@@ -796,10 +796,10 @@ cc_library(
         ":object_manager_fbs",
         ":object_manager_rpc",
         ":ray_common",
+        ":ray_plasma_store",
         ":ray_util",
         "@boost//:asio",
         "@plasma//:plasma_client",
-        ":ray_plasma_store",
     ],
 )
 

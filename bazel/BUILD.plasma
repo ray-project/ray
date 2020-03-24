@@ -88,8 +88,8 @@ cc_library(
     ],
     copts = COPTS,
     linkopts = LINKOPTS,
-    visibility = ["//visibility:public"],
     strip_include_prefix = "cpp/src",
+    visibility = ["//visibility:public"],
     deps = [
         "@//:platform_shims",
         "@boost//:filesystem",
@@ -141,14 +141,13 @@ cc_library(
     name = "plasma_server_upstream",
     srcs = [
         "cpp/src/plasma/common.cc",
+        "cpp/src/plasma/events.cc",
         "cpp/src/plasma/fling.cc",
         "cpp/src/plasma/io.cc",
         "cpp/src/plasma/plasma.cc",
         "cpp/src/plasma/protocol.cc",
-        "cpp/src/plasma/events.cc",
     ],
     hdrs = [
-        "cpp/src/plasma/thirdparty/dlmalloc.c",
         "cpp/src/plasma/common.h",
         "cpp/src/plasma/common_generated.h",
         "cpp/src/plasma/compat.h",
@@ -160,6 +159,7 @@ cc_library(
         "cpp/src/plasma/plasma.h",
         "cpp/src/plasma/plasma_generated.h",
         "cpp/src/plasma/protocol.h",
+        "cpp/src/plasma/thirdparty/dlmalloc.c",
     ],
     copts = COPTS,
     defines = select({
@@ -170,12 +170,12 @@ cc_library(
     strip_include_prefix = "cpp/src",
     visibility = ["//visibility:public"],
     deps = [
+        ":ae",
         ":arrow",
         ":common_fbs",
         ":plasma_fbs",
         "@com_github_google_glog//:glog",
         "@com_github_ray_project_ray//:platform_shims",
-        ":ae",
     ],
 )
 
