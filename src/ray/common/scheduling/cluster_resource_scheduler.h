@@ -60,6 +60,7 @@ struct ResourceRequestWithId : ResourceRequest {
   int64_t id;
 };
 
+// Data structure specifying the capacity of each resource requested by a task.
 class TaskRequest {
  public:
   /// List of predefined resources required by the task.
@@ -72,10 +73,11 @@ class TaskRequest {
   /// nodes in this list can schedule this task.
   absl::flat_hash_set<int64_t> placement_hints;
   /// Returns human-readable string for this task request.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
-// Task request specifying instances for each resource.
+// Data structure specifying the capacity of each instance of each resource
+// allocated to a task.
 class TaskResourceInstances {
  public:
   /// The list of instances of each predifined resource allocated to a task.
@@ -83,10 +85,20 @@ class TaskResourceInstances {
   /// The list of instances of each custom resource allocated to a task.
   absl::flat_hash_map<int64_t, std::vector<double>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
+  /// For each resource of this request aggregate its instances.
+  TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
-  std::vector<double> GetCPUInstances() { return this->predefined_resources[CPU]; };
+  std::vector<double> GetCPUInstances() const {
+    if (!this->predefined_resources.empty()) {
+      return this->predefined_resources[CPU];
+    } else {
+      return {};
+    }
+  };
+  /// Check whether there are no resource instances.
+  bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -100,7 +112,7 @@ class NodeResources {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 /// Total and available capacities of each resource instance.
@@ -117,7 +129,7 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString();
+  std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 /// Class encapsulating the cluster resources and the logic to assign
@@ -149,6 +161,19 @@ class ClusterResourceScheduler {
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
+  /// Subtract the resources required by a given task request (task_req) from
+  /// a given node (node_id).
+  ///
+  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
+  /// \param task_req Task for which we allocate resources.
+  /// \param task_allocation Resources allocated to the task at instance granularity.
+  /// This is a return parameter.
+  ///
+  /// \return True if the node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
+                             std::shared_ptr<TaskResourceInstances> task_allocation);
+
  public:
   ClusterResourceScheduler(void){};
 
@@ -162,6 +187,9 @@ class ClusterResourceScheduler {
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const std::unordered_map<std::string, double> &local_node_resources);
+
+  // Mapping from predefined resource indexes to resource strings
+  std::string GetResourceNameFromIndex(int64_t res_idx);
 
   /// Add a new node or overwrite the resources of an existing node.
   ///
@@ -264,24 +292,19 @@ class ClusterResourceScheduler {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
-  /// Convert a map of resources to a TaskRequest data structure.
-  void ResourceMapToTaskRequest(
-      const std::unordered_map<std::string, double> &resource_map,
-      TaskRequest *task_request);
-
-  /// Convert a map of resources to a TaskRequest data structure.
-  void ResourceMapToNodeResources(
-      const std::unordered_map<std::string, double> &resource_map_total,
-      const std::unordered_map<std::string, double> &resource_map_available,
-      NodeResources *node_resources);
-
-  /// Update total capacity of resource resource_name at node client_id.
-  void UpdateResourceCapacity(const std::string &client_id,
+  /// Update total capacity of a given resource of a given node.
+  ///
+  /// \param node_name: Node whose resource we want to update.
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void UpdateResourceCapacity(const std::string &node_name,
                               const std::string &resource_name, int64_t resource_total);
 
-  /// Delete resource resource_name from node cleint_id_string.
-  void DeleteResource(const std::string &client_id_string,
-                      const std::string &resource_name);
+  /// Delete a given resource from a given node.
+  ///
+  /// \param node_name: Node whose resource we want to delete.
+  /// \param resource_name: Resource we want to delete
+  void DeleteResource(const std::string &node_name, const std::string &resource_name);
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
@@ -305,25 +328,27 @@ class ClusterResourceScheduler {
                              ResourceInstanceCapacities *instance_list);
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
-  /// If resource has multiple unit-capacity instance, we consider two cases.
+  /// If resource has multiple unit-capacity instances, we consider two cases.
   ///
   /// 1) If the constraint is hard, allocate full unit-capacity instances until
-  /// demand becomes fractional, and then satisfy the fractional deman using the
+  /// demand becomes fractional, and then satisfy the fractional demand using the
   /// instance with the smallest available capacity that can satisfy the fractional
   /// demand. For example, assume a resource conisting of 4 instances, with available
   /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
   /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
   /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
-  /// As a result remaining available capacities will be (0., 1., .7, .2).
-  /// Thus, if the constraint is hard, we will allocate at most a fractional resource.
+  /// As a result remaining available capacities will be (0., 1., .7, .3).
+  /// Thus, if the constraint is hard, we will allocate a bunch of full instances and
+  /// at most a fractional instance.
   ///
   /// 2) If the constraint is soft, we can allocate multiple fractional resources,
   /// and even overallocate the resource. For example, in the previous case, if we
   /// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
-  /// 0.1 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
+  /// 0.3 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
   /// all instances, and return success (true), despite the fact that the total
   /// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less
-  /// than the demand, 3.5.
+  /// than the demand, 3.5. In this case, the remaining available resource is
+  /// (0., 0., 0., 0.)
   ///
   /// \param demand: The resource amount to be allocated.
   /// \param soft: Specifies whether this demand has soft or hard constraints.
@@ -340,45 +365,94 @@ class ClusterResourceScheduler {
   ///
   /// \param task_req: Resources requested by a task.
   /// \param task_allocation: Local resources allocated to satsify task_req demand.
-  /// This is an output argument.
   ///
   /// \return true, if allocation successful. If false, the caller needs to free the
   /// allocated resources, i.e., task_allocation.
-  bool AllocateTaskResourceInstances(const TaskRequest &task_req,
-                                     TaskResourceInstances *task_allocation);
+  bool AllocateTaskResourceInstances(
+      const TaskRequest &task_req,
+      std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Free resources which were allocated with a task. The freed resources are
   /// added back to the node's local available resources.
   ///
   /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(TaskResourceInstances &task_allocation);
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Increase the available capacities of the instances of a given resource.
   ///
   /// \param available A list of available capacities for resource's instances.
   /// \param resource_instances List of the resource instances being updated.
-  void AddAvailableResourceInstances(std::vector<double> available,
-                                     ResourceInstanceCapacities *resource_instances);
+  ///
+  /// \return Overflow capacities of "resource_instances" after adding instance
+  /// capacities in "available", i.e.,
+  /// min(available + resource_instances.available, resource_instances.total)
+  std::vector<double> AddAvailableResourceInstances(
+      std::vector<double> available, ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
-  void SubtractAvailableResourceInstances(std::vector<double> free,
-                                          ResourceInstanceCapacities *resource_instances);
+  /// \return Underflow of "resource_instances" after subtracting instance
+  /// capacities in "available", i.e.,.
+  /// max(available - reasource_instances.available, 0)
+  std::vector<double> SubtractAvailableResourceInstances(
+      std::vector<double> available, ResourceInstanceCapacities *resource_instances);
 
   /// Increase the available CPU instances of this node.
   ///
   /// \param cpu_instances CPU instances to be added to available cpus.
-  void AddCPUResourceInstances(std::vector<double> &cpu_instances);
-
-  /// Decrease the available cpu instances of this node.
   ///
-  /// \param cpu_instances Cpu instances to be removed from available cpus.
-  void SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+  /// \return Overflow capacities of CPU instances after adding CPU
+  /// capacities in cpu_instances.
+  std::vector<double> AddCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Decrease the available CPU instances of this node.
+  ///
+  /// \param cpu_instances CPU instances to be removed from available cpus.
+  ///
+  /// \return Underflow capacities of CPU instances after subtracting CPU
+  /// capacities in cpu_instances.
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Subtract the resources required by a given task request (task_req) from the
+  /// local node. This function also updates the local node resources
+  /// at the instance granularity.
+  ///
+  /// \param task_req Task for which we allocate resources.
+  /// \param task_allocation Resources allocated to the task at instance granularity.
+  /// This is a return parameter.
+  ///
+  /// \return True if local node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateLocalTaskResources(
+      const std::unordered_map<std::string, double> &task_resources,
+      std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  /// Subtract the resources required by a given task request (task_req) from a given
+  /// remote node.
+  ///
+  /// \param node_id Remote node whose resources we allocate.
+  /// \param task_req Task for which we allocate resources.
+  void AllocateRemoteTaskResources(
+      std::string &node_id,
+      const std::unordered_map<std::string, double> &task_resources);
+
+  void FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  /// Update the available resources of the local node given
+  /// the available instances of each resource of the local node.
+  /// Basically, this means computing the available resources
+  /// by adding up the available quantities of each instance of that
+  /// resources.
+  ///
+  /// Example: Assume the local node has four GPU instances with the
+  /// following availabilities: 0.2, 0.3, 0.1, 1. Then the total GPU
+  // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
+  void UpdateLocalAvailableResourcesFromResourceInstances();
 
   /// Return human-readable string for this scheduler state.
-  std::string DebugString();
+  std::string DebugString() const;
 };
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H
