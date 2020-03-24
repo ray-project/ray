@@ -490,7 +490,7 @@ class TorchTrainer:
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
-        state = torch.load(checkpoint)
+        state = torch.load(checkpoint, map_location=torch.device("cpu"))
         state_id = ray.put(state)
         ray.get([worker.set_state.remote(state_id) for worker in self.workers])
 
