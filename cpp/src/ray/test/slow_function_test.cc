@@ -11,7 +11,7 @@ int slow_function(int i) {
   return i;
 }
 
-TEST(ray_slow_function_case, base_test) {
+TEST(RaySlowFunctionTest, BaseTest) {
   Ray::Init();
   auto time1 = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch());

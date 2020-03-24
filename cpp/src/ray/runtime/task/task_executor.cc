@@ -8,9 +8,10 @@
 namespace ray {
 namespace api {
 
+// TODO(Guyang Song): Make a common task execution function used for both local mode and
+// cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(const InvocationSpec &invocation) {
-  std::unique_ptr<ObjectID> dummy(new ObjectID());
-  return dummy;
+  return std::unique_ptr<ObjectID>(new ObjectID());
 };
 
 void TaskExecutor::Invoke(const TaskSpecification &taskSpec,

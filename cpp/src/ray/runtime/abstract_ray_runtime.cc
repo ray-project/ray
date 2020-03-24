@@ -7,7 +7,7 @@
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
 #include "../util/address_helper.h"
-#include "ray_dev_runtime.h"
+#include "local_mode_ray_runtime.h"
 
 namespace ray {
 namespace api {
@@ -18,7 +18,7 @@ std::once_flag AbstractRayRuntime::isInited_;
 AbstractRayRuntime &AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
   std::call_once(isInited_, [config] {
     if (config->runMode == RunMode::SINGLE_PROCESS) {
-      ins_.reset(new RayDevRuntime(config));
+      ins_.reset(new LocalModeRayRuntime(config));
       GenerateBaseAddressOfCurrentLibrary();
     } else {
       throw RayException("Only single process mode supported now");
@@ -68,8 +68,10 @@ ObjectID AbstractRayRuntime::Call(RemoteFunctionPtrHolder &fptr,
       TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
   invocationSpec.actor_id = ActorID::Nil();
   invocationSpec.args = args;
-  invocationSpec.func_offset = (size_t)(fptr.value[0] - dynamic_library_base_addr);
-  invocationSpec.exec_func_offset = (size_t)(fptr.value[1] - dynamic_library_base_addr);
+  invocationSpec.func_offset =
+      (size_t)(fptr.function_pointer - dynamic_library_base_addr);
+  invocationSpec.exec_func_offset =
+      (size_t)(fptr.exec_function_pointer - dynamic_library_base_addr);
   return taskSubmitter_->SubmitTask(invocationSpec);
 }
 
@@ -86,8 +88,10 @@ ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionPtrHolder &fptr,
       TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
   invocationSpec.actor_id = actor;
   invocationSpec.args = args;
-  invocationSpec.func_offset = (size_t)(fptr.value[0] - dynamic_library_base_addr);
-  invocationSpec.exec_func_offset = (size_t)(fptr.value[1] - dynamic_library_base_addr);
+  invocationSpec.func_offset =
+      (size_t)(fptr.function_pointer - dynamic_library_base_addr);
+  invocationSpec.exec_func_offset =
+      (size_t)(fptr.exec_function_pointer - dynamic_library_base_addr);
   return taskSubmitter_->SubmitActorTask(invocationSpec);
 }
 

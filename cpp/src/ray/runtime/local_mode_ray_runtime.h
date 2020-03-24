@@ -8,9 +8,9 @@
 namespace ray {
 namespace api {
 
-class RayDevRuntime : public AbstractRayRuntime {
+class LocalModeRayRuntime : public AbstractRayRuntime {
  public:
-  RayDevRuntime(std::shared_ptr<RayConfig> config);
+  LocalModeRayRuntime(std::shared_ptr<RayConfig> config);
 };
 
 }  // namespace api

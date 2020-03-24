@@ -18,7 +18,10 @@ struct MemberFunctionPtrHolder {
 };
 
 struct RemoteFunctionPtrHolder {
-  uintptr_t value[2];
+  /// The remote function pointer
+  uintptr_t function_pointer;
+  /// The executable function pointer
+  uintptr_t exec_function_pointer;
 };
 
 class RayRuntime {

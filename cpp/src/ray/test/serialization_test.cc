@@ -4,18 +4,9 @@
 
 using namespace ray::api;
 
-TEST(SerializationTest, type_hybrid) {
+TEST(SerializationTest, TypeHybridTest) {
   uint32_t in_arg1 = 123456789, out_arg1;
   std::string in_arg2 = "123567ABC", out_arg2;
-
-  // 0 args
-  // marshall
-  msgpack::sbuffer buffer0;
-  msgpack::packer<msgpack::sbuffer> pk0(&buffer0);
-  Serializer::Serialize(pk0);
-  // unmarshall
-  msgpack::unpacker upk0;
-  Serializer::Deserialize(upk0);
 
   // 1 arg
   // marshall
@@ -36,14 +27,16 @@ TEST(SerializationTest, type_hybrid) {
   // marshall
   msgpack::sbuffer buffer2;
   msgpack::packer<msgpack::sbuffer> pk2(&buffer2);
-  Serializer::Serialize(pk2, in_arg1, in_arg2);
+  Serializer::Serialize(pk2, in_arg1);
+  Serializer::Serialize(pk2, in_arg2);
 
   // unmarshall
   msgpack::unpacker upk2;
   upk2.reserve_buffer(buffer2.size());
   memcpy(upk2.buffer(), buffer2.data(), buffer2.size());
   upk2.buffer_consumed(buffer2.size());
-  Serializer::Deserialize(upk2, &out_arg1, &out_arg2);
+  Serializer::Deserialize(upk2, &out_arg1);
+  Serializer::Deserialize(upk2, &out_arg2);
 
   EXPECT_EQ(in_arg1, out_arg1);
   EXPECT_EQ(in_arg2, out_arg2);

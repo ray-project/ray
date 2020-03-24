@@ -9,8 +9,9 @@ namespace api {
 #include <ray/api/generated/actor_funcs.generated.h>
 
 /// A handle to an actor which can be used to invoke a remote actor method, with the
-/// `Call` method. \param <ActorType> The type of the concrete actor class. Note, the
-/// `Call` method is defined in actor_call.generated.h.
+/// `Call` method.
+/// \param ActorType The type of the concrete actor class.
+/// Note, the `Call` method is defined in actor_call.generated.h.
 template <typename ActorType>
 class RayActor {
  public:

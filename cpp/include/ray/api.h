@@ -61,7 +61,7 @@ class Ray {
 /// Include the `Call` methods for calling remote functions.
 #include "api/generated/call_funcs.generated.h"
 
-/// Include the `CreateActor` methods for calling remote functions.
+/// Include the `CreateActor` methods for creating actors.
 #include "api/generated/create_actors.generated.h"
 
  private:
@@ -71,23 +71,24 @@ class Ray {
   template <typename T>
   static std::shared_ptr<T> Get(const RayObject<T> &object);
 
-  template <typename ReturnType, typename Arg1Type, typename Arg2Type,
-            typename... OtherArgTypes>
-  static RayObject<ReturnType> CallInternal(Arg1Type &arg1, Arg2Type &arg2,
-                                            OtherArgTypes &... args);
+  template <typename ReturnType, typename FuncType, typename ExecFuncType,
+            typename... ArgTypes>
+  static RayObject<ReturnType> CallInternal(FuncType &func, ExecFuncType &exec_func,
+                                            ArgTypes &... args);
 
-  template <typename ReturnType, typename Arg1Type, typename Arg2Type,
-            typename... OtherArgTypes>
-  static RayActor<ReturnType> CreateActorInternal(Arg1Type &arg1, Arg2Type &arg2,
-                                                  OtherArgTypes &... args);
+  template <typename ReturnType, typename FuncType, typename ExecFuncType,
+            typename... ArgTypes>
+  static RayActor<ReturnType> CreateActorInternal(FuncType &func, ExecFuncType &exec_func,
+                                                  ArgTypes &... args);
 
-  template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type,
-            typename... OtherArgTypes>
-  static RayObject<ReturnType> CallActorInternal(Arg1Type &actor_func, Arg2Type &execFunc,
+  template <typename ReturnType, typename ActorType, typename FuncType,
+            typename ExecFuncType, typename... ArgTypes>
+  static RayObject<ReturnType> CallActorInternal(FuncType &actor_func,
+                                                 ExecFuncType &execFunc,
                                                  RayActor<ActorType> &actor,
-                                                 OtherArgTypes &... args);
+                                                 ArgTypes &... args);
 
-/// Include all the Call method which should be auto genrated.
+/// Include the `Call` methods for calling actor methods.
 /// Used by RayActor to implement .Call()
 #include "api/generated/call_actors.generated.h"
 
@@ -171,48 +172,48 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
   return runtime_->Wait(ids, num_objects, timeout_ms);
 }
 
-template <typename ReturnType, typename Arg1Type, typename Arg2Type,
-          typename... OtherArgTypes>
-inline RayObject<ReturnType> Ray::CallInternal(Arg1Type &func, Arg2Type &execFunc,
-                                               OtherArgTypes &... args) {
+template <typename ReturnType, typename FuncType, typename ExecFuncType,
+          typename... ArgTypes>
+inline RayObject<ReturnType> Ray::CallInternal(FuncType &func, ExecFuncType &exec_func,
+                                               ArgTypes &... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::WrapArgs(packer, args...);
   RemoteFunctionPtrHolder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(execFunc);
+  ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
+  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
   auto returned_object_id = runtime_->Call(ptr, buffer);
   return RayObject<ReturnType>(returned_object_id);
 }
 
-template <typename ReturnType, typename Arg1Type, typename Arg2Type,
-          typename... OtherArgTypes>
-inline RayActor<ReturnType> Ray::CreateActorInternal(Arg1Type &create_func,
-                                                     Arg2Type &execFunc,
-                                                     OtherArgTypes &... args) {
+template <typename ReturnType, typename FuncType, typename ExecFuncType,
+          typename... ArgTypes>
+inline RayActor<ReturnType> Ray::CreateActorInternal(FuncType &create_func,
+                                                     ExecFuncType &exec_func,
+                                                     ArgTypes &... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::WrapArgs(packer, args...);
   RemoteFunctionPtrHolder ptr;
-  ptr.value[0] = reinterpret_cast<uintptr_t>(create_func);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(execFunc);
+  ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
+  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
   auto returned_actor_id = runtime_->CreateActor(ptr, buffer);
   return RayActor<ReturnType>(returned_actor_id);
 }
 
-template <typename ReturnType, typename ActorType, typename Arg1Type, typename Arg2Type,
-          typename... OtherArgTypes>
-inline RayObject<ReturnType> Ray::CallActorInternal(Arg1Type &actor_func,
-                                                    Arg2Type &execFunc,
+template <typename ReturnType, typename ActorType, typename FuncType,
+          typename ExecFuncType, typename... ArgTypes>
+inline RayObject<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
+                                                    ExecFuncType &exec_func,
                                                     RayActor<ActorType> &actor,
-                                                    OtherArgTypes &... args) {
+                                                    ArgTypes &... args) {
   std::shared_ptr<msgpack::sbuffer> buffer(new msgpack::sbuffer());
   msgpack::packer<msgpack::sbuffer> packer(buffer.get());
   Arguments::WrapArgs(packer, args...);
   RemoteFunctionPtrHolder ptr;
   MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
-  ptr.value[0] = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.value[1] = reinterpret_cast<uintptr_t>(execFunc);
+  ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
+  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
   auto returned_object_id = runtime_->CallActor(ptr, actor.ID(), buffer);
   return RayObject<ReturnType>(returned_object_id);
 }

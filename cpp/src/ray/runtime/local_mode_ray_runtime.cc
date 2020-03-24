@@ -1,5 +1,5 @@
 
-#include "ray_dev_runtime.h"
+#include "local_mode_ray_runtime.h"
 
 #include <ray/api.h>
 #include "../util/address_helper.h"
@@ -10,7 +10,7 @@
 namespace ray {
 namespace api {
 
-RayDevRuntime::RayDevRuntime(std::shared_ptr<RayConfig> config) {
+LocalModeRayRuntime::LocalModeRayRuntime(std::shared_ptr<RayConfig> config) {
   config_ = config;
   worker_ =
       std::unique_ptr<WorkerContext>(new WorkerContext(WorkerType::DRIVER, JobID::Nil()));

@@ -12,7 +12,7 @@ namespace ray {
 namespace api {
 
 /// Represents an object in the object store..
-/// \param <T> The type of object.
+/// \param T The type of object.
 template <typename T>
 class RayObject {
  public:
@@ -26,7 +26,7 @@ class RayObject {
   const ObjectID &ID() const;
 
   /// Get the object from the object store.
-  /// This method will be blocked until the object are ready.
+  /// This method will be blocked until the object is ready.
   ///
   /// \return shared pointer of the result.
   std::shared_ptr<T> Get() const;

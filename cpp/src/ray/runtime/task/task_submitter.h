@@ -10,7 +10,9 @@ namespace api {
 
 class TaskSubmitter {
  public:
-  TaskSubmitter();
+  TaskSubmitter(){};
+
+  virtual ~TaskSubmitter(){};
 
   virtual ObjectID SubmitTask(const InvocationSpec &invocation) = 0;
 
@@ -18,8 +20,6 @@ class TaskSubmitter {
                               std::shared_ptr<msgpack::sbuffer> args) = 0;
 
   virtual ObjectID SubmitActorTask(const InvocationSpec &invocation) = 0;
-
-  virtual ~TaskSubmitter(){};
 };
 }  // namespace api
 }  // namespace ray

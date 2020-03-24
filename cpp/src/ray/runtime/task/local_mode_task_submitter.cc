@@ -87,9 +87,10 @@ ActorID LocalModeTaskSubmitter::CreateActor(RemoteFunctionPtrHolder &fptr,
   ActorID id = runtime.GetNextActorID();
   typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
       uintptr_t base_addr, size_t func_offset, std::shared_ptr<msgpack::sbuffer> args);
-  ExecFunction exec_function = (ExecFunction)(fptr.value[1]);
-  auto data = (*exec_function)(dynamic_library_base_addr,
-                               (size_t)(fptr.value[0] - dynamic_library_base_addr), args);
+  ExecFunction exec_function = (ExecFunction)(fptr.exec_function_pointer);
+  auto data =
+      (*exec_function)(dynamic_library_base_addr,
+                       (size_t)(fptr.function_pointer - dynamic_library_base_addr), args);
   std::unique_ptr<ActorContext> actorContext(new ActorContext());
   actorContext->currentActor = data;
   absl::MutexLock lock(&actorContextsMutex_);
