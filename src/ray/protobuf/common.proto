@@ -86,6 +86,75 @@ message FunctionDescriptor {
   }
 }
 
+// This enum type is used as object's metadata to indicate the object's creating
+// task has failed because of a certain error.
+// TODO(hchen): We may want to make these errors more specific. E.g., we may want
+// to distinguish between intentional and expected actor failures, and between
+// worker process failure and node failure.
+enum ErrorType {
+  // Indicates that a task failed because the worker died unexpectedly while executing it.
+  WORKER_DIED = 0;
+  // Indicates that a task failed because the actor died unexpectedly before finishing it.
+  ACTOR_DIED = 1;
+  // Indicates that an object is lost and cannot be restarted.
+  // Note, this currently only happens to actor objects. When the actor's state is already
+  // after the object's creating task, the actor cannot re-run the task.
+  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
+  // 1) A object that was put by the driver.
+  // 2) The object's creating task is already cleaned up from GCS (this currently
+  //    crashes raylet).
+  OBJECT_UNRECONSTRUCTABLE = 2;
+  // Indicates that a task failed due to user code failure.
+  TASK_EXECUTION_EXCEPTION = 3;
+  // Indicates that the object has been placed in plasma. This error shouldn't ever be
+  // exposed to user code; it is only used internally to indicate the result of a direct
+  // call has been placed in plasma.
+  OBJECT_IN_PLASMA = 4;
+  // Indicates that an object has been cancelled.
+  TASK_CANCELLED = 5;
+  // Inidicates that creating the GCS service failed to create the actor.
+  ACTOR_CREATION_FAILED = 6;
+}
+
+/// The task exception encapsulates all information about task
+/// execution execeptions.
+message RayException {
+  // The error type.
+  ErrorType error_type = 1;
+  // The error message.
+  string error_message = 2;
+  // Language of this exception.
+  Language language = 3;
+  // The job ralated to this exception.
+  bytes job_id = 4;
+  // The worker ralated to this exception.
+  bytes worker_id = 5;
+  // The task related to this exception.
+  bytes task_id = 6;
+  // The actor related to this exception.
+  bytes actor_id = 7;
+  // The object related to this exception.
+  bytes object_id = 8;
+  // Which node ip raised this exception.
+  string ip = 9;
+  // Which process raised this exception.
+  int64 pid = 10;
+  // The process title.
+  string proc_title = 11;
+  // The file name.
+  string file = 12;
+  // The line no.
+  uint64 lineno = 13;
+  // The function name.
+  string function = 14;
+  // The traceback details.
+  string traceback = 15;
+  // The serialized exception.
+  bytes data = 16;
+  // Which exception caused this exception.
+  RayException cause = 17;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
