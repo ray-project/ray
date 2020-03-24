@@ -29,7 +29,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   TaskSpecBuilder builder;
   builder.SetCommonTaskSpec(invocation.task_id, rpc::Language::CPP, functionDescriptor,
                             rayRuntime.GetCurrentJobID(), rayRuntime.GetCurrentTaskId(),
-                            0, rayRuntime.GetCurrentTaskId(), address, 1, false,
+                            0, rayRuntime.GetCurrentTaskId(), address, 1,
                             required_resources, required_placement_resources);
   if (type == TaskType::NORMAL_TASK) {
   } else if (type == TaskType::ACTOR_CREATION_TASK) {
