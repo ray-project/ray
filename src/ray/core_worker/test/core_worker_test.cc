@@ -503,8 +503,7 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        auto check_actor_restart_func = [this, pid, &driver, &actor_id,
-                                         &resources]() -> bool {
+        auto check_actor_restart_func = [this, pid, &actor_id, &resources]() -> bool {
           auto new_pid = GetActorPid(actor_id, resources);
           return new_pid != -1 && new_pid != pid;
         };
