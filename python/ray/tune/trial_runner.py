@@ -318,9 +318,6 @@ class TrialRunner:
                 self._total_time, self._global_time_limit))
             return True
 
-        if self._fail_fast and self._has_errored:
-            return True
-
         trials_done = all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
@@ -401,9 +398,13 @@ class TrialRunner:
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
         fail_fast = self._fail_fast and self._has_errored
-        if (self._stopper.stop_all() or fail_fast or self._should_stop_experiment):
+        if (self._stopper.stop_all() or fail_fast
+                or self._should_stop_experiment):
             self._search_alg.set_finished()
-            [self.trial_executor.stop_trial(t) for t in self._trials]
+            [
+                self.trial_executor.stop_trial(t) for t in self._trials
+                if t.status is not Trial.ERROR
+            ]
 
     def _get_next_trial(self):
         """Replenishes queue.

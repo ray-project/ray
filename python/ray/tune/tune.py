@@ -272,6 +272,9 @@ def run(run_or_experiment,
             assert exp.remote_checkpoint_dir, (
                 "Need `upload_dir` if `sync_to_cloud` given.")
 
+    if fail_fast and max_failures != 0:
+        raise ValueError("max_failures must be 0 if fail_fast=True.")
+
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
         scheduler=scheduler or FIFOScheduler(),
