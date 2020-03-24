@@ -3464,6 +3464,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   local_request->set_include_memory_info(true);
 
   unsigned int num_nodes = remote_node_manager_clients_.size() + 1;
+  rpc::GetNodeStatsRequest stats_req;
+  stats_req.set_include_memory_info(true);
 
   auto store_reply = [replies, reply, num_nodes,
                       send_reply_callback](const rpc::GetNodeStatsReply &local_reply) {
@@ -3476,11 +3478,9 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &entry : remote_node_manager_clients_) {
-    rpc::GetNodeStatsRequest remote_req;
-    remote_req.set_include_memory_info(true);
     entry.second->GetNodeStats(
-        remote_req, [replies, store_reply](const ray::Status &status,
-                                           const rpc::GetNodeStatsReply &r) {
+        stats_req, [replies, store_reply](const ray::Status &status,
+                                          const rpc::GetNodeStatsReply &r) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to get remote node stats: " << status.ToString();
           }
@@ -3490,10 +3490,11 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from the local node.
   HandleGetNodeStats(
-      *local_request, local_reply.get(),
-      [local_request, local_reply, &replies, store_reply](
-          Status status, std::function<void()> success,
-          std::function<void()> failure) mutable { store_reply(*local_reply); });
+      stats_req, local_reply.get(),
+      [local_reply, store_reply](Status status, std::function<void()> success,
+                                 std::function<void()> failure) mutable {
+        store_reply(*local_reply);
+      });
 }
 
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
