@@ -506,31 +506,20 @@ class Dashboard:
         self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
         self.app = aiohttp.web.Application()
-        self.route_handler = DashboardRouteHandler(
+        route_handler = DashboardRouteHandler(
             self.dashboard_controller, is_dev=self.is_dev)
 
         # Setup Metrics exporting service if necessary.
         self.metrics_export_address = metrics_export_address
-
         if self.metrics_export_address:
-            exporter = Exporter(self.dashboard_id, metrics_export_address,
-                                self.dashboard_controller)
-            self.metrics_export_client = MetricsExportClient(
-                metrics_export_address, self.dashboard_controller,
-                self.dashboard_id, exporter)
-            self.metrics_export_handler = MetricsExportHandler(
-                self.dashboard_controller,
-                self.metrics_export_client,
-                self.dashboard_id,
-                is_dev=self.is_dev)
-            setup_metrics_export_routes(self.app, self.metrics_export_handler)
+            self._setup_metrics_export()
 
         # Setup Dashboard Routes
         build_dir = setup_static_dir(self.app)
         setup_speedscope_dir(self.app, build_dir)
         setup_dashboard_route(
             self.app,
-            self.route_handler,
+            route_handler,
             index="/",
             favicon="/favicon.ico",
             ray_config="/api/ray_config",
@@ -544,7 +533,23 @@ class Dashboard:
             kill_actor="/api/kill_actor",
             logs="/api/logs",
             errors="/api/errors")
-        self.app.router.add_get("/{_}", self.route_handler.get_forbidden)
+        self.app.router.add_get("/{_}", route_handler.get_forbidden)
+
+    def _setup_metrics_export(self):
+        exporter = Exporter(self.dashboard_id, self.metrics_export_address,
+                            self.dashboard_controller)
+        self.metrics_export_client = MetricsExportClient(
+            self.metrics_export_address,
+            self.dashboard_controller,
+            self.dashboard_id, exporter)
+
+        # Setup endpoints
+        metrics_export_handler = MetricsExportHandler(
+            self.dashboard_controller,
+            self.metrics_export_client,
+            self.dashboard_id,
+            is_dev=self.is_dev)
+        setup_metrics_export_routes(self.app, metrics_export_handler)
 
     def _start_exporting_metrics(self):
         result, error = self.metrics_export_client.start_exporting_metrics()
