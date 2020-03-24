@@ -1429,7 +1429,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   auto stats = reply->mutable_core_worker_stats();
   // TODO(swang): Differentiate between tasks that are currently pending
   // execution and tasks that have finished but may be retried.
-  stats->set_num_pending_tasks(task_manager_->NumSubmissibleTasks());
+  stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());

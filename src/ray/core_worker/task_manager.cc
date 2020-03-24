@@ -74,6 +74,7 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     RAY_CHECK(submissible_tasks_
                   .emplace(spec.TaskId(), TaskEntry(spec, max_retries, num_returns))
                   .second);
+    num_pending_tasks_++;
   }
 }
 
@@ -81,7 +82,7 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
   bool has_pending_tasks = false;
   {
     absl::MutexLock lock(&mu_);
-    if (!submissible_tasks_.empty()) {
+    if (num_pending_tasks_ > 0) {
       has_pending_tasks = true;
       RAY_LOG(WARNING)
           << "This worker is still managing " << submissible_tasks_.size()
@@ -110,9 +111,14 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   return it->second.pending;
 }
 
-int TaskManager::NumSubmissibleTasks() const {
+size_t TaskManager::NumSubmissibleTasks() const {
   absl::MutexLock lock(&mu_);
   return submissible_tasks_.size();
+}
+
+size_t TaskManager::NumPendingTasks() const {
+  absl::MutexLock lock(&mu_);
+  return num_pending_tasks_;
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -176,6 +182,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << it->second.reconstructable_return_ids.size()
                    << " plasma returns in scope";
     it->second.pending = false;
+    num_pending_tasks_--;
 
     // A finished task can be only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
@@ -209,10 +216,13 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
+    RAY_CHECK(it->second.pending)
+        << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     if (num_retries_left == 0) {
       submissible_tasks_.erase(it);
+      num_pending_tasks_--;
     } else {
       RAY_CHECK(it->second.num_retries_left > 0);
       it->second.num_retries_left--;
@@ -261,7 +271,7 @@ void TaskManager::ShutdownIfNeeded() {
   std::function<void()> shutdown_hook = nullptr;
   {
     absl::MutexLock lock(&mu_);
-    if (shutdown_hook_ && submissible_tasks_.empty()) {
+    if (shutdown_hook_ && num_pending_tasks_ == 0) {
       RAY_LOG(WARNING) << "All in flight tasks finished, worker will shut down after "
                           "draining references.";
       std::swap(shutdown_hook_, shutdown_hook);
