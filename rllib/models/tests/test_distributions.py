@@ -6,7 +6,8 @@ import unittest
 
 from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
     SquashedGaussian, GumbelSoftmax
-from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical
+from ray.rllib.models.torch.torch_action_dist import TorchMultiCategorical, \
+    TorchSquashedGaussian
 from ray.rllib.utils import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, softmax
 from ray.rllib.utils.test_utils import check
@@ -100,16 +101,18 @@ class TestDistributions(unittest.TestCase):
             check(out, expected_entropy)
 
     def test_squashed_gaussian(self):
-        """Tests the SquashedGaussia ActionDistribution (tf-eager only)."""
-        with eager_mode():
-            input_space = Box(-1.0, 1.0, shape=(200, 10))
-            low, high = -2.0, 1.0
+        """Tests the SquashedGaussian ActionDistribution for all frameworks."""
+        input_space = Box(-1.0, 1.0, shape=(200, 10))
+        low, high = -2.0, 1.0
+
+        for fw in ["tf", "eager", "torch"]:
+            print("framework={}".format(fw))
+            cls = SquashedGaussian if fw != "torch" else TorchSquashedGaussian
 
             # Batch of size=n and deterministic.
             inputs = input_space.sample()
             means, _ = np.split(inputs, 2, axis=-1)
-            squashed_distribution = SquashedGaussian(
-                inputs, {}, low=low, high=high)
+            squashed_distribution = cls(inputs, {}, low=low, high=high)
             expected = ((np.tanh(means) + 1.0) / 2.0) * (high - low) + low
             # Sample n times, expect always mean value (deterministic draw).
             out = squashed_distribution.deterministic_sample()
@@ -118,10 +121,12 @@ class TestDistributions(unittest.TestCase):
             # Batch of size=n and non-deterministic -> expect roughly the mean.
             inputs = input_space.sample()
             means, log_stds = np.split(inputs, 2, axis=-1)
-            squashed_distribution = SquashedGaussian(
-                inputs, {}, low=low, high=high)
+            squashed_distribution = cls(inputs, {}, low=low, high=high)
             expected = ((np.tanh(means) + 1.0) / 2.0) * (high - low) + low
             values = squashed_distribution.sample()
+            if fw == "tf":
+                with tf.Session() as sess:
+                    values = sess.run(values)
             self.assertTrue(np.max(values) < high)
             self.assertTrue(np.min(values) > low)
 
@@ -129,6 +134,9 @@ class TestDistributions(unittest.TestCase):
 
             # Test log-likelihood outputs.
             sampled_action_logp = squashed_distribution.sampled_action_logp()
+            if fw == "tf":
+                with tf.Session() as sess:
+                    sampled_action_logp = sess.run(sampled_action_logp)
             # Convert to parameters for distr.
             stds = np.exp(
                 np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
@@ -147,8 +155,9 @@ class TestDistributions(unittest.TestCase):
                               [-0.1, -0.2, -0.3, -0.4, -1.0]])
             log_stds = np.array([[0.8, -0.2, 0.3, -1.0, 2.0],
                                  [0.7, -0.3, 0.4, -0.9, 2.0]])
-            squashed_distribution = SquashedGaussian(
-                np.concatenate([means, log_stds], axis=-1), {},
+            squashed_distribution = cls(
+                inputs=np.concatenate([means, log_stds], axis=-1),
+                model={},
                 low=low,
                 high=high)
             # Convert to parameters for distr.

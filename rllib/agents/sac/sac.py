@@ -112,5 +112,5 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
     default_policy=SACTFPolicy,
-    get_policy_class=
+    get_policy_class=get_policy_class
 )

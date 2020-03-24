@@ -356,16 +356,18 @@ class TargetNetworkMixin:
         tau = tau or self.config.get("tau")
         # Update_target_fn will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
-        model_vars = self.model.trainable_variables()
-        target_model_vars = self.target_model.trainable_variables()
-        assert len(model_vars) == len(target_model_vars), \
-            (model_vars, target_model_vars)
+        # Full sync from Q-model to target Q-model.
         if tau == 1.0:
-            self.target_q_model.load_state_dict(self.q_model.state_dict())
-
-        for var, var_target in zip(model_vars, target_model_vars):
-            ???
-            var_target.assign(tau * var + (1.0 - tau) * var_target)
+            self.target_model.load_state_dict(self.model.state_dict())
+        # Partial (soft) sync using tau-synching.
+        else:
+            model_vars = self.model.trainable_variables()
+            target_model_vars = self.target_model.trainable_variables()
+            assert len(model_vars) == len(target_model_vars), \
+                (model_vars, target_model_vars)
+            for var, var_target in zip(model_vars, target_model_vars):
+                var_target.data = tau * var.data + \
+                    (1.0 - tau) * var_target.data
     
 
     @override(TorchPolicy)
