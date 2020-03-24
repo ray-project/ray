@@ -19,7 +19,7 @@
 package org.ray.streaming.state;
 
 /**
- * RuntimeException wrapper.
+ * RuntimeException wrapper, indicating the exceptions occurs in states.
  */
 public class StateException extends RuntimeException {
 

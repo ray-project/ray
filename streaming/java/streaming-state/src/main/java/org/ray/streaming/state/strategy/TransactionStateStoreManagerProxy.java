@@ -19,7 +19,7 @@
 package org.ray.streaming.state.strategy;
 
 import java.util.Map;
-import org.ray.streaming.state.ITransactionStateStoreManager;
+import org.ray.streaming.state.TransactionStateStoreManager;
 import org.ray.streaming.state.backend.StateStrategy;
 import org.ray.streaming.state.backend.TransactionKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
@@ -33,8 +33,7 @@ import org.ray.streaming.state.store.IKVStore;
  * class will be created. All method calls will be delegated to the strategy instance.
  */
 
-public abstract class TransactionStateStoreManagerProxy<V> implements
-    ITransactionStateStoreManager {
+public abstract class TransactionStateStoreManagerProxy<V> implements TransactionStateStoreManager {
 
   protected final AbstractTransactionStateStoreManager<V> stateStrategy;
   private final TransactionKeyStateBackend keyStateBackend;

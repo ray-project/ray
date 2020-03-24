@@ -19,7 +19,7 @@
 package org.ray.streaming.state.serde.impl;
 
 import org.ray.streaming.state.serde.IKVStoreSerDe;
-import org.ray.streaming.state.serde.SerDeHelper;
+import org.ray.streaming.state.serde.SerializationHelper;
 
 /**
  * KV Store Serialization and Deserialization.
@@ -34,11 +34,11 @@ public class DefaultKVStoreSerDe<K, V> extends AbstractSerDe implements IKVStore
 
   @Override
   public byte[] serValue(V value) {
-    return SerDeHelper.object2Byte(value);
+    return SerializationHelper.object2Byte(value);
   }
 
   @Override
   public V deSerValue(byte[] valueArray) {
-    return (V) SerDeHelper.byte2Object(valueArray);
+    return (V) SerializationHelper.byte2Object(valueArray);
   }
 }

@@ -23,13 +23,13 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import org.ray.streaming.state.ITransactionStateStoreManager;
+import org.ray.streaming.state.TransactionStateStoreManager;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor.DescType;
 import org.ray.streaming.state.keystate.state.proxy.ListStateStoreManagerProxy;
 import org.ray.streaming.state.keystate.state.proxy.MapStateStoreManagerProxy;
 import org.ray.streaming.state.keystate.state.proxy.ValueStateStoreManagerProxy;
-import org.ray.streaming.state.store.IKMapStore;
+import org.ray.streaming.state.store.IKeyMapStore;
 import org.ray.streaming.state.store.IKVStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,16 +40,16 @@ import org.slf4j.LoggerFactory;
  * State VALUE modification is not thread safe! By default, every processing thread has its own
  * space to handle state.
  */
-public abstract class TransactionKeyStateBackend implements ITransactionStateStoreManager {
+public abstract class TransactionKeyStateBackend implements TransactionStateStoreManager {
 
   private static final Logger LOG = LoggerFactory.getLogger(TransactionKeyStateBackend.class);
 
   protected long currentCheckpointId;
   protected Object currentKey;
   protected int keyGroupIndex = -1;
-  protected Map<String, ValueStateStoreManagerProxy> valueStateMngMap = new HashMap<>();
-  protected Map<String, ListStateStoreManagerProxy> listStateMngMap = new HashMap<>();
-  protected Map<String, MapStateStoreManagerProxy> mapStateMngMap = new HashMap<>();
+  protected Map<String, ValueStateStoreManagerProxy> valueManagerProxyHashMap = new HashMap<>();
+  protected Map<String, ListStateStoreManagerProxy> listManagerProxyHashMap = new HashMap<>();
+  protected Map<String, MapStateStoreManagerProxy> mapManagerProxyHashMap = new HashMap<>();
   protected Set<String> descNamespace;
 
   /**
@@ -67,16 +67,16 @@ public abstract class TransactionKeyStateBackend implements ITransactionStateSto
   public <K, T> void put(AbstractStateDescriptor descriptor, K key, T value) {
     String desc = descriptor.getIdentify();
     if (descriptor.getDescType() == DescType.VALUE) {
-      if (this.valueStateMngMap.containsKey(desc)) {
-        valueStateMngMap.get(desc).put((String) key, value);
+      if (this.valueManagerProxyHashMap.containsKey(desc)) {
+        valueManagerProxyHashMap.get(desc).put((String) key, value);
       }
     } else if (descriptor.getDescType() == DescType.LIST) {
-      if (this.listStateMngMap.containsKey(desc)) {
-        listStateMngMap.get(desc).put((String) key, value);
+      if (this.listManagerProxyHashMap.containsKey(desc)) {
+        listManagerProxyHashMap.get(desc).put((String) key, value);
       }
     } else if (descriptor.getDescType() == DescType.MAP) {
-      if (this.mapStateMngMap.containsKey(desc)) {
-        mapStateMngMap.get(desc).put((String) key, value);
+      if (this.mapManagerProxyHashMap.containsKey(desc)) {
+        mapManagerProxyHashMap.get(desc).put((String) key, value);
       }
     }
   }
@@ -84,16 +84,16 @@ public abstract class TransactionKeyStateBackend implements ITransactionStateSto
   public <K, T> T get(AbstractStateDescriptor descriptor, K key) {
     String desc = descriptor.getIdentify();
     if (descriptor.getDescType() == DescType.VALUE) {
-      if (this.valueStateMngMap.containsKey(desc)) {
-        return (T) valueStateMngMap.get(desc).get((String) key);
+      if (this.valueManagerProxyHashMap.containsKey(desc)) {
+        return (T) valueManagerProxyHashMap.get(desc).get((String) key);
       }
     } else if (descriptor.getDescType() == DescType.LIST) {
-      if (this.listStateMngMap.containsKey(desc)) {
-        return (T) listStateMngMap.get(desc).get((String) key);
+      if (this.listManagerProxyHashMap.containsKey(desc)) {
+        return (T) listManagerProxyHashMap.get(desc).get((String) key);
       }
     } else if (descriptor.getDescType() == DescType.MAP) {
-      if (this.mapStateMngMap.containsKey(desc)) {
-        return (T) mapStateMngMap.get(desc).get((String) key);
+      if (this.mapManagerProxyHashMap.containsKey(desc)) {
+        return (T) mapManagerProxyHashMap.get(desc).get((String) key);
       }
     }
     return null;
@@ -101,54 +101,54 @@ public abstract class TransactionKeyStateBackend implements ITransactionStateSto
 
   @Override
   public void finish(long checkpointId) {
-    for (Entry<String, ValueStateStoreManagerProxy> entry : valueStateMngMap.entrySet()) {
+    for (Entry<String, ValueStateStoreManagerProxy> entry : valueManagerProxyHashMap.entrySet()) {
       entry.getValue().finish(checkpointId);
     }
-    for (Entry<String, ListStateStoreManagerProxy> entry : listStateMngMap.entrySet()) {
+    for (Entry<String, ListStateStoreManagerProxy> entry : listManagerProxyHashMap.entrySet()) {
       entry.getValue().finish(checkpointId);
     }
-    for (Entry<String, MapStateStoreManagerProxy> entry : mapStateMngMap.entrySet()) {
+    for (Entry<String, MapStateStoreManagerProxy> entry : mapManagerProxyHashMap.entrySet()) {
       entry.getValue().finish(checkpointId);
     }
   }
 
   @Override
   public void commit(long checkpointId) {
-    for (Entry<String, ValueStateStoreManagerProxy> entry : valueStateMngMap.entrySet()) {
+    for (Entry<String, ValueStateStoreManagerProxy> entry : valueManagerProxyHashMap.entrySet()) {
       entry.getValue().commit(checkpointId);
     }
-    for (Entry<String, ListStateStoreManagerProxy> entry : listStateMngMap.entrySet()) {
+    for (Entry<String, ListStateStoreManagerProxy> entry : listManagerProxyHashMap.entrySet()) {
       entry.getValue().commit(checkpointId);
     }
-    for (Entry<String, MapStateStoreManagerProxy> entry : mapStateMngMap.entrySet()) {
+    for (Entry<String, MapStateStoreManagerProxy> entry : mapManagerProxyHashMap.entrySet()) {
       entry.getValue().commit(checkpointId);
     }
   }
 
   @Override
   public void ackCommit(long checkpointId, long timeStamp) {
-    for (Entry<String, ValueStateStoreManagerProxy> entry : valueStateMngMap.entrySet()) {
+    for (Entry<String, ValueStateStoreManagerProxy> entry : valueManagerProxyHashMap.entrySet()) {
       entry.getValue().ackCommit(checkpointId, timeStamp);
     }
-    for (Entry<String, ListStateStoreManagerProxy> entry : listStateMngMap.entrySet()) {
+    for (Entry<String, ListStateStoreManagerProxy> entry : listManagerProxyHashMap.entrySet()) {
       entry.getValue().ackCommit(checkpointId, timeStamp);
     }
-    for (Entry<String, MapStateStoreManagerProxy> entry : mapStateMngMap.entrySet()) {
+    for (Entry<String, MapStateStoreManagerProxy> entry : mapManagerProxyHashMap.entrySet()) {
       entry.getValue().ackCommit(checkpointId, timeStamp);
     }
   }
 
   @Override
   public void rollBack(long checkpointId) {
-    for (Entry<String, ValueStateStoreManagerProxy> entry : valueStateMngMap.entrySet()) {
+    for (Entry<String, ValueStateStoreManagerProxy> entry : valueManagerProxyHashMap.entrySet()) {
       LOG.warn("backend rollback:{},{}", entry.getKey(), checkpointId);
       entry.getValue().rollBack(checkpointId);
     }
-    for (Entry<String, ListStateStoreManagerProxy> entry : listStateMngMap.entrySet()) {
+    for (Entry<String, ListStateStoreManagerProxy> entry : listManagerProxyHashMap.entrySet()) {
       LOG.warn("backend rollback:{},{}", entry.getKey(), checkpointId);
       entry.getValue().rollBack(checkpointId);
     }
-    for (Entry<String, MapStateStoreManagerProxy> entry : mapStateMngMap.entrySet()) {
+    for (Entry<String, MapStateStoreManagerProxy> entry : mapManagerProxyHashMap.entrySet()) {
       LOG.warn("backend rollback:{},{}", entry.getKey(), checkpointId);
       entry.getValue().rollBack(checkpointId);
     }
@@ -158,7 +158,7 @@ public abstract class TransactionKeyStateBackend implements ITransactionStateSto
     if (this.backStorageCache.containsKey(tableName)) {
       return this.backStorageCache.get(tableName);
     } else {
-      IKMapStore<String, Long, byte[]> ikvStore = this.backend.getKeyMapStore(tableName);
+      IKeyMapStore<String, Long, byte[]> ikvStore = this.backend.getKeyMapStore(tableName);
       this.backStorageCache.put(tableName, ikvStore);
       return ikvStore;
     }

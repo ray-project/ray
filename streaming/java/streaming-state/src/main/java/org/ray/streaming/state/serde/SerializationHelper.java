@@ -16,17 +16,23 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.store;
+package org.ray.streaming.state.serde;
 
-import java.io.IOException;
-import java.util.Map;
+import org.nustaq.serialization.FSTConfiguration;
 
 /**
- * Key Map Store interface.
+ * fst wrapper.
  */
-public interface IKMapStore<K, S, T> extends IKVStore<K, Map<S, T>> {
+public class SerializationHelper {
 
-  void put(K key, S subKey, T value) throws IOException;
+  private static final ThreadLocal<FSTConfiguration> conf = ThreadLocal
+      .withInitial(FSTConfiguration::createDefaultConfiguration);
 
-  T get(K key, S subKey) throws IOException;
+  public static byte[] object2Byte(Object value) {
+    return conf.get().asByteArray(value);
+  }
+
+  public static Object byte2Object(byte[] buffer) {
+    return conf.get().asObject(buffer);
+  }
 }

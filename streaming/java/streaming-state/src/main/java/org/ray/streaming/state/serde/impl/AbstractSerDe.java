@@ -18,9 +18,9 @@
 
 package org.ray.streaming.state.serde.impl;
 
+import com.google.common.hash.Hashing;
 import org.apache.commons.lang3.StringUtils;
 import org.ray.streaming.state.StateException;
-import org.ray.streaming.state.util.Md5Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,7 +33,7 @@ public abstract class AbstractSerDe {
 
   public String generateRowKeyPrefix(String key) {
     if (StringUtils.isNotEmpty(key)) {
-      String md5 = Md5Util.md5sum(key);
+      String md5 = Hashing.md5().hashUnencodedChars(key).toString();
       if ("".equals(md5)) {
         throw new StateException("Invalid VALUE to md5:" + key);
       }

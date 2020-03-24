@@ -21,10 +21,10 @@ package org.ray.streaming.state.strategy;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.ray.streaming.state.ITransactionStateStoreManager;
+import org.ray.streaming.state.TransactionStateStoreManager;
 import org.ray.streaming.state.StateException;
 import org.ray.streaming.state.StorageRecord;
-import org.ray.streaming.state.serde.SerDeHelper;
+import org.ray.streaming.state.serde.SerializationHelper;
 import org.ray.streaming.state.store.IKVStore;
 
 /**
@@ -32,7 +32,7 @@ import org.ray.streaming.state.store.IKVStore;
  * We use three layer to store the state, frontStore, middleStore and kvStore(remote).
  */
 public abstract class AbstractTransactionStateStoreManager<V> implements
-    ITransactionStateStoreManager {
+    TransactionStateStoreManager {
 
   /**
    * read-write
@@ -55,11 +55,11 @@ public abstract class AbstractTransactionStateStoreManager<V> implements
   }
 
   public byte[] toByte(StorageRecord storageRecord) {
-    return SerDeHelper.object2Byte(storageRecord);
+    return SerializationHelper.object2Byte(storageRecord);
   }
 
   public StorageRecord<V> toStorageRecord(byte[] data) {
-    return (StorageRecord<V>) SerDeHelper.byte2Object(data);
+    return (StorageRecord<V>) SerializationHelper.byte2Object(data);
   }
 
   public abstract V get(long checkpointId, String key);

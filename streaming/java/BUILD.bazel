@@ -63,7 +63,6 @@ define_java_module(
         "@ray_streaming_maven//:org_mockito_mockito_all",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_apache_commons_commons_lang3",
-        "@ray_streaming_maven//:commons_codec_commons_codec",
 
     ],
     visibility = ["//visibility:public"],
@@ -74,7 +73,6 @@ define_java_module(
         "@ray_streaming_maven//:log4j_log4j",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_apache_commons_commons_lang3",
-        "@ray_streaming_maven//:commons_codec_commons_codec",
     ],
 )
 

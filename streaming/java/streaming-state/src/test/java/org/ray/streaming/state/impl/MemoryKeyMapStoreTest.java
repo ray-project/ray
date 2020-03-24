@@ -24,39 +24,39 @@ import java.util.HashMap;
 import java.util.Map;
 import org.ray.streaming.state.backend.AbstractStateBackend;
 import org.ray.streaming.state.backend.StateBackendBuilder;
-import org.ray.streaming.state.store.IKMapStore;
+import org.ray.streaming.state.store.IKeyMapStore;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class MemoryKMapStoreTest {
+public class MemoryKeyMapStoreTest {
 
   private AbstractStateBackend stateBackend;
-  private IKMapStore<String, String, String> ikMapStore;
+  private IKeyMapStore<String, String, String> IKeyMapStore;
 
   @BeforeClass
   public void setUp() {
     stateBackend = StateBackendBuilder.buildStateBackend(new HashMap<String, String>());
-    ikMapStore = stateBackend.getKeyMapStore("test-table");
+    IKeyMapStore = stateBackend.getKeyMapStore("test-table");
   }
 
   @Test
   public void testCase() {
     try {
-      Assert.assertNull(ikMapStore.get("hello"));
+      Assert.assertNull(IKeyMapStore.get("hello"));
       Map<String, String> map = Maps.newHashMap();
       map.put("1", "1-1");
       map.put("2", "2-1");
 
-      ikMapStore.put("hello", map);
-      Assert.assertEquals(ikMapStore.get("hello"), map);
+      IKeyMapStore.put("hello", map);
+      Assert.assertEquals(IKeyMapStore.get("hello"), map);
 
       Map<String, String> map2 = Maps.newHashMap();
       map.put("3", "3-1");
       map.put("4", "4-1");
-      ikMapStore.put("hello", map2);
-      Assert.assertNotEquals(ikMapStore.get("hello"), map);
-      Assert.assertEquals(ikMapStore.get("hello"), map2);
+      IKeyMapStore.put("hello", map2);
+      Assert.assertNotEquals(IKeyMapStore.get("hello"), map);
+      Assert.assertEquals(IKeyMapStore.get("hello"), map2);
 
 
     } catch (IOException e) {

@@ -22,16 +22,16 @@ import com.google.common.collect.Maps;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.streaming.state.store.IKMapStore;
+import org.ray.streaming.state.store.IKeyMapStore;
 
 /**
  * Memory Key Map Store.
  */
-public class MemoryKMapStore<K, S, T> implements IKMapStore<K, S, T> {
+public class MemoryKeyMapStore<K, S, T> implements IKeyMapStore<K, S, T> {
 
   private Map<K, Map<S, T>> memoryStore;
 
-  public MemoryKMapStore() {
+  public MemoryKeyMapStore() {
     this.memoryStore = Maps.newConcurrentMap();
   }
 

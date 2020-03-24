@@ -21,10 +21,10 @@ package org.ray.streaming.state.backend.impl;
 import java.util.Map;
 import org.ray.streaming.state.backend.AbstractStateBackend;
 import org.ray.streaming.state.serde.IKMapStoreSerDe;
-import org.ray.streaming.state.store.IKMapStore;
+import org.ray.streaming.state.store.IKeyMapStore;
 import org.ray.streaming.state.store.IKVStore;
-import org.ray.streaming.state.store.impl.MemoryKMapStore;
-import org.ray.streaming.state.store.impl.MemoryKVStore;
+import org.ray.streaming.state.store.impl.MemoryKeyMapStore;
+import org.ray.streaming.state.store.impl.MemoryKeyValueStore;
 
 /**
  * MemoryStateBackend. Supporting memory store.
@@ -37,18 +37,18 @@ public class MemoryStateBackend extends AbstractStateBackend {
 
   @Override
   public <K, V> IKVStore<K, V> getKeyValueStore(String tableName) {
-    return new MemoryKVStore<>();
+    return new MemoryKeyValueStore<>();
   }
 
   @Override
-  public <K, S, T> IKMapStore<K, S, T> getKeyMapStore(String tableName) {
-    return new MemoryKMapStore<>();
+  public <K, S, T> IKeyMapStore<K, S, T> getKeyMapStore(String tableName) {
+    return new MemoryKeyMapStore<>();
   }
 
   @Override
-  public <K, S, T> IKMapStore<K, S, T> getKeyMapStoreWithSerde(String tableName,
-                                                               IKMapStoreSerDe ikMapStoreSerDe) {
-    return new MemoryKMapStore<>();
+  public <K, S, T> IKeyMapStore<K, S, T> getKeyMapStoreWithSerializer(String tableName,
+                                                                      IKMapStoreSerDe ikMapStoreSerDe) {
+    return new MemoryKeyMapStore<>();
   }
 
 }

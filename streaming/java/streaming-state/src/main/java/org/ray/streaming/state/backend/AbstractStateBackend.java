@@ -25,11 +25,11 @@ import java.util.Map;
 import org.ray.streaming.state.config.ConfigKey;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 import org.ray.streaming.state.serde.IKMapStoreSerDe;
-import org.ray.streaming.state.store.IKMapStore;
+import org.ray.streaming.state.store.IKeyMapStore;
 import org.ray.streaming.state.store.IKVStore;
 
 /**
- * AbstractStateBackend. This class is the abstract class for different kinds of StateBackend.
+ * This class is the abstract class for different kinds of StateBackend.
  */
 public abstract class AbstractStateBackend implements Serializable {
 
@@ -40,16 +40,16 @@ public abstract class AbstractStateBackend implements Serializable {
   protected int keyGroupIndex = -1;
 
   protected AbstractStateBackend(Map<String, String> config) {
-    this.stateStrategy = StateStrategy.getEnum(ConfigKey.getStateStorageEnum(config));
+    this.stateStrategy = StateStrategy.getEnum(ConfigKey.getStateStrategyEnum(config));
     this.backendType = BackendType.getEnum(ConfigKey.getBackendType(config));
     this.config = config;
   }
 
   public abstract <K, V> IKVStore<K, V> getKeyValueStore(String tableName);
 
-  public abstract <K, S, T> IKMapStore<K, S, T> getKeyMapStore(String tableName);
+  public abstract <K, S, T> IKeyMapStore<K, S, T> getKeyMapStore(String tableName);
 
-  public abstract <K, S, T> IKMapStore<K, S, T> getKeyMapStoreWithSerde(
+  public abstract <K, S, T> IKeyMapStore<K, S, T> getKeyMapStoreWithSerializer(
       String tableName, IKMapStoreSerDe ikMapStoreSerDe);
 
   public BackendType getBackendType() {

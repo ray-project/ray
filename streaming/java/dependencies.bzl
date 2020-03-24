@@ -17,7 +17,6 @@ def gen_streaming_java_deps():
             "log4j:log4j:1.2.17",
             "org.mockito:mockito-all:1.10.19",
             "org.apache.commons:commons-lang3:3.3.2",
-            "commons-codec:commons-codec:1.14",
             "org.msgpack:msgpack-core:0.8.20",
             "org.testng:testng:6.9.10",
 	          "org.mockito:mockito-all:1.10.19",

@@ -26,11 +26,11 @@ import org.ray.streaming.state.store.IKVStore;
 /**
  * Memory Key Value Store.
  */
-public class MemoryKVStore<K, V> implements IKVStore<K, V> {
+public class MemoryKeyValueStore<K, V> implements IKVStore<K, V> {
 
   private Map<K, V> memoryStore;
 
-  public MemoryKVStore() {
+  public MemoryKeyValueStore() {
     this.memoryStore = Maps.newConcurrentMap();
   }
 

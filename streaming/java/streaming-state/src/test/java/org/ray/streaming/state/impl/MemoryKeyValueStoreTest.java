@@ -28,7 +28,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class MemoryKVStoreTest {
+public class MemoryKeyValueStoreTest {
 
   private AbstractStateBackend stateBackend;
   private IKVStore<String, String> ikvStore;

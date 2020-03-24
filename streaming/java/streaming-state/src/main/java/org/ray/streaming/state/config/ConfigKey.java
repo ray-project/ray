@@ -31,7 +31,7 @@ public final class ConfigKey {
    */
   public static final String STATE_BACKEND_TYPE = "state.backend.type";
   public static final String STATE_TABLE_NAME = "state.table.name";
-  public static final String STATE_STORAGE_MODE = "storage.mode";
+  public static final String STATE_STRATEGY_MODE = "state.strategy.mode";
   public static final String NUMBER_PER_CHECKPOINT = "number.per.checkpoint";
   public static final String JOB_MAX_PARALLEL = "job.max.parallel";
   public static final String DELIMITER = "\u0001\u0008"; // for String delimiter
@@ -40,8 +40,8 @@ public final class ConfigKey {
     throw new AssertionError();
   }
 
-  public static String getStateStorageEnum(Map<String, String> config) {
-    return ConfigHelper.getStringOrDefault(config, STATE_STORAGE_MODE, "DUALVERSION");
+  public static String getStateStrategyEnum(Map<String, String> config) {
+    return ConfigHelper.getStringOrDefault(config, STATE_STRATEGY_MODE, "DUALVERSION");
   }
 
   public static String getBackendType(Map<String, String> config) {

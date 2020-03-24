@@ -23,10 +23,13 @@ package org.ray.streaming.state.backend;
  */
 public enum BackendType {
   /**
-   * MEMORY
+   * Saving the state values in memory
    */
   MEMORY;
 
+  /**
+   * get the enum from input string value, ignoring the case
+   */
   public static BackendType getEnum(String value) {
     for (BackendType v : values()) {
       if (v.name().equalsIgnoreCase(value)) {

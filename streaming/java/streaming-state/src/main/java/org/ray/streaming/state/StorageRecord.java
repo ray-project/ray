@@ -21,7 +21,7 @@ package org.ray.streaming.state;
 import java.io.Serializable;
 
 /**
- * save record with checkpointId.
+ * This Class contains a record with some checkpointId.
  */
 public class StorageRecord<T> implements Serializable {
 

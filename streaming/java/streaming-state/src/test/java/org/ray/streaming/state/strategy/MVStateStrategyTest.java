@@ -21,7 +21,6 @@ package org.ray.streaming.state.strategy;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.streaming.state.backend.AbstractStateBackend;
 import org.ray.streaming.state.backend.BackendType;
 import org.ray.streaming.state.backend.KeyStateBackend;
 import org.ray.streaming.state.backend.StateBackendBuilder;
@@ -47,7 +46,7 @@ public class MVStateStrategyTest {
 
   @BeforeClass
   public void setUp() {
-    config.put(ConfigKey.STATE_STORAGE_MODE, StateStrategy.SINGLEVERSION.name());
+    config.put(ConfigKey.STATE_STATEGE_MODE, StateStrategy.SINGLEVERSION.name());
     currentTime = Long.toString(System.currentTimeMillis());
   }
 
