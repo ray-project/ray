@@ -46,9 +46,7 @@ py_test(
     tags = ["learning_tests"],
     size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
-    data = glob([
-            "tuned_examples/regression_tests/pendulum-*.yaml",
-            ]),
+    data = glob(["tuned_examples/regression_tests/*.yaml"]),
     # Pass `BAZEL` option and the path to look for yaml regression files.
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
