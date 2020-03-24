@@ -6,7 +6,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
-from ray.rllib.agents.ddpg.noop_model import NoopModel
+from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -47,7 +47,7 @@ def build_sac_model(policy, obs_space, action_space, config):
         num_outputs = 256  # arbitrary
         config["model"]["no_final_linear"] = True
     else:
-        default_model = NoopModel
+        default_model = TorchNoopModel if config["use_pytorch"] else NoopModel
         num_outputs = int(np.product(obs_space.shape))
 
     policy.model = ModelCatalog.get_model_v2(

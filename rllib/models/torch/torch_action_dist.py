@@ -186,14 +186,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def sampled_action_logp(self):
-        unsquashed_values = self._unsquash(self.sample_op)
-        log_prob = torch.sum(
-            self.dist.log_prob(unsquashed_values), dim=-1)
-        unsquashed_values_tanhd = torch.tanh(unsquashed_values)
-        log_prob -= torch.sum(
-            torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
-            dim=-1)
-        return log_prob
+        return self.logp(self.last_sample)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
@@ -208,7 +201,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     def logp(self, x):
         unsquashed_values = self._unsquash(x)
         log_prob = torch.sum(
-            self.dist.log_prob(value=unsquashed_values), dim=-1)
+            self.dist.log_prob(unsquashed_values), dim=-1)
         unsquashed_values_tanhd = torch.tanh(unsquashed_values)
         log_prob -= torch.sum(
             torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),

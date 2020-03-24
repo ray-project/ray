@@ -214,6 +214,22 @@ class ModelV2:
         """Returns a contextmanager for the current forward pass."""
         return NullContextManager()
 
+    def variables(self):
+        """Returns the list of variables for this model.
+
+        Returns:
+            List: The list of all variables of this ModelV2.
+        """
+        raise NotImplementedError
+
+    def trainable_variables(self):
+        """Returns the list of trainable variables for this model.
+
+        Returns:
+            List: The list of all trainable variables of this ModelV2.
+        """
+        raise NotImplementedError
+
 
 class NullContextManager:
     """No-op context manager"""

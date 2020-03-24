@@ -22,6 +22,8 @@ def build_torch_policy(name,
                        before_init=None,
                        after_init=None,
                        make_model_and_action_dist=None,
+                       action_distribution_fn=None,
+                       apply_gradients_fn=None,
                        mixins=None):
     """Helper function for creating a torch policy at runtime.
 
@@ -87,8 +89,14 @@ def build_torch_policy(name,
                     framework="torch")
 
             TorchPolicy.__init__(
-                self, obs_space, action_space, config, self.model,
-                loss_fn, self.dist_class
+                self,
+                observation_space=obs_space,
+                action_space=action_space,
+                config=config,
+                model=self.model,
+                loss=loss_fn,
+                action_distribution_class=self.dist_class,
+                action_distribution_fn=action_distribution_fn
             )
 
             if after_init:
@@ -115,6 +123,13 @@ def build_torch_policy(name,
                 return extra_grad_process_fn(self)
             else:
                 return TorchPolicy.extra_grad_process(self)
+
+        @override(TorchPolicy)
+        def apply_gradients(self, gradients):
+            if apply_gradients_fn:
+                apply_gradients_fn(self, gradients)
+            else:
+                TorchPolicy.apply_gradients(self, gradients)
 
         @override(TorchPolicy)
         def extra_action_out(self, input_dict, state_batches, model,

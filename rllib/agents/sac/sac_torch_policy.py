@@ -6,18 +6,16 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory
-from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.models import ModelCatalog
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
     TorchSquashedGaussian, TorchDiagGaussian)
 from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.tf_ops import minimize_and_clip, make_tf_callable
+from ray.rllib.utils.tf_ops import minimize_and_clip
 
 torch, nn = try_import_torch()
 F = None
@@ -25,6 +23,12 @@ if nn is not None:
     F = nn.functional
 
 logger = logging.getLogger(__name__)
+
+
+def build_sac_model_and_action_dist(policy, obs_space, action_space, config):
+    model = build_sac_model(policy, obs_space, action_space, config)
+    action_dist_class = get_dist_class(config, action_space)
+    return model, action_dist_class
 
 
 def get_dist_class(config, action_space):
@@ -36,31 +40,36 @@ def get_dist_class(config, action_space):
     return action_dist_class
 
 
-def get_log_likelihood(policy, model, actions, input_dict, obs_space,
-                       action_space, config):
+def action_distribution_fn(policy,
+                           model,
+                           obs_batch,
+                           *,
+                           state_batches=None,
+                           seq_lens=None,
+                           prev_action_batch=None,
+                           prev_reward_batch=None,
+                           explore=None,
+                           timestep=None,
+                           is_training=None):
     model_out, _ = model({
-        "obs": input_dict[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
+        "obs": obs_batch,
+        "is_training": is_training,
     }, [], None)
     distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, action_space)
-    return action_dist_class(distribution_inputs, model).logp(actions)
+    action_dist_class = get_dist_class(policy.config, policy.action_space)
+
+    return distribution_inputs, action_dist_class, []
 
 
-def build_action_output(policy, model, input_dict, obs_space, action_space,
-                        explore, config, timestep):
-    model_out, _ = model({
-        "obs": input_dict[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
-    }, [], None)
-    distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, action_space)
-
-    policy.output_actions, policy.sampled_action_logp = \
-        policy.exploration.get_exploration_action(
-            distribution_inputs, action_dist_class, model, timestep, explore)
-
-    return policy.output_actions, policy.sampled_action_logp
+#def log_likelihood_fn(policy, model, actions, input_dict, obs_space,
+#                       action_space, config):
+#    model_out, _ = model({
+#        "obs": input_dict[SampleBatch.CUR_OBS],
+#        "is_training": policy._get_is_training_placeholder(),
+#    }, [], None)
+#    distribution_inputs = model.get_policy_output(model_out)
+#    action_dist_class = get_dist_class(policy.config, action_space)
+#    return action_dist_class(distribution_inputs, model).logp(actions)
 
 
 def actor_critic_loss(policy, model, _, train_batch):
@@ -158,7 +167,8 @@ def actor_critic_loss(policy, model, _, train_batch):
 
     # compute RHS of bellman equation
     q_t_selected_target = (train_batch[SampleBatch.REWARDS] +
-        policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked).detach()
+                           policy.config["gamma"] ** policy.config["n_step"] *
+                           q_tp1_best_masked).detach()
 
     # Compute the TD-error (potentially clipped).
     base_td_error = torch.abs(q_t_selected - q_t_selected_target)
@@ -220,82 +230,21 @@ def actor_critic_loss(policy, model, _, train_batch):
     return actor_loss + combined_critic_loss + alpha_loss
 
 
-def gradients(policy, optimizer, loss):
+def apply_grad_clipping(policy):
+    info = {}
     if policy.config["grad_norm_clipping"]:
-        actor_grads_and_vars = minimize_and_clip(
-            optimizer,
-            policy.actor_loss,
-            var_list=policy.model.policy_variables(),
-            clip_val=policy.config["grad_norm_clipping"])
-        if policy.config["twin_q"]:
-            q_variables = policy.model.q_variables()
-            half_cutoff = len(q_variables) // 2
-            critic_grads_and_vars = []
-            critic_grads_and_vars += minimize_and_clip(
-                optimizer,
-                policy.critic_loss[0],
-                var_list=q_variables[:half_cutoff],
-                clip_val=policy.config["grad_norm_clipping"])
-            critic_grads_and_vars += minimize_and_clip(
-                optimizer,
-                policy.critic_loss[1],
-                var_list=q_variables[half_cutoff:],
-                clip_val=policy.config["grad_norm_clipping"])
-        else:
-            critic_grads_and_vars = minimize_and_clip(
-                optimizer,
-                policy.critic_loss[0],
-                var_list=policy.model.q_variables(),
-                clip_val=policy.config["grad_norm_clipping"])
-        alpha_grads_and_vars = minimize_and_clip(
-            optimizer,
-            policy.alpha_loss,
-            var_list=[policy.model.log_alpha],
-            clip_val=policy.config["grad_norm_clipping"])
-    else:
-        actor_grads_and_vars = policy._actor_optimizer.compute_gradients(
-            policy.actor_loss, var_list=policy.model.policy_variables())
-        if policy.config["twin_q"]:
-            q_variables = policy.model.q_variables()
-            half_cutoff = len(q_variables) // 2
-            base_q_optimizer, twin_q_optimizer = policy._critic_optimizer
-            critic_grads_and_vars = base_q_optimizer.compute_gradients(
-                policy.critic_loss[0], var_list=q_variables[:half_cutoff]
-            ) + twin_q_optimizer.compute_gradients(
-                policy.critic_loss[1], var_list=q_variables[half_cutoff:])
-        else:
-            critic_grads_and_vars = policy._critic_optimizer[
-                0].compute_gradients(
-                    policy.critic_loss[0], var_list=policy.model.q_variables())
-        alpha_grads_and_vars = policy._alpha_optimizer.compute_gradients(
-            policy.alpha_loss, var_list=[policy.model.log_alpha])
+        info["grad_gnorm_policy"] = nn.utils.clip_grad_norm_(
+            policy.model.policy_variables(),
+            policy.config["grad_norm_clipping"])
 
-    # save these for later use in build_apply_op
-    policy._actor_grads_and_vars = [(g, v) for (g, v) in actor_grads_and_vars
-                                    if g is not None]
-    policy._critic_grads_and_vars = [(g, v) for (g, v) in critic_grads_and_vars
-                                     if g is not None]
-    policy._alpha_grads_and_vars = [(g, v) for (g, v) in alpha_grads_and_vars
-                                    if g is not None]
-    grads_and_vars = (
-        policy._actor_grads_and_vars + policy._critic_grads_and_vars +
-        policy._alpha_grads_and_vars)
-    return grads_and_vars
+        info["grad_gnorm_q_nets"] = nn.utils.clip_grad_norm_(
+            policy.model.q_variables(),
+            policy.config["grad_norm_clipping"])
 
-
-def apply_gradients(policy, optimizer, grads_and_vars):
-    policy._actor_optimizer.apply_gradients(policy._actor_grads_and_vars)
-    cgrads = policy._critic_grads_and_vars
-    half_cutoff = len(cgrads) // 2
-    if policy.config["twin_q"]:
-        policy._critic_optimizer[0].apply_gradients(cgrads[:half_cutoff]),
-        policy._critic_optimizer[1].apply_gradients(cgrads[half_cutoff:])
-    else:
-        policy._critic_optimizer[0].apply_gradients(cgrads)
-
-    policy._alpha_optimizer.apply_gradients(
-        policy._alpha_grads_and_vars,
-        global_step=policy.global_timestep)
+        info["grad_gnorm_alpha"] = nn.utils.clip_grad_norm_(
+            [policy.model.log_alpha],
+            policy.config["grad_norm_clipping"])
+    return info
 
 
 def stats(policy, train_batch):
@@ -312,36 +261,35 @@ def stats(policy, train_batch):
     }
 
 
-class ActorCriticOptimizerMixin:
-    def __init__(self, config):
-        # use separate optimizers for actor & critic
-        self._actor_optimizer = torch.optim.Adam(
-            lr=config["optimization"]["actor_learning_rate"])
-
-        self._critic_optimizer = [torch.optim.Adam(
-            lr=config["optimization"]["critic_learning_rate"])]
-        if config["twin_q"]:
-            self._critic_optimizer.append(torch.optim.Adam(
-                lr=config["optimization"]["critic_learning_rate"]))
-        self._alpha_optimizer = torch.optim.Adam(
-            lr=config["optimization"]["entropy_learning_rate"])
+def optimizer_fn(policy, config):
+    # Joint optimizer for the different models using different learning rates.
+    return torch.optim.Adam([
+        {"params": policy.model.policy_variables(),
+         "lr": config["optimization"]["actor_learning_rate"]},
+        {"params": policy.model.q_variables(),
+         "lr": config["optimization"]["critic_learning_rate"]},
+        {"params": [policy.model.log_alpha],
+         "lr": config["optimization"]["entropy_learning_rate"]}
+    ])
 
 
 class ComputeTDErrorMixin:
     def __init__(self):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
-            input_dict[SampleBatch.ACTIONS] = act_t
-            input_dict[SampleBatch.REWARDS] = rew_t
-            input_dict[SampleBatch.NEXT_OBS] = obs_tp1
-            input_dict[SampleBatch.DONES] = done_mask
-            input_dict[PRIO_WEIGHTS] = importance_weights
-
+            input_dict = self._lazy_tensor_dict({
+                SampleBatch.CUR_OBS: obs_t,
+                SampleBatch.ACTIONS: act_t,
+                SampleBatch.REWARDS: rew_t,
+                SampleBatch.NEXT_OBS: obs_tp1,
+                SampleBatch.DONES: done_mask,
+                PRIO_WEIGHTS: importance_weights,
+            })
             # Do forward pass on loss to update td errors attribute
             # (one TD-error value per item in batch to update PR weights).
             actor_critic_loss(self, self.model, None, input_dict)
 
+            # Self.td_error is set within actor_critic_loss call.
             return self.td_error
 
         self.compute_td_error = compute_td_error
@@ -369,40 +317,28 @@ class TargetNetworkMixin:
                 var_target.data = tau * var.data + \
                     (1.0 - tau) * var_target.data
     
-
-    @override(TorchPolicy)
-    def variables(self):
-        return self.model.variables() + self.target_model.variables()
-
-
-def setup_early_mixins(policy, obs_space, action_space, config):
-    ActorCriticOptimizerMixin.__init__(policy, config)
-
-
-def setup_mid_mixins(policy, obs_space, action_space, config):
-    ComputeTDErrorMixin.__init__(policy)
+    #@override(TorchPolicy)
+    #def variables(self):
+    #    return self.model.variables() + self.target_model.variables()
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
+    ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)
 
 
 SACTorchPolicy = build_torch_policy(
     name="SACTorchPolicy",
-    get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
-    make_model=build_sac_model,
-    postprocess_fn=postprocess_trajectory,
-    action_sampler_fn=build_action_output,
-    log_likelihood_fn=get_log_likelihood,
     loss_fn=actor_critic_loss,
+    get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
     stats_fn=stats,
-    gradients_fn=gradients,
-    apply_gradients_fn=apply_gradients,
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
-    mixins=[
-        TargetNetworkMixin, ActorCriticOptimizerMixin, ComputeTDErrorMixin
-    ],
-    before_init=setup_early_mixins,
-    before_loss_init=setup_mid_mixins,
+    postprocess_fn=postprocess_trajectory,
+    extra_grad_process_fn=apply_grad_clipping,
+    optimizer_fn=optimizer_fn,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False)
+    make_model_and_action_dist=build_sac_model_and_action_dist,
+    mixins=[
+        TargetNetworkMixin, ComputeTDErrorMixin
+    ],
+    action_distribution_fn=action_distribution_fn,
+)

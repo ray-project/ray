@@ -1,6 +1,6 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
-from ray.rllib.agents.sac.sac_policy import SACTFPolicy
+from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
@@ -100,6 +100,12 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
+def validate_config(config):
+    """Checks and updates the config based on settings."""
+    # Override from DQN.
+    pass
+
+
 def get_policy_class(config):
     if config.get("use_pytorch") is True:
         from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
@@ -112,5 +118,6 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
     default_policy=SACTFPolicy,
-    get_policy_class=get_policy_class
+    validate_config=validate_config,
+    get_policy_class=get_policy_class,
 )

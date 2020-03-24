@@ -27,7 +27,7 @@ class TorchPolicy(Policy):
     """
 
     def __init__(self, observation_space, action_space, config, model, loss,
-                 action_distribution_class):
+                 action_distribution_class, action_distribution_fn=None):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -54,6 +54,7 @@ class TorchPolicy(Policy):
         self._loss = loss
         self._optimizer = self.optimizer()
         self.dist_class = action_distribution_class
+        self.action_distribution_fn = action_distribution_fn
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
@@ -81,27 +82,51 @@ class TorchPolicy(Policy):
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
-            model_out = self.model(input_dict, state_batches,
-                                   self._convert_to_tensor([1]))
-            logits, state = model_out
-            action_dist = None
+            # Custom action distribution function.
+            if self.action_distribution_fn:
+                dist_inputs, dist_class, state_out = \
+                    self.action_distribution_fn(
+                        self,
+                        model=self.model,
+                        obs_batch=input_dict[SampleBatch.CUR_OBS],
+                        state_batches=state_batches,
+                        seq_lens=self._convert_to_tensor([1]),
+                        prev_action_batch=input_dict[
+                            SampleBatch.PREV_ACTIONS],
+                        prev_reward_batch=input_dict[
+                            SampleBatch.PREV_REWARDS],
+                        explore=explore,
+                        timestep=timestep,
+                        is_training=False)
+            # Default behavior: Model forward pass produces dist inputs.
+            else:
+                model_out = self.model(input_dict, state_batches,
+                                       self._convert_to_tensor([1]))
+                dist_inputs, state_out = model_out
+                dist_class = self.dist_class
+
+            action_dist = dist_class(dist_inputs, self.model) if dist_class \
+                else None
+
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    logits, self.dist_class, self.model,
+                    dist_inputs, dist_class, self.model,
                     timestep if timestep is not None else
                     self.global_timestep, explore)
-            input_dict[SampleBatch.ACTIONS] = actions
 
-            extra_action_out = self.extra_action_out(input_dict, state_batches,
-                                                     self.model, action_dist)
+            input_dict[SampleBatch.ACTIONS] = actions
+            extra_action_out = self.extra_action_out(
+                input_dict, state_batches, self.model, action_dist)
+
             if logp is not None:
                 logp = convert_to_non_torch_type(logp)
                 extra_action_out.update({
                     ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
+
             return convert_to_non_torch_type(
-                (actions, state, extra_action_out))
+                (actions, state_out, extra_action_out))
 
     @override(Policy)
     def compute_log_likelihoods(self,
@@ -120,8 +145,26 @@ class TorchPolicy(Policy):
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
 
-            parameters, _ = self.model(input_dict, state_batches, [1])
-            action_dist = self.dist_class(parameters, self.model)
+            # Custom action distribution function.
+            if self.action_distribution_fn:
+                dist_inputs, dist_class, self._state_out = \
+                    self.action_distribution_fn(
+                        model=self.model,
+                        obs_batch=input_dict[SampleBatch.CUR_OBS],
+                        state_batches=state_batches,
+                        seq_lens=self._convert_to_tensor([1]),
+                        prev_action_batch=input_dict[
+                            SampleBatch.PREV_ACTIONS],
+                        prev_reward_batch=input_dict[
+                            SampleBatch.PREV_REWARDS],
+                        is_training=False)
+            # Default behavior: Model forward pass produces dist inputs.
+            else:
+                dist_inputs, _ = self.model(
+                    input_dict, state_batches, self._convert_to_tensor([1]))
+                dist_class = self.dist_class
+
+            action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
             return log_likelihoods
 
@@ -185,9 +228,15 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def apply_gradients(self, gradients):
-        for g, p in zip(gradients, self.model.parameters()):
+        model_params = self.model.parameters()
+        assert len(gradients) == len(model_params), \
+            "ERROR: num-grads={} vs num-params={}".format(
+                len(gradients), len(model_params))
+
+        for g, p in zip(gradients, model_params):
             if g is not None:
                 p.grad = torch.from_numpy(g).to(self.device)
+
         self._optimizer.step()
 
     @override(Policy)

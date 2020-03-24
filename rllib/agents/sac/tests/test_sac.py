@@ -1,3 +1,4 @@
+from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray
@@ -16,12 +17,20 @@ class TestSAC(unittest.TestCase):
         num_iterations = 1
 
         # eager (discrete and cont. actions).
-        for fw in ["eager", "tf", "torch"]:
+        for fw in ["torch", "eager", "tf"]:
             print("framework={}".format(fw))
-            if fw == "torch":
-                continue
+
             config["eager"] = fw == "eager"
             config["use_pytorch"] = fw == "torch"
+
+            eager_ctx = None
+            if fw == "eager":
+                eager_ctx = eager_mode()
+                eager_ctx.__enter__()
+                assert tf.executing_eagerly()
+            elif fw == "tf":
+                assert not tf.executing_eagerly()
+
             for env in [
                     "CartPole-v0",
                     "Pendulum-v0",
@@ -31,6 +40,9 @@ class TestSAC(unittest.TestCase):
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
+
+            if eager_ctx:
+                eager_ctx.__exit__(None, None, None)
 
 
 if __name__ == "__main__":
