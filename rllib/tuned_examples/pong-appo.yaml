@@ -12,7 +12,7 @@ pong-appo:
     config:
         vtrace: True
         use_kl_loss: False
-        sample_batch_size: 50
+        rollout_fragment_length: 50
         train_batch_size: 750
         num_workers: 32
         broadcast_interval: 1

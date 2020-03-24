@@ -4,11 +4,10 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-
 import org.apache.commons.io.FileUtils;
+import org.ray.api.BaseActor;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -141,7 +140,7 @@ public class ClassLoaderTest extends BaseTest {
   private <T> RayObject<T> callActorFunction(RayActor<?> rayActor,
       FunctionDescriptor functionDescriptor, Object[] args, int numReturns) throws Exception {
     Method callActorFunctionMethod = AbstractRayRuntime.class.getDeclaredMethod("callActorFunction",
-        RayActor.class, FunctionDescriptor.class, Object[].class, int.class);
+        BaseActor.class, FunctionDescriptor.class, Object[].class, int.class);
     callActorFunctionMethod.setAccessible(true);
     return (RayObject<T>) callActorFunctionMethod
         .invoke(TestUtils.getRuntime(), rayActor, functionDescriptor, args, numReturns);

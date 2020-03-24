@@ -5,10 +5,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "ray/common/test_util.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/util/io_service_pool.h"
 #include "ray/util/logging.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 

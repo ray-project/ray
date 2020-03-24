@@ -9,7 +9,7 @@ spec:
   # An unique identifier for the head node and workers of this cluster.
   clusterName: raycluster-sample
   images:
-    defaultImage: "docker-image"
+    defaultImage: rayproject/autoscaler
   imagePullPolicy: "Always"
 
   extensions:
@@ -26,7 +26,7 @@ spec:
         raycluster.group.name: small-group
 
       # Command to start ray
-      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
+      command: ray start --block --node-ip-address=$MY_POD_IP --address=$CLUSTER_NAME-head:6379 --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
 
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
@@ -70,7 +70,7 @@ spec:
         raycluster.group.name: medium-group
 
       # Command to start ray
-      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
+      command: ray start --block --node-ip-address=$MY_POD_IP --address=$CLUSTER_NAME-head:6379 --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
 
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
@@ -114,7 +114,7 @@ spec:
         raycluster.group.name: head-group
 
       # Command to start ray
-      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
+      command: ray start --head --block --redis-port=6379 --node-ip-address=$MY_POD_IP --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
 
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/

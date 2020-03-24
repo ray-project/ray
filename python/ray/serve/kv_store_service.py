@@ -279,5 +279,5 @@ class TrafficPolicyTable:
     def list_traffic_policy(self):
         return {
             service: json.loads(policy)
-            for service, policy in self.traffic_policy_table.as_dict()
+            for service, policy in self.traffic_policy_table.as_dict().items()
         }

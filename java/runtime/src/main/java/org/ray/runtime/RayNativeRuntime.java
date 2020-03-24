@@ -6,10 +6,9 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
-import org.ray.api.RayActor;
+import org.ray.api.BaseActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
 import org.ray.runtime.functionmanager.FunctionManager;
@@ -62,7 +61,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
     }
-    nativeSetup(rayConfig.logDir);
+    nativeSetup(rayConfig.logDir, rayConfig.rayletConfigParameters);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
@@ -136,11 +135,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void killActor(RayActor<?> actor) {
-    if (!((NativeRayActor) actor).isDirectCallActor()) {
-      throw new UnsupportedOperationException("Only direct call actors can be killed.");
-    }
-    nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes());
+  public void killActor(BaseActor actor, boolean noReconstruction) {
+    nativeKillActor(nativeCoreWorkerPointer, actor.getId().getBytes(), noReconstruction);
   }
 
   @Override
@@ -197,12 +193,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native void nativeDestroyCoreWorker(long nativeCoreWorkerPointer);
 
-  private static native void nativeSetup(String logDir);
+  private static native void nativeSetup(String logDir, Map<String, String> rayletConfigParameters);
 
   private static native void nativeShutdownHook();
 
   private static native void nativeSetResource(long conn, String resourceName, double capacity,
       byte[] nodeId);
 
-  private static native void nativeKillActor(long nativeCoreWorkerPointer, byte[] actorId);
+  private static native void nativeKillActor(long nativeCoreWorkerPointer, byte[] actorId,
+      boolean noReconstruction);
 }

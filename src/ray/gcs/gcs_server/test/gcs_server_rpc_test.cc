@@ -1,7 +1,21 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "gtest/gtest.h"
+#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
-#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -115,8 +129,10 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  rpc::ActorCheckpointData GetActorCheckpoint(const std::string &checkpoint_id) {
+  rpc::ActorCheckpointData GetActorCheckpoint(const std::string &actor_id,
+                                              const std::string &checkpoint_id) {
     rpc::GetActorCheckpointRequest request;
+    request.set_actor_id(actor_id);
     request.set_checkpoint_id(checkpoint_id);
     rpc::ActorCheckpointData checkpoint_data;
     std::promise<bool> promise;
@@ -192,17 +208,6 @@ class GcsServerTest : public RedisServiceManagerForTest {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool ReportBatchHeartbeat(const rpc::ReportBatchHeartbeatRequest &request) {
-    std::promise<bool> promise;
-    client_->ReportBatchHeartbeat(
-        request,
-        [&promise](const Status &status, const rpc::ReportBatchHeartbeatReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -391,11 +396,10 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return job_table_data;
   }
 
-  rpc::ActorTableData GenActorTableData(const JobID &job_id) {
+  rpc::ActorTableData GenActorTableData(const ActorID &actor_id) {
     rpc::ActorTableData actor_table_data;
-    ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     actor_table_data.set_actor_id(actor_id.Binary());
-    actor_table_data.set_job_id(job_id.Binary());
+    actor_table_data.set_job_id(actor_id.JobId().Binary());
     actor_table_data.set_state(
         rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
     actor_table_data.set_max_reconstructions(1);
@@ -441,14 +445,15 @@ class GcsServerTest : public RedisServiceManagerForTest {
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  // Timeout waiting for gcs server reply, default is 2s
-  const uint64_t timeout_ms_ = 2000;
+  // Timeout waiting for gcs server reply, default is 5s
+  const uint64_t timeout_ms_ = 5000;
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
-  rpc::ActorTableData actor_table_data = GenActorTableData(job_id);
+  ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+  rpc::ActorTableData actor_table_data = GenActorTableData(actor_id);
 
   // Register actor
   rpc::RegisterActorInfoRequest register_actor_info_request;
@@ -479,7 +484,8 @@ TEST_F(GcsServerTest, TestActorInfo) {
   rpc::AddActorCheckpointRequest add_actor_checkpoint_request;
   add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(checkpoint);
   ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
-  rpc::ActorCheckpointData checkpoint_result = GetActorCheckpoint(checkpoint_id.Binary());
+  rpc::ActorCheckpointData checkpoint_result =
+      GetActorCheckpoint(actor_id.Binary(), checkpoint_id.Binary());
   ASSERT_TRUE(checkpoint_result.actor_id() == actor_table_data.actor_id());
   ASSERT_TRUE(checkpoint_result.checkpoint_id() == checkpoint_id.Binary());
   rpc::ActorCheckpointIdData checkpoint_id_result =
@@ -522,10 +528,6 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   rpc::ReportHeartbeatRequest report_heartbeat_request;
   report_heartbeat_request.mutable_heartbeat()->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
-  rpc::ReportBatchHeartbeatRequest report_batch_heartbeat_request;
-  report_batch_heartbeat_request.mutable_heartbeat_batch()->add_batch()->set_client_id(
-      node_id.Binary());
-  ASSERT_TRUE(ReportBatchHeartbeat(report_batch_heartbeat_request));
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_info_request;
