@@ -539,8 +539,7 @@ class Dashboard:
         exporter = Exporter(self.dashboard_id, self.metrics_export_address,
                             self.dashboard_controller)
         self.metrics_export_client = MetricsExportClient(
-            self.metrics_export_address,
-            self.dashboard_controller,
+            self.metrics_export_address, self.dashboard_controller,
             self.dashboard_id, exporter)
 
         # Setup endpoints
