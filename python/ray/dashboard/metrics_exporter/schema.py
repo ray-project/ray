@@ -1,6 +1,7 @@
 import pydantic
 import typing
 
+
 class IngestRequest(pydantic.BaseModel):
     cluster_id: str
     access_token: str

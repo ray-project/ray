@@ -47,11 +47,7 @@ class Dashboard extends React.Component<
 
   refreshNodeAndRayletInfo = async () => {
     try {
-      const [
-        nodeInfo,
-        rayletInfo,
-        tuneAvailability,
-      ] = await Promise.all([
+      const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
         getTuneAvailability()

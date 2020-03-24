@@ -43,7 +43,7 @@ try:
 except ImportError:
     print("Pydantic is not donwloaded. pip install pydantic")
     MetricsExportClient = None
-    Exporter= None
+    Exporter = None
 
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -512,8 +512,7 @@ class Dashboard:
         self.metrics_export_address = metrics_export_address
 
         if self.metrics_export_address:
-            exporter = Exporter(self.dashboard_id,
-                                metrics_export_address,
+            exporter = Exporter(self.dashboard_id, metrics_export_address,
                                 self.dashboard_controller)
             self.metrics_export_client = MetricsExportClient(
                 metrics_export_address, self.dashboard_controller,

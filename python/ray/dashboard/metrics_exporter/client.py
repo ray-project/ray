@@ -1,7 +1,5 @@
 import logging
 import traceback
-import re
-import requests
 
 from ray.dashboard.metrics_exporter import api
 from ray.dashboard.metrics_exporter.exporter import Exporter
@@ -12,7 +10,7 @@ logger = logging.getLogger(__name__)
 class MetricsExportClient:
     """Group of functionalities used by Dashboard to do external communication.
 
-    start_export_metrics should not be called more than once as it can create 
+    start_export_metrics should not be called more than once as it can create
     multiple threads that export the same metrics.
 
     Args:
@@ -22,10 +20,7 @@ class MetricsExportClient:
         dashboard_id(str): Unique dashboard ID.
     """
 
-    def __init__(self,
-                 address,
-                 dashboard_controller,
-                 dashboard_id,
+    def __init__(self, address, dashboard_controller, dashboard_id,
                  exporter: Exporter):
         self.dashboard_id = dashboard_id
         self.auth_url = "{}/auth".format(address)
@@ -45,8 +40,8 @@ class MetricsExportClient:
         Return:
             Whether or not the authentication succeed.
         """
-        self.auth_info = api.authentication_request(
-            self.auth_url, self.dashboard_id)
+        self.auth_info = api.authentication_request(self.auth_url,
+                                                    self.dashboard_id)
         self._dashboard_url = self.auth_info.dashboard_url
         self.is_authenticated = True
 
@@ -58,8 +53,8 @@ class MetricsExportClient:
     def dashboard_url(self):
         # This function should be used only after authentication succeed.
         assert self._dashboard_url is not None, (
-                "dashboard url should be obtained by "
-                "`start_exporting_metrics` method first.")
+            "dashboard url should be obtained by "
+            "`start_exporting_metrics` method first.")
         return self._dashboard_url
 
     def start_exporting_metrics(self):

@@ -11,21 +11,16 @@ def authentication_request(url, cluster_id):
     return AuthResponse.parse_obj(response.json())
 
 
-def ingest_request(url,
-                   cluster_id,
-                   access_token,
-                   ray_config,
-                   node_info,
-                   raylet_info,
-                   tune_info,
-                   tune_availability):
-    ingest_request = IngestRequest(cluster_id=cluster_id,
-                                    access_token=access_token,
-                                    ray_config=ray_config,
-                                    node_info=node_info,
-                                    raylet_info=raylet_info,
-                                    tune_info=tune_info,
-                                    tune_availability=tune_availability)
+def ingest_request(url, cluster_id, access_token, ray_config, node_info,
+                   raylet_info, tune_info, tune_availability):
+    ingest_request = IngestRequest(
+        cluster_id=cluster_id,
+        access_token=access_token,
+        ray_config=ray_config,
+        node_info=node_info,
+        raylet_info=raylet_info,
+        tune_info=tune_info,
+        tune_availability=tune_availability)
     response = requests.post(url, data=ingest_request.json())
     response.raise_for_status()
     return IngestResponse.parse_obj(response.json())

@@ -1,6 +1,4 @@
-import json
 import logging
-import requests
 import threading
 import traceback
 import time
@@ -46,14 +44,9 @@ class Exporter(threading.Thread):
 
     def export(self, ray_config, node_info, raylet_info, tune_info,
                tune_availability):
-        api.ingest_request(self.export_address,
-                           self.dashboard_id,
-                           self.access_token,
-                           ray_config,
-                           node_info,
-                           raylet_info,
-                           tune_info,
-                           tune_availability)
+        api.ingest_request(self.export_address, self.dashboard_id,
+                           self.access_token, ray_config, node_info,
+                           raylet_info, tune_info, tune_availability)
         # TODO(sang): Add piggybacking response handler.
 
     def run(self):
@@ -68,7 +61,6 @@ class Exporter(threading.Thread):
                             self.dashboard_controller.tune_info(),
                             self.dashboard_controller.tune_availability())
             except Exception as e:
-                logger.error(
-                    "Exception occured while exporting metrics: {}.\n"
-                    "Traceback: {}".format(e, traceback.format_exc()))
+                logger.error("Exception occured while exporting metrics: {}.\n"
+                             "Traceback: {}".format(e, traceback.format_exc()))
                 continue
