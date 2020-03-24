@@ -37,7 +37,8 @@ class ClientConnectionTest : public ::testing::Test {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
     boost::asio::local::connect_pair(in_, out_);
 #else
-    int pair[2] = {};  // TODO(mehrdadn): This should be type SOCKET for Windows
+    boost::asio::detail::socket_type pair[2] = {boost::asio::detail::invalid_socket,
+                                                boost::asio::detail::invalid_socket};
     RAY_CHECK(socketpair(AF_INET, SOCK_STREAM, 0, pair) == 0);
     in_.assign(local_stream_protocol::v4(), pair[0]);
     out_.assign(local_stream_protocol::v4(), pair[1]);

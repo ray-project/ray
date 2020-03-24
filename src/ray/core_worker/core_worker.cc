@@ -40,8 +40,7 @@ void BuildCommonTaskSpec(
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
                             task_index, caller_id, address, num_returns,
-                            /*is_direct_transport_type=*/true, required_resources,
-                            required_placement_resources);
+                            required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -116,7 +115,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::InstallFailureSignalHandler();
   }
   // Initialize gcs client.
-  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+  if (getenv(kRayGcsServiceEnabled) == nullptr ||
+      strcmp(getenv(kRayGcsServiceEnabled), "true") == 0) {
     gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
   } else {
     gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(gcs_options);
@@ -827,11 +827,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources, &return_ids);
-  builder.SetActorCreationTaskSpec(
-      actor_id, actor_creation_options.max_reconstructions,
-      actor_creation_options.dynamic_worker_options,
-      /*is_direct_call=*/true, actor_creation_options.max_concurrency,
-      actor_creation_options.is_detached, actor_creation_options.is_asyncio);
+  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
+                                   actor_creation_options.dynamic_worker_options,
+                                   actor_creation_options.max_concurrency,
+                                   actor_creation_options.is_detached,
+                                   actor_creation_options.is_asyncio);
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
