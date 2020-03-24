@@ -38,10 +38,12 @@ from ray.dashboard.interface.dashboard_controller_interface import (
 from ray.dashboard.interface.dashboard_route_handler_interface import (
     BaseDashboardRouteHandler)
 try:
+    from ray.dashboard.metrics_exporter.exporter import Exporter
     from ray.dashboard.metrics_exporter.client import MetricsExportClient
 except ImportError:
     print("Pydantic is not donwloaded. pip install pydantic")
     MetricsExportClient = None
+    Exporter= None
 
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -510,9 +512,12 @@ class Dashboard:
         self.metrics_export_address = metrics_export_address
 
         if self.metrics_export_address:
+            exporter = Exporter(self.dashboard_id,
+                                metrics_export_address,
+                                self.dashboard_controller)
             self.metrics_export_client = MetricsExportClient(
                 metrics_export_address, self.dashboard_controller,
-                self.dashboard_id)
+                self.dashboard_id, exporter)
             self.metrics_export_handler = MetricsExportHandler(
                 self.dashboard_controller,
                 self.metrics_export_client,
@@ -546,7 +551,7 @@ class Dashboard:
         if not result and error:
             url = ray.services.get_webui_url_from_redis(self.redis_client)
             error += (" Please reenable the metrics export by going to "
-                      "{}/enable_metrics_export".format(url))
+                      "the url: {}/api/enable_metrics_export".format(url))
             ray.utils.push_error_to_driver_through_redis(
                 self.redis_client, "metrics export failed", error)
 
