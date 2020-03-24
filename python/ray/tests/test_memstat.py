@@ -1,6 +1,8 @@
-import ray
 import numpy as np
 import time
+
+import ray
+from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
 # Unique strings.
@@ -187,6 +189,33 @@ def test_pinned_object_call_site(ray_start_regular):
     info = memory_summary()
     print(info)
     assert num_objects(info) == 0, info
+
+
+def test_multi_node_stats(call_ray_stop_only):
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=1)
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.ref = ray.put(np.zeros(100000))
+
+        def ping(self):
+            pass
+
+    # Each actor will be on a different node.
+    a = Actor.remote()
+    b = Actor.remote()
+    ray.get(a.ping.remote())
+    ray.get(b.ping.remote())
+
+    # Verify we have collected stats across the nodes.
+    info = memory_summary()
+    print(info)
+    assert count(info, PUT_OBJ) == 2, info
 
 
 if __name__ == "__main__":

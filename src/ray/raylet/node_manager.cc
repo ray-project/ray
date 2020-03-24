@@ -3380,12 +3380,11 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
 }
 
-std::string FormatMemoryInfo(
-    std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> node_stats) {
+std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   // First pass to compute object sizes.
   absl::flat_hash_map<ObjectID, int64_t> object_sizes;
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply->workers_stats()) {
+    for (const auto &worker_stats : reply.workers_stats()) {
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
         auto obj_id = ObjectID::FromBinary(object_ref.object_id());
         if (object_ref.object_size() > 0) {
@@ -3408,7 +3407,8 @@ std::string FormatMemoryInfo(
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
-    for (const auto &worker_stats : reply->workers_stats()) {
+    RAY_LOG(ERROR) << " num stats " << reply.DebugString();
+    for (const auto &worker_stats : reply.workers_stats()) {
       bool pid_printed = false;
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
         if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
@@ -3459,23 +3459,42 @@ std::string FormatMemoryInfo(
 void NodeManager::HandleFormatGlobalMemoryInfo(
     const rpc::FormatGlobalMemoryInfoRequest &request,
     rpc::FormatGlobalMemoryInfoReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> replies;
-
+  auto replies = std::make_shared<std::vector<rpc::GetNodeStatsReply>>();
   auto local_request = std::make_shared<rpc::GetNodeStatsRequest>();
   auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
   local_request->set_include_memory_info(true);
 
-  // TODO(ekl): for (const auto &entry : remote_node_manager_clients_) {}
-  // to handle remote nodes
+  unsigned int num_nodes = remote_node_manager_clients_.size() + 1;
 
-  HandleGetNodeStats(*local_request, local_reply.get(),
-                     [local_request, local_reply, replies, reply, send_reply_callback](
-                         Status status, std::function<void()> success,
-                         std::function<void()> failure) mutable {
-                       replies.push_back(local_reply);
-                       reply->set_memory_summary(FormatMemoryInfo(replies));
-                       send_reply_callback(Status::OK(), nullptr, nullptr);
-                     });
+  auto store_reply = [replies, reply, num_nodes,
+                      send_reply_callback](const rpc::GetNodeStatsReply &local_reply) {
+    replies->push_back(local_reply);
+    if (replies->size() >= num_nodes) {
+      reply->set_memory_summary(FormatMemoryInfo(*replies));
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    }
+  };
+
+  // Fetch from remote nodes.
+  for (const auto &entry : remote_node_manager_clients_) {
+    rpc::GetNodeStatsRequest remote_req;
+    remote_req.set_include_memory_info(true);
+    entry.second->GetNodeStats(
+        remote_req, [replies, store_reply](const ray::Status &status,
+                                           const rpc::GetNodeStatsReply &r) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to get remote node stats: " << status.ToString();
+          }
+          store_reply(r);
+        });
+  }
+
+  // Fetch from the local node.
+  HandleGetNodeStats(
+      *local_request, local_reply.get(),
+      [local_request, local_reply, &replies, store_reply](
+          Status status, std::function<void()> success,
+          std::function<void()> failure) mutable { store_reply(*local_reply); });
 }
 
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
