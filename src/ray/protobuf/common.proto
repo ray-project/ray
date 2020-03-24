@@ -124,10 +124,8 @@ message TaskSpec {
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 15;
-  // Whether this task is a direct call task.
-  bool is_direct_call = 16;
   // Number of times this task may be retried on worker failure.
-  int32 max_retries = 17;
+  int32 max_retries = 16;
 }
 
 // Argument in the task.
@@ -157,14 +155,12 @@ message ActorCreationTaskSpec {
   // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
   // `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1`, etc) in the worker command.
   repeated string dynamic_worker_options = 4;
-  // Whether direct actor call is used.
-  bool is_direct_call = 5;
   // The max number of concurrent calls for direct call actors.
-  int32 max_concurrency = 6;
+  int32 max_concurrency = 5;
   // Whether the actor is persistent
-  bool is_detached = 7;
+  bool is_detached = 6;
   // Whether the actor use async actor calls
-  bool is_asyncio = 8;
+  bool is_asyncio = 7;
 }
 
 // Task spec of an actor task.
