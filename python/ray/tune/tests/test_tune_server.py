@@ -121,7 +121,7 @@ class TuneServerSuite(unittest.TestCase):
             len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
 
     def testStopExperiment(self):
-        """Check if Stop Trial works."""
+        """Check if stop_experiment works."""
         runner, client = self.basicSetup()
         for i in range(2):
             runner.step()
