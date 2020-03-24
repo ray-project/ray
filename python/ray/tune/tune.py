@@ -319,9 +319,6 @@ def run(run_or_experiment,
         if verbose:
             _report_progress(runner, progress_reporter)
 
-    if not all(trial.is_finished() for trial in runner.get_trials()):
-        runner.stop_experiment()
-
     try:
         runner.checkpoint(force=True)
     except Exception:
