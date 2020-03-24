@@ -3407,7 +3407,6 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
-    RAY_LOG(ERROR) << " num stats " << reply.DebugString();
     for (const auto &worker_stats : reply.workers_stats()) {
       bool pid_printed = false;
       for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
