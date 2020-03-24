@@ -45,7 +45,14 @@ cc_library(
         "deps/hiredis/*.h",
         "deps/hiredis/adapters/*.h",
     ]),
-    copts = COPTS,
+    copts = COPTS + select({
+        "@bazel_tools//src/conditions:windows": [
+            "-D" + "WIN32_REPLACE_FD_APIS",
+            "/FI" + "win32fd.h",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     includes = ["deps/hiredis"],
     strip_include_prefix = "deps",
     deps = [

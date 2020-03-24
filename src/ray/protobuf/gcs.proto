@@ -127,12 +127,10 @@ message ActorTableData {
   Address address = 9;
   // The address of the the actor's owner (parent).
   Address owner_address = 10;
-  // Whether direct actor call is used.
-  bool is_direct_call = 11;
   // Whether the actor is persistent.
-  bool is_detached = 12;
+  bool is_detached = 11;
   // Timestamp that the actor is created or reconstructed.
-  double timestamp = 13;
+  double timestamp = 12;
 }
 
 message ErrorTableData {

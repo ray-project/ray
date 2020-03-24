@@ -74,7 +74,6 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
   actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   // Set the fields that change when the actor is restarted.
   actor_info_ptr->set_remaining_reconstructions(remaining_reconstructions);
-  actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
   actor_info_ptr->mutable_address()->CopyFrom(address);
   actor_info_ptr->mutable_owner_address()->CopyFrom(
       task_spec.GetMessage().caller_address());
