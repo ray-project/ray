@@ -1,36 +1,21 @@
 import logging
+import traceback
 import re
+import requests
 
-from ray.dashboard.metrics_exporter.api import post_auth
+from ray.dashboard.metrics_exporter.schema import (
+    AuthRequest,
+    AuthResponse)
 from ray.dashboard.metrics_exporter.exporter import Exporter
 
 logger = logging.getLogger(__name__)
 
 
-# Copied from Django URL validation.
-def validate_url(url):
-    regex = re.compile(
-        r"^(?:http)s?://"  # http:// or https://
-        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)"
-        r"+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"  # domain...
-        r"localhost|"  # localhost...
-        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
-        r"(?::\d+)?"  # optional port
-        r"(?:/?|[/?]\S+)$",
-        re.IGNORECASE)
-
-    if re.match(regex, url) is None:
-        raise ValueError("URL {} is invalid. "
-                         "Follow http(s)://(domain|localhost|ip):[port][/]"
-                         .format(url))
-    return url
-
-
 class MetricsExportClient:
-    """Manages the communication to external services to export metrics.
+    """Group of functionalities used by Dashboard to do external communication.
 
-    This client must be a singleton because start_export_metrics should not be
-    called more than once as it can create multiple export metrics threads.
+    start_export_metrics should not be called more than once as it can create 
+    multiple threads that export the same metrics.
 
     Args:
         address: Address to export metrics
@@ -42,12 +27,14 @@ class MetricsExportClient:
     def __init__(self, address, dashboard_controller, dashboard_id):
         self.dashboard_id = dashboard_id
         self.dashboard_controller = dashboard_controller
-        self.exporter = None
-
         # URLs
-        self.metrics_export_address = validate_url(address)
+        self.metrics_export_address = address
         self.auth_url = "{}/auth".format(self.metrics_export_address)
-        self.ingestor_url = "{}/ingest".format(self.metrics_export_address)
+
+        # Threads
+        self.exporter = Exporter(self.dashboard_id,
+                                 self.metrics_export_address,
+                                 self.dashboard_controller)
 
         # Data obtained from requests.
         self._dashboard_url = None
@@ -62,21 +49,13 @@ class MetricsExportClient:
         Return:
             Whether or not the authentication succeed.
         """
-        auth_info = post_auth(self.auth_url, self.dashboard_id)
-        if auth_info is None:
-            return False
+        auth_requeset = AuthRequest(cluster_id=self.dashboard_id)
+        response = requests.post(self.auth_url, data=auth_requeset.json())
+        response.raise_for_status()
 
-        dashboard_url = auth_info.get("dashboard_url", None)
-        # TODO(sang): Switch to schema validation.
-        if dashboard_url is None:
-            logger.error("Dashboard URL wasn't included in auth info {}"
-                         .format(self.auth_info))
-            return False
-
-        self.auth_info = auth_info
-        self._dashboard_url = dashboard_url
+        self.auth_info = AuthResponse.parse_obj(response.json())
+        self._dashboard_url = self.auth_info.dashboard_url
         self.is_authenticated = True
-        return True
 
     @property
     def enabled(self):
@@ -84,6 +63,10 @@ class MetricsExportClient:
 
     @property
     def dashboard_url(self):
+        # This function should be used only after authentication succeed.
+        assert self._dashboard_url is not None, (
+                "dashboard url should be obtained by "
+                "`start_exporting_metrics` method first.")
         return self._dashboard_url
 
     def start_exporting_metrics(self):
@@ -96,15 +79,18 @@ class MetricsExportClient:
         """
         assert not self.is_exporting_started
         if not self.is_authenticated:
-            succeed = self._authenticate()
-            if not succeed:
-                return False
+            try:
+                self._authenticate()
+            except Exception as e:
+                error = ("Authentication failed with an error: {}\n"
+                         "Traceback: {}".format(e, traceback.format_exc()))
+                logger.error(error)
+                return False, error
 
         # Exporter is a Python thread that keeps exporting metrics with
         # access token obtained by an authentication process.
-        self.exporter = Exporter(self.dashboard_id, self.ingestor_url,
-                                 self.auth_info.get("access_token", None),
-                                 self.dashboard_controller)
+        self.exporter.access_token = self.auth_info.access_token
+        print(self.exporter.access_token)
         self.exporter.start()
         self.is_exporting_started = True
-        return True
+        return True, None

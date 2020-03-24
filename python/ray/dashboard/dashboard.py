@@ -37,7 +37,11 @@ from ray.dashboard.interface.dashboard_controller_interface import (
     BaseDashboardController)
 from ray.dashboard.interface.dashboard_route_handler_interface import (
     BaseDashboardRouteHandler)
-from ray.dashboard.metrics_exporter.client import MetricsExportClient
+try:
+    from ray.dashboard.metrics_exporter.client import MetricsExportClient
+except ImportError:
+    print("Pydantic is not donwloaded. pip install pydantic")
+    MetricsExportClient = None
 
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -397,7 +401,7 @@ class MetricsExportHandler:
 def setup_metrics_export_routes(app: aiohttp.web.Application,
                                 handler: MetricsExportHandler):
     """Routes that require dynamically changing class attributes."""
-    app.router.add_get("/api/enable_hostsed_dashboard",
+    app.router.add_get("/api/enable_metrics_export",
                        handler.enable_export_metrics)
     app.router.add_get("/api/dashboard_url", handler.get_dashboard_address)
     app.router.add_get("/dashboard", handler.redirect_to_dashboard)
@@ -504,6 +508,7 @@ class Dashboard:
 
         # Setup Metrics exporting service if necessary.
         self.metrics_export_address = metrics_export_address
+
         if self.metrics_export_address:
             self.metrics_export_client = MetricsExportClient(
                 metrics_export_address, self.dashboard_controller,
@@ -536,6 +541,15 @@ class Dashboard:
             errors="/api/errors")
         self.app.router.add_get("/{_}", self.route_handler.get_forbidden)
 
+    def _start_exporting_metrics(self):
+        result, error = self.metrics_export_client.start_exporting_metrics()
+        if not result and error:
+            url = ray.services.get_webui_url_from_redis(self.redis_client)
+            error += (" Please reenable the metrics export by going to "
+                      "{}/enable_metrics_export".format(url))
+            ray.utils.push_error_to_driver_through_redis(
+                self.redis_client, "metrics export failed", error)
+
     def log_dashboard_url(self):
         url = ray.services.get_webui_url_from_redis(self.redis_client)
         if url is None:
@@ -548,7 +562,7 @@ class Dashboard:
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
         if self.metrics_export_address:
-            self.metrics_export_client.start_exporting_metrics()
+            self._start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 

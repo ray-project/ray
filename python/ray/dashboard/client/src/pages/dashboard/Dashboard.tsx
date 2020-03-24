@@ -6,11 +6,7 @@ import Tabs from "@material-ui/core/Tabs";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { connect } from "react-redux";
-import {
-  getNodeInfo,
-  getRayletInfo,
-  getTuneAvailability
-} from "../../api";
+import { getNodeInfo, getRayletInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
