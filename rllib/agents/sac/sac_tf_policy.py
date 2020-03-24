@@ -4,7 +4,8 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_model import SACModel
+from ray.rllib.agents.sac.sac_tf_model import SACTFModel
+from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
@@ -54,8 +55,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space,
         num_outputs,
         config["model"],
-        framework="tf",
-        model_interface=SACModel,
+        framework="torch" if config["use_pytorch"] else "tf",
+        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         default_model=default_model,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["hidden_activation"],
@@ -70,8 +71,8 @@ def build_sac_model(policy, obs_space, action_space, config):
         action_space,
         num_outputs,
         config["model"],
-        framework="tf",
-        model_interface=SACModel,
+        framework="torch" if config["use_pytorch"] else "tf",
+        model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         default_model=default_model,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["hidden_activation"],

@@ -2,14 +2,12 @@ from gym.spaces import Discrete
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 
-SCALE_DIAG_MIN_MAX = (-20, 2)
 
-
-class SACModel(TFModelV2):
+class SACTFModel(TFModelV2):
     """Extension of standard TFModel for SAC.
 
     Data flow:
@@ -48,8 +46,8 @@ class SACModel(TFModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of SACModel.
         """
-        super(SACModel, self).__init__(obs_space, action_space, num_outputs,
-                                       model_config, name)
+        super().__init__(
+            obs_space, action_space, num_outputs, model_config, name)
         self.discrete = False
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
