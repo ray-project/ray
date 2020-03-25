@@ -276,6 +276,7 @@ class TorchTrainer:
 
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
+
             self.local_worker.setup()
             self.local_worker.set_reporters([h.create_reporter() for h in self.handlers])
         else:
@@ -311,20 +312,22 @@ class TorchTrainer:
             port = self.local_worker.find_free_port()
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
+            remote_setups = [
+                worker.setup.remote(address, i + 1, num_workers)
+                for i, worker in enumerate(self.remote_workers)
+            ]
+            remote_reporter_sets = [
+                w.set_reporters.remote(
+                    [h.create_reporter() for h in self.handlers])
+                for w in self.remote_workers
+            ]
 
             self.local_worker.setup(address, 0, num_workers)
             self.local_worker.set_reporters([h.create_reporter() for h in self.handlers])
 
             # Get setup tasks in order to throw errors on failure
-            ray.get([
-                worker.setup.remote(address, i + 1, num_workers)
-                for i, worker in enumerate(self.remote_workers)
-            ])
-            ray.get([
-                w.set_reporters.remote(
-                    [h.create_reporter() for h in self.handlers])
-                for w in self.workers
-            ])
+            ray.get(remote_setups)
+            ray.get(remote_reporter_sets)
 
     def train(self,
               num_steps=None,
@@ -426,10 +429,10 @@ class TorchTrainer:
             w.train_epoch.remote(**params)
             for w in self.remote_workers
         ]
-        success = utils.check_for_failure(remote_worker_stats)
 
         local_worker_stats = self.local_worker.train_epoch(**params)
 
+        success = check_for_failure(remote_worker_stats)
         return success, [local_worker_stats] + ray.get(remote_worker_stats)
 
     def apply_all_workers(self, fn):
