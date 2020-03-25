@@ -918,6 +918,13 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().KillActor(
                   c_actor_id, True, no_reconstruction))
 
+    def kill_task(self, ObjectID object_id, c_bool no_reconstruction):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+
+        with nogil:
+            check_status(self.core_worker.get().KillTask(c_object_id))
+
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (

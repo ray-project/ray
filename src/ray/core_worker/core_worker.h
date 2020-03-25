@@ -402,6 +402,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] Status
   Status KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
 
+  Status KillTask(const ObjectID &object_id);
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///

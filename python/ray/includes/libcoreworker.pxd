@@ -120,6 +120,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_reconstruction)
+        CRayStatus KillTask(const CObjectID &object_id)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)

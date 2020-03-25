@@ -1644,7 +1644,7 @@ def wait(object_ids, num_returns=1, timeout=None):
         return ready_ids, remaining_ids
 
 
-def kill(actor):
+def kill(id):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
@@ -1659,13 +1659,16 @@ def kill(actor):
     Args:
         actor (ActorHandle): Handle to the actor to kill.
     """
-    if not isinstance(actor, ray.actor.ActorHandle):
-        raise ValueError("ray.kill() only supported for actors. "
-                         "Got: {}.".format(type(actor)))
-
     worker = ray.worker.global_worker
     worker.check_connected()
-    worker.core_worker.kill_actor(actor._ray_actor_id, False)
+
+    if isinstance(id, ray.actor.ActorHandle):
+        worker.core_worker.kill_actor(id._ray_actor_id, False)
+    elif isinstance(id, ray.ObjectID):
+        worker.core_worker.kill_task(id.task_id(), True)
+    else:
+        raise ValueError("ray.kill() only supported for actors and objects. "
+                         "Got: {}.".format(type(id)))
 
 
 def _mode(worker=global_worker):
