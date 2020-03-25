@@ -1665,7 +1665,7 @@ def kill(id):
     if isinstance(id, ray.actor.ActorHandle):
         worker.core_worker.kill_actor(id._ray_actor_id, False)
     elif isinstance(id, ray.ObjectID):
-        worker.core_worker.kill_task(id.task_id(), True)
+        worker.core_worker.kill_task(id, True)
     else:
         raise ValueError("ray.kill() only supported for actors and objects. "
                          "Got: {}.".format(type(id)))

@@ -901,7 +901,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
-Status KillTask(const ObjectID &object_id) {
+Status CoreWorker::KillTask(const ObjectID &object_id) {
   auto task_id = object_id.TaskId();
   auto actor_id = task_id.ActorId();
   RAY_LOG(ERROR) << "Killing Task under actor id: " << actor_id;
