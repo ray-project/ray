@@ -53,7 +53,11 @@ def cifar_creator(config):
 
 def optimizer_creator(model, config):
     """Returns optimizer"""
-    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 0.1))
+    return torch.optim.SGD(
+        model.parameters(),
+        lr=config.get("lr", 0.1),
+        momentum=config.get("momentum", 0.8)
+    )
 
 
 def scheduler_creator(optimizer, config):
@@ -103,7 +107,6 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
         initialization_hook=initialization_hook,
         num_workers=num_workers,
         config={
-            "lr": 0.01,  # lr is overriden by the Tune config
             "test_mode": test_mode,
             BATCH_SIZE: 128,
         },
@@ -111,11 +114,23 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
 
+    scheduler = PopulationBasedTraining(
+        time_attr="training_iteration",
+        metric="loss",
+        mode="min",
+        perturbation_interval=5,
+        hyperparam_mutations={
+            # distribution for resampling
+            "lr": lambda: np.random.uniform(0.0001, 1),
+            # allow perturbations within this set of categorical values
+            "momentum": [0.8, 0.9, 0.99],
+        })
+
     analysis = tune.run(
         TorchTrainable,
         num_samples=2,
         config={"lr": tune.choice([1e-4, 1e-3])},
-        stop={"training_iteration": 2},
+        stop={"training_iteration": 2 if test_mode else 100},
         verbose=2)
 
     return analysis.get_best_config(metric="mean_accuracy", mode="max")
