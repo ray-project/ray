@@ -221,7 +221,7 @@ py_test(
 
 py_test(
     name = "test_global_gc",
-    size = "small",
+    size = "medium",
     srcs = ["test_global_gc.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
