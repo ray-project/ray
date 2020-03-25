@@ -13,6 +13,12 @@ def env_integer(key, default):
     return default
 
 
+def env_bool(key, default):
+    if key in os.environ:
+        return True if os.environ[key].lower() == 'true' else False
+    return default
+
+
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -197,4 +203,4 @@ MACH_PAGE_SIZE_BYTES = 4096
 # RAY_GCS_SERVICE_ENABLED only set in ci job.
 # TODO(ffbin): Once we entirely migrate to service-based GCS, we should
 # remove it.
-RAY_GCS_SERVICE_ENABLED = "RAY_GCS_SERVICE_ENABLED"
+GCS_SERVICE_ENABLED = env_bool("RAY_GCS_SERVICE_ENABLED", True)

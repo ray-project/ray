@@ -271,3 +271,12 @@ RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+
+/// Whether to enable gcs service.
+/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
+/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
+/// otherwise gcs service is enabled.
+/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
+RAY_CONFIG(bool, gcs_service_enabled,
+           getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
+               strcmp(getenv("RAY_GCS_SERVICE_ENABLED"), "true") == 0)
