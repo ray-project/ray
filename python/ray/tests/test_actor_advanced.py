@@ -271,7 +271,6 @@ def setup_counter_actor(test_checkpoint=False,
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
 def test_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=False)
 
     @ray.remote
@@ -305,7 +304,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote
@@ -342,7 +340,6 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
 @pytest.mark.skip("Fork/join consistency not yet implemented.")
 def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
-    cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)
 
     @ray.remote

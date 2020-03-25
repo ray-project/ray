@@ -770,6 +770,7 @@ cc_library(
     strip_include_prefix = "src/ray",
     visibility = ["//visibility:public"],
     deps = [
+        "@//:platform_shims",
         "@boost//:asio",
         "@com_github_ray_project_ray//:platform_shims",
         "@com_google_googletest//:gtest",
@@ -778,7 +779,6 @@ cc_library(
         "@plasma//:common_fbs",
         "@plasma//:plasma_fbs",
         "@plasma//:plasma_server_upstream",
-        "@//:platform_shims",
     ],
 )
 
