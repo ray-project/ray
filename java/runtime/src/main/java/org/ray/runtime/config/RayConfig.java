@@ -72,7 +72,7 @@ public class RayConfig {
   public final String jobResourcePath;
   public final String pythonWorkerCommand;
 
-  public final boolean gcs_service_enabled;
+  public final boolean gcsServiceEnabled;
 
   private static volatile RayConfig instance = null;
 
@@ -225,7 +225,7 @@ public class RayConfig {
 
     numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
 
-    gcs_service_enabled = System.getenv("RAY_GCS_SERVICE_ENABLED") == null ||
+    gcsServiceEnabled = System.getenv("RAY_GCS_SERVICE_ENABLED") == null ||
       System.getenv("RAY_GCS_SERVICE_ENABLED").toLowerCase().equals("true");
 
     // Validate config.
