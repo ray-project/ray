@@ -575,31 +575,6 @@ class TorchTrainer:
                 config={"lr": tune.grid_search([0.01, 0.1])}
             )
 
-        Custom iterative training procedure:
-
-        .. code-block:: python
-
-            TorchTrainable = TorchTrainer.as_trainable(
-                model_creator=ResNet18,
-                data_creator=cifar_creator,
-                optimizer_creator=optimizer_creator,
-                loss_creator=nn.CrossEntropyLoss,
-                num_gpus=2
-            )
-
-            class CustomTrainable(TorchTrainable):
-                def _train(self):
-                    for i in range(5):
-                        train_stats = self.trainer.train()
-                    validation_stats = self.trainer.validate()
-                    train_stats.update(validation_stats)
-                    return train_stats
-
-            analysis = tune.run(
-                CustomTrainable,
-                config={"lr": tune.grid_search([0.01, 0.1])}
-            )
-
         """
 
         class TorchTrainable(BaseTorchTrainable):
@@ -627,25 +602,63 @@ class TorchTrainer:
 
 
 class BaseTorchTrainable(Trainable):
-    """Base class for implementing a Tune-compatible Trainable class."""
+    """Base class for implementing a Tune-compatible Trainable class.
+
+    Custom iterative training procedure:
+
+    .. code-block:: python
+
+        TorchTrainable = TorchTrainer.as_trainable(
+            model_creator=ResNet18,
+            data_creator=cifar_creator,
+            optimizer_creator=optimizer_creator,
+            loss_creator=nn.CrossEntropyLoss,
+            num_gpus=2
+        )
+
+        class CustomTrainable(TorchTrainable):
+            def _train(self):
+                for i in range(5):
+                    train_stats = self.trainer.train()
+                validation_stats = self.trainer.validate()
+                train_stats.update(validation_stats)
+                return train_stats
+
+        analysis = tune.run(
+            CustomTrainable,
+            config={"lr": tune.grid_search([0.01, 0.1])}
+        )
+
+    """
 
     def _setup(self, config):
+        """Constructs a TorchTrainer object as `self.trainer`."""
         self._trainer = self._create_trainer(config)
 
     def _train(self):
+        """Calls `self.trainer.train()` and `self.trainer.validate()` once.
+
+        You may want to override this if using a custom LR scheduler.
+        """
         train_stats = self.trainer.train(profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats
 
     def _save(self, checkpoint):
+        """Returns a dictionary containing the trainer state."""
         return {"state": self.trainer.state_stream()}
 
     def _restore(self, checkpoint_dict):
+        """Returns a dictionary containing the trainer state.
+
+        Override this if you have state to the Trainer object.
+        """
         checkpoint = checkpoint_dict["state"]
         return self.trainer.load_state_stream(checkpoint)
 
     def _stop(self):
+        """Shuts down the trainer."""
         self.trainer.shutdown()
 
     def _create_trainer(self, config):

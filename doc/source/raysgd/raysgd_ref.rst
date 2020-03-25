@@ -19,6 +19,7 @@ PyTorch TrainingOperator
 .. autoclass:: ray.util.sgd.torch.TrainingOperator
     :members:
 
+.. _BaseTorchTrainable-doc:
 
 BaseTorchTrainable
 ------------------
