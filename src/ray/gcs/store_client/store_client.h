@@ -46,9 +46,9 @@ class StoreClient {
 
   /// Write data to the given table asynchronously.
   ///
-  /// \param table_name The name of the table to be write.
-  /// \param key The key that will be write to the table.
-  /// \param value The value of the key that will be write to the table.
+  /// \param table_name The name of the table to be written.
+  /// \param key The key that will be written to the table.
+  /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
   virtual Status AsyncPut(const std::string &table_name, const Key &key,
@@ -57,9 +57,9 @@ class StoreClient {
   /// Write data to the given table asynchronously.
   ///
   /// \param table_name The name of the table to be written.
-  /// \param key The key that will be write to the table.
+  /// \param key The key that will be written to the table.
   /// \param index_key A secondary key that will be used for indexing the data.
-  /// \param value The value of the key that will be write to the table.
+  /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
   virtual Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
@@ -106,8 +106,6 @@ class StoreClient {
 
  protected:
   StoreClient() {}
-
-  std::shared_ptr<IOServicePool> io_service_pool_;
 };
 
 }  // namespace gcs

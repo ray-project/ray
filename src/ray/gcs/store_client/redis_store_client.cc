@@ -30,8 +30,7 @@ RedisStoreClient::RedisStoreClient(const RedisClientOptions &options) {
 RedisStoreClient::~RedisStoreClient() {}
 
 Status RedisStoreClient::Connect(std::shared_ptr<IOServicePool> io_service_pool) {
-  io_service_pool_ = std::move(io_service_pool);
-  Status status = redis_client_->Connect(io_service_pool_->GetAll());
+  Status status = redis_client_->Connect(io_service_pool->GetAll());
   RAY_LOG(INFO) << "RedisStoreClient::Connect finished with status " << status.ToString();
   return status;
 }
