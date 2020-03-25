@@ -602,9 +602,12 @@ class TorchTrainer:
 
 
 class BaseTorchTrainable(Trainable):
-    """Base class for implementing a Tune-compatible Trainable class.
+    """Base class for converting TorchTrainer to a Trainable class.
 
-    Custom iterative training procedure:
+    This class is produced when you call ``TorchTrainer.as_trainable(...)``.
+
+    You can override the produced Trainable to implement custom iterative
+    training procedures:
 
     .. code-block:: python
 
@@ -615,6 +618,7 @@ class BaseTorchTrainable(Trainable):
             loss_creator=nn.CrossEntropyLoss,
             num_gpus=2
         )
+        # TorchTrainable is subclass of BaseTorchTrainable.
 
         class CustomTrainable(TorchTrainable):
             def _train(self):
