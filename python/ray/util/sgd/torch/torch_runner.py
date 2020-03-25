@@ -231,7 +231,7 @@ class TorchRunner:
         for model, state_dict in zip(self.models, models_state_dicts):
             model.load_state_dict(state_dict)
 
-    def get_state(self):
+    def state_dict(self):
         """Returns the state of the runner."""
 
         state = {
@@ -251,7 +251,7 @@ class TorchRunner:
             state.update({"amp": amp.state_dict()})
         return state
 
-    def set_state(self, state):
+    def load_state_dict(self, state):
         """Sets the state of the model."""
         # TODO: restore timer stats
         self._set_model_state_dicts(state["models"])

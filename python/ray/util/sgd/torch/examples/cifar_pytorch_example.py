@@ -92,7 +92,8 @@ def train_example(num_workers=1,
     print("success!")
 
 
-def tune_example(num_workers=1, use_gpu=False, test_mode=False):
+def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
+                 test_mode=False):
     TorchTrainable = TorchTrainer.as_trainable(
         model_creator=ResNet18,
         data_creator=cifar_creator,
@@ -102,7 +103,7 @@ def tune_example(num_workers=1, use_gpu=False, test_mode=False):
         initialization_hook=initialization_hook,
         num_workers=num_workers,
         config={
-            "lr": 0.01,  # lr is overriden by the provided config
+            "lr": 0.01,  # lr is overriden by the Tune config
             "test_mode": test_mode,
             BATCH_SIZE: 128,
         },

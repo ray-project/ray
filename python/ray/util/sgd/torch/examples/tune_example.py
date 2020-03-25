@@ -14,7 +14,8 @@ import torch.nn as nn
 
 import ray
 from ray import tune
-from ray.util.sgd.torch.torch_trainer import TorchTrainable
+from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.torch.utils import BATCH_SIZE
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -70,7 +71,7 @@ def tune_example(num_workers=1, use_gpu=False):
     analysis = tune.run(
         TorchTrainable,
         num_samples=8,
-        config=config,
+        config={"lr": tune.grid_search([1e-4, 1e-3])},
         stop={"training_iteration": 2},
         verbose=1)
 

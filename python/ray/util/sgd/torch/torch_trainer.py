@@ -4,7 +4,6 @@ import logging
 import numbers
 import tempfile
 import time
-import torch
 import torch.distributed as dist
 
 import ray
@@ -471,27 +470,16 @@ class TorchTrainer:
                 model.load_state_dict(state_dict)
         return models
 
-    def save(self, checkpoint):
-        """Saves the model(s) to the provided checkpoint.
+    def state_dict(self):
+        return ray.get(self.workers[0].get_state.remote())
 
-        Args:
-            checkpoint (str): Path to target checkpoint file.
-
-        Returns:
-            checkpoint (str): Path to target checkpoint file.
-        """
-        state = ray.get(self.workers[0].get_state.remote())
-        torch.save(state, checkpoint)
-        return checkpoint
-
-    def restore(self, checkpoint):
+    def load_state_dict(self, state_dict):
         """Restores the Trainer and all workers from the provided checkpoint.
 
         Args:
-            checkpoint (str): Path to target checkpoint file.
+            state_dict (dict): Dictionary including tensors.
         """
-        state = torch.load(checkpoint)
-        state_id = ray.put(state)
+        state_id = ray.put(state_dict)
         ray.get([worker.set_state.remote(state_id) for worker in self.workers])
 
     def shutdown(self, force=False):
@@ -544,6 +532,66 @@ class TorchTrainer:
         return False
 
     @classmethod
+    def to_trainable(*args, **kwargs):
+        """Creates a BaseTorchTrainable class compatible with Tune.
+
+        Any configuration parameters will be overriden by the Tune
+        Trial configuration. You can also subclass the provided Trainable
+        to implement your own iterative optimization routine.
+
+        .. code-block:: python
+
+            TorchTrainable = TorchTrainer.as_trainable(
+                model_creator=ResNet18,
+                data_creator=cifar_creator,
+                optimizer_creator=optimizer_creator,
+                loss_creator=nn.CrossEntropyLoss,
+                num_gpus=2
+            )
+            analysis = tune.run(
+                TorchTrainable,
+                config={"lr": tune.grid_search([0.01, 0.1])}
+            )
+
+        Custom iterative training procedure:
+
+        .. code-block:: python
+
+            TorchTrainable = TorchTrainer.as_trainable(
+                model_creator=ResNet18,
+                data_creator=cifar_creator,
+                optimizer_creator=optimizer_creator,
+                loss_creator=nn.CrossEntropyLoss,
+                num_gpus=2
+            )
+
+            class CustomTrainable(TorchTrainable):
+                def _train(self):
+                    for i in range(5):
+                        train_stats = self.trainer.train()
+                    validation_stats = self.trainer.validate()
+                    train_stats.update(validation_stats)
+                    return train_stats
+
+            analysis = tune.run(
+                CustomTrainable,
+                config={"lr": tune.grid_search([0.01, 0.1])}
+            )
+
+        """
+
+        class TorchTrainable(BaseTorchTrainable):
+            def _create_trainer(self):
+                trainer = TorchTrainer(*args, **kwargs)
+                return trainer
+
+        return TorchTrainable
+
+
+class BaseTorchTrainable(Trainable):
+    """Base class for implementing a Tune-compatible Trainable class."""
+
+    @classmethod
     def default_resource_request(cls, config):
         return Resources(
             cpu=0,
@@ -552,20 +600,26 @@ class TorchTrainer:
             extra_gpu=int(config["use_gpu"]) * config["num_workers"])
 
     def _setup(self, config):
-        self._trainer = TorchTrainer(**config)
+        self._trainer = self._create_trainer()
 
     def _train(self):
-        train_stats = self._trainer.train()
-        validation_stats = self._trainer.validate()
-
+        train_stats = self.trainer.train()
+        validation_stats = self.trainer.validate()
         train_stats.update(validation_stats)
         return train_stats
 
-    def _save(self, checkpoint_dir):
-        return self._trainer.save(os.path.join(checkpoint_dir, "model.pth"))
+    def _save(self, checkpoint):
+        return self.trainer.state_dict()
 
-    def _restore(self, checkpoint_path):
-        return self._trainer.restore(checkpoint_path)
+    def _restore(self, checkpoint):
+        return self.trainer.load_state_dict(checkpoint)
 
     def _stop(self):
-        self._trainer.shutdown()
+        self.trainer.shutdown()
+
+    def _create_trainer(self):
+        raise NotImplementedError
+
+    @property
+    def trainer(self):
+        return self._trainer

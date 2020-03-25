@@ -410,19 +410,20 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
-    TorchTrainable = TorchTrainer.as_trainable(**{
-        "model_creator": model_creator,
-        "data_creator": data_creator,
-        "optimizer_creator": optimizer_creator,
-        "loss_creator": lambda config: nn.MSELoss(),
-        "num_workers": num_workers,
-        "use_gpu": False,
-        "backend": "gloo",
-        "config": {
-            "batch_size": 512,
-            "lr": 0.001
-        }
-    })
+    TorchTrainable = TorchTrainer.as_trainable(
+        **{
+            "model_creator": model_creator,
+            "data_creator": data_creator,
+            "optimizer_creator": optimizer_creator,
+            "loss_creator": lambda config: nn.MSELoss(),
+            "num_workers": num_workers,
+            "use_gpu": False,
+            "backend": "gloo",
+            "config": {
+                "batch_size": 512,
+                "lr": 0.001
+            }
+        })
 
     analysis = tune.run(
         TorchTrainable,
