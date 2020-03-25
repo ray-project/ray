@@ -31,6 +31,7 @@ class Logger:
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
+        trial (Trial): Trial object for the logger to access.
     """
 
     def __init__(self, config, logdir, trial=None):
@@ -97,6 +98,13 @@ class MLFLowLogger(Logger):
 
 
 class JsonLogger(Logger):
+    """Logs trial results in json format.
+
+    Also writes to a results file and param.json file when results or
+    configurations are updated. Experiments must be executed with the
+    JsonLogger to be compatible with the ExperimentAnalysis tool.
+    """
+
     def _init(self):
         self.update_config(self.config)
         local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
@@ -278,6 +286,11 @@ class UnifiedLogger(Logger):
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
             self._logger_cls_list = loggers
+        if JsonLogger not in self._logger_cls_list:
+            if log_once("JsonLogger"):
+                logger.warning(
+                    "JsonLogger not provided. The ExperimentAnalysis tool is "
+                    "disabled.")
         self._sync_function = sync_function
         self._log_syncer = None
 

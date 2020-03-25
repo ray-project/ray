@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/util/logging.h"
+
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 
 #include "gtest/gtest.h"
-#include "ray/util/logging.h"
+#include "ray/util/filesystem.h"
 
 namespace ray {
 
@@ -55,14 +57,15 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
-  RayLog::StartRayLog("", RayLogLevel::DEBUG, "/tmp/");
+  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir() + ray::GetDirSep());
   PrintLog();
   RayLog::ShutDownRayLog();
 }
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
-  RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR, "/tmp/");
+  RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
+                      ray::GetUserTempDir() + ray::GetDirSep());
   int rounds = 100000;
 
   int64_t start_time = current_time_ms();

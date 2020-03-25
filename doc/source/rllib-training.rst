@@ -141,6 +141,18 @@ Here is an example of the basic usage (for a more complete example, see `custom_
            checkpoint = trainer.save()
            print("checkpoint saved at", checkpoint)
 
+    # Also, in case you have trained a model outside of ray/RLlib and have created
+    # an h5-file with weight values in it, e.g.
+    # my_keras_model_trained_outside_rllib.save_weights("model.h5")
+    # (see: https://keras.io/models/about-keras-models/)
+
+    # ... you can load the h5-weights into your Trainer's Policy's ModelV2
+    # (tf or torch) by doing:
+    trainer.import_model("my_weights.h5")
+    # NOTE: In order for this to work, your (custom) model needs to implement
+    # the `import_from_h5` method.
+    # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
+    # for detailed examples for tf- and torch trainers/models.
 
 .. note::
 
@@ -913,15 +925,13 @@ Stack Traces
 
 You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected hangs or performance issues.
 
-REST API
---------
+External Application API
+------------------------
 
-In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external agents `interface <rllib-env.html#interfacing-with-external-agents>`__.
+In some cases (i.e., when interacting with an externally hosted simulator or production environment) it makes more sense to interact with RLlib as if it were an independently running service, rather than RLlib hosting the simulations itself. This is possible via RLlib's external applications interface `(full documentation) <rllib-env.html#external-agents-and-applications>`__.
 
-.. autoclass:: ray.rllib.utils.policy_client.PolicyClient
+.. autoclass:: ray.rllib.env.policy_client.PolicyClient
     :members:
 
-.. autoclass:: ray.rllib.utils.policy_server.PolicyServer
+.. autoclass:: ray.rllib.env.policy_server_input.PolicyServerInput
     :members:
-
-For a full client / server example that you can run, see the example `client script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__ and also the corresponding `server script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, here configured to serve a policy for the toy CartPole-v0 environment.

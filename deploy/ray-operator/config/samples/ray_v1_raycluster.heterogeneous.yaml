@@ -26,7 +26,7 @@ spec:
         raycluster.group.name: small-group
 
       # Command to start ray
-      command: ray start --block --node-ip-address=$MY_POD_IP --address=$RAYCLUSTER_SAMPLE_SERVICE_HOST:$RAYCLUSTER_SAMPLE_SERVICE_PORT_REDIS --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
+      command: ray start --block --node-ip-address=$MY_POD_IP --address=$CLUSTER_NAME-head:6379 --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
 
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
@@ -70,7 +70,7 @@ spec:
         raycluster.group.name: medium-group
 
       # Command to start ray
-      command: ray start --block --node-ip-address=$MY_POD_IP --address=$RAYCLUSTER_SAMPLE_SERVICE_HOST:$RAYCLUSTER_SAMPLE_SERVICE_PORT_REDIS --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
+      command: ray start --block --node-ip-address=$MY_POD_IP --address=$CLUSTER_NAME-head:6379 --object-manager-port=12345 --node-manager-port=12346 --object-store-memory=100000000 --num-cpus=1
 
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/

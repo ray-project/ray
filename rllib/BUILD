@@ -1035,6 +1035,14 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_model_imports",
+    tags = ["tests_dir", "tests_dir_M", "model_imports"],
+    size = "small",
+    data = glob(["tests/data/model_weights/**"]),
+    srcs = ["tests/test_model_imports.py"]
+)
+
+py_test(
     name = "tests/test_multi_agent_env",
     tags = ["tests_dir", "tests_dir_M"],
     size = "large",
@@ -1073,7 +1081,7 @@ py_test(
     name = "test_rollout",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
-    size = "large",
+    size = "enormous",
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"]
 )
@@ -1334,6 +1342,22 @@ py_test(
     size = "small",
     srcs = ["examples/rollout_worker_custom_workflow.py"],
     args = ["--num-cpus=4"]
+)
+
+sh_test(
+    name = "examples/serving/test_local_inference",
+    tags = ["examples", "examples_L", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_local_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "examples/serving/test_remote_inference",
+    tags = ["examples", "examples_R", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_remote_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
 )
 
 py_test(

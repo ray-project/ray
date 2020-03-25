@@ -40,6 +40,11 @@ void GcsServer::Start() {
   // Init gcs node_manager
   InitGcsNodeManager();
 
+  // Init gcs detector
+  gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
+      main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
+  gcs_redis_failure_detector_->Start();
+
   // Register rpc service.
   job_info_handler_ = InitJobInfoHandler();
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
@@ -94,11 +99,15 @@ void GcsServer::Start() {
 }
 
 void GcsServer::Stop() {
+  RAY_LOG(INFO) << "Stopping gcs server.";
   // Shutdown the rpc server
   rpc_server_.Shutdown();
 
   // Stop the event loop.
   main_service_.stop();
+
+  is_stopped_ = true;
+  RAY_LOG(INFO) << "Finished stopping gcs server.";
 }
 
 void GcsServer::InitBackendClient() {

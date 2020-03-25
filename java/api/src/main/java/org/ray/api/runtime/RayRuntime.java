@@ -2,10 +2,14 @@ package org.ray.api.runtime;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
+import org.ray.api.function.PyActorClass;
+import org.ray.api.function.PyActorMethod;
+import org.ray.api.function.PyRemoteFunction;
 import org.ray.api.function.RayFunc;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
@@ -82,7 +86,7 @@ public interface RayRuntime {
    * @param actor The actor to be killed.
    * @param noReconstruction If set to true, the killed actor will not be reconstructed anymore.
    */
-  void killActor(RayActor<?> actor, boolean noReconstruction);
+  void killActor(BaseActor actor, boolean noReconstruction);
 
   /**
    * Invoke a remote function.
@@ -95,14 +99,34 @@ public interface RayRuntime {
   RayObject call(RayFunc func, Object[] args, CallOptions options);
 
   /**
+   * Invoke a remote Python function.
+   *
+   * @param pyRemoteFunction The Python function.
+   * @param args Arguments of the function.
+   * @param options The options for this call.
+   * @return The result object.
+   */
+  RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args, CallOptions options);
+
+  /**
    * Invoke a remote function on an actor.
    *
-   * @param func The remote function to run, it must be a method of the given actor.
    * @param actor A handle to the actor.
+   * @param func The remote function to run, it must be a method of the given actor.
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args);
+  RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args);
+
+  /**
+   * Invoke a remote Python function on an actor.
+   *
+   * @param pyActor A handle to the actor.
+   * @param pyActorMethod The actor method.
+   * @param args Arguments of the function.
+   * @return The result object.
+   */
+  RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object[] args);
 
   /**
    * Create an actor on a remote node.
@@ -116,40 +140,18 @@ public interface RayRuntime {
   <T> RayActor<T> createActor(RayFunc actorFactoryFunc, Object[] args,
       ActorCreationOptions options);
 
-  RuntimeContext getRuntimeContext();
-
-  /**
-   * Invoke a remote Python function.
-   *
-   * @param moduleName Module name of the Python function.
-   * @param functionName Name of the Python function.
-   * @param args Arguments of the function.
-   * @param options The options for this call.
-   * @return The result object.
-   */
-  RayObject callPy(String moduleName, String functionName, Object[] args, CallOptions options);
-
-  /**
-   * Invoke a remote Python function on an actor.
-   *
-   * @param pyActor A handle to the actor.
-   * @param functionName Name of the actor method.
-   * @param args Arguments of the function.
-   * @return The result object.
-   */
-  RayObject callPy(RayPyActor pyActor, String functionName, Object[] args);
-
   /**
    * Create a Python actor on a remote node.
    *
-   * @param moduleName Module name of the Python actor class.
-   * @param className Name of the Python actor class.
+   * @param pyActorClass The Python actor class.
    * @param args Arguments of the actor constructor.
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  RayPyActor createPyActor(String moduleName, String className, Object[] args,
-      ActorCreationOptions options);
+  RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
+                         ActorCreationOptions options);
+
+  RuntimeContext getRuntimeContext();
 
   Object getAsyncContext();
 

@@ -19,19 +19,9 @@ def get_mean_action(alg, obs):
 
 
 CONFIGS = {
-    "SAC": {
+    "A3C": {
         "explore": False,
-    },
-    "ES": {
-        "explore": False,
-        "episodes_per_batch": 10,
-        "train_batch_size": 100,
-        "num_workers": 2,
-        "noise_size": 2500000,
-        "observation_filter": "MeanStdFilter"
-    },
-    "DQN": {
-        "explore": False
+        "num_workers": 1
     },
     "APEX_DDPG": {
         "explore": False,
@@ -42,9 +32,27 @@ CONFIGS = {
             "num_replay_buffer_shards": 1,
         },
     },
+    "ARS": {
+        "explore": False,
+        "num_rollouts": 10,
+        "num_workers": 2,
+        "noise_size": 2500000,
+        "observation_filter": "MeanStdFilter"
+    },
     "DDPG": {
         "explore": False,
         "timesteps_per_iteration": 100
+    },
+    "DQN": {
+        "explore": False
+    },
+    "ES": {
+        "explore": False,
+        "episodes_per_batch": 10,
+        "train_batch_size": 100,
+        "num_workers": 2,
+        "noise_size": 2500000,
+        "observation_filter": "MeanStdFilter"
     },
     "PPO": {
         "explore": False,
@@ -52,17 +60,9 @@ CONFIGS = {
         "train_batch_size": 1000,
         "num_workers": 2
     },
-    "A3C": {
+    "SAC": {
         "explore": False,
-        "num_workers": 1
     },
-    "ARS": {
-        "explore": False,
-        "num_rollouts": 10,
-        "num_workers": 2,
-        "noise_size": 2500000,
-        "observation_filter": "MeanStdFilter"
-    }
 }
 
 
@@ -121,11 +121,12 @@ def export_test(alg_name, failures):
     else:
         algo = cls(config=CONFIGS[alg_name], env="CartPole-v0")
 
-    for _ in range(3):
+    for _ in range(2):
         res = algo.train()
         print("current status: " + str(res))
 
-    export_dir = "/tmp/export_dir_%s" % alg_name
+    export_dir = os.path.join(ray.utils.get_user_temp_dir(),
+                              "export_dir_%s" % alg_name)
     print("Exporting model ", alg_name, export_dir)
     algo.export_policy_model(export_dir)
     if not valid_tf_model(export_dir):

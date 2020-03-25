@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import norm
+from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.dqn as dqn
@@ -42,6 +43,14 @@ def do_test_log_likelihood(run,
         print("Testing {} with framework={}".format(run, fw))
         config["eager"] = fw == "eager"
         config["use_pytorch"] = fw == "torch"
+
+        eager_ctx = None
+        if fw == "eager":
+            eager_ctx = eager_mode()
+            eager_ctx.__enter__()
+            assert tf.executing_eagerly()
+        elif fw == "tf":
+            assert not tf.executing_eagerly()
 
         trainer = run(config=config, env=env)
         policy = trainer.get_policy()
@@ -103,6 +112,9 @@ def do_test_log_likelihood(run,
                     prev_action_batch=np.array([prev_a]),
                     prev_reward_batch=np.array([prev_r]))
                 check(np.exp(logp), expected_prob, atol=0.2)
+
+        if eager_ctx:
+            eager_ctx.__exit__(None, None, None)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):

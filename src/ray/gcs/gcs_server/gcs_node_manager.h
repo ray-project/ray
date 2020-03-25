@@ -23,7 +23,8 @@ class GcsNodeManager {
   ///
   /// \param node_id The client ID of the Raylet that sent the heartbeat.
   /// \param heartbeat_data The heartbeat sent by the client.
-  void HandleHeartbeat(const ClientID &node_id, rpc::HeartbeatTableData &&heartbeat_data);
+  void HandleHeartbeat(const ClientID &node_id,
+                       const rpc::HeartbeatTableData &heartbeat_data);
 
  protected:
   /// Listen for heartbeats from Raylets and mark Raylets
