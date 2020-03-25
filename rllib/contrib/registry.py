@@ -18,12 +18,12 @@ def _import_alphazero():
 
 
 def _import_bandit_lints():
-    from ray.rllib.contrib.bandits.agents.linear import LinTSTrainer
+    from ray.rllib.contrib.bandits.agents.lin_ts import LinTSTrainer
     return LinTSTrainer
 
 
 def _import_bandit_linucb():
-    from ray.rllib.contrib.bandits.agents.linear import LinUCBTrainer
+    from ray.rllib.contrib.bandits.agents.lin_ucb import LinUCBTrainer
     return LinUCBTrainer
 
 
