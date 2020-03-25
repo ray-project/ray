@@ -326,13 +326,11 @@ Use the ``initialization_hook`` parameter to initialize state on each worker pro
 Save and Load
 -------------
 
-If you want to save or reload the training procedure, you can use ``trainer.save``
-and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load`` calls. This should work across a distributed cluster even without a NFS because it takes advantage of Ray's distributed object store.
+If you want to save or reload the training procedure, you can use ``trainer.state_stream`` and ``trainer.load_state_stream``, which produce byte objects representing the training state. This should work across a distributed cluster even without a NFS because it takes advantage of Ray's distributed object store.
 
 .. code-block:: python
 
-    checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
-    trainer_1.save(checkpoint_path)
+    state = trainer_1.state_stream()
 
     trainer_2 = TorchTrainer(
         model_creator=model_creator,
@@ -340,7 +338,7 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
         optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         num_workers=num_workers)
-    trainer_2.restore(checkpoint_path)
+    trainer_2.load_state_stream(state)
 
 
 Retrieving the model
