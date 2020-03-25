@@ -469,19 +469,39 @@ class TorchTrainer:
         return models
 
     def state_stream(self):
+        """Byte representation of the current trainer state.
+
+        Returns:
+            bytes: A byte representation of the state. Contains state dicts.
+        """
         return ray.get(self.workers[0].state_stream.remote())
 
     def load_state_stream(self, state_stream):
         """Restores the Trainer and all workers from the provided checkpoint.
 
         Args:
-            state_dict (dict): Dictionary including tensors.
+            state_stream (bytes): A byte representation of the state. Obtained
+                from Trainer.state_stream().
         """
         state_id = ray.put(state_stream)
         ray.get([
             worker.load_state_stream.remote(state_id)
             for worker in self.workers
         ])
+
+    def state_dict(self):
+        raise NotImplementedError("`state_dict` is not yet implemented.")
+
+    def load_state_dict(self):
+        raise NotImplementedError("`load_state_dict` is not yet implemented.")
+
+    def save(self, *args):
+        raise DeprecationWarning(
+            "save is deprecated. Use `state_stream` instead.")
+
+    def restore(self, *args):
+        raise DeprecationWarning(
+            "restore is deprecated. Use `load_state_stream` instead.")
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
