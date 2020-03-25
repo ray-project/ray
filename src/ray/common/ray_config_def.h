@@ -279,4 +279,4 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 /// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
 RAY_CONFIG(bool, gcs_service_enabled,
            getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
-               strcmp(getenv("RAY_GCS_SERVICE_ENABLED"), "true") == 0)
+               getenv("RAY_GCS_SERVICE_ENABLED") == std::string("true"))
