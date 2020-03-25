@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_TASK_MANAGER_H
 #define RAY_CORE_WORKER_TASK_MANAGER_H
 
@@ -39,7 +53,13 @@ class TaskManager : public TaskFinisherInterface {
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         actor_manager_(actor_manager),
-        retry_task_callback_(retry_task_callback) {}
+        retry_task_callback_(retry_task_callback) {
+    reference_counter_->SetReleaseLineageCallback(
+        [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+          RemoveLineageReference(object_id, ids_to_release);
+          ShutdownIfNeeded();
+        });
+  }
 
   /// Add a task that is pending execution.
   ///
@@ -50,18 +70,13 @@ class TaskManager : public TaskFinisherInterface {
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      const TaskSpecification &spec, int max_retries = 0);
+                      const TaskSpecification &spec, const std::string &call_site,
+                      int max_retries = 0);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
-
-  /// Return whether the task is pending.
-  ///
-  /// \param[in] task_id ID of the task to query.
-  /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const;
 
   /// Write return objects for a pending task to the memory store.
   ///
@@ -96,32 +111,84 @@ class TaskManager : public TaskFinisherInterface {
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
+  /// Return whether this task can be submitted for execution.
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task can be submitted for execution.
+  bool IsTaskSubmissible(const TaskID &task_id) const;
+
+  /// Return whether the task is pending.
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task is pending.
+  bool IsTaskPending(const TaskID &task_id) const;
+
+  /// Return the number of submissible tasks. This includes both tasks that are
+  /// pending execution and tasks that have finished but that may be
+  /// re-executed to recover from a failure.
+  size_t NumSubmissibleTasks() const;
+
   /// Return the number of pending tasks.
-  int NumPendingTasks() const { return pending_tasks_.size(); }
+  size_t NumPendingTasks() const;
 
  private:
+  struct TaskEntry {
+    TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg,
+              size_t num_returns)
+        : spec(spec_arg), num_retries_left(num_retries_left_arg) {
+      for (size_t i = 0; i < num_returns; i++) {
+        reconstructable_return_ids.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
+      }
+    }
+    /// The task spec. This is pinned as long as the following are true:
+    /// - The task is still pending execution. This means that the task may
+    /// fail and so it may be retried in the future.
+    /// - The task finished execution, but it has num_retries_left > 0 and
+    /// reconstructable_return_ids is not empty. This means that the task may
+    /// be retried in the future to recreate its return objects.
+    /// TODO(swang): The TaskSpec protobuf must be copied into the
+    /// PushTaskRequest protobuf when sent to a worker so that we can retry it if
+    /// the worker fails. We could avoid this by either not caching the full
+    /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
+    /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
+    const TaskSpecification spec;
+    // Number of times this task may be resubmitted. If this reaches 0, then
+    // the task entry may be erased.
+    int num_retries_left;
+    // Whether this task is currently pending execution. This is used to pin
+    // the task entry if the task is still pending but all of its return IDs
+    // are out of scope.
+    bool pending = true;
+    // Objects returned by this task that are reconstructable. This is set
+    // initially to the task's return objects, since if the task fails, these
+    // objects may be reconstructed by resubmitting the task. Once the task
+    // finishes its first execution, then the objects that the task returned by
+    // value are removed from this set because they can be inlined in any
+    // dependent tasks. Objects that the task returned through plasma are
+    // reconstructable, so they are only removed from this set once:
+    // 1) The language frontend no longer has a reference to the object ID.
+    // 2) There are no tasks that depend on the object. This includes both
+    //    pending tasks and tasks that finished execution but that may be
+    //    retried in the future.
+    absl::flat_hash_set<ObjectID> reconstructable_return_ids;
+  };
+
+  /// Remove a lineage reference to this object ID. This should be called
+  /// whenever a task that depended on this object ID can no longer be retried.
+  void RemoveLineageReference(const ObjectID &object_id,
+                              std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
+
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
   void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                              rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
-
-  /// Remove submitted task references in the reference counter for the object IDs.
-  /// If the references were borrowed by a worker while executing a task, then
-  /// merge in the ref counts for any references that the task (or a nested
-  /// task) is still borrowing. If any reference counts for the borrowed
-  /// objects reach zero, they are deleted from the in-memory store.
-  void RemoveSubmittedTaskReferences(
-      const std::vector<ObjectID> &object_ids,
-      const rpc::Address &worker_addr = rpc::Address(),
-      const ReferenceCounter::ReferenceTableProto &borrowed_refs =
-          ReferenceCounter::ReferenceTableProto());
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
   /// failed. The remaining dependencies are plasma objects and any ObjectIDs
   /// that were inlined in the task spec.
   void RemoveFinishedTaskReferences(
-      TaskSpecification &spec, const rpc::Address &worker_addr,
+      TaskSpecification &spec, bool release_lineage, const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
@@ -150,16 +217,16 @@ class TaskManager : public TaskFinisherInterface {
   /// Protects below fields.
   mutable absl::Mutex mu_;
 
-  /// Map from task ID to a pair of:
-  ///   {task spec, number of allowed retries left}
-  /// This map contains one entry per pending task that we submitted.
-  /// TODO(swang): The TaskSpec protobuf must be copied into the
-  /// PushTaskRequest protobuf when sent to a worker so that we can retry it if
-  /// the worker fails. We could avoid this by either not caching the full
-  /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
-  /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-  absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
-      GUARDED_BY(mu_);
+  /// This map contains one entry per task that may be submitted for
+  /// execution. This includes both tasks that are currently pending execution
+  /// and tasks that finished execution but that may be retried again in the
+  /// future.
+  absl::flat_hash_map<TaskID, TaskEntry> submissible_tasks_ GUARDED_BY(mu_);
+
+  /// Number of tasks that are pending. This is a count of all tasks in
+  /// submissible_tasks_ that have been submitted and are currently pending
+  /// execution.
+  size_t num_pending_tasks_ = 0;
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;

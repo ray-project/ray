@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CONSTANTS_H_
 #define RAY_CONSTANTS_H_
 
@@ -27,6 +41,12 @@ constexpr char kTaskTablePrefix[] = "TaskTable";
 constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_";
 
-constexpr char kWorkerNumWorkersPlaceholder[] = "RAY_WORKER_NUM_WORKERS_PLACEHOLDER";
+constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
+
+/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
+/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
+/// otherwise gcs service is enabled.
+/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
+constexpr char kRayGcsServiceEnabled[] = "RAY_GCS_SERVICE_ENABLED";
 
 #endif  // RAY_CONSTANTS_H_

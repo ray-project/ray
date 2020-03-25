@@ -5,6 +5,8 @@ import logging
 import pickle
 
 import ray
+from ray.util.debug import log_once, disable_log_once_globally, \
+    enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
@@ -26,8 +28,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import NoPreprocessor
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
-    summarize, enable_periodic_logging
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -118,7 +119,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                  policy_mapping_fn=None,
                  policies_to_train=None,
                  tf_session_creator=None,
-                 batch_steps=100,
+                 rollout_fragment_length=100,
                  batch_mode="truncate_episodes",
                  episode_horizon=None,
                  preprocessor_pref="deepmind",
@@ -164,20 +165,21 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 or None for all policies.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicy.
-            batch_steps (int): The target number of env transitions to include
-                in each sample batch returned from this worker.
+            rollout_fragment_length (int): The target number of env transitions
+                to include in each sample batch returned from this worker.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
-                    of at most `batch_steps * num_envs` in size. The batch will
-                    be exactly `batch_steps * num_envs` in size if
+                    of at most `rollout_fragment_length * num_envs` in size.
+                    The batch will be exactly
+                    `rollout_fragment_length * num_envs` in size if
                     postprocessing does not change batch sizes. Episodes may be
                     truncated in order to meet this size requirement.
                 "complete_episodes": Each call to sample() will return a batch
-                    of at least `batch_steps * num_envs` in size. Episodes will
-                    not be truncated, but multiple episodes may be packed
-                    within one batch to meet the batch size. Note that when
-                    `num_envs > 1`, episode steps will be buffered until the
-                    episode completes, and hence batches may contain
+                    of at least `rollout_fragment_length * num_envs` in size.
+                    Episodes will not be truncated, but multiple episodes may
+                    be packed within one batch to meet the batch size. Note
+                    that when `num_envs > 1`, episode steps will be buffered
+                    until the episode completes, and hence batches may contain
                     significant amounts of off-policy data.
             episode_horizon (int): Whether to stop episodes at this horizon.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors
@@ -238,6 +240,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 to ensure each remote worker has unique exploration behavior.
             _fake_sampler (bool): Use a fake (inf speed) sampler for testing.
         """
+        self._original_kwargs = locals().copy()
+        del self._original_kwargs["self"]
 
         global _global_worker
         _global_worker = self
@@ -272,11 +276,12 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         if not callable(policy_mapping_fn):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator = env_creator
-        self.sample_batch_size = batch_steps * num_envs
+        self.rollout_fragment_length = rollout_fragment_length * num_envs
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
         self.preprocessing_enabled = True
         self.last_batch = None
+        self.global_vars = None
         self._fake_sampler = _fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
@@ -398,10 +403,9 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         self.num_envs = num_envs
 
         if self.batch_mode == "truncate_episodes":
-            unroll_length = batch_steps
             pack_episodes = True
         elif self.batch_mode == "complete_episodes":
-            unroll_length = float("inf")  # never cut episodes
+            rollout_fragment_length = float("inf")  # never cut episodes
             pack_episodes = False  # sampler will return 1 episode per poll
         else:
             raise ValueError("Unsupported batch mode: {}".format(
@@ -434,7 +438,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 self.preprocessors,
                 self.filters,
                 clip_rewards,
-                unroll_length,
+                rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
@@ -452,7 +456,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
                 self.preprocessors,
                 self.filters,
                 clip_rewards,
-                unroll_length,
+                rollout_fragment_length,
                 self.callbacks,
                 horizon=episode_horizon,
                 pack=pack_episodes,
@@ -483,7 +487,7 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         if log_once("sample_start"):
             logger.info("Generating sample batch of size {}".format(
-                self.sample_batch_size))
+                self.rollout_fragment_length))
 
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
@@ -495,8 +499,8 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         else:
             max_batches = float("inf")
 
-        while steps_so_far < self.sample_batch_size and len(
-                batches) < max_batches:
+        while (steps_so_far < self.rollout_fragment_length
+               and len(batches) < max_batches):
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
@@ -545,9 +549,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
         }
 
     @override(EvaluatorInterface)
-    def set_weights(self, weights):
+    def set_weights(self, weights, global_vars=None):
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
+        if global_vars:
+            self.set_global_vars(global_vars)
 
     @override(EvaluatorInterface)
     def compute_gradients(self, samples):
@@ -766,10 +772,21 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     @DeveloperAPI
     def set_global_vars(self, global_vars):
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+        self.global_vars = global_vars
+
+    @DeveloperAPI
+    def get_global_vars(self):
+        return self.global_vars
 
     @DeveloperAPI
     def export_policy_model(self, export_dir, policy_id=DEFAULT_POLICY_ID):
         self.policy_map[policy_id].export_model(export_dir)
+
+    @DeveloperAPI
+    def import_policy_model_from_h5(self,
+                                    import_file,
+                                    policy_id=DEFAULT_POLICY_ID):
+        self.policy_map[policy_id].import_model_from_h5(import_file)
 
     @DeveloperAPI
     def export_policy_checkpoint(self,
@@ -782,6 +799,11 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
     @DeveloperAPI
     def stop(self):
         self.async_env.stop()
+
+    @DeveloperAPI
+    def creation_args(self):
+        """Returns the args used to create this worker."""
+        return self._original_kwargs
 
     def _build_policy_map(self, policy_dict, policy_config):
         policy_map = {}

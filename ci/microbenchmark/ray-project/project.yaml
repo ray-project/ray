@@ -1,0 +1,39 @@
+name: microbenchmark
+description: "Ray's microbenchmark"
+
+cluster:
+  config: ray-project/cluster.yaml
+
+commands:
+  - name: run
+    help: "Start one microbenchmark trial."
+    command: |      
+      rm ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl || true
+      wget https://s3-us-west-2.amazonaws.com/ray-wheels/{{ray_branch}}/{{commit}}/ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl
+      
+      pip uninstall -y -q ray
+      pip install -U ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl
+      
+      OMP_NUM_THREADS=64 ray microbenchmark
+    params:
+    - name: ray_version # Ray version string.
+      default: "0.9.0.dev0"
+
+    - name: commit # Ray commit SHA string.
+      default: "FILL ME IN"
+
+    - name: ray_branch
+      default: "master"
+    config:
+      tmux: true
+
+# Pathnames for files and directories that should be saved
+# in a snapshot but that should not be synced with a# session. Pathnames can be relative to the project
+# directory or absolute. Generally, this should be files
+# that were created by an active session, such as
+# application checkpoints and logs.
+output_files: [
+  # For example, uncomment this to save the logs from the
+  # last ray job.
+  # "/tmp/ray/session_latest",
+]

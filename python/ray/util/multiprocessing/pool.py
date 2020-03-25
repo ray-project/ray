@@ -31,7 +31,7 @@ class ResultThread(threading.Thread):
                  callback=None,
                  error_callback=None,
                  total_object_ids=None):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self._got_error = False
         self._object_ids = []
         self._num_ready = 0
@@ -232,13 +232,14 @@ class OrderedIMapIterator(IMapIterator):
             if self._next_chunk_index == self._total_chunks:
                 raise StopIteration
 
-            while timeout is None or timeout > 0:
+            # This loop will break when the next index in order is ready or
+            # self._result_thread.next_ready_index() raises a timeout.
+            index = -1
+            while index != self._next_chunk_index:
                 start = time.time()
                 index = self._result_thread.next_ready_index(timeout=timeout)
                 self._submit_next_chunk()
                 self._submitted_chunks[index] = True
-                if index == self._next_chunk_index:
-                    break
                 if timeout is not None:
                     timeout = max(0, timeout - (time.time() - start))
 
@@ -660,7 +661,7 @@ class Pool:
         if not self._closed:
             self.close()
         for actor, _ in self._actor_pool:
-            actor.__ray_kill__()
+            ray.kill(actor)
 
     def join(self):
         """Wait for the actors in a closed pool to exit.

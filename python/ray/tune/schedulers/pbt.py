@@ -1,5 +1,4 @@
 import copy
-import itertools
 import logging
 import json
 import math
@@ -150,22 +149,27 @@ class PopulationBasedTraining(FIFOScheduler):
             local_dir at each exploit. Allows config schedule to be
             reconstructed.
 
-    Example:
-        >>> pbt = PopulationBasedTraining(
-        >>>     time_attr="training_iteration",
-        >>>     metric="episode_reward_mean",
-        >>>     mode="max",
-        >>>     perturbation_interval=10,  # every 10 `time_attr` units
-        >>>                                # (training_iterations in this case)
-        >>>     hyperparam_mutations={
-        >>>         # Perturb factor1 by scaling it by 0.8 or 1.2. Resampling
-        >>>         # resets it to a value sampled from the lambda function.
-        >>>         "factor_1": lambda: random.uniform(0.0, 20.0),
-        >>>         # Perturb factor2 by changing it to an adjacent value, e.g.
-        >>>         # 10 -> 1 or 10 -> 100. Resampling will choose at random.
-        >>>         "factor_2": [1, 10, 100, 1000, 10000],
-        >>>     })
-        >>> tune.run({...}, num_samples=8, scheduler=pbt)
+    .. code-block:: python
+
+        import random
+        from ray import tune
+        from ray.tune.schedulers import PopulationBasedTraining
+
+        pbt = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="episode_reward_mean",
+            mode="max",
+            perturbation_interval=10,  # every 10 `time_attr` units
+                                       # (training_iterations in this case)
+            hyperparam_mutations={
+                # Perturb factor1 by scaling it by 0.8 or 1.2. Resampling
+                # resets it to a value sampled from the lambda function.
+                "factor_1": lambda: random.uniform(0.0, 20.0),
+                # Perturb factor2 by changing it to an adjacent value, e.g.
+                # 10 -> 1 or 10 -> 100. Resampling will choose at random.
+                "factor_2": [1, 10, 100, 1000, 10000],
+            })
+        tune.run({...}, num_samples=8, scheduler=pbt)
     """
 
     def __init__(self,
@@ -180,9 +184,9 @@ class PopulationBasedTraining(FIFOScheduler):
                  custom_explore_fn=None,
                  log_config=True):
         for value in hyperparam_mutations.values():
-            if not (isinstance(value, list) or callable(value)):
+            if not (isinstance(value, (list, dict)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
-                                "a List or callable.")
+                                "a List, Dict, or callable.")
 
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
@@ -270,9 +274,8 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trial_name, trial_to_clone_name = (trial_state.orig_tag,
                                            new_state.orig_tag)
-        trial_id = "".join(itertools.takewhile(str.isdigit, trial_name))
-        trial_to_clone_id = "".join(
-            itertools.takewhile(str.isdigit, trial_to_clone_name))
+        trial_id = trial.trial_id
+        trial_to_clone_id = trial_to_clone.trial_id
         trial_path = os.path.join(trial.local_dir,
                                   "pbt_policy_" + trial_id + ".txt")
         trial_to_clone_path = os.path.join(

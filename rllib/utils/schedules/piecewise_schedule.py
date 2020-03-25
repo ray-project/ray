@@ -8,9 +8,9 @@ def _linear_interpolation(l, r, alpha):
 class PiecewiseSchedule(Schedule):
     def __init__(self,
                  endpoints,
+                 framework,
                  interpolation=_linear_interpolation,
-                 outside_value=None,
-                 framework=None):
+                 outside_value=None):
         """
         Args:
             endpoints (List[Tuple[int,float]]): A list of tuples
@@ -47,6 +47,6 @@ class PiecewiseSchedule(Schedule):
                 alpha = float(t - l_t) / (r_t - l_t)
                 return self.interpolation(l, r, alpha)
 
-        # t does not belong to any of the pieces, so doom.
+        # t does not belong to any of the pieces, return `self.outside_value`.
         assert self.outside_value is not None
         return self.outside_value

@@ -145,7 +145,9 @@ fi
 # Make sure that for every import psutil; import setpproctitle
 # There's a import ray above it.
 
-python ci/travis/check_import_order.py . -s ci -s python/ray/pyarrow_files -s python/ray/thirdparty_files -s python/build
+PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-python}
+
+$PYTHON_EXECUTABLE ci/travis/check_import_order.py . -s ci -s python/ray/pyarrow_files -s python/ray/thirdparty_files -s python/build -s lib
 
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted changed files. Please review and stage the changes.'

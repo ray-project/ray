@@ -13,7 +13,7 @@ import LogicalView from "./logical-view/LogicalView";
 import NodeInfo from "./node-info/NodeInfo";
 import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
-import Tune from "./Tune";
+import Tune from "./tune/Tune";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -83,7 +83,7 @@ class Dashboard extends React.Component<
       { label: "Tune", component: Tune }
     ];
 
-    // if Tune information is not avaliable, remove Tune tab from the dashboard
+    // if Tune information is not available, remove Tune tab from the dashboard
     if (!tuneAvailability) {
       tabs.splice(3);
     }

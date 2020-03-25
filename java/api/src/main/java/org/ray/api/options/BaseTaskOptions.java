@@ -7,6 +7,7 @@ import java.util.Map;
  * The options class for RayCall or ActorCreation.
  */
 public abstract class BaseTaskOptions {
+
   public final Map<String, Double> resources;
 
   public BaseTaskOptions() {

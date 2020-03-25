@@ -120,7 +120,7 @@ class Policy(metaclass=ABCMeta):
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
-            clip_actions (bool): should the action be clipped
+            clip_actions (bool): Should actions be clipped?
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
@@ -163,6 +163,33 @@ class Policy(metaclass=ABCMeta):
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
+
+    @DeveloperAPI
+    def compute_log_likelihoods(self,
+                                actions,
+                                obs_batch,
+                                state_batches=None,
+                                prev_action_batch=None,
+                                prev_reward_batch=None):
+        """Computes the log-prob/likelihood for a given action and observation.
+
+        Args:
+            actions (Union[List,np.ndarray]): Batch of actions, for which to
+                retrieve the log-probs/likelihoods (given all other inputs:
+                obs, states, ..).
+            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            state_batches (Optional[list]): List of RNN state input batches,
+                if any.
+            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+                action values.
+            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+                rewards.
+
+        Returns:
+            log-likelihoods (np.ndarray): Batch of log probs/likelihoods, with
+                shape: [BATCH_SIZE].
+        """
+        raise NotImplementedError
 
     @DeveloperAPI
     def postprocess_trajectory(self,
@@ -348,6 +375,15 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
+    def import_model_from_h5(self, import_file):
+        """Imports Policy from local file.
+
+        Arguments:
+            import_file (str): Local readable file.
+        """
+        raise NotImplementedError
+
     def _create_exploration(self, action_space, config):
         """Creates the Policy's Exploration object.
 
@@ -359,8 +395,8 @@ class Policy(metaclass=ABCMeta):
             Exploration,
             config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=action_space,
-            num_workers=config.get("num_workers"),
-            worker_index=config.get("worker_index"),
+            num_workers=config.get("num_workers", 0),
+            worker_index=config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
         # If config is further passed around, it'll contain an already
         # instantiated object.

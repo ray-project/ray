@@ -24,7 +24,7 @@ DEFAULT_CONFIG = with_common_config({
     # Initial coefficient for KL divergence.
     "kl_coeff": 0.2,
     # Size of batches collected from each worker.
-    "sample_batch_size": 200,
+    "rollout_fragment_length": 200,
     # Number of timesteps collected for each SGD round. This defines the size
     # of each SGD epoch.
     "train_batch_size": 4000,
@@ -88,7 +88,7 @@ def choose_policy_optimizer(workers, config):
         sgd_batch_size=config["sgd_minibatch_size"],
         num_sgd_iter=config["num_sgd_iter"],
         num_gpus=config["num_gpus"],
-        sample_batch_size=config["sample_batch_size"],
+        rollout_fragment_length=config["rollout_fragment_length"],
         num_envs_per_worker=config["num_envs_per_worker"],
         train_batch_size=config["train_batch_size"],
         standardize_fields=["advantages"],
@@ -96,10 +96,12 @@ def choose_policy_optimizer(workers, config):
 
 
 def update_kl(trainer, fetches):
+    # Single-agent.
     if "kl" in fetches:
-        # single-agent
         trainer.workers.local_worker().for_policy(
             lambda pi: pi.update_kl(fetches["kl"]))
+
+    # Multi-agent.
     else:
 
         def update(pi, pi_id):
@@ -108,7 +110,6 @@ def update_kl(trainer, fetches):
             else:
                 logger.debug("No data for {}, not updating kl".format(pi_id))
 
-        # multi-agent
         trainer.workers.local_worker().foreach_trainable_policy(update)
 
 

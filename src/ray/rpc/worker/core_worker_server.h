@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_CORE_WORKER_SERVER_H
 #define RAY_RPC_CORE_WORKER_SERVER_H
 
@@ -14,15 +28,17 @@ class CoreWorker;
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_CORE_WORKER_RPC_HANDLERS                                          \
-  RPC_SERVICE_HANDLER(CoreWorkerService, AssignTask, 5)                       \
-  RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, 9999)                      \
-  RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, 100) \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, 9999)               \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction, 9999)         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved, 9999)             \
-  RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 9999)                     \
-  RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)
+#define RAY_CORE_WORKER_RPC_HANDLERS                                     \
+  RPC_SERVICE_HANDLER(CoreWorkerService, AssignTask)                     \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PushTask)                       \
+  RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete) \
+  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus)                \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction)          \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, KillActor)                      \
+  RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats)             \
+  RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC)                        \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignTask)                     \
@@ -32,7 +48,9 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler {
@@ -66,8 +84,7 @@ class CoreWorkerGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
-          *server_call_factories_and_concurrencies) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     RAY_CORE_WORKER_RPC_HANDLERS
   }
 

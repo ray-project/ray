@@ -82,7 +82,10 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
     ray.worker._global_node.kill_monitor()
-    ray.worker._global_node.kill_raylet_monitor()
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, True):
+        ray.worker._global_node.kill_gcs_server()
+    else:
+        ray.worker._global_node.kill_raylet_monitor()
 
     # If the driver can reach the tearDown method, then it is still alive.
 
@@ -92,11 +95,20 @@ def test_driver_lives_sequential(ray_start_regular):
     reason="Hanging with new GCS API.")
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
-    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
+
+    if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, True):
+        process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE]
+                         + all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER]
+                         + all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+                         all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR]
+                         + all_processes[ray_constants.PROCESS_TYPE_MONITOR])
+    else:
+        process_infos = (
+            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+            all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
     assert len(process_infos) == 5
 
     # Kill all the components in parallel.

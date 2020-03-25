@@ -1,3 +1,5 @@
+import Collapse from "@material-ui/core/Collapse";
+import orange from "@material-ui/core/colors/orange";
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
@@ -12,8 +14,6 @@ import {
   RayletInfoResponse
 } from "../../../api";
 import Actors from "./Actors";
-import Collapse from "@material-ui/core/Collapse";
-import orange from '@material-ui/core/colors/orange';
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -287,11 +287,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                   )
               )}
             </React.Fragment>
-          ) : actor.invalidStateType === 'infeasibleActor' ? (
+          ) : actor.invalidStateType === "infeasibleActor" ? (
             <span className={classes.invalidStateTypeInfeasible}>
-              {actor.actorTitle} is infeasible.  
-              (Infeasible actor means an actor cannot be created because 
-              Ray cluster cannot satisfy resources requirement).
+              {actor.actorTitle} is infeasible. (This actor cannot be created
+              because the Ray cluster cannot satisfy its resource requirements.)
             </span>
           ) : (
             <span className={classes.invalidStateTypePendingActor}>

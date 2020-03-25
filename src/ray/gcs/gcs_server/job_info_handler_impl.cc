@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "job_info_handler_impl.h"
 
 namespace ray {
@@ -15,8 +29,7 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << request.data().driver_pid();
     }
-    reply->set_success(status.ok());
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Jobs().AsyncAdd(job_table_data, on_done);
@@ -36,8 +49,7 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     }
-    reply->set_success(status.ok());
-    send_reply_callback(status, nullptr, nullptr);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_client_.Jobs().AsyncMarkFinished(job_id, on_done);

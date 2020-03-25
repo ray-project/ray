@@ -2,7 +2,6 @@ import logging
 from functools import wraps
 
 from ray import cloudpickle as pickle
-from ray import ray_constants
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 import ray.signature
@@ -96,10 +95,9 @@ class RemoteFunction:
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
-        self.direct_call_enabled = ray_constants.direct_call_enabled()
 
     def __call__(self, *args, **kwargs):
-        raise Exception("Remote functions cannot be called directly. Instead "
+        raise TypeError("Remote functions cannot be called directly. Instead "
                         "of running '{}()', try '{}.remote()'.".format(
                             self._function_name, self._function_name))
 
@@ -152,7 +150,7 @@ class RemoteFunction:
                 resources=None,
                 max_retries=None):
         """Submit the remote function for execution."""
-        worker = ray.worker.get_global_worker()
+        worker = ray.worker.global_worker
         worker.check_connected()
 
         # If this function was not exported in this session and job, we need to
@@ -182,8 +180,8 @@ class RemoteFunction:
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
-        if is_direct_call is None:
-            is_direct_call = self.direct_call_enabled
+        if is_direct_call is not None and not is_direct_call:
+            raise ValueError("Non-direct call tasks are no longer supported.")
         if max_retries is None:
             max_retries = self._max_retries
 
@@ -207,7 +205,7 @@ class RemoteFunction:
                     "cannot be executed locally."
             object_ids = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args,
-                num_return_vals, is_direct_call, resources, max_retries)
+                num_return_vals, resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

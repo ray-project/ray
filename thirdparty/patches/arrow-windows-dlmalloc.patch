@@ -1,0 +1,57 @@
+diff --git cpp/src/plasma/malloc.cc cpp/src/plasma/malloc.cc
+--- cpp/src/plasma/malloc.cc
++++ cpp/src/plasma/malloc.cc
+@@ -26,2 +26,0 @@
+-#include <sys/mman.h>
+-#include <unistd.h>
+diff --git cpp/src/plasma/dlmalloc.cc cpp/src/plasma/dlmalloc.cc
+--- cpp/src/plasma/dlmalloc.cc
++++ cpp/src/plasma/dlmalloc.cc
+@@ -25,2 +25,6 @@
++#ifdef _WIN32
++#include <Windows.h>
++#else
+ #include <sys/mman.h>
+ #include <unistd.h>
++#endif
+@@ -76,5 +80,8 @@ int create_buffer(int64_t size) {
+-  if (!CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+-                         (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
+-                         (DWORD)(uint64_t)size, NULL)) {
++  HANDLE h = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
++                               (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
++                               (DWORD)(uint64_t)size, NULL);
++  if (h) {
++    fd = fh_open(reinterpret_cast<intptr_t>(h), -1);
++  } else {
+     fd = -1;
+   }
+@@ -119,9 +126,18 @@
++  void* pointer;
++#ifdef _WIN32
++  pointer = MapViewOfFile(reinterpret_cast<HANDLE>(fh_get(fd)), FILE_MAP_ALL_ACCESS, 0, 0, size);
++  if (pointer == NULL) {
++    ARROW_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
++    return reinterpret_cast<void*>(-1);
++  }
++#else
+-  void* pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++  pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+   if (pointer == MAP_FAILED) {
+     ARROW_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
+     if (errno == ENOMEM && plasma_config->hugepages_enabled) {
+       ARROW_LOG(ERROR)
+           << "  (this probably means you have to increase /proc/sys/vm/nr_hugepages)";
+     }
+     return pointer;
+   }
++#endif
+@@ -155,1 +169,6 @@
++  int r;
++#ifdef _WIN32
++  r = UnmapViewOfFile(addr) ? 0 : -1;
++#else
+-  int r = munmap(addr, size);
++  r = munmap(addr, size);
++#endif
+-- 

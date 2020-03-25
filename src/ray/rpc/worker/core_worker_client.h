@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RPC_CORE_WORKER_CLIENT_H
 #define RAY_RPC_CORE_WORKER_CLIENT_H
 
@@ -149,9 +163,20 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status LocalGC(const LocalGCRequest &request,
+                              const ClientCallback<LocalGCReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ray::Status WaitForRefRemoved(
       const WaitForRefRemovedRequest &request,
       const ClientCallback<WaitForRefRemovedReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status PlasmaObjectReady(
+      const PlasmaObjectReadyRequest &request,
+      const ClientCallback<PlasmaObjectReadyReply> &callback) {
     return Status::NotImplemented("");
   }
 
@@ -189,7 +214,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 
+  RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
+
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {

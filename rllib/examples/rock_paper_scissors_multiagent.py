@@ -7,6 +7,7 @@ This demonstrates running the following policies in competition:
     (4) LSTM policy with custom entropy loss
 """
 
+import argparse
 import random
 from gym.spaces import Discrete
 
@@ -22,6 +23,9 @@ tf = try_import_tf()
 ROCK = 0
 PAPER = 1
 SCISSORS = 2
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--stop", type=int, default=400000)
 
 
 class RockPaperScissorsEnv(MultiAgentEnv):
@@ -153,15 +157,16 @@ def run_heuristic_vs_learned(use_lstm=False, trainer="PG"):
         else:
             return random.choice(["always_same", "beat_last"])
 
+    args = parser.parse_args()
     tune.run(
         trainer,
-        stop={"timesteps_total": 400000},
+        stop={"timesteps_total": args.stop},
         config={
             "env": RockPaperScissorsEnv,
             "gamma": 0.9,
-            "num_workers": 4,
+            "num_workers": 0,
             "num_envs_per_worker": 4,
-            "sample_batch_size": 10,
+            "rollout_fragment_length": 10,
             "train_batch_size": 200,
             "multiagent": {
                 "policies_to_train": ["learned"],

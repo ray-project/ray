@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_ACTOR_HANDLE_H
 #define RAY_CORE_WORKER_ACTOR_HANDLE_H
 
@@ -18,9 +32,9 @@ class ActorHandle {
       : inner_(inner), actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
-  ActorHandle(const ActorID &actor_id, const JobID &job_id,
+  ActorHandle(const ActorID &actor_id, const TaskID &owner_id,
+              const rpc::Address &owner_address, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
-              bool is_direct_call,
               const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
               const std::string &extension_data);
 
@@ -28,6 +42,10 @@ class ActorHandle {
   ActorHandle(const std::string &serialized);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
+
+  TaskID GetOwnerId() const { return TaskID::FromBinary(inner_.owner_id()); }
+
+  rpc::Address GetOwnerAddress() const { return inner_.owner_address(); }
 
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
@@ -42,10 +60,7 @@ class ActorHandle {
 
   std::string ExtensionData() const { return inner_.extension_data(); }
 
-  bool IsDirectCallActor() const { return inner_.is_direct_call(); }
-
-  void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskTransportType transport_type,
-                        const ObjectID new_cursor);
+  void SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor);
 
   void Serialize(std::string *output);
 

@@ -97,6 +97,7 @@ define_java_module(
     deps = [
         ":org_ray_ray_api",
         ":org_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
@@ -231,6 +232,7 @@ genrule(
     srcs = [
         "//java:ray_dist_deploy.jar",
         "//java:gen_maven_deps",
+        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """

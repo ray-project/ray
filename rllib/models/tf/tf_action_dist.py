@@ -3,10 +3,12 @@ import functools
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_tfp, SMALL_NUMBER, \
+    MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.tuple_actions import TupleActions
 
 tf = try_import_tf()
+tfp = try_import_tfp()
 
 
 @DeveloperAPI
@@ -43,7 +45,7 @@ class Categorical(TFActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model=None, temperature=1.0):
-        temperature = max(0.0001, temperature)  # clamp for stability reasons
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
         super().__init__(inputs / temperature, model)
@@ -100,11 +102,12 @@ class MultiCategorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return tf.math.argmax(self.inputs, axis=-1)
+        return tf.stack(
+            [cat.deterministic_sample() for cat in self.cats], axis=1)
 
     @override(ActionDistribution)
     def logp(self, actions):
-        # If tensor is provided, unstack it into list
+        # If tensor is provided, unstack it into list.
         if isinstance(actions, tf.Tensor):
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
         logps = tf.stack(
@@ -137,6 +140,68 @@ class MultiCategorical(TFActionDistribution):
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
         return np.sum(action_space.nvec)
+
+
+class GumbelSoftmax(TFActionDistribution):
+    """GumbelSoftmax distr. (for differentiable sampling in discr. actions
+
+    The Gumbel Softmax distribution [1] (also known as the Concrete [2]
+    distribution) is a close cousin of the relaxed one-hot categorical
+    distribution, whose tfp implementation we will use here plus
+    adjusted `sample_...` and `log_prob` methods. See discussion at [0].
+
+    [0] https://stackoverflow.com/questions/56226133/
+    soft-actor-critic-with-discrete-action-space
+
+    [1] Categorical Reparametrization with Gumbel-Softmax (Jang et al, 2017):
+    https://arxiv.org/abs/1611.01144
+    [2] The Concrete Distribution: A Continuous Relaxation of Discrete Random
+    Variables (Maddison et al, 2017) https://arxiv.org/abs/1611.00712
+    """
+
+    @DeveloperAPI
+    def __init__(self, inputs, model=None, temperature=1.0):
+        """Initializes a GumbelSoftmax distribution.
+
+        Args:
+            temperature (float): Temperature parameter. For low temperatures,
+                the expected value approaches a categorical random variable.
+                For high temperatures, the expected value approaches a uniform
+                distribution.
+        """
+        assert temperature >= 0.0
+        self.dist = tfp.distributions.RelaxedOneHotCategorical(
+            temperature=temperature, logits=inputs)
+        super().__init__(inputs, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        # Return the dist object's prob values.
+        return self.dist._distribution.probs
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        # Override since the implementation of tfp.RelaxedOneHotCategorical
+        # yields positive values.
+        if x.shape != self.dist.logits.shape:
+            values = tf.one_hot(
+                x, self.dist.logits.shape.as_list()[-1], dtype=tf.float32)
+            assert values.shape == self.dist.logits.shape, (
+                values.shape, self.dist.logits.shape)
+
+        # [0]'s implementation (see line below) seems to be an approximation
+        # to the actual Gumbel Softmax density.
+        return -tf.reduce_sum(
+            -x * tf.nn.log_softmax(self.dist.logits, axis=-1), axis=-1)
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self):
+        return self.dist.sample()
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return action_space.n
 
 
 class DiagGaussian(TFActionDistribution):
@@ -188,10 +253,84 @@ class DiagGaussian(TFActionDistribution):
         return np.prod(action_space.shape) * 2
 
 
+class SquashedGaussian(TFActionDistribution):
+    """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
+
+    The distribution will never return low or high exactly, but
+    `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
+    """
+
+    def __init__(self, inputs, model, low=-1.0, high=1.0):
+        """Parameterizes the distribution via `inputs`.
+
+        Args:
+            low (float): The lowest possible sampling value
+                (excluding this value).
+            high (float): The highest possible sampling value
+                (excluding this value).
+        """
+        assert tfp is not None
+        loc, log_scale = tf.split(inputs, 2, axis=-1)
+        # Clip `scale` values (coming from NN) to reasonable values.
+        log_scale = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
+                                     MAX_LOG_NN_OUTPUT)
+        scale = tf.exp(log_scale)
+        self.distr = tfp.distributions.Normal(loc=loc, scale=scale)
+        assert np.all(np.less(low, high))
+        self.low = low
+        self.high = high
+        super().__init__(inputs, model)
+
+    @override(TFActionDistribution)
+    def sampled_action_logp(self):
+        unsquashed_values = self._unsquash(self.sample_op)
+        log_prob = tf.reduce_sum(
+            self.distr.log_prob(unsquashed_values), axis=-1)
+        unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
+        log_prob -= tf.math.reduce_sum(
+            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
+            axis=-1)
+        return log_prob
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        mean = self.distr.mean()
+        return self._squash(mean)
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self):
+        return self._squash(self.distr.sample())
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        unsquashed_values = self._unsquash(x)
+        log_prob = tf.reduce_sum(
+            self.distr.log_prob(value=unsquashed_values), axis=-1)
+        unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
+        log_prob -= tf.math.reduce_sum(
+            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
+            axis=-1)
+        return log_prob
+
+    def _squash(self, raw_values):
+        # Make sure raw_values are not too high/low (such that tanh would
+        # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
+        return (tf.clip_by_value(
+            tf.math.tanh(raw_values),
+            -1.0 + SMALL_NUMBER,
+            1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
+               self.low
+
+    def _unsquash(self, values):
+        return tf.math.atanh((values - self.low) /
+                             (self.high - self.low) * 2.0 - 1.0)
+
+
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
 
-    This is similar to DiagGaussian with standard deviation zero.
+    This is similar to DiagGaussian with standard deviation zero (thus only
+    requiring the "mean" values as NN output).
     """
 
     @override(ActionDistribution)
