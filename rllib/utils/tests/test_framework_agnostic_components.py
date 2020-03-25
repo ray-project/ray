@@ -124,6 +124,8 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                 "framework": "tf",
                 "num_workers": 0,
                 "worker_index": 0,
+                "policy_config": {},
+                "model": None
             })
         check(component.epsilon_schedule.outside_value, 0.05)  # default
 
