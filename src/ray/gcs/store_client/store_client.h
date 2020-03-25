@@ -75,16 +75,6 @@ class StoreClient {
   virtual Status AsyncGet(const std::string &table_name, const Key &key,
                           const OptionalItemCallback<Data> &callback) = 0;
 
-  /// Get data by index from the given table asynchronously.
-  ///
-  /// \param table_name The name of the table to be read.
-  /// \param index_key A secondary key that indexing the data.
-  /// \param callback Callback that will be called after read finishes.
-  /// \return Status
-  virtual Status AsyncGetByIndex(const std::string &table_name,
-                                 const SecondaryKey &index_key,
-                                 const MultiItemCallback<Data> &callback) = 0;
-
   /// Get all data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.

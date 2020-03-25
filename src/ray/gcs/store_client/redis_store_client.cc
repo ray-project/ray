@@ -113,13 +113,6 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::stri
   return shard_context->RunArgvAsync(args, redis_callback);
 }
 
-Status RedisStoreClient::AsyncGetByIndex(const std::string &table_name,
-                                         const std::string &index_key,
-                                         const MultiItemCallback<std::string> &callback) {
-  RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
-  return Status::OK();
-}
-
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
     const SegmentedCallback<std::pair<std::string, std::string>> &callback) {
