@@ -1,4 +1,3 @@
-import copy
 import inspect
 import logging
 import six
@@ -11,7 +10,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorID, ActorClassID, Language
+from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
@@ -650,7 +649,6 @@ class ActorHandle:
                     decorator=self._ray_method_decorators.get(method_name))
                 setattr(self, method_name, method)
 
-    # TODO (ILR) <-- Handle this shit
     def _actor_method_call(self,
                            method_name,
                            args=None,
@@ -885,9 +883,8 @@ def modify_class(cls):
 
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
-            if worker.mode == ray.LOCAL_MODE:
-                return
-            ray.actor.exit_actor()
+            if worker.mode != ray.LOCAL_MODE:
+                ray.actor.exit_actor()
 
         def __ray_checkpoint__(self):
             """Save a checkpoint.

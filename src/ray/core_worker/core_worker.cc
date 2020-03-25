@@ -106,15 +106,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
-  if (!local_mode_enabled_ || true) {
-    gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
-    RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-    actor_manager_ =
-        std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
-    // Initialize profiler.
-    profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
-                                                   io_service_, gcs_client_);
-  }
+  gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
+  // Initialize profiler.
+  profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
+                                                 io_service_, gcs_client_);
 
   // Initialize task receivers.
   if (worker_type_ == WorkerType::WORKER || local_mode_enabled_) {
@@ -143,49 +140,42 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
                                          task_execution_service_, execute_task, exit));
   }
-  RAY_LOG(INFO) << "BOUTTA RUN GRPC SERVICE";
   // Start RPC server after all the task receivers are properly initialized.
 
-  if (!local_mode_enabled_ || true) {
-    core_worker_server_.RegisterService(grpc_service_);
-    core_worker_server_.Run();
+  core_worker_server_.RegisterService(grpc_service_);
+  core_worker_server_.Run();
 
-    // Initialize raylet client.
-    // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
-    // connect to Raylet after a number of retries, this can be changed later
-    // so that the worker (java/python .etc) can retrieve and handle the error
-    // instead of crashing.
+  // Initialize raylet client.
+  // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
+  // connect to Raylet after a number of retries, this can be changed later
+  // so that the worker (java/python .etc) can retrieve and handle the error
+  // instead of crashing.
+  auto grpc_client = rpc::NodeManagerWorkerClient::make(
+      node_ip_address, node_manager_port, *client_call_manager_);
+  ClientID local_raylet_id;
+  local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
+      io_service_, std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
+      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
+      language_, &local_raylet_id, core_worker_server_.GetPort()));
+  connected_ = true;
 
-    ///
-    ///  DISABLE ALL OF THIS
-    ///
-    auto grpc_client = rpc::NodeManagerWorkerClient::make(
-        node_ip_address, node_manager_port, *client_call_manager_);
-    ClientID local_raylet_id;
-    local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-        io_service_, std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
-        (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-        language_, &local_raylet_id, core_worker_server_.GetPort()));
-    connected_ = true;
+  // Set our own address.
+  RAY_CHECK(!local_raylet_id.IsNil());
+  rpc_address_.set_ip_address(node_ip_address);
+  rpc_address_.set_port(core_worker_server_.GetPort());
+  rpc_address_.set_raylet_id(local_raylet_id.Binary());
+  rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
 
-    // Set our own address.
-    RAY_CHECK(!local_raylet_id.IsNil());
-    rpc_address_.set_ip_address(node_ip_address);
-    rpc_address_.set_port(core_worker_server_.GetPort());
-    rpc_address_.set_raylet_id(local_raylet_id.Binary());
-    rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
-
-    if (worker_type_ == ray::WorkerType::WORKER) {
-      death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
-          RayConfig::instance().raylet_death_check_interval_milliseconds()));
-      death_check_timer_.async_wait(
-          boost::bind(&CoreWorker::CheckForRayletFailure, this));
-    }
-
-    internal_timer_.expires_from_now(
-        boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-    internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
+  if (worker_type_ == ray::WorkerType::WORKER) {
+    death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+        RayConfig::instance().raylet_death_check_interval_milliseconds()));
+    death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
   }
+
+  internal_timer_.expires_from_now(
+      boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
+
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
@@ -215,9 +205,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // driver creates an object that is later evicted, we should notify the
   // user that we're unable to reconstruct the object, since we cannot
   // rerun the driver.
-  // Also Local Mode
-  RAY_LOG(INFO) << "Time for driver stuff";
-  if (worker_type_ == WorkerType::DRIVER || local_mode) {
+  if (worker_type_ == WorkerType::DRIVER || local_mode_enabled_) {
     TaskSpecBuilder builder;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
     builder.SetDriverTaskSpec(task_id, language_, worker_context_.GetCurrentJobID(),
@@ -226,23 +214,19 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    if (!local_mode) {
+    if (!local_mode_enabled_) {
       RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
     }
     SetCurrentTaskId(task_id);
   }
-  RAY_LOG(INFO) << "Time for client factory stuff";
   auto client_factory = [this](const rpc::Address &addr) {
     return std::shared_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient(addr, *client_call_manager_));
   };
-  RAY_LOG(INFO) << "Time for direct actor stuff";
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
 
-  RAY_LOG(INFO) << "Time for direct submitter stuff";
-  auto local_raylet_id = ClientID::FromRandom();
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
           rpc_address_, local_raylet_client_, client_factory,
@@ -519,14 +503,9 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
-  RAY_LOG(INFO) << "Getting in core worker";
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
-  RAY_LOG(INFO) << "There are " << memory_object_ids.size() << " local objects and "
-                << plasma_object_ids.size() << " plasma objects";
-
-  // TODO(ilr) << MAKE SURE EVERYTHING IS THE DIRECT CALL TYPE THING!!!!!!
 
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
@@ -536,7 +515,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
                                          &result_map, &got_exception));
   }
-  RAY_LOG(INFO) << "Got 'get' with exception: " << got_exception;
+
   if (!got_exception) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
@@ -557,23 +536,17 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                                   worker_context_, &result_map,
                                                   &got_exception));
   }
-  RAY_LOG(ERROR) << "Survived dangers of plasma";
 
   // Loop through `ids` and fill each entry for the `results` vector,
   // this ensures that entries `results` have exactly the same order as
   // they are in `ids`. When there are duplicate object ids, all the entries
   // for the same id are filled in.
 
-  //
-  // return Status::OK();
-  //
   bool missing_result = false;
   bool will_throw_exception = false;
   for (size_t i = 0; i < ids.size(); i++) {
     auto pair = result_map.find(ids[i]);
     if (pair != result_map.end()) {
-      // RAY_LOG(INFO) << "DATA? : " << pair->second->GetData()->Data();
-      RAY_LOG(INFO) << "Found something........." << pair->second;
       (*results)[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());
       if (pair->second->IsException()) {
@@ -1063,7 +1036,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs) {
-  RAY_LOG(INFO) << "Executing task " << task_spec.TaskId();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -1075,7 +1047,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId());
   }
-  RAY_LOG(INFO) << "in execute task1.2";
   {
     absl::MutexLock lock(&mutex_);
     current_task_ = task_spec;

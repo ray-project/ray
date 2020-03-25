@@ -15,7 +15,6 @@ import sys
 import threading
 import time
 import traceback
-import random
 
 # Ray modules
 import ray.cloudpickle as pickle
@@ -278,10 +277,11 @@ class Worker:
         if should_warn_of_slow_puts:
             start = time.perf_counter()
 
-        if self.mode == LOCAL_MODE and object_id != None:
+        if self.mode == LOCAL_MODE:
             # TODO(ilr): Figure out how to make this work
 
-            assert object_id is None, "Local Mode does not support inserting with an objectID"
+            assert object_id is None, ("Local Mode does not support "
+                                       "inserting with an objectID")
 
         serialized_value = self.get_serialization_context().serialize(value)
         result = self.core_worker.put_serialized_object(
@@ -451,7 +451,12 @@ def get_gpu_ids():
     Returns:
         A list of GPU IDs.
     """
-    #TODO(ilr) Make sure this works in Local_Mode (mostly in passing them in)
+
+    # TODO(ilr) Handle inserting resources in local mode
+    if _mode() == LOCAL_MODE:
+        logger.warning("ray.get_gpu_ids() currently does not work in LOCAL "
+                       "MODE.")
+
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
@@ -614,8 +619,8 @@ def init(address=None,
             same driver in order to generate the object IDs in a consistent
             manner. However, the same ID should not be used for different
             drivers.
-        local_mode (bool): True if the code should be executed serially. This is
-        useful for debugging.
+        local_mode (bool): True if the code should be executed serially. This
+        is useful for debugging.
         driver_object_store_memory (int): Limit the amount of memory the driver
             can use in the object store for creating objects. By default, this
             is autoset based on available system memory, subject to a 20GB cap.
@@ -1235,9 +1240,8 @@ def connect(node,
         int(redis_port),
         node.redis_password,
     )
-    ## A choice to choose driver mode for raylet
     worker.core_worker = ray._raylet.CoreWorker(
-        mode == SCRIPT_MODE, node.plasma_store_socket_name,
+        (mode == SCRIPT_MODE), node.plasma_store_socket_name,
         node.raylet_socket_name, job_id, gcs_options, node.get_logs_dir_path(),
         node.node_ip_address, node.node_manager_port, mode == LOCAL_MODE)
 
@@ -1253,7 +1257,7 @@ def connect(node,
         worker.put_object(1, object_id=temporary_object_id)
         ray.internal.free([temporary_object_id])
 
-        # Start the import thread
+    # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
                                                       worker.threads_stopped)
     worker.import_thread.start()
@@ -1508,7 +1512,6 @@ def get(object_ids, timeout=None):
         return values
 
 
-# TODONE (ILR) <-- Handle this shit
 def put(value, weakref=False):
     """Store an object in the object store.
 
