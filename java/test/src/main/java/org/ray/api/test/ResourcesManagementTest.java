@@ -7,7 +7,6 @@ import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.testng.Assert;
@@ -30,12 +29,10 @@ public class ResourcesManagementTest extends BaseTest {
     System.clearProperty("ray.resources");
   }
 
-  @RayRemote
   public static Integer echo(Integer number) {
     return number;
   }
 
-  @RayRemote
   public static class Echo {
 
     public Integer echo(Integer number) {
@@ -84,7 +81,7 @@ public class ResourcesManagementTest extends BaseTest {
     // This is a case that can satisfy required resources.
     // The static resources for test are "CPU:4,RES-A:4".
     RayActor<Echo> echo1 = Ray.createActor(Echo::new, actorCreationOptions1);
-    final RayObject<Integer> result1 = Ray.call(Echo::echo, echo1, 100);
+    final RayObject<Integer> result1 = echo1.call(Echo::echo, 100);
     Assert.assertEquals(100, (int) result1.get());
 
     // This is a case that can't satisfy required resources.
@@ -94,7 +91,7 @@ public class ResourcesManagementTest extends BaseTest {
 
     RayActor<ResourcesManagementTest.Echo> echo2 =
         Ray.createActor(Echo::new, actorCreationOptions2);
-    final RayObject<Integer> result2 = Ray.call(Echo::echo, echo2, 100);
+    final RayObject<Integer> result2 = echo2.call(Echo::echo, 100);
     WaitResult<Integer> waitResult = Ray.wait(ImmutableList.of(result2), 1, 1000);
 
     Assert.assertEquals(0, waitResult.getReady().size());

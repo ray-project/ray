@@ -64,7 +64,7 @@ Policies can be implemented using `any framework <https://github.com/ray-project
 Sample Batches
 ~~~~~~~~~~~~~~
 
-Whether running in a single process or `large cluster <rllib-training.html#specifying-resources>`__, all data interchange in RLlib is in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__. Sample batches encode one or more fragments of a trajectory. Typically, RLlib collects batches of size ``sample_batch_size`` from rollout workers, and concatenates one or more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
+Whether running in a single process or `large cluster <rllib-training.html#specifying-resources>`__, all data interchange in RLlib is in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__. Sample batches encode one or more fragments of a trajectory. Typically, RLlib collects batches of size ``rollout_fragment_length`` from rollout workers, and concatenates one or more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
 
 A typical sample batch looks something like the following when summarized. Since all values are kept in arrays, this allows for efficient encoding and transmission across the network:
 
@@ -104,6 +104,13 @@ Customization
 RLlib provides ways to customize almost all aspects of training, including the `environment <rllib-env.html#configuring-environments>`__, `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
 
 .. image:: rllib-components.svg
+
+Application Support
+~~~~~~~~~~~~~~~~~~~
+
+Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__:
+
+.. image:: rllib-external.svg
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
 

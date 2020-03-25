@@ -3,8 +3,6 @@ package org.ray.api;
 import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import java.util.function.Supplier;
-import org.ray.api.annotation.RayRemote;
-import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
@@ -21,8 +19,12 @@ public class TestUtils {
 
   private static final int WAIT_INTERVAL_MS = 5;
 
+  public static boolean isSingleProcessMode() {
+    return getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS;
+  }
+
   public static void skipTestUnderSingleProcess() {
-    if (getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS) {
+    if (isSingleProcessMode()) {
       throw new SkipException("This test doesn't work under single-process mode.");
     }
   }
@@ -31,21 +33,6 @@ public class TestUtils {
     if (getRuntime().getRayConfig().runMode == RunMode.CLUSTER) {
       throw new SkipException("This test doesn't work under cluster mode.");
     }
-  }
-
-  public static void skipTestIfDirectActorCallEnabled() {
-    skipTestIfDirectActorCallEnabled(true);
-  }
-
-  private static void skipTestIfDirectActorCallEnabled(boolean enabled) {
-    if (enabled == ActorCreationOptions.DEFAULT_USE_DIRECT_CALL) {
-      throw new SkipException(String.format("This test doesn't work when direct actor call is %s.",
-          enabled ? "enabled" : "disabled"));
-    }
-  }
-
-  public static void skipTestIfDirectActorCallDisabled() {
-    skipTestIfDirectActorCallEnabled(false);
   }
 
   /**
@@ -75,7 +62,6 @@ public class TestUtils {
     return false;
   }
 
-  @RayRemote
   private static String hi() {
     return "hi";
   }

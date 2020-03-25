@@ -20,13 +20,16 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     If add_noise is True, the rollout will take noisy actions with
     noise drawn from that stream. Otherwise, no action noise will be added.
     """
-    env_timestep_limit = env.spec.max_episode_steps
+    max_timestep_limit = 999999
+    env_timestep_limit = env.spec.max_episode_steps if (
+            hasattr(env, "spec") and hasattr(env.spec, "max_episode_steps")) \
+        else max_timestep_limit
     timestep_limit = (env_timestep_limit if timestep_limit is None else min(
         timestep_limit, env_timestep_limit))
     rews = []
     t = 0
     observation = env.reset()
-    for _ in range(timestep_limit or 999999):
+    for _ in range(timestep_limit or max_timestep_limit):
         ac = policy.compute(observation, add_noise=add_noise)[0]
         observation, rew, done, _ = env.step(ac)
         rews.append(rew)

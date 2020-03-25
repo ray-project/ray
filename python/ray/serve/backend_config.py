@@ -4,7 +4,9 @@ from copy import deepcopy
 class BackendConfig:
     # configs not needed for actor creation when
     # instantiating a replica
-    _serve_configs = ["_num_replicas", "max_batch_size"]
+    _serve_configs = [
+        "_num_replicas", "max_batch_size", "has_accept_batch_annotation"
+    ]
 
     # configs which when changed leads to restarting
     # the existing replicas.
@@ -17,10 +19,13 @@ class BackendConfig:
                  num_cpus=None,
                  num_gpus=None,
                  memory=None,
-                 object_store_memory=None):
+                 object_store_memory=None,
+                 has_accept_batch_annotation=False):
         """
         Class for defining backend configuration.
         """
+        # backend metadata
+        self.has_accept_batch_annotation = has_accept_batch_annotation
 
         # serve configs
         self.num_replicas = num_replicas

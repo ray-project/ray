@@ -48,33 +48,15 @@ Installing from a specific commit
 
 You can install the Ray wheels of any particular commit on ``master`` with the following template. You need to specify the commit hash, Ray version, Operating System, and Python version:
 
-.. code-block::
+.. code-block:: bash
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
 
 For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit ``a0ba4499ac645c9d3e82e68f3a281e48ad57f873``:
 
-.. code-block::
-
-    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
-
-
-Installing Ray with Anaconda
-----------------------------
-
-If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
-
 .. code-block:: bash
 
-  conda create --name ray
-  conda activate ray
-  conda install --name ray pip
-  pip install ray
-
-Use ``pip list`` to confirm that ``ray`` is installed.
-
-.. _`Anaconda`: https://www.anaconda.com/
-
+    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
 Building Ray from Source
 ------------------------
@@ -87,8 +69,7 @@ both Linux and MacOS.
 Dependencies
 ~~~~~~~~~~~~
 
-To build Ray, first install the following dependencies. We recommend using
-`Anaconda`_.
+To build Ray, first install the following dependencies.
 
 For Ubuntu, run the following commands:
 
@@ -97,11 +78,7 @@ For Ubuntu, run the following commands:
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip psmisc
 
-  # If you are not using Anaconda, you need the following.
-  sudo apt-get install python-dev  # For Python 2.
-  sudo apt-get install python3-dev  # For Python 3.
-
-  pip install cython==0.29.0
+  pip install cython==0.29.0 pytest
 
 For MacOS, run the following commands:
 
@@ -110,13 +87,7 @@ For MacOS, run the following commands:
   brew update
   brew install wget
 
-  pip install cython==0.29.0
-
-If you are using Anaconda, you may also need to run the following.
-
-.. code-block:: bash
-
-  conda install libgcc
+  pip install cython==0.29.0 pytest
 
 
 Install Ray
@@ -158,17 +129,10 @@ via pip.
 
   pip install ray[dashboard]
 
-If you are using Anaconda and have trouble installing ``psutil`` or
-``setproctitle``, the try
-
-.. code-block:: bash
-
-  conda install psutil setproctitle
-
 The command ``ray.init()`` or ``ray start --head`` will print out the address of
 the dashboard. For example,
 
-.. code-block::
+.. code-block:: python
 
   >>> import ray
   >>> ray.init()
@@ -180,6 +144,23 @@ the dashboard. For example,
   <username>@<host>'. Alternatively, you can set webui_host="0.0.0.0" in
   the call to ray.init() to allow direct access from external machines.
   ======================================================================
+
+
+Installing Ray with Anaconda
+----------------------------
+
+If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
+
+.. code-block:: bash
+
+  conda create --name ray
+  conda activate ray
+  conda install --name ray pip
+  pip install ray
+
+Use ``pip list`` to confirm that ``ray`` is installed.
+
+.. _`Anaconda`: https://www.anaconda.com/
 
 
 Docker Source Images

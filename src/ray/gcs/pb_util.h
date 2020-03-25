@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_PB_UTIL_H
 #define RAY_GCS_PB_UTIL_H
 
@@ -60,7 +74,6 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
   actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   // Set the fields that change when the actor is restarted.
   actor_info_ptr->set_remaining_reconstructions(remaining_reconstructions);
-  actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
   actor_info_ptr->mutable_address()->CopyFrom(address);
   actor_info_ptr->mutable_owner_address()->CopyFrom(
       task_spec.GetMessage().caller_address());

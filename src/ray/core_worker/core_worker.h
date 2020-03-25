@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
@@ -77,9 +91,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              std::function<void()> gc_collect = nullptr,
+             std::function<void(std::string *)> get_lang_stack = nullptr,
              bool ref_counting_enabled = false);
 
   virtual ~CoreWorker();
+
+  void Exit(bool intentional);
 
   void Disconnect();
 
@@ -103,13 +120,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorTitle(const std::string &title);
 
+  void SetCallerCreationTimestamp();
+
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
   /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddLocalReference(const ObjectID &object_id) {
-    reference_counter_->AddLocalReference(object_id);
+    AddLocalReference(object_id, CurrentCallSite());
   }
 
   /// Decrease the reference count for this object ID. Should be called
@@ -126,9 +145,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
-    return reference_counter_->GetAllReferenceCounts();
-  }
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
   /// Promote an object to plasma and get its owner information. This should be
   /// called when serializing an object ID, and the returned information should
@@ -380,8 +397,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
   /// \param[in] actor_id ID of the actor to kill.
+  /// \param[in] no_reconstruction If set to true, the killed actor will not be
+  /// reconstructed anymore.
   /// \param[out] Status
-  Status KillActor(const ActorID &actor_id);
+  Status KillActor(const ActorID &actor_id, bool force_kill, bool no_reconstruction);
+
+  /// Decrease the reference count for this actor. Should be called by the
+  /// language frontend when a reference to the ActorHandle destroyed.
+  ///
+  /// \param[in] actor_id The actor ID to decrease the reference count for.
+  void RemoveActorHandleReference(const ActorID &actor_id);
 
   /// Add an actor handle from a serialized string.
   ///
@@ -390,8 +415,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// actor.
   ///
   /// \param[in] serialized The serialized actor handle.
+  /// \param[in] outer_object_id The object ID that contained the serialized
+  /// actor handle, if any.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized);
+  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
+                                            const ObjectID &outer_object_id);
 
   /// Serialize an actor handle.
   ///
@@ -400,8 +428,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id The ID of the actor handle to serialize.
   /// \param[out] The serialized handle.
+  /// \param[out] The ID used to track references to the actor handle. If the
+  /// serialized actor handle in the language frontend is stored inside an
+  /// object, then this must be recorded in the worker's ReferenceCounter.
   /// \return Status::Invalid if we don't have the specified handle.
-  Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
+  Status SerializeActorHandle(const ActorID &actor_id, std::string *output,
+                              ObjectID *actor_handle_id) const;
 
   ///
   /// Public methods related to task execution. Should not be used by driver processes.
@@ -481,6 +513,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Implements gRPC server handler.
+  void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+                               rpc::PlasmaObjectReadyReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                 rpc::GetCoreWorkerStatsReply *reply,
@@ -515,11 +552,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Connect to plasma store for async futures
   using PlasmaSubscriptionCallback = std::function<void(ray::ObjectID, int64_t, int64_t)>;
 
-  /// Subscribe to plasma store
+  /// Set callback when an item is added to the plasma store.
   ///
   /// \param[in] subscribe_callback The callback when an item is added to plasma.
   /// \return void
-  void SubscribeToAsyncPlasma(PlasmaSubscriptionCallback subscribe_callback);
+  void SetPlasmaAddedCallback(PlasmaSubscriptionCallback subscribe_callback);
+
+  /// Subscribe to receive notification of an object entering the plasma store.
+  ///
+  /// \param[in] object_id The object to wait for.
+  /// \return void
+  void SubscribeToPlasmaAdd(const ObjectID &object_id);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -539,6 +582,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Private methods related to task submission.
   ///
 
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
+  ///
+  /// \param[in] object_id The object ID to increase the reference count for.
+  /// \param[in] call_site The call site from the language frontend.
+  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
+    reference_counter_->AddLocalReference(object_id, call_site);
+  }
+
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -547,9 +599,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
+  /// \param is_owner_handle Whether this is the owner's handle to the actor.
+  /// The owner is the creator of the actor and is responsible for telling the
+  /// actor to disconnect once all handles are out of scope.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
@@ -640,6 +695,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
   std::function<void()> gc_collect_;
+
+  /// Callback to get the current language (e.g., Python) call site.
+  std::function<void(std::string *)> get_call_site_;
+
+  // Convenience method to get the current language call site.
+  std::string CurrentCallSite() {
+    std::string call_site;
+    if (get_call_site_ != nullptr) {
+      get_call_site_(&call_site);
+    }
+    return call_site;
+  }
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -785,8 +852,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // Plasma notification manager
-  std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
+  // Plasma Callback
+  PlasmaSubscriptionCallback plasma_done_callback_;
+
+  /// Whether we are shutting down and not running further tasks.
+  bool exiting_ = false;
 
   friend class CoreWorkerTest;
 };

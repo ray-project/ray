@@ -1,7 +1,7 @@
 import importlib
 from abc import ABC, abstractmethod
 
-import cloudpickle
+from ray import cloudpickle
 from ray.streaming.runtime import gateway_client
 
 

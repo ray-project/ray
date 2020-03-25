@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/redis_gcs_client.h"
 
 #include <unistd.h>
@@ -119,6 +133,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   Attach(io_service);
 
+  log_based_actor_table_.reset(new LogBasedActorTable({primary_context_}, this));
   actor_table_.reset(new ActorTable({primary_context_}, this));
 
   // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
@@ -142,7 +157,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
   worker_failure_table_.reset(new WorkerFailureTable(shard_contexts_, this));
 
-  actor_accessor_.reset(new RedisActorInfoAccessor(this));
+  actor_accessor_.reset(new RedisLogBasedActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
   node_accessor_.reset(new RedisNodeInfoAccessor(this));
@@ -184,6 +199,7 @@ std::string RedisGcsClient::DebugString() const {
   std::stringstream result;
   result << "RedisGcsClient:";
   result << "\n- TaskTable: " << raylet_task_table_->DebugString();
+  result << "\n- LogBasedActorTable: " << log_based_actor_table_->DebugString();
   result << "\n- ActorTable: " << actor_table_->DebugString();
   result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
   result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
@@ -198,6 +214,10 @@ std::string RedisGcsClient::DebugString() const {
 ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
 
 raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
+
+LogBasedActorTable &RedisGcsClient::log_based_actor_table() {
+  return *log_based_actor_table_;
+}
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
 

@@ -159,8 +159,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsDirectCall() const;
 
-  bool IsDirectActorCreationCall() const;
-
   int MaxActorConcurrency() const;
 
   bool IsAsyncioActor() const;
@@ -170,6 +168,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;
+
+  // A one-word summary of the task func as a call site (e.g., __main__.foo).
+  std::string CallSiteString() const;
 
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 

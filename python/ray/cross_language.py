@@ -23,10 +23,10 @@ def format_args(worker, args, kwargs):
         List of args and kwargs (if supported).
     """
     if not worker.load_code_from_local:
-        raise Exception("Cross language feature needs "
-                        "--load-code-from-local to be set.")
+        raise ValueError("Cross language feature needs "
+                         "--load-code-from-local to be set.")
     if kwargs:
-        raise Exception("Cross language remote functions "
+        raise TypeError("Cross language remote functions "
                         "does not support kwargs.")
     return args
 

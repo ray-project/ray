@@ -1,4 +1,3 @@
-import six
 import collections
 import numpy as np
 
@@ -49,7 +48,7 @@ class SampleBatch:
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():
-            assert isinstance(k, six.string_types), self
+            assert isinstance(k, str), self
             lengths.append(len(v))
             self.data[k] = np.array(v, copy=False)
         if not lengths:

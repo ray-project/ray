@@ -33,6 +33,8 @@ Training APIs
 
    -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
 
+   -  `Customizing Exploration Behavior <rllib-training.html#customizing-exploration-behavior>`__
+
    -  `Customized Evaluation During Training <rllib-training.html#customized-evaluation-during-training>`__
 
    -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
@@ -51,7 +53,7 @@ Training APIs
 
    -  `Stack Traces <rllib-training.html#stack-traces>`__
 
-*  `REST API <rllib-training.html#rest-api>`__
+*  `External Application API <rllib-training.html#external-application-api>`__
 
 Environments
 ------------
@@ -60,7 +62,10 @@ Environments
 * `OpenAI Gym <rllib-env.html#openai-gym>`__
 * `Vectorized <rllib-env.html#vectorized>`__
 * `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
-* `Interfacing with External Agents <rllib-env.html#interfacing-with-external-agents>`__
+* `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
+
+   -  `External Application Clients <rllib-env.html#external-application-clients>`__
+
 * `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
 Models, Preprocessors, and Action Distributions
@@ -183,8 +188,9 @@ try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits wit
 If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and ``object_store_memory`` in ``ray.init()`` to reduce memory usage.
 
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
-the stack traces of all Ray workers on the current node, and ``ray timeline`` to dump
-a timeline visualization of tasks to a file.
+the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
+a timeline visualization of tasks to a file, and ``ray memory`` to list all object
+references in the cluster.
 
 TensorFlow 2.0
 ~~~~~~~~~~~~~~
