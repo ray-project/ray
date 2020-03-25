@@ -64,7 +64,7 @@ class StoreClient {
   /// Get data by index from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
-  /// \param index_key A secondary key that will be used for indexing the data.
+  /// \param index_key A secondary key that indexing the data.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
   virtual Status AsyncGetByIndex(const std::string &table_name,
@@ -92,7 +92,7 @@ class StoreClient {
   /// Delete by index from the given table asynchronously.
   ///
   /// \param table_name The name of the table which data is to be deleted.
-  /// \param index_key The index that will be deleted.
+  /// \param index_key The secondary key that will be used to delete the indexed data.
   /// from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
