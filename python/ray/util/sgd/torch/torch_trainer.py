@@ -8,7 +8,8 @@ import torch.distributed as dist
 import ray
 
 from ray.tune import Trainable
-from ray.tune.trial import Resources
+from ray.tune.resources import Resources
+from ray.tune.utils.util import deep_update
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
 from ray.util.sgd import utils
@@ -632,10 +633,10 @@ class BaseTorchTrainable(Trainable):
         self._trainer = self._create_trainer(config)
 
     def _train(self):
-        train_stats = self.trainer.train()
-        validation_stats = self.trainer.validate()
-        train_stats.update(validation_stats)
-        return train_stats
+        train_stats = self.trainer.train(profile=True)
+        validation_stats = self.trainer.validate(profile=True)
+        stats = merge_dicts(train_stats, validation_stats)
+        return stats
 
     def _save(self, checkpoint):
         return self.trainer.state_stream()

@@ -114,7 +114,7 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
 
-    scheduler = PopulationBasedTraining(
+    pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
         metric="loss",
         mode="min",
@@ -131,7 +131,8 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
         num_samples=2,
         config={"lr": tune.choice([1e-4, 1e-3])},
         stop={"training_iteration": 2 if test_mode else 100},
-        verbose=2)
+        verbose=2,
+        scheduler=pbt_scheduler)
 
     return analysis.get_best_config(metric="mean_accuracy", mode="max")
 
