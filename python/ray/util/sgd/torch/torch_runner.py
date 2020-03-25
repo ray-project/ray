@@ -2,6 +2,7 @@ import collections
 from filelock import FileLock
 import logging
 import inspect
+import io
 import itertools
 import os
 import tempfile
@@ -233,7 +234,6 @@ class TorchRunner:
 
     def state_dict(self):
         """Returns the state of the runner."""
-
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
@@ -253,7 +253,6 @@ class TorchRunner:
 
     def load_state_dict(self, state):
         """Sets the state of the model."""
-        # TODO: restore timer stats
         self._set_model_state_dicts(state["models"])
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
@@ -266,6 +265,19 @@ class TorchRunner:
             amp.load_state_dict(state["amp"])
         self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state_dict)
+
+    def state_stream(self):
+        """Returns a bytes object for the state dict."""
+        state_dict = self.state_dict()
+        _buffer = io.BytesIO()
+        torch.save(state_dict, _buffer)
+        return _buffer.getvalue()
+
+    def load_state_stream(self, byte_obj):
+        """Loads a bytes object the training state dict."""
+        _buffer = io.BytesIO(byte_obj)
+        state_dict = torch.load(_buffer)
+        return self.load_state_dict(state_dict)
 
     def apply(self, fn):
         return fn()

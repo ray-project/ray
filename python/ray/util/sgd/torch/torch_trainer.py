@@ -1,5 +1,4 @@
 import numpy as np
-import os
 import logging
 import numbers
 import tempfile
@@ -349,8 +348,7 @@ class TorchTrainer:
         if max_retries:
             if checkpoint == "auto":
                 logger.debug("Retrying detected. Automatically checkpointing.")
-                checkpoint = self.save(
-                    os.path.join(self.temp_dir, "tmp_checkpoint"))
+                checkpoint = self.state_stream()
             elif not checkpoint:
                 raise ValueError("Cannot retry from empty checkpoint.")
 
@@ -462,7 +460,7 @@ class TorchTrainer:
     def get_model(self):
         """Returns the learned model(s)."""
         models = self.model_creator(self.config)
-        state = ray.get(self.workers[0].get_state.remote())
+        state = ray.get(self.workers[0].state_dict.remote())
         if len(state["models"]) == 1:
             models.load_state_dict(state["models"][0])
         else:
@@ -470,17 +468,20 @@ class TorchTrainer:
                 model.load_state_dict(state_dict)
         return models
 
-    def state_dict(self):
-        return ray.get(self.workers[0].get_state.remote())
+    def state_stream(self):
+        return ray.get(self.workers[0].state_stream.remote())
 
-    def load_state_dict(self, state_dict):
+    def load_state_stream(self, state_stream):
         """Restores the Trainer and all workers from the provided checkpoint.
 
         Args:
             state_dict (dict): Dictionary including tensors.
         """
-        state_id = ray.put(state_dict)
-        ray.get([worker.set_state.remote(state_id) for worker in self.workers])
+        state_id = ray.put(state_stream)
+        ray.get([
+            worker.load_state_stream.remote(state_id)
+            for worker in self.workers
+        ])
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
@@ -509,7 +510,7 @@ class TorchTrainer:
             if new_workers:
                 self._last_resize = time.time()
                 self._start_workers(int(new_workers))
-                self.restore(checkpoint)
+                self.load_state_stream(checkpoint)
                 return
             else:
                 delay = 2**i
@@ -532,7 +533,7 @@ class TorchTrainer:
         return False
 
     @classmethod
-    def to_trainable(*args, **kwargs):
+    def as_trainable(cls, *args, **kwargs):
         """Creates a BaseTorchTrainable class compatible with Tune.
 
         Any configuration parameters will be overriden by the Tune
@@ -581,7 +582,23 @@ class TorchTrainer:
         """
 
         class TorchTrainable(BaseTorchTrainable):
-            def _create_trainer(self):
+            @classmethod
+            def default_resource_request(cls, config):
+                num_workers = config.get("num_workers")
+                if not num_workers:
+                    num_workers = kwargs.get("num_workers", 1)
+                res = Resources(
+                    cpu=0,
+                    gpu=0,
+                    extra_cpu=num_workers,
+                    extra_gpu=int(kwargs.get("use_gpu", False)) * num_workers)
+                return res
+
+            def _create_trainer(self, config):
+                """Overrides the provided config with Tune config."""
+                default_config = kwargs.get("config", {}).copy()
+                default_config.update(config)
+                kwargs["config"] = default_config
                 trainer = TorchTrainer(*args, **kwargs)
                 return trainer
 
@@ -591,16 +608,8 @@ class TorchTrainer:
 class BaseTorchTrainable(Trainable):
     """Base class for implementing a Tune-compatible Trainable class."""
 
-    @classmethod
-    def default_resource_request(cls, config):
-        return Resources(
-            cpu=0,
-            gpu=0,
-            extra_cpu=config["num_workers"],
-            extra_gpu=int(config["use_gpu"]) * config["num_workers"])
-
     def _setup(self, config):
-        self._trainer = self._create_trainer()
+        self._trainer = self._create_trainer(config)
 
     def _train(self):
         train_stats = self.trainer.train()
@@ -609,15 +618,15 @@ class BaseTorchTrainable(Trainable):
         return train_stats
 
     def _save(self, checkpoint):
-        return self.trainer.state_dict()
+        return self.trainer.state_stream()
 
     def _restore(self, checkpoint):
-        return self.trainer.load_state_dict(checkpoint)
+        return self.trainer.load_state_stream(checkpoint)
 
     def _stop(self):
         self.trainer.shutdown()
 
-    def _create_trainer(self):
+    def _create_trainer(self, config):
         raise NotImplementedError
 
     @property

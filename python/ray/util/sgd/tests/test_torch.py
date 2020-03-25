@@ -1,5 +1,3 @@
-import os
-import tempfile
 from unittest.mock import patch
 import numpy as np
 import pytest
@@ -116,9 +114,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
     trainer1.train()
-
-    filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
-    trainer1.save(filename)
+    state = trainer1.state_stream()
 
     models1 = trainer1.get_model()
 
@@ -132,9 +128,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
-    trainer2.restore(filename)
-
-    os.remove(filename)
+    trainer2.load_state_stream(state)
 
     models2 = trainer2.get_model()
 
@@ -451,9 +445,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     trainer1.train()
-
-    filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
-    trainer1.save(filename)
+    state = trainer1.state_stream()
 
     model1 = trainer1.get_model()
 
@@ -465,9 +457,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
-    trainer2.restore(filename)
-
-    os.remove(filename)
+    trainer2.load_state_stream(state)
 
     model2 = trainer2.get_model()
 
