@@ -76,7 +76,7 @@ class Response:
     It is expected to be called in async context and pass along
     `scope, receive, send` as in ASGI spec.
 
-    >>> await Response({"k": "v"})(scope, receive, send)
+    >>> await Response({"k": "v"}).send(scope, receive, send)
     """
 
     def __init__(self, content=None, status_code=200):
@@ -116,7 +116,7 @@ class Response:
         else:
             raise ValueError("Invalid content type {}".foramt(content_type))
 
-    async def __call__(self, scope, receive, send):
+    async def send(self, scope, receive, send):
         await send({
             "type": "http.response.start",
             "status": self.status_code,

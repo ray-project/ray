@@ -452,6 +452,7 @@ def get_handle(endpoint_name,
         absolute_slo_ms(float): Specify absolute deadline in milliseconds for
             queries fired using this handle. (Default: None)
         missing_ok (bool): If true, skip the check for the endpoint existence.
+            It can be useful when the endpoint has not been registered.
 
     Returns:
         RayServeHandle

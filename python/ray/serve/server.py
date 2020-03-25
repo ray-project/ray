@@ -98,8 +98,8 @@ class HTTPProxy:
 
     def _make_error_sender(self, scope, receive, send):
         async def sender(error_message, status_code):
-            await Response(
-                error_message, status_code=status_code)(scope, receive, send)
+            response = Response(error_message, status_code=status_code)
+            await response.send(scope, receive, send)
 
         return sender
 
@@ -116,7 +116,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
         if current_path == "/-/routes":
-            await Response(self.route_table_cache)(scope, receive, send)
+            await Response(self.route_table_cache).send(scope, receive, send)
             return
 
         # TODO(simon): Use werkzeug route mapper to support variable path
@@ -162,7 +162,7 @@ class HTTPProxy:
         try:
             result = await (self.serve_global_state.init_or_get_router()
                             .enqueue_request.remote(request_in_object, *args))
-            await Response(result)(scope, receive, send)
+            await Response(result).send(scope, receive, send)
         except Exception as e:
             error_message = "Internal Error. Traceback: {}.".format(e)
             await error_sender(error_message, 500)
