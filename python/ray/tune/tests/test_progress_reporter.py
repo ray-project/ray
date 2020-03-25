@@ -212,7 +212,6 @@ class ProgressReporterTest(unittest.TestCase):
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
-    @pytest.mark.skip("Very flaky in CI.")
     def testEndToEndReporting(self):
         with tempfile.NamedTemporaryFile(suffix=".py") as f:
             f.write(END_TO_END_COMMAND.encode("utf-8"))

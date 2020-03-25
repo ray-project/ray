@@ -40,6 +40,13 @@ inline int64_t current_time_ms() {
   return ms_since_epoch.count();
 }
 
+inline int64_t current_sys_time_ms() {
+  std::chrono::milliseconds ms_since_epoch =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return ms_since_epoch.count();
+}
+
 /// A helper function to split a string by whitespaces.
 ///
 /// \param str The string with whitespaces.

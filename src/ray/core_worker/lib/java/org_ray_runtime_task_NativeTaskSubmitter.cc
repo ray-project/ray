@@ -65,27 +65,16 @@ inline std::vector<ray::TaskArg> ToTaskArgs(JNIEnv *env, jobject args) {
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
   std::unordered_map<std::string, double> resources;
-  if (java_resources) {
-    jobject entry_set = env->CallObjectMethod(java_resources, java_map_entry_set);
-    RAY_CHECK_JAVA_EXCEPTION(env);
-    jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
-    RAY_CHECK_JAVA_EXCEPTION(env);
-    while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      auto java_key = (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      std::string key = JavaStringToNativeString(env, java_key);
-      auto java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      double value = env->CallDoubleMethod(java_value, java_double_double_value);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      resources.emplace(key, value);
-    }
-    RAY_CHECK_JAVA_EXCEPTION(env);
-  }
-  return resources;
+  return JavaMapToNativeMap<std::string, double>(
+      env, java_resources,
+      [](JNIEnv *env, jobject java_key) {
+        return JavaStringToNativeString(env, (jstring)java_key);
+      },
+      [](JNIEnv *env, jobject java_value) {
+        double value = env->CallDoubleMethod(java_value, java_double_double_value);
+        RAY_CHECK_JAVA_EXCEPTION(env);
+        return value;
+      });
 }
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
@@ -96,7 +85,7 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
     resources = ToResources(env, java_resources);
   }
 
-  ray::TaskOptions task_options{numReturns, /*use_direct_call=*/true, resources};
+  ray::TaskOptions task_options{numReturns, resources};
   return task_options;
 }
 
@@ -124,7 +113,6 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
   ray::ActorCreationOptions actor_creation_options{
       static_cast<uint64_t>(max_reconstructions),
-      /*use_direct_call=*/true,
       static_cast<int>(max_concurrency),
       resources,
       resources,

@@ -57,6 +57,7 @@ class TaskManager : public TaskFinisherInterface {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           RemoveLineageReference(object_id, ids_to_release);
+          ShutdownIfNeeded();
         });
   }
 
@@ -69,7 +70,8 @@ class TaskManager : public TaskFinisherInterface {
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      const TaskSpecification &spec, int max_retries = 0);
+                      const TaskSpecification &spec, const std::string &call_site,
+                      int max_retries = 0);
 
   Status ResubmitTask(const TaskID &task_id, bool *resubmit,
                       std::vector<ObjectID> *task_deps);
@@ -124,8 +126,13 @@ class TaskManager : public TaskFinisherInterface {
   /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const;
 
+  /// Return the number of submissible tasks. This includes both tasks that are
+  /// pending execution and tasks that have finished but that may be
+  /// re-executed to recover from a failure.
+  size_t NumSubmissibleTasks() const;
+
   /// Return the number of pending tasks.
-  int NumSubmissibleTasks() const;
+  size_t NumPendingTasks() const;
 
  private:
   struct TaskEntry {
@@ -218,6 +225,11 @@ class TaskManager : public TaskFinisherInterface {
   /// and tasks that finished execution but that may be retried again in the
   /// future.
   absl::flat_hash_map<TaskID, TaskEntry> submissible_tasks_ GUARDED_BY(mu_);
+
+  /// Number of tasks that are pending. This is a count of all tasks in
+  /// submissible_tasks_ that have been submitted and are currently pending
+  /// execution.
+  size_t num_pending_tasks_ = 0;
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;

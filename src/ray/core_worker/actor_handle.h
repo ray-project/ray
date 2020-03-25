@@ -35,7 +35,6 @@ class ActorHandle {
   ActorHandle(const ActorID &actor_id, const TaskID &owner_id,
               const rpc::Address &owner_address, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
-              bool is_direct_call,
               const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
               const std::string &extension_data);
 
@@ -61,10 +60,7 @@ class ActorHandle {
 
   std::string ExtensionData() const { return inner_.extension_data(); }
 
-  bool IsDirectCallActor() const { return inner_.is_direct_call(); }
-
-  void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskTransportType transport_type,
-                        const ObjectID new_cursor);
+  void SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor);
 
   void Serialize(std::string *output);
 

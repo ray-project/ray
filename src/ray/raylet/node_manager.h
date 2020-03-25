@@ -84,6 +84,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The raylet config list of this node.
+  std::unordered_map<std::string, std::string> raylet_config;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -594,6 +596,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `FormatGlobalMemoryInfo`` request.
+  void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
+                                    rpc::FormatGlobalMemoryInfoReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 
@@ -610,8 +617,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
-  /// Whether a task is an direct actor creation task.
-  bool IsDirectActorCreationTask(const TaskID &task_id);
+  /// Whether a task is an actor creation task.
+  bool IsActorCreationTask(const TaskID &task_id);
 
   /// ID of this node.
   ClientID self_node_id_;
@@ -713,9 +720,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
-  /// Map of leased workers to their current resource usage.
-  /// TODO(ion): Check whether we can track these resources in the worker.
-  std::unordered_map<WorkerID, ResourceSet> leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
                              std::string address, int port)>
@@ -726,6 +730,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
   /// Queue of lease requests that should be scheduled onto workers.
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
+  /// Queue tasks waiting for arguments to be transferred locally.
+  absl::flat_hash_map<TaskID, std::pair<ScheduleFn, Task>> waiting_tasks_;
 
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this

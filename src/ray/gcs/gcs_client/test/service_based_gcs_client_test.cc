@@ -36,11 +36,12 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     config.is_test = true;
     config.redis_port = REDIS_SERVER_PORT;
     gcs_server_.reset(new gcs::GcsServer(config));
+    io_service_.reset(new boost::asio::io_service());
 
     thread_io_service_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
-      io_service_.run();
+          new boost::asio::io_service::work(*io_service_));
+      io_service_->run();
     }));
 
     thread_gcs_server_.reset(new std::thread([this] { gcs_server_->Start(); }));
@@ -54,15 +55,16 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password, config.is_test);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
-    RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+    RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
   }
 
   void TearDown() override {
     gcs_server_->Stop();
-    io_service_.stop();
+    io_service_->stop();
     thread_io_service_->join();
     thread_gcs_server_->join();
     gcs_client_->Disconnect();
+    FlushAll();
   }
 
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
@@ -118,11 +120,12 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  rpc::ActorCheckpointData GetCheckpoint(const ActorCheckpointID &checkpoint_id) {
+  rpc::ActorCheckpointData GetCheckpoint(const ActorID &actor_id,
+                                         const ActorCheckpointID &checkpoint_id) {
     std::promise<bool> promise;
     rpc::ActorCheckpointData actor_checkpoint_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id,
+        checkpoint_id, actor_id,
         [&actor_checkpoint_data, &promise](
             Status status, const boost::optional<rpc::ActorCheckpointData> &result) {
           assert(result);
@@ -311,6 +314,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     rpc::GcsNodeInfo gcs_node_info;
     gcs_node_info.set_node_id(node_id);
     gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
+    gcs_node_info.set_node_manager_address("127.0.0.1");
     return gcs_node_info;
   }
 
@@ -339,7 +343,7 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<std::thread> thread_gcs_server_;
-  boost::asio::io_service io_service_;
+  std::unique_ptr<boost::asio::io_service> io_service_;
 
   // Gcs client
   std::unique_ptr<gcs::GcsClient> gcs_client_;
@@ -429,7 +433,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
   ASSERT_TRUE(AddCheckpoint(checkpoint));
 
   // Get Checkpoint
-  auto get_checkpoint_result = GetCheckpoint(checkpoint_id);
+  auto get_checkpoint_result = GetCheckpoint(actor_id, checkpoint_id);
   ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
 
   // Get CheckpointID
@@ -643,6 +647,19 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestDetectGcsAvailability) {
   RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
       job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
   promise.get_future().get();
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestGcsRedisFailureDetector) {
+  // Stop redis.
+  TearDownTestCase();
+
+  // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
+  // detects that the redis is failure and then stop itself.
+  auto interval_ms = RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds();
+  std::this_thread::sleep_for(std::chrono::milliseconds(3 * interval_ms));
+
+  // Check if gcs server has exited.
+  RAY_CHECK(gcs_server_->IsStopped());
 }
 
 }  // namespace ray
