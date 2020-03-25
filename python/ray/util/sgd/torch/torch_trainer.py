@@ -639,9 +639,10 @@ class BaseTorchTrainable(Trainable):
         return stats
 
     def _save(self, checkpoint):
-        return self.trainer.state_stream()
+        return {"state": self.trainer.state_stream()}
 
-    def _restore(self, checkpoint):
+    def _restore(self, checkpoint_dict):
+        checkpoint = checkpoint_dict["state"]
         return self.trainer.load_state_stream(checkpoint)
 
     def _stop(self):
@@ -652,4 +653,8 @@ class BaseTorchTrainable(Trainable):
 
     @property
     def trainer(self):
+        """An instantiated TorchTrainer object.
+
+        Use this when specifying custom training procedures for Tune.
+        """
         return self._trainer
