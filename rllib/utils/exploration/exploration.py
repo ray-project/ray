@@ -16,13 +16,8 @@ class Exploration:
     implemented exploration schema.
     """
 
-    def __init__(self,
-                 action_space: Space,
-                 *,
-                 framework: str,
-                 num_workers: int,
-                 worker_index: int,
-                 policy_config: dict,
+    def __init__(self, action_space: Space, *, framework: str,
+                 num_workers: int, worker_index: int, policy_config: dict,
                  model: ModelV2):
         """
         Args:

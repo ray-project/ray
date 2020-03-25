@@ -103,8 +103,8 @@ class TorchPolicy(Policy):
 
             input_dict[SampleBatch.ACTIONS] = action
 
-            extra_action_out = self.extra_action_out(
-                input_dict, state_batches, self.model, action_dist)
+            extra_action_out = self.extra_action_out(input_dict, state_batches,
+                                                     self.model, action_dist)
             if logp is not None:
                 logp = convert_to_non_torch_type(logp)
                 extra_action_out.update({
@@ -129,7 +129,7 @@ class TorchPolicy(Policy):
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
         if prev_reward_batch:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-    
+
         with torch.no_grad():
             self.exploration.before_forward_pass(
                 model=self.model,
@@ -138,8 +138,7 @@ class TorchPolicy(Policy):
                 seq_lens=self._convert_to_tensor([1]),
                 timestep=timestep,
                 explore=explore)
-            dist_inputs, state_out = self.model(
-                input_dict, state_batches, [1])
+            dist_inputs, state_out = self.model(input_dict, state_batches, [1])
 
             return dist_inputs, self.dist_class, state_out
 
@@ -160,8 +159,9 @@ class TorchPolicy(Policy):
                     is_training=False
                 )
             action_dist = dist_class(dist_inputs, self.model)
-            action_tensor = self._lazy_tensor_dict(
-                {SampleBatch.ACTIONS: actions})
+            action_tensor = self._lazy_tensor_dict({
+                SampleBatch.ACTIONS: actions
+            })
             log_likelihoods = action_dist.logp(
                 action_tensor[SampleBatch.ACTIONS])
             return log_likelihoods

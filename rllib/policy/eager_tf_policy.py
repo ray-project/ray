@@ -254,8 +254,7 @@ def build_eager_tf_policy(name,
                 seq_lens=tf.convert_to_tensor([1]),
                 prev_action_batch=input_dict[SampleBatch.PREV_ACTIONS],
                 prev_reward_batch=input_dict[SampleBatch.PREV_REWARDS],
-                is_training=False
-            )
+                is_training=False)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -334,7 +333,8 @@ def build_eager_tf_policy(name,
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampling_fn:
                     action, logp = action_sampling_fn(
-                        self, self.model,
+                        self,
+                        self.model,
                         obs_batch=tf.convert_to_tensor(obs_batch),
                         state_batches=state_batches,
                         seq_lens=tf.convert_to_tensor([1]),
@@ -435,7 +435,7 @@ def build_eager_tf_policy(name,
                 raise ValueError("Cannot compute log-prob/likelihood w/o an "
                                  "`action_distribution_fn` and a provided "
                                  "`action_sampling_fn`!")
-    
+
             prev_batches = {}
             if obs_include_prev_action_reward:
                 prev_batches["prev_action_batch"] = tf.convert_to_tensor(

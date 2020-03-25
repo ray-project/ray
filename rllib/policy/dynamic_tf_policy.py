@@ -179,14 +179,13 @@ class DynamicTFPolicy(TFPolicy):
         # Fully customized action generation.
         if action_sampling_fn:
             sampled_action, sampled_action_logp = action_sampling_fn(
-                self, self.model,
+                self,
+                self.model,
                 obs_batch=self._input_dict[SampleBatch.CUR_OBS],
                 state_batches=self._state_in,
                 seq_lens=self._seq_lens,
-                prev_action_batch=self._input_dict[
-                    SampleBatch.PREV_ACTIONS],
-                prev_reward_batch=self._input_dict[
-                    SampleBatch.PREV_REWARDS],
+                prev_action_batch=self._input_dict[SampleBatch.PREV_ACTIONS],
+                prev_reward_batch=self._input_dict[SampleBatch.PREV_REWARDS],
                 explore=explore,
                 is_training=self._input_dict["is_training"])
         else:
