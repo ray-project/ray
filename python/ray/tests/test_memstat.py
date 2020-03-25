@@ -191,7 +191,7 @@ def test_pinned_object_call_site(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
-def test_multi_node_stats(call_ray_stop_only):
+def test_multi_node_stats(shutdown_only):
     cluster = Cluster()
     for _ in range(2):
         cluster.add_node(num_cpus=1)
