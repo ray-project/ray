@@ -88,7 +88,7 @@ class TestEagerSupport(unittest.TestCase):
             })
 
     def test_sac(self):
-        check_support("SAC", {"num_workers": 0})
+        check_support("SAC", {"num_workers": 0, "learning_starts": 0})
 
 
 if __name__ == "__main__":

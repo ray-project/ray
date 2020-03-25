@@ -386,11 +386,11 @@ def build_eager_tf_policy(name,
                                  "`action_distribution_fn` and a provided "
                                  "`action_sampling_fn`!")
 
-            # ???
-            #if tf.executing_eagerly():
-            n = len(obs_batch)
-            #else:
-            #    n = obs_batch.shape[0]
+            if isinstance(obs_batch, list):
+                n = len(obs_batch)
+            else:
+                assert isinstance(obs_batch, tf.Tensor)
+                n = obs_batch.shape[0]
             seq_lens = tf.ones(n, dtype=tf.int32)
 
             # Eploration hook before each forward pass.
