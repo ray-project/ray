@@ -256,62 +256,69 @@ class TorchTrainer:
         batch_size_per_worker = self._configure_and_split_batch(num_workers)
         if batch_size_per_worker:
             worker_config[BATCH_SIZE] = batch_size_per_worker
+
+        self.local_worker = None
+        self.remote_workers = []
+
         if num_workers == 1:
-            # Generate actor class
-            Runner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(TorchRunner)
-            # Start workers
-            self.workers = [
-                Runner.remote(
+            # Start local worker
+            self.local_worker = TorchRunner.remote(
                     model_creator=self.model_creator,
                     data_creator=self.data_creator,
                     optimizer_creator=self.optimizer_creator,
                     loss_creator=self.loss_creator,
                     scheduler_creator=self.scheduler_creator,
-                    training_operator_cls=self.training_operator_cls,
-                    config=worker_config,
-                    use_fp16=self.use_fp16,
-                    apex_args=self.apex_args,
-                    scheduler_step_freq=self.scheduler_step_freq,
-                )
-            ]
-            if self.initialization_hook:
-                self.apply_all_workers(self.initialization_hook)
-            # Get setup tasks in order to throw errors on failure
-            ray.get(self.workers[0].setup.remote())
-            ray.get(self.workers[0].set_reporters.remote(
-                [h.create_reporter() for h in self.handlers]))
-        else:
-            # Generate actor class
-            Runner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
-            # Start workers
-            self.workers = [
-                Runner.remote(
-                    model_creator=self.model_creator,
-                    data_creator=self.data_creator,
-                    optimizer_creator=self.optimizer_creator,
-                    loss_creator=self.loss_creator,
-                    scheduler_creator=self.scheduler_creator,
-                    backend=self.backend,
                     training_operator_cls=self.training_operator_cls,
                     config=worker_config,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
                     scheduler_step_freq=self.scheduler_step_freq)
-                for i in range(num_workers)
+
+            if self.initialization_hook:
+                self.apply_all_workers(self.initialization_hook)
+            self.local_worker.setup()
+            self.local_worker.set_reporters([h.create_reporter() for h in self.handlers])
+        else:
+            params = dict(
+                model_creator=self.model_creator,
+                data_creator=self.data_creator,
+                optimizer_creator=self.optimizer_creator,
+                loss_creator=self.loss_creator,
+                scheduler_creator=self.scheduler_creator,
+                backend=self.backend,
+                training_operator_cls=self.training_operator_cls,
+                config=worker_config,
+                use_fp16=self.use_fp16,
+                apex_args=self.apex_args,
+                scheduler_step_freq=self.scheduler_step_freq)
+
+            # Start local worker
+            self.local_worker = DistributedTorchRunner(**params)
+
+            # Generate actor class
+            RemoteRunner = ray.remote(
+                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
+            # Start workers
+            self.remote_workers = [
+                RemoteRunner.remote(**params)
+                for i in range(num_workers - 1)
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
 
             # Compute URL for initializing distributed PyTorch
-            ip = ray.get(self.workers[0].get_node_ip.remote())
-            port = ray.get(self.workers[0].find_free_port.remote())
+            ip = self.local_worker.get_node_ip()
+            port = self.local_worker.find_free_port()
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+
+
+            self.local_worker.setup(address, 0, num_workers)
+            self.local_worker.set_reporters([h.create_reporter() for h in self.handlers])
+
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(address, i, len(self.workers))
-                for i, worker in enumerate(self.workers)
+                worker.setup.remote(address, i + 1, num_workers)
+                for i, worker in enumerate(self.remote_workers)
             ])
             ray.get([
                 w.set_reporters.remote(
@@ -387,13 +394,12 @@ class TorchTrainer:
                 self._num_failures += 1
             self._resize_workers(checkpoint=checkpoint)
             logger.info(
-                "Retrying training step with %d workers." % len(self.workers))
+                "Retrying training step with %d workers." % len(self.remote_workers) + 1)
             success, worker_stats = self._train_epoch(
                 num_steps=num_steps, profile=profile, info=info)
         if not success:
             raise RuntimeError("Training run failed.")
 
-        worker_stats = ray.get(worker_stats)
         if reduce_results:
             return self._process_stats(worker_stats)
         else:
@@ -413,42 +419,18 @@ class TorchTrainer:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
 
-    def _train_epoch(self,
-                     num_steps=None,
-                     profile=False,
-                     info=None,
-                     batch_logs_handler=None):
-        worker_trains = [
-            w.train_epoch.remote(
-                num_steps=num_steps, profile=profile, info=info)
-            for w in self.workers
+    def _train_epoch(self, num_steps=None, profile=False, info=None):
+        params = dict(num_steps=num_steps, profile=profile, info=info)
+
+        remote_worker_stats = [
+            w.train_epoch.remote(**params)
+            for w in self.remote_workers
         ]
+        success = utils.check_for_failure(remote_worker_stats)
 
-        if not self.handlers:
-            success = check_for_failure(worker_trains)
-            return success, worker_trains
+        local_worker_stats = self.local_worker.train_epoch(**params)
 
-        unfinished = worker_trains
-        try:
-            while len(unfinished) > 0:
-                finished, unfinished = ray.wait(
-                    unfinished, timeout=BATCH_LOGS_RATE_LIMIT)
-
-                # throw errors on agent failure
-                finished = ray.get(finished)
-
-                futures = [h.update() for h in self.handlers]
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                loop.run_until_complete(asyncio.wait(futures))
-                loop.close()
-
-            return True, worker_trains
-        except RayActorError as exc:
-            logger.exception(str(exc))
-        return False, worker_trains
+        return success, [local_worker_stats] + ray.get(remote_worker_stats)
 
     def apply_all_workers(self, fn):
         """Run a function on all operators on the workers.
@@ -460,7 +442,9 @@ class TorchTrainer:
             A list of objects returned by ``fn`` on each worker.
 
         """
-        return ray.get([w.apply.remote(fn) for w in self.workers])
+        remote_calls = [w.apply.remote(fn) for w in self.remote_workers]
+        local_call = self.local_worker.apply(fn)
+        return [local_call] + ray.get(remote_calls)
 
     def apply_all_operators(self, fn):
         """Run a function on all operators on the workers.
@@ -473,7 +457,9 @@ class TorchTrainer:
             A list of objects returned by ``fn`` on each operator.
 
         """
-        return ray.get([w.apply_operator.remote(fn) for w in self.workers])
+        remote_calls = [w.apply_operator.remote(fn) for w in self.remote_workers]
+        local_call = self.local_worker.apply_operator(fn)
+        return [local_call] + ray.get(remote_calls)
 
     def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set.
@@ -491,12 +477,15 @@ class TorchTrainer:
                 You can provide custom metrics by passing in a custom
                 ``training_operator_cls``.
         """
-        worker_stats = ray.get([
-            w.validate.remote(num_steps=num_steps, profile=profile, info=info)
-            for w in self.workers
-        ])
+        params = dict(num_steps=num_steps, profile=profile, info=info)
 
-        return self._process_stats(worker_stats)
+        remote_worker_stats = [
+            w.validate.remote(**params)
+            for w in self.remote_workers
+        ]
+        local_worker_stats = self.local_worker.validate(**params)
+
+        return self._process_stats([local_worker_stats] + ray.get(remote_worker_stats))
 
     def update_scheduler(self, metric):
         """Calls ``scheduler.step(metric)`` on all schedulers.
@@ -509,7 +498,7 @@ class TorchTrainer:
     def get_model(self):
         """Returns the learned model(s)."""
         models = self.model_creator(self.config)
-        state = ray.get(self.workers[0].get_state.remote())
+        state = self.local_worker.get_state()
         if len(state["models"]) == 1:
             models.load_state_dict(state["models"][0])
         else:
@@ -526,7 +515,7 @@ class TorchTrainer:
         Returns:
             checkpoint (str): Path to target checkpoint file.
         """
-        state = ray.get(self.workers[0].get_state.remote())
+        state = self.local_worker.get_state()
         torch.save(state, checkpoint)
         return checkpoint
 
@@ -538,20 +527,25 @@ class TorchTrainer:
         """
         state = torch.load(checkpoint)
         state_id = ray.put(state)
-        ray.get([worker.set_state.remote(state_id) for worker in self.workers])
+
+        remote_calls = [worker.set_state.remote(state_id) for worker in self.remote_workers]
+        self.local_worker.set_state(state_id)
+        ray.get(remote_calls)
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
+        self.local_worker.shutdown()
         if not force:
-            cleanup = [worker.shutdown.remote() for worker in self.workers]
+            cleanup = [worker.shutdown.remote() for worker in self.remote_workers]
             ray.get(cleanup)
-            [worker.__ray_terminate__.remote() for worker in self.workers]
+            [worker.__ray_terminate__.remote() for worker in self.remote_workers]
         else:
-            for worker in self.workers:
+            for worker in self.remote_workers:
                 logger.warning("Killing worker {}.".format(worker))
                 worker.__ray_kill__()
 
-        self.workers = []
+        self.local_worker = None
+        self.remote_workers = []
 
     def _resize_workers(self, checkpoint, max_retries=10):
         # check available resources
@@ -561,7 +555,7 @@ class TorchTrainer:
         time.sleep(1)
         for i in range(max_retries):
             resources = ray.available_resources()
-            new_workers = min(resources.get("CPU", 0), self.max_replicas)
+            new_workers = min(resources.get("CPU", 0), self.max_replicas - 1)
             if self.use_gpu:
                 new_workers = min(resources.get("GPU", 0), new_workers)
             if new_workers:
@@ -578,11 +572,11 @@ class TorchTrainer:
 
     def _should_resize(self):
         """Returns True if past cooldown and exists resources to scale up."""
-        worker_gap = self.max_replicas - len(self.workers)
+        worker_gap = self.max_replicas - 1 - len(self.remote_workers)
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             resources = ray.available_resources()
-            potential_workers = min(resources.get("CPU", 0), self.max_replicas)
+            potential_workers = min(resources.get("CPU", 0), self.max_replicas - 1)
             if self.use_gpu:
                 potential_workers = min(
                     resources.get("GPU", 0), potential_workers)
