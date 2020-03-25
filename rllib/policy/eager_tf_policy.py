@@ -438,9 +438,9 @@ def build_eager_tf_policy(name,
     
             prev_batches = {}
             if obs_include_prev_action_reward:
-                prev_batches[SampleBatch.PREV_ACTIONS] = tf.convert_to_tensor(
+                prev_batches["prev_action_batch"] = tf.convert_to_tensor(
                     prev_action_batch)
-                prev_batches[SampleBatch.PREV_REWARDS] = tf.convert_to_tensor(
+                prev_batches["prev_reward_batch"] = tf.convert_to_tensor(
                     prev_reward_batch)
 
             dist_inputs, dist_class, _ = \
