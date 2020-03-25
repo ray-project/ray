@@ -1,8 +1,10 @@
+import numpy as np
 import os
 import torch
 import torch.nn as nn
 import argparse
 from ray import tune
+from ray.tune.schedulers import PopulationBasedTraining
 from torch.utils.data import DataLoader, Subset
 import torchvision
 import torchvision.transforms as transforms
@@ -56,8 +58,7 @@ def optimizer_creator(model, config):
     return torch.optim.SGD(
         model.parameters(),
         lr=config.get("lr", 0.1),
-        momentum=config.get("momentum", 0.8)
-    )
+        momentum=config.get("momentum", 0.8))
 
 
 def scheduler_creator(optimizer, config):

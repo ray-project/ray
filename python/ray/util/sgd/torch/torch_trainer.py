@@ -9,7 +9,7 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.tune.utils.util import deep_update
+from ray.tune.utils.util import merge_dicts
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
 from ray.util.sgd import utils
