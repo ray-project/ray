@@ -3,6 +3,7 @@ import requests
 
 from unittest.mock import patch
 
+from ray.dashboard.metrics_exporter.actions import ActionHandler
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.schema import (AuthResponse, BaseModel,
@@ -20,12 +21,22 @@ def _setup_client_and_exporter(controller):
     return exporter, client
 
 
+"""
+Test Exporter
+"""
+
+
 @patch("ray.dashboard.dashboard.DashboardController")
 def test_verify_exporter_cannot_run_without_access_token(mock_controller):
     exporter, client = _setup_client_and_exporter(mock_controller)
     # Should raise an assertion error because there's no access token set.
     with pytest.raises(AssertionError):
         exporter.run()
+
+
+"""
+Test Client
+"""
 
 
 @patch("ray.dashboard.dashboard.DashboardController")
@@ -129,8 +140,10 @@ BaseModel Test
 
 
 def test_base_model():
+    DEFAULT_VALUE = "default"
+
     class A(BaseModel):
-        __slots__ = ["a", "b"]
+        __schema__ = {"a": (True, None, str), "b": (False, DEFAULT_VALUE, str)}
 
     # Test the correct case.
     obj = {"a": "1", "b": "1"}
@@ -152,15 +165,87 @@ def test_base_model():
     with pytest.raises(AssertionError):
         a = A.parse_obj(obj)
 
-    # Test when fields are not sufficient.
-    obj = {"a": "1"}
+    # Test when required fields are not provided.
+    obj = {"b": "1"}
     with pytest.raises(ValidationError):
         a = A.parse_obj(obj)
 
-    # Test when fields are more than expected.
-    obj = {"a": "1", "b": "1", "c": "1"}
+    # Test optional fields are set to default when fields are not given.
+    obj = {"a": "1"}
+    a = A.parse_obj(obj)
+    assert a.b == DEFAULT_VALUE
+
+    # Test when fields that are not defined in the schema is given.
+    # It should be ignoered
+    obj = {"a": "a", "b": "b", "c": "c"}
+    a = A.parse_obj(obj)
+    assert a.a == "a"
+    assert a.b == "b"
+    assert a.c == "c"
+
+
+"""
+Test Action Handler
+"""
+
+
+def _get_mock_kill_action():
+    return {
+        "type": "KILL_ACTOR",
+        "actor_id": "1234",
+        "ip_address": "1234",
+        "port": 30
+    }
+
+
+@patch("ray.dashboard.dashboard.DashboardController")
+def test_handle_kill_action(mock_controller):
+    action_handler = ActionHandler(mock_controller)
+    kill_action = _get_mock_kill_action()
+    action_handler.handle_kill_action(kill_action)
+    assert mock_controller.kill_actor.call_count == 1
+
+
+@patch("ray.dashboard.dashboard.DashboardController")
+def test_handle_kill_action_invalid_dict(mock_controller):
+    action_handler = ActionHandler(mock_controller)
+    kill_action = {"type": "KILL_ACTOR", "ip_address": "1234", "port": 30}
+
     with pytest.raises(ValidationError):
-        a = A.parse_obj(obj)
+        action_handler.handle_kill_action(kill_action)
+
+
+@patch("ray.dashboard.dashboard.DashboardController")
+def test_handle_actions_many_kill_actor(mock_controller):
+    action_handler = ActionHandler(mock_controller)
+    # 10 actions required.
+    actions = [_get_mock_kill_action() for _ in range(10)]
+
+    action_handler.handle_actions(actions)
+    mock_controller.kill_actor.call_count == 10
+
+
+@patch("ray.dashboard.dashboard.DashboardController")
+def test_handle_actions_kill_actor_and_mixed_type(mock_controller):
+    action_handler = ActionHandler(mock_controller)
+    wrong_type_action = {"type": "NON_EXIST"}
+    actions = [
+        _get_mock_kill_action(), wrong_type_action,
+        _get_mock_kill_action()
+    ]
+
+    action_handler.handle_actions(actions)
+    mock_controller.kill_actor.call_count == 2
+
+
+@patch("ray.dashboard.dashboard.DashboardController")
+def test_handle_actions_only_wrong_type(mock_controller):
+    action_handler = ActionHandler(mock_controller)
+    wrong_type_action = {"type": "NON_EXIST"}
+    actions = [wrong_type_action for _ in range(10)]
+
+    action_handler.handle_actions(actions)
+    mock_controller.kill_actor.call_count == 0
 
 
 if __name__ == "__main__":

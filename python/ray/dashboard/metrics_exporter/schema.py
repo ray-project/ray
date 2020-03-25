@@ -8,13 +8,27 @@ class ValidationError(Exception):
 class BaseModel:
     """Base class to define schema.
 
-    This will raise ValidationError if
-    - Number of given kwargs are bigger than needed.
-    - Number of given kwargs are smaller than needed.
+    Model schema should be defined in class variable `__schema__`
+    within a child class. `__schema__` should be a dictionary that
+    contains `field`: `(required: bool, default: Any, type: type)`
+    See the example below for more details.
 
-    This doesn't
-    - Validate types.
+    The class can have unexpected behavior if you don't follow the
+    schema pattern properly.
+
+    Example:
+        class A(BaseModel):
+            __schema__ = {
+                #             (REQUIRED,     DEFAULT,   TYPE)
+                "field_name": ([True|False], [default], [type]),
+                "cluster_id": (True, "1234", str),
+                "port": (False, 80, int)
+            }
+
+    Raises:
+        ValidationError: Raised if a given arg doesn't satisfy the schema.
     """
+    definition = {}
 
     def __init__(self, **kwargs):
         self._dict = kwargs
@@ -30,41 +44,67 @@ class BaseModel:
 
     @classmethod
     def parse_obj(cls, obj):
+        # Validation.
         assert type(obj) == dict, ("It can only parse dict type object.")
-        required_args = cls.__slots__
-        given_args = obj.keys()
-
-        # Check if given_args have args that is not required.
-        for arg in given_args:
-            if arg not in required_args:
-                raise ValidationError(
-                    "Given argument has a key {}, which is not required "
-                    "by this schema: {}".format(arg, required_args))
-
-        # Check if given args have all required args.
-        if len(required_args) != len(given_args):
-            raise ValidationError("Given args: {} doesn't have all the "
-                                  "necessary args for this schema: {}".format(
-                                      given_args, required_args))
+        for field, schema in cls.__schema__.items():
+            required, default, arg_type = schema
+            if field not in obj:
+                if required:
+                    raise ValidationError(f"{field} is required, but doesn't "
+                                          "exist in a given object {obj}")
+                else:
+                    # Set default value if the field is optional
+                    obj[field] = default
 
         return cls(**obj)
 
 
+"""
+Request/Response
+"""
+
+
 class IngestRequest(BaseModel):
-    __slots__ = [
-        "cluster_id", "access_token", "ray_config", "node_info", "raylet_info",
-        "tune_info", "tune_availability"
-    ]
+    __schema__ = {
+        "cluster_id": (True, None, str),
+        "access_token": (True, None, str),
+        "ray_config": (True, None, tuple),
+        "node_info": (True, None, dict),
+        "raylet_info": (True, None, dict),
+        "tune_info": (True, None, dict),
+        "tune_availability": (True, None, dict)
+    }
 
 
-# TODO(sang): Add piggybacked response.
 class IngestResponse(BaseModel):
-    pass
+    __schema__ = {"succeed": (True, None, bool), "actions": (False, [], list)}
 
 
 class AuthRequest(BaseModel):
-    __slots__ = ["cluster_id"]
+    __schema__ = {"cluster_id": (True, None, str)}
 
 
 class AuthResponse(BaseModel):
-    __slots__ = ["dashboard_url", "access_token"]
+    __schema__ = {
+        "dashboard_url": (True, None, str),
+        "access_token": (True, None, str)
+    }
+
+
+"""
+Actions
+"""
+
+
+# Types
+class ActionType:
+    KILL_ACTOR = "KILL_ACTOR"
+
+
+class KillAction(BaseModel):
+    __schema__ = {
+        "type": (False, ActionType.KILL_ACTOR, str),
+        "actor_id": (True, None, str),
+        "ip_address": (True, None, str),
+        "port": (True, None, int)
+    }
