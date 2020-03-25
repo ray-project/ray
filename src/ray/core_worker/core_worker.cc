@@ -475,7 +475,8 @@ Status CoreWorker::Put(const RayObject &object,
                        const ObjectID &object_id, bool pin_object) {
   bool object_exists;
   if (local_mode_enabled_) {
-    return memory_store_->Put(object, object_id);
+    RAY_CHECK(memory_store_->Put(object, object_id));
+    return Status::OK();
   }
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
   if (!object_exists) {
@@ -1127,7 +1128,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
   }
-  // Remove Importance of
+
   if (!local_mode_enabled_) {
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId());
@@ -1178,13 +1179,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   status = task_execution_callback_(
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
-  absl::optional<rpc::Address> caller_address;
-  if (local_mode_enabled_) {
-    caller_address = absl::optional<rpc::Address>();
-  } else {
-    absl::optional<rpc::Address> caller_address(
-        worker_context_.GetCurrentTask()->CallerAddress());
-  }
+  absl::optional<rpc::Address> caller_address(
+      local_mode_enabled_ ? absl::optional<rpc::Address>()
+                          : worker_context_.GetCurrentTask()->CallerAddress());
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
     if (!return_objects->at(i)) {
@@ -1243,7 +1240,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   return status;
 }
 
-// TODO(ilr): Restore worker_context here
 Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
                                         const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
@@ -1251,7 +1247,8 @@ Status CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     reference_counter_->AddOwnedObject(task_spec.ReturnId(i, TaskTransportType::DIRECT),
-                                       /*inner_ids=*/{}, GetCallerId(), rpc_address_);
+                                       /*inner_ids=*/{}, GetCallerId(), rpc_address_,
+                                       CurrentCallSite(), -1);
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
@@ -1280,8 +1277,8 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
       if (task.ArgId(i, 0).IsDirectCallType() && !local_mode_enabled_) {
-        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                        task.ArgId(i, 0)));
+        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                      task.ArgId(i, 0)));
       }
       const auto &arg_id = task.ArgId(i, 0);
       by_ref_ids.insert(arg_id);

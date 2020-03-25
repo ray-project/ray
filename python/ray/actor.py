@@ -506,8 +506,8 @@ class ActorClass:
         if worker.mode == ray.LOCAL_MODE:
             assert not meta.is_cross_language, \
                 "Cross language ActorClass cannot be executed locally."
-            # Export the actor.
 
+        # Export the actor.
         if not meta.is_cross_language and (meta.last_export_session_and_job !=
                                            worker.current_session_and_job):
             # If this actor class was not exported in this session and job,
@@ -695,6 +695,7 @@ class ActorHandle:
             assert not self._ray_is_cross_language,\
                 "Cross language remote actor method " \
                 "cannot be executed locally."
+
         object_ids = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
             list_args, num_return_vals, self._ray_actor_method_cpus)

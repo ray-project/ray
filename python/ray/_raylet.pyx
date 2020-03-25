@@ -642,9 +642,9 @@ cdef class CoreWorker:
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, local_mode):
-        is_driver = is_driver or local_mode
+    
         self.core_worker.reset(new CCoreWorker(
-            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
+            WORKER_TYPE_DRIVER if is_driver or local_mode else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
