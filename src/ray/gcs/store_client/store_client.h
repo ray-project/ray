@@ -78,7 +78,7 @@ class StoreClient {
   /// If the callback return `has_more == true` mean there's more data will be received.
   /// \return Status
   virtual Status AsyncGetAll(const std::string &table_name,
-                             const ScanCallback<std::pair<Key, Data>> &callback) = 0;
+                             const SegmentedCallback<std::pair<Key, Data>> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///

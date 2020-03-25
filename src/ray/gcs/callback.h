@@ -55,10 +55,13 @@ using ItemCallback = std::function<void(const Data &result)>;
 
 /// This callback is used to receive scan result from storage.
 /// \param status Status indicates whether the scan was successful.
-/// \param has_more Whether there is more data not received yet.
+/// \param has_more Whether more data will be called back.
+/// If the callback returns `has_more == true`, means the scan is not complete,
+/// there has more data to be received. This callback will be called again.
+/// If the callback returns `has_more == false`, means the scan is complete.
 /// \param result The item returned by Storage.
 template <typename Data>
-using ScanCallback =
+using SegmentedCallback =
     std::function<void(Status status, bool has_more, const std::vector<Data> &result)>;
 
 }  // namespace gcs

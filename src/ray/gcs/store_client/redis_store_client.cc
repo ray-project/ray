@@ -108,7 +108,7 @@ Status RedisStoreClient::AsyncGetByIndex(const std::string &table_name,
 
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const ScanCallback<std::pair<std::string, std::string>> &callback) {
+    const SegmentedCallback<std::pair<std::string, std::string>> &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();
 }
