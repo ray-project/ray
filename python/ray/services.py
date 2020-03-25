@@ -1,10 +1,12 @@
 import collections
 import errno
+import io
 import json
 import logging
 import multiprocessing
 import os
 import random
+import signal
 import socket
 import subprocess
 import sys
@@ -75,6 +77,28 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
 ])
 
+class ConsolePopen(subprocess.Popen):
+    if sys.platform == "win32":
+        def terminate(self):
+            if isinstance(self.stdin, io.IOBase):
+                self.stdin.close()
+            if self._use_signals:
+                self.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                super(ConsolePopen, self).terminate()
+        def __init__(self, *args, **kwargs):
+            # CREATE_NEW_PROCESS_GROUP is used to send Ctrl+C on Windows:
+            # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
+            new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
+            flags = 0
+            if ray.utils.detect_fate_sharing_support():
+                # If we don't have kernel-mode fate-sharing, then don't do this
+                # because our children need to be in out process group for
+                # the process reaper to properly terminate them.
+                flags = new_pgroup
+            kwargs.setdefault('creationflags', flags)
+            self._use_signals = (kwargs['creationflags'] & new_pgroup)
+            super(ConsolePopen, self).__init__(*args, **kwargs)
 
 def address(ip_address, port):
     return ip_address + ":" + str(port)
@@ -464,7 +488,7 @@ def start_ray_process(command,
         if fate_share and sys.platform.startswith("linux"):
             ray.utils.set_kill_on_parent_death_linux()
 
-    process = subprocess.Popen(
+    process = ConsolePopen(
         command,
         env=modified_env,
         cwd=cwd,
