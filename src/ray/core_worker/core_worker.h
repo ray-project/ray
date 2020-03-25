@@ -25,6 +25,7 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -677,15 +678,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Private methods related to loss of plasma objects.
   void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
 
-  Status RecoverObject(const ObjectID &object_id);
-
-  Status AttemptObjectRecovery(const ObjectID &object_id);
-
-  void ReconstructObject(const ObjectID &object_id);
-
-  bool PinNewObjectCopy(const ObjectID &object_id,
-                        const std::vector<rpc::ObjectTableData> &locations);
-
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
 
@@ -766,9 +758,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // of the workers.
   std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
-  absl::flat_hash_map<ClientID, std::shared_ptr<raylet::RayletClient>>
-      remote_raylet_clients_;
-
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
@@ -802,6 +791,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
+
+  std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
 
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.
@@ -869,8 +860,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Plasma Callback
   PlasmaSubscriptionCallback plasma_done_callback_;
-
-  absl::flat_hash_set<ObjectID> objects_pending_recovery_ GUARDED_BY(mutex_);
 
   /// Whether we are shutting down and not running further tasks.
   bool exiting_ = false;

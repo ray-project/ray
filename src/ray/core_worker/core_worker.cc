@@ -214,14 +214,18 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
-      [this](const TaskSpecification &spec) {
-        // Retry after a delay to emulate the existing Raylet reconstruction
-        // behaviour. TODO(ekl) backoff exponentially.
-        uint32_t delay = RayConfig::instance().task_retry_delay_ms();
-        RAY_LOG(ERROR) << "Will resubmit task after a " << delay
-                       << "ms delay: " << spec.DebugString();
-        absl::MutexLock lock(&mutex_);
-        to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
+      [this](const TaskSpecification &spec, bool delay) {
+        if (delay) {
+          // Retry after a delay to emulate the existing Raylet reconstruction
+          // behaviour. TODO(ekl) backoff exponentially.
+          uint32_t delay = RayConfig::instance().task_retry_delay_ms();
+          RAY_LOG(ERROR) << "Will resubmit task after a " << delay
+                         << "ms delay: " << spec.DebugString();
+          absl::MutexLock lock(&mutex_);
+          to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
+        } else {
+          RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+        }
       }));
 
   // Create an entry for the driver task in the task table. This task is
@@ -247,6 +251,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     return std::shared_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient(addr, *client_call_manager_));
   };
+  auto raylet_client_factory = [this](const std::string ip_address, int port) {
+            auto grpc_client = rpc::NodeManagerWorkerClient::make(ip_address, port,
+                                                                  *client_call_manager_);
+            return std::shared_ptr<raylet::RayletClient>(
+                new raylet::RayletClient(std::move(grpc_client)));
+          };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
@@ -254,12 +264,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
           rpc_address_, local_raylet_client_, client_factory,
-          [this](const std::string ip_address, int port) {
-            auto grpc_client = rpc::NodeManagerWorkerClient::make(ip_address, port,
-                                                                  *client_call_manager_);
-            return std::shared_ptr<raylet::RayletClient>(
-                new raylet::RayletClient(std::move(grpc_client)));
-          },
+          raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
@@ -267,6 +272,21 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
   }
+
+  object_recovery_manager_ = std::unique_ptr<ObjectRecoveryManager>(new ObjectRecoveryManager(rpc_address_,
+        raylet_client_factory,
+        local_raylet_client_,
+        gcs_client_->Objects(),
+        gcs_client_->Nodes(),
+        task_manager_,
+        reference_counter_,
+        memory_store_,
+        [this](const ObjectID &object_id, bool pin_object) {
+          RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                           /*contained_object_ids=*/{}, object_id,
+                           /*pin_object=*/pin_object));
+          }
+        ));
 }
 
 CoreWorker::~CoreWorker() {
@@ -370,152 +390,8 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
-    RAY_CHECK_OK(RecoverObject(object_id));
-  }
-}
-
-Status CoreWorker::RecoverObject(const ObjectID &object_id) {
-  // Check the ReferenceCounter to see if there is a location for the object.
-  bool pinned;
-  if (!reference_counter_->IsPlasmaObjectPinned(object_id, &pinned)) {
-    return Status::Invalid(
-        "Object reference no longer exists or is not owned by us. Either lineage pinning "
-        "is disabled or this object ID is borrowed.");
-  }
-
-  bool already_pending_recovery = true;
-  if (!pinned) {
-    {
-      absl::MutexLock lock(&mutex_);
-      bool inserted = objects_pending_recovery_.insert(object_id).second;
-      RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
-      if (inserted) {
-        memory_store_->GetAsync(
-            object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
-              absl::MutexLock lock(&mutex_);
-              RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
-              RAY_LOG(DEBUG) << "Recovery complete for object " << object_id;
-            });
-        already_pending_recovery = false;
-      }
-    }
-  }
-
-  if (!already_pending_recovery) {
-    AttemptObjectRecovery(object_id);
-  }
-  return Status::OK();
-}
-
-Status CoreWorker::AttemptObjectRecovery(const ObjectID &object_id) {
-  // Lookup the object in the GCS to find another copy.
-  return gcs_client_->Objects().AsyncGetLocations(
-      object_id,
-      [this, object_id](Status status, const std::vector<rpc::ObjectTableData> &result) {
-        RAY_CHECK_OK(status);
-        bool pinned = PinNewObjectCopy(object_id, result);
-        if (!pinned) {
-          if (RayConfig::instance().lineage_pinning_enabled()) {
-            ReconstructObject(object_id);
-          } else {
-            RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                             /*contained_object_ids=*/{}, object_id,
-                             /*pin_object=*/true));
-          }
-        }
-      });
-}
-
-bool CoreWorker::PinNewObjectCopy(const ObjectID &object_id,
-                                  const std::vector<rpc::ObjectTableData> &locations) {
-  // If a copy still exists, pin the object by sending a
-  // PinObjectIDs RPC.
-  auto it = locations.begin();
-  for (; it != locations.end(); it++) {
-    const auto new_node_id = ClientID::FromBinary(it->manager());
-    auto new_node = gcs_client_->Nodes().Get(new_node_id);
-    RAY_CHECK(new_node.has_value());
-    if (new_node->state() == rpc::GcsNodeInfo::ALIVE) {
-      RAY_LOG(DEBUG) << "Trying to pin copy of lost object " << object_id << " at node "
-                     << new_node_id;
-
-      std::shared_ptr<raylet::RayletClient> raylet_client;
-      if (new_node_id == ClientID::FromBinary(rpc_address_.raylet_id())) {
-        raylet_client = local_raylet_client_;
-      } else {
-        auto it = remote_raylet_clients_.find(new_node_id);
-        if (it == remote_raylet_clients_.end()) {
-          auto grpc_client = rpc::NodeManagerWorkerClient::make(
-              new_node->node_manager_address(), new_node->node_manager_port(),
-              *client_call_manager_);
-          it = remote_raylet_clients_
-                   .emplace(new_node_id,
-                            std::shared_ptr<raylet::RayletClient>(
-                                new raylet::RayletClient(std::move(grpc_client))))
-                   .first;
-        }
-        raylet_client = it->second;
-      }
-
-      RAY_CHECK_OK(raylet_client->PinObjectIDs(
-          rpc_address_, {object_id},
-          [this, object_id, new_node_id](const Status &status,
-                                         const rpc::PinObjectIDsReply &reply) {
-            if (status.ok()) {
-              reference_counter_->MarkPlasmaObjectsPinnedAt({object_id}, new_node_id);
-              // Put the object to allow any dependent tasks to get scheduled.
-              RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                           object_id));
-            } else {
-              RAY_LOG(INFO) << "Error pinning new copy of lost object " << object_id
-                            << ", trying again";
-              auto status = AttemptObjectRecovery(object_id);
-              if (!status.ok()) {
-                RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                                 /*contained_object_ids=*/{}, object_id,
-                                 /*pin_object=*/true));
-              }
-            }
-          }));
-      break;
-    }
-  }
-
-  return it != locations.end();
-}
-
-void CoreWorker::ReconstructObject(const ObjectID &object_id) {
-  // Notify the task manager that we are retrying the task that created this
-  // object.
-  const auto task_id = object_id.TaskId();
-  bool resubmit;
-  std::vector<ObjectID> task_deps;
-  auto status = task_manager_->ResubmitTask(task_id, &resubmit, &task_deps);
-
-  if (!status.ok()) {
-    RAY_LOG(INFO) << "Failed to reconstruct object " << object_id
-                  << ", task spec missing";
-    RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                     /*contained_object_ids=*/{}, object_id,
-                     /*pin_object=*/true));
-  }
-
-  if (resubmit) {
-    // Resubmit the task.
-    const auto spec = task_manager_->GetTaskSpec(task_id);
-    RAY_LOG(ERROR) << "Resubmitting task to reconstruct object " << object_id
-                   << ", spec: " << spec.DebugString();
-    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-  }
-
-  for (const auto &dep : task_deps) {
-    auto status = RecoverObject(dep);
-    if (!status.ok()) {
-      RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": " << status.message();
-      // We do not pin the dependency because we may not be the owner.
-      RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                       /*contained_object_ids=*/{}, dep));
-    }
+    // TODO: Handle status.
+    RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
   }
 }
 

@@ -53,6 +53,17 @@ typedef
 
 namespace ray {
 
+/// Interface for pinning objects. Abstract for testing.
+class ObjectPinningInterface {
+ public:
+  /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
+  virtual ray::Status PinObjectIDs(
+      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
+
+  virtual ~ObjectPinningInterface(){};
+};
+
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
  public:
@@ -130,7 +141,7 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient : public WorkerLeaseInterface, public DependencyWaiterInterface {
+class RayletClient : public ObjectPinningInterface, public WorkerLeaseInterface, public DependencyWaiterInterface {
  public:
   /// Connect to the raylet.
   ///

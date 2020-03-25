@@ -273,6 +273,12 @@ void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &pl
     RAY_CHECK(it != object_id_refs_.end()) << plasma_id;
     RAY_CHECK(!it->second.pinned_at_raylet.has_value());
     if (!it->second.OutOfScope()) {
+      // Only set the raylet location if the object is still
+      // in scope. When the object goes out of scope, the
+      // object will be unpinned and this location will get
+      // cleared. If the object is already out of scope, then
+      // we do not set the location because the object has
+      // already been unpinned.
       it->second.pinned_at_raylet = node_id;
     }
   }

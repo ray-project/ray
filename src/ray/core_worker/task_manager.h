@@ -42,9 +42,17 @@ class TaskFinisherInterface {
   virtual ~TaskFinisherInterface() {}
 };
 
-using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
+class TaskResubmissionInterface {
+ public:
+  virtual Status ResubmitTask(const TaskID &task_id,
+                      std::vector<ObjectID> *task_deps) = 0;
 
-class TaskManager : public TaskFinisherInterface {
+  virtual ~TaskResubmissionInterface() {}
+};
+
+using RetryTaskCallback = std::function<void(const TaskSpecification &spec, bool delay)>;
+
+class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
@@ -73,7 +81,7 @@ class TaskManager : public TaskFinisherInterface {
                       const TaskSpecification &spec, const std::string &call_site,
                       int max_retries = 0);
 
-  Status ResubmitTask(const TaskID &task_id, bool *resubmit,
+  Status ResubmitTask(const TaskID &task_id,
                       std::vector<ObjectID> *task_deps);
 
   /// Wait for all pending tasks to finish, and then shutdown.
@@ -110,9 +118,6 @@ class TaskManager : public TaskFinisherInterface {
   /// the inlined dependencies.
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
                                  const std::vector<ObjectID> &contained_ids) override;
-
-  /// Return the spec for a pending task.
-  TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///
