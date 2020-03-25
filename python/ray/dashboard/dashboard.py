@@ -364,11 +364,12 @@ class MetricsExportHandler:
             return await json_response(
                 self.is_dev, result={"url": None}, error="Already enabled")
 
-        succeed, error = self.metrics_export_client.start_exporting_metrics()
-        error_msg = "Failed to enable it. Error: {}".format(error)
+        succeed = self.metrics_export_client.start_exporting_metrics()
         if not succeed:
             return await json_response(
-                self.is_dev, result={"url": None}, error=error_msg)
+                self.is_dev,
+                result={"url": None},
+                error="Failed to enable metrics exporting.")
 
         url = self.metrics_export_client.dashboard_url
         return await json_response(self.is_dev, result={"url": url})
