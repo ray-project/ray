@@ -11,7 +11,8 @@ from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.test_utils import (RayTestTimeoutException,
-                            wait_until_succeeded_without_exception)
+                            wait_until_succeeded_without_exception,
+                            wait_until_server_available)
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -125,6 +126,8 @@ def test_worker_stats(shutdown_only):
         else:
             return False
 
+    assert (wait_until_server_available(addresses["webui_url"]) is True)
+
     webui_url = addresses["webui_url"]
     webui_url = webui_url.replace("localhost", "http://127.0.0.1")
     for worker in reply.workers_stats:
@@ -184,6 +187,8 @@ def test_raylet_info_endpoint(shutdown_only):
     actor_pid = ray.get(c.getpid.remote())
     c.local_store.remote()
     c.remote_store.remote()
+
+    assert (wait_until_server_available(addresses["webui_url"]) is True)
 
     start_time = time.time()
     while True:
@@ -267,6 +272,7 @@ def test_raylet_infeasible_tasks(shutdown_only):
     ActorRequiringGPU.remote()
 
     def test_infeasible_actor(ray_addresses):
+        assert (wait_until_server_available(addresses["webui_url"]) is True)
         webui_url = ray_addresses["webui_url"].replace("localhost",
                                                        "http://127.0.0.1")
         raylet_info = requests.get(webui_url + "/api/raylet_info").json()
@@ -300,9 +306,13 @@ def test_raylet_pending_tasks(shutdown_only):
         def __init__(self):
             self.a = [ActorRequiringGPU.remote() for i in range(4)]
 
-    ParentActor.remote()
+    # If we do not get ParentActor actor handler, reference counter will
+    # terminate ParentActor.
+    parent_actor = ParentActor.remote()
+    assert parent_actor is not None
 
     def test_pending_actor(ray_addresses):
+        assert (wait_until_server_available(addresses["webui_url"]) is True)
         webui_url = ray_addresses["webui_url"].replace("localhost",
                                                        "http://127.0.0.1")
         raylet_info = requests.get(webui_url + "/api/raylet_info").json()

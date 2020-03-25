@@ -164,7 +164,7 @@ class SerializationContext:
             # TODO(swang): Remove this check. Otherwise, we will not be able to
             # handle serialized plasma IDs correctly.
             if obj.is_direct_call_type():
-                worker = ray.worker.get_global_worker()
+                worker = ray.worker.global_worker
                 worker.check_connected()
                 obj, owner_id, owner_address = (
                     worker.core_worker.serialize_and_promote_object_id(obj))
@@ -184,7 +184,7 @@ class SerializationContext:
             # somewhere, which causes an error.
             context = ray.worker.global_worker.get_serialization_context()
             if owner_id:
-                worker = ray.worker.get_global_worker()
+                worker = ray.worker.global_worker
                 worker.check_connected()
                 # UniqueIDs are serialized as
                 # (class name, (unique bytes,)).
@@ -250,7 +250,7 @@ class SerializationContext:
             # cloudpickle directly or captured in a remote function/actor),
             # then pin the object for the lifetime of this worker by adding
             # a local reference that won't ever be removed.
-            ray.worker.get_global_worker().core_worker.add_object_id_reference(
+            ray.worker.global_worker.core_worker.add_object_id_reference(
                 object_id)
 
     def _deserialize_pickle5_data(self, data):

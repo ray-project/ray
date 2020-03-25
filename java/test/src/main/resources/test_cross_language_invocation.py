@@ -1,8 +1,6 @@
 # This file is used by CrossLanguageInvocationTest.java to test cross-language
 # invocation.
 
-import six
-
 import ray
 
 
@@ -52,7 +50,7 @@ def py_func_pass_python_actor_handle():
     counter = Counter.remote(2)
     f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
                           "callPythonActorHandle")
-    r = f.remote(counter._serialization_helper())
+    r = f.remote(counter._serialization_helper()[0])
     return ray.get(r)
 
 
@@ -63,4 +61,4 @@ class Counter(object):
 
     def increase(self, delta):
         self.value += int(delta)
-        return str(self.value).encode("utf-8") if six.PY3 else str(self.value)
+        return str(self.value).encode("utf-8")

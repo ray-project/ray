@@ -106,7 +106,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_available_resources_(config.resource_config),
       worker_pool_(
           io_service, config.num_initial_workers, config.maximum_startup_concurrency,
-          gcs_client_, config.worker_commands,
+          gcs_client_, config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
           [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
       scheduling_policy_(local_queues_),
@@ -244,7 +244,7 @@ ray::Status NodeManager::RegisterGcs() {
 
 void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
 #ifdef _WIN32
-  // TODO(mehrdadn): Implement implement graceful process termination mechanism
+  // TODO(mehrdadn): implement graceful process termination mechanism
 #else
   // If we're just cleaning up a single worker, allow it some time to clean
   // up its state before force killing. The client socket will be closed
@@ -1439,18 +1439,8 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
-  std::shared_ptr<ActorCheckpointData> checkpoint_data;
-  if (actor_entry->second.GetTableData().is_direct_call()) {
-    checkpoint_data =
-        actor_entry->second.GenerateCheckpointData(actor_entry->first, nullptr);
-  } else {
-    // Find the task that is running on this actor.
-    const auto task_id = worker->GetAssignedTaskId();
-    const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
-    // Generate checkpoint data.
-    checkpoint_data =
-        actor_entry->second.GenerateCheckpointData(actor_entry->first, &task);
-  }
+  std::shared_ptr<ActorCheckpointData> checkpoint_data =
+      actor_entry->second.GenerateCheckpointData(actor_entry->first, nullptr);
 
   // Write checkpoint data to GCS.
   RAY_CHECK_OK(gcs_client_->Actors().AsyncAddCheckpoint(
@@ -2005,17 +1995,6 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     return;
   }
 
-  // Add the task and its uncommitted lineage to the lineage cache.
-  if (forwarded) {
-    lineage_cache_.AddUncommittedLineage(task_id, uncommitted_lineage);
-  } else {
-    if (!lineage_cache_.CommitTask(task)) {
-      RAY_LOG(WARNING)
-          << "Task " << task_id
-          << " already committed to the GCS. This is most likely due to reconstruction.";
-    }
-  }
-
   if (spec.IsActorTask()) {
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
@@ -2252,9 +2231,10 @@ void NodeManager::AsyncResolveObjects(
   if (ray_get) {
     // TODO(ekl) using the assigned task id is a hack to handle unsubscription for
     // HandleDirectCallUnblocked.
-    task_dependency_manager_.SubscribeGetDependencies(
-        mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId(),
-        required_object_ids);
+    auto &task_id = mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId();
+    if (!task_id.IsNil()) {
+      task_dependency_manager_.SubscribeGetDependencies(task_id, required_object_ids);
+    }
   } else {
     task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
                                                        required_object_ids);
@@ -2456,13 +2436,14 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   }
 
   // Notify the task dependency manager that this task has finished execution.
+  task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
   task_dependency_manager_.TaskCanceled(task_id);
 
   // Unset the worker's assigned job Id if this is not an actor.
   if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
     worker.AssignJobId(JobID::Nil());
   }
-  if (!spec.IsDirectActorCreationCall()) {
+  if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // direct actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
@@ -2471,7 +2452,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   }
   // Direct actors will be assigned tasks via the core worker and therefore are
   // not idle.
-  return !spec.IsDirectActorCreationCall();
+  return !spec.IsActorCreationTask();
 }
 
 std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
@@ -2496,7 +2477,6 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
-    actor_info_ptr->set_is_direct_call(task_spec.IsDirectActorCreationCall());
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
     actor_info_ptr->mutable_owner_address()->CopyFrom(
         task_spec.GetMessage().caller_address());
@@ -2651,7 +2631,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
                    << actor_id;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id,
+        checkpoint_id, actor_id,
         [this, checkpoint_id, actor_id, new_actor_info, update_callback](
             Status status, const boost::optional<ActorCheckpointData> &checkpoint_data) {
           RAY_CHECK(checkpoint_data) << "Couldn't find checkpoint " << checkpoint_id
@@ -2805,12 +2785,12 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   }
 }
 
-bool NodeManager::IsDirectActorCreationTask(const TaskID &task_id) {
+bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
   auto actor_id = task_id.ActorId();
   if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
     // This task ID corresponds to an actor creation task.
     auto iter = actor_registry_.find(actor_id);
-    if (iter != actor_registry_.end() && iter->second.GetTableData().is_direct_call()) {
+    if (iter != actor_registry_.end()) {
       // This actor is direct call actor.
       return true;
     }
@@ -2852,7 +2832,7 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // So here we check for direct actor creation task explicitly to allow this case.
     auto iter = waiting_task_id_set.begin();
     while (iter != waiting_task_id_set.end()) {
-      if (IsDirectActorCreationTask(*iter)) {
+      if (IsActorCreationTask(*iter)) {
         RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
                        << " when handling object missing for " << object_id;
         iter = waiting_task_id_set.erase(iter);
@@ -2962,6 +2942,7 @@ void NodeManager::ForwardTask(
   if (worker_pool_.HasPendingWorkerForTask(spec.GetLanguage(), task_id)) {
     // There is a worker being starting for this task,
     // so we shouldn't forward this task to another node.
+    on_error(ray::Status::Invalid("Already has pending worker for this task"), task);
     return;
   }
 
@@ -3298,14 +3279,9 @@ void NodeManager::FlushObjectsToFree() {
   last_free_objects_at_ms_ = current_time_ms();
 }
 
-void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
+void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &driver : worker_pool_.GetAllDrivers()) {
-    auto worker_stats = reply->add_workers_stats();
-    worker_stats->set_pid(driver->GetProcess().GetId());
-    worker_stats->set_is_driver(true);
-  }
   // NOTE(sang): Currently reporting only infeasible/ready ActorCreationTask
   // because Ray dashboard only renders actorCreationTask as of Feb 3 2020.
   // TODO(sang): Support dashboard for non-ActorCreationTask.
@@ -3370,31 +3346,136 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
   // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
   auto all_workers = worker_pool_.GetAllWorkers();
+  absl::flat_hash_set<WorkerID> driver_ids;
+  for (auto driver : worker_pool_.GetAllDrivers()) {
+    all_workers.push_back(driver);
+    driver_ids.insert(driver->WorkerId());
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
+    request.set_include_memory_info(node_stats_request.include_memory_info());
     auto status = worker->rpc_client()->GetCoreWorkerStats(
-        request, [reply, worker, all_workers, send_reply_callback](
+        request, [reply, worker, all_workers, driver_ids, send_reply_callback](
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
-          if (!status.ok()) {
-            RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
-                             << status.ToString();
-          } else {
-            auto worker_stats = reply->add_workers_stats();
-            worker_stats->set_pid(worker->GetProcess().GetId());
-            worker_stats->set_is_driver(false);
-            reply->set_num_workers(reply->num_workers() + 1);
+          auto worker_stats = reply->add_workers_stats();
+          worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          reply->set_num_workers(reply->num_workers() + 1);
+          if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
-            if (reply->num_workers() == all_workers.size()) {
-              send_reply_callback(Status::OK(), nullptr, nullptr);
-            }
+          } else {
+            RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
+                           << status.ToString();
+            worker_stats->set_fetch_error(status.ToString());
+          }
+          if (reply->num_workers() == all_workers.size()) {
+            send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
     if (!status.ok()) {
-      RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
-                       << status.ToString();
+      RAY_LOG(ERROR) << "Failed to send get core worker stats request: "
+                     << status.ToString();
     }
   }
+}
+
+std::string FormatMemoryInfo(
+    std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> node_stats) {
+  // First pass to compute object sizes.
+  absl::flat_hash_map<ObjectID, int64_t> object_sizes;
+  for (const auto &reply : node_stats) {
+    for (const auto &worker_stats : reply->workers_stats()) {
+      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
+        if (object_ref.object_size() > 0) {
+          object_sizes[obj_id] = object_ref.object_size();
+        }
+      }
+    }
+  }
+
+  std::ostringstream builder;
+  builder
+      << "----------------------------------------------------------------------------"
+         "-------------------------\n";
+  builder
+      << " Object ID                                Reference Type       Object Size  "
+         " Reference Creation Site\n";
+  builder
+      << "============================================================================"
+         "=========================\n";
+
+  // Second pass builds the summary string for each node.
+  for (const auto &reply : node_stats) {
+    for (const auto &worker_stats : reply->workers_stats()) {
+      bool pid_printed = false;
+      for (const auto &object_ref : worker_stats.core_worker_stats().object_refs()) {
+        if (!object_ref.pinned_in_memory() && object_ref.local_ref_count() == 0 &&
+            object_ref.submitted_task_ref_count() == 0 &&
+            object_ref.contained_in_owned_size() == 0) {
+          continue;
+        }
+        if (!pid_printed) {
+          if (worker_stats.is_driver()) {
+            builder << "; driver pid=" << worker_stats.pid() << "\n";
+          } else {
+            builder << "; worker pid=" << worker_stats.pid() << "\n";
+          }
+          pid_printed = true;
+        }
+        auto obj_id = ObjectID::FromBinary(object_ref.object_id());
+        builder << obj_id.Hex() << "  ";
+        // TODO(ekl) we could convey more information about the reference status.
+        if (object_ref.pinned_in_memory()) {
+          builder << "PINNED_IN_MEMORY     ";
+        } else if (object_ref.submitted_task_ref_count() > 0) {
+          builder << "USED_BY_PENDING_TASK ";
+        } else if (object_ref.local_ref_count() > 0) {
+          builder << "LOCAL_REFERENCE      ";
+        } else if (object_ref.contained_in_owned_size() > 0) {
+          builder << "CAPTURED_IN_OBJECT   ";
+        } else {
+          builder << "UNKNOWN_STATUS       ";
+        }
+        builder << std::right << std::setfill(' ') << std::setw(11);
+        if (object_sizes.contains(obj_id)) {
+          builder << object_sizes[obj_id];
+        } else {
+          builder << "          ?";
+        }
+        builder << "   " << object_ref.call_site();
+        builder << "\n";
+      }
+    }
+  }
+  builder
+      << "----------------------------------------------------------------------------"
+         "-------------------------\n";
+
+  return builder.str();
+}
+
+void NodeManager::HandleFormatGlobalMemoryInfo(
+    const rpc::FormatGlobalMemoryInfoRequest &request,
+    rpc::FormatGlobalMemoryInfoReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  std::vector<std::shared_ptr<rpc::GetNodeStatsReply>> replies;
+
+  auto local_request = std::make_shared<rpc::GetNodeStatsRequest>();
+  auto local_reply = std::make_shared<rpc::GetNodeStatsReply>();
+  local_request->set_include_memory_info(true);
+
+  // TODO(ekl): for (const auto &entry : remote_node_manager_clients_) {}
+  // to handle remote nodes
+
+  HandleGetNodeStats(*local_request, local_reply.get(),
+                     [local_request, local_reply, replies, reply, send_reply_callback](
+                         Status status, std::function<void()> success,
+                         std::function<void()> failure) mutable {
+                       replies.push_back(local_reply);
+                       reply->set_memory_summary(FormatMemoryInfo(replies));
+                       send_reply_callback(Status::OK(), nullptr, nullptr);
+                     });
 }
 
 void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,

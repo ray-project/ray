@@ -375,6 +375,15 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
+    def import_model_from_h5(self, import_file):
+        """Imports Policy from local file.
+
+        Arguments:
+            import_file (str): Local readable file.
+        """
+        raise NotImplementedError
+
     def _create_exploration(self, action_space, config):
         """Creates the Policy's Exploration object.
 

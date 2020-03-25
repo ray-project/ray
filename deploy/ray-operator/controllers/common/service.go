@@ -36,9 +36,9 @@ func ServiceForPod(conf *ServiceConfig) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{{Name: "redis", Port: int32(defaultRedisPort)}},
-			// TODO(edoakes): ClusterIPNone (headless service) should work but I wasn't
-			// able to get the environment variables for service discovery to work.
-			// ClusterIP: corev1.ClusterIPNone,
+			// Use a headless service, meaning that the DNS record for the service will
+			// point directly to the head node pod's IP address.
+			ClusterIP: corev1.ClusterIPNone,
 			// This selector must match the label of the head node.
 			Selector: map[string]string{
 				rayclusterComponent: conf.PodName,

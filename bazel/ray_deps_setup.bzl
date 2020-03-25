@@ -78,14 +78,10 @@ def ray_deps_setup():
         url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
         patches = [
-            "//thirdparty/patches:hiredis-casts.patch",
             "//thirdparty/patches:hiredis-connect-rename.patch",
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
-            "//thirdparty/patches:hiredis-windows-poll.patch",
-            "//thirdparty/patches:hiredis-windows-translations.patch",
-            "//thirdparty/patches:redis-windows-poll.patch",
         ],
     )
 
@@ -166,15 +162,16 @@ def ray_deps_setup():
     auto_http_archive(
         name = "plasma",
         build_file = True,
-        url = "https://github.com/apache/arrow/archive/66b05abc267661172286b47b9246ad55f1581555.tar.gz",
-        sha256 = "fb0227005116f64dca4b19b451ae793e9a2591c019136b70424ebe3d4f5334fe",
+        url = "https://github.com/apache/arrow/archive/af45b9212156980f55c399e2e88b4e19b4bb8ec1.tar.gz",
+        sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
         patches = [
             "//thirdparty/patches:arrow-headers-unused.patch",
             "//thirdparty/patches:arrow-windows-export.patch",
-            "//thirdparty/patches:arrow-windows-poll.patch",
+            "//thirdparty/patches:arrow-windows-nonstdc.patch",
             "//thirdparty/patches:arrow-windows-sigpipe.patch",
             "//thirdparty/patches:arrow-windows-socket.patch",
             "//thirdparty/patches:arrow-windows-dlmalloc.patch",
+            "//thirdparty/patches:arrow-windows-tcp.patch",
         ],
     )
 

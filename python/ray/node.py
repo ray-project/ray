@@ -2,7 +2,6 @@ import atexit
 import collections
 import datetime
 import errno
-import json
 import os
 import logging
 import signal
@@ -15,6 +14,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
+import ray.utils
 from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory, try_to_symlink
 
@@ -83,16 +83,16 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir="/tmp/ray",
+            temp_dir=ray.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
 
         self._resource_spec = None
+        self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = (json.loads(ray_params._internal_config)
-                        if ray_params._internal_config else None)
+        self._config = ray_params._internal_config
 
         if head:
             redis_client = None
@@ -315,7 +315,7 @@ class Node:
         """Get the path of the sockets directory."""
         return self._sockets_dir
 
-    def _make_inc_temp(self, suffix="", prefix="", directory_name="/tmp/ray"):
+    def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
 
         Args:
@@ -328,6 +328,8 @@ class Node:
                 the same name, the returned name will look like
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
+        if directory_name is None:
+            directory_name = ray.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -395,15 +397,21 @@ class Node:
         Args:
             socket_path (string): the socket file to prepare.
         """
-        if socket_path is not None:
-            if os.path.exists(socket_path):
-                raise RuntimeError(
-                    "Socket file {} exists!".format(socket_path))
-            socket_dir = os.path.dirname(socket_path)
-            try_to_create_directory(socket_dir)
-            return socket_path
-        return self._make_inc_temp(
-            prefix=default_prefix, directory_name=self._sockets_dir)
+        result = socket_path
+        if sys.platform == "win32":
+            if socket_path is None:
+                result = "tcp://{}:{}".format(self._localhost,
+                                              self._get_unused_port())
+        else:
+            if socket_path is None:
+                result = self._make_inc_temp(
+                    prefix=default_prefix, directory_name=self._sockets_dir)
+            else:
+                if os.path.exists(socket_path):
+                    raise RuntimeError(
+                        "Socket file {} exists!".format(socket_path))
+                try_to_create_directory(os.path.dirname(socket_path))
+        return result
 
     def start_reaper_process(self):
         """
@@ -618,11 +626,13 @@ class Node:
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
 
-        if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, None):
+        if os.environ.get(ray_constants.RAY_GCS_SERVICE_ENABLED, True):
             self.start_gcs_server()
+        else:
+            self.start_raylet_monitor()
 
         self.start_monitor()
-        self.start_raylet_monitor()
+
         if self._ray_params.include_webui:
             self.start_dashboard(require_webui=True)
         elif self._ray_params.include_webui is None:

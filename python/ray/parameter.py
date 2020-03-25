@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-from packaging import version
 
 import ray.ray_constants as ray_constants
 
@@ -208,6 +207,9 @@ class RayParams:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
 
-        if version.parse(np.__version__) < version.parse("1.16.0"):
+        # Parse the numpy version.
+        numpy_version = np.__version__.split(".")
+        numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
+        if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")

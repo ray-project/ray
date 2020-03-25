@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader, Subset
 import torchvision
 import torchvision.transforms as transforms
 
+from tqdm import trange
+
 import ray
 from ray.util.sgd.torch import (TorchTrainer, TorchTrainable)
 from ray.util.sgd.torch.resnet import ResNet18
@@ -82,11 +84,16 @@ def train_example(num_workers=1,
         use_gpu=use_gpu,
         backend="nccl" if use_gpu else "gloo",
         scheduler_step_freq="epoch",
-        use_fp16=use_fp16)
-    for i in range(num_epochs):
+        use_fp16=use_fp16,
+        tqdm=True)
+    pbar = trange(num_epochs, unit="epoch")
+    for i in pbar:
+        info = {"num_steps": 1} if test_mode else {}
+        info["epoch_idx"] = i
+        info["num_epochs"] = num_epochs
         # Increase `max_retries` to turn on fault tolerance.
-        stats = trainer1.train(max_retries=0)
-        print(stats)
+        stats = trainer1.train(max_retries=0, info=info)
+        pbar.set_postfix(dict(loss=stats["mean_train_loss"]))
 
     print(trainer1.validate())
     trainer1.shutdown()

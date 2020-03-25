@@ -15,7 +15,6 @@
 #ifndef RAY_UTIL_UTIL_H
 #define RAY_UTIL_UTIL_H
 
-#include <boost/system/error_code.hpp>
 #include <chrono>
 #include <iterator>
 #include <mutex>
@@ -24,8 +23,6 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-
-#include "ray/common/status.h"
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
 /// returned timestamp may be used for accurately measuring intervals but has
@@ -43,13 +40,11 @@ inline int64_t current_time_ms() {
   return ms_since_epoch.count();
 }
 
-inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
-  switch (error.value()) {
-  case boost::system::errc::success:
-    return ray::Status::OK();
-  default:
-    return ray::Status::IOError(strerror(error.value()));
-  }
+inline int64_t current_sys_time_ms() {
+  std::chrono::milliseconds ms_since_epoch =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return ms_since_epoch.count();
 }
 
 /// A helper function to split a string by whitespaces.
