@@ -679,6 +679,7 @@ def init(address=None,
 
     if local_mode:
         driver_mode = LOCAL_MODE
+        num_cpus = 0
     else:
         driver_mode = SCRIPT_MODE
 
@@ -1224,9 +1225,6 @@ def connect(node,
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     elif LOCAL_MODE:
-        worker.redis_client.hmset(b"Workers:" + worker.worker_id, {
-            "node_ip_address": node.node_ip_address,
-        })
         pass
     else:
         raise ValueError(

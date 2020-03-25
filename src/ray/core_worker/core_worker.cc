@@ -188,10 +188,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
-  if (!local_mode_enabled_ || true) {
-    plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
-        store_socket, local_raylet_client_, check_signals_));
-  }
+  plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
+      store_socket, local_raylet_client_, check_signals_));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_LOG(DEBUG) << "Promoting object to plasma " << obj_id;
@@ -393,7 +391,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_id,
                                         owner_address);
 
-  RAY_CHECK(!owner_id.IsNil());
+  RAY_CHECK(!owner_id.IsNil() || local_mode_enabled_);
   // We will ask the owner about the object until the object is
   // created or we can no longer reach the owner.
   future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
@@ -424,6 +422,9 @@ Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
   bool object_exists;
+  if (local_mode_enabled_) {
+    return memory_store_->Put(object, object_id);
+  }
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(object, object_id, &object_exists));
   if (!object_exists) {
     if (pin_object) {
@@ -535,7 +536,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
                                          &result_map, &got_exception));
   }
-  RAY_LOG(INFO) << "Got get and exception: " << got_exception;
+  RAY_LOG(INFO) << "Got 'get' with exception: " << got_exception;
   if (!got_exception) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
@@ -556,6 +557,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                                   worker_context_, &result_map,
                                                   &got_exception));
   }
+  RAY_LOG(ERROR) << "Survived dangers of plasma";
 
   // Loop through `ids` and fill each entry for the `results` vector,
   // this ensures that entries `results` have exactly the same order as
@@ -752,9 +754,8 @@ TaskID CoreWorker::GetCallerId() const {
 Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
                              const std::string &error_message, double timestamp) {
   if (local_mode_enabled_) {
-    RAY_LOG(ERROR) << "Pushed Error with JobID: " << job_id.Binary()
-                   << " of type: " << type << " with message: " << error_message
-                   << " at time: " << timestamp;
+    RAY_LOG(ERROR) << "Pushed Error with JobID: " << job_id << " of type: " << type
+                   << " with message: " << error_message << " at time: " << timestamp;
     return Status::OK();
   }
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);

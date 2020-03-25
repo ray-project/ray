@@ -118,7 +118,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    if (ref_counting_enabled_) {
+    // TOOD(ilr): better way of keeping an object from being deleted
+    if (ref_counting_enabled_ && !local_mode_enabled_) {
       memory_store_->Delete(deleted);
     }
   }
