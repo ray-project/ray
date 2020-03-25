@@ -12,9 +12,15 @@ class RedisStoreClientTest : public StoreClientTestBase {
   virtual ~RedisStoreClientTest() {}
 
   void InitStoreClient() override {
-    StoreClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    RedisClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
     store_client_ = std::make_shared<RedisStoreClient>(options);
+    Status status = store_client_->Connect(io_service_pool_);
+    RAY_CHECK_OK(status);
   }
+
+  void DisconnectStoreClient() override { store_client_->Disconnect(); }
+
+  std::shared_ptr<RedisStoreClient> store_client_;
 };
 
 TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
@@ -92,8 +98,8 @@ TEST_F(RedisStoreClientTest, DISABLED_AsyncGetAllTest) {
     // Get index
     auto it = key_to_index_.find(elem.first);
     const std::string &index = it->second;
-    Status status = store_client_->AsyncPut(table_name_, elem.first, index, elem.second,
-                                            put_calllback);
+    Status status = store_client_->AsyncPutWithIndex(table_name_, elem.first, index,
+                                                     elem.second, put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();

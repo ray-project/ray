@@ -9,19 +9,16 @@ namespace ray {
 
 namespace gcs {
 
-RedisStoreClient::RedisStoreClient(const StoreClientOptions &options)
-    : StoreClient(options) {
-  RedisClientOptions redis_client_options(options_.server_ip_, options_.server_port_,
-                                          options_.password_, options_.is_test_client_);
-  redis_client_.reset(new RedisClient(redis_client_options));
+RedisStoreClient::RedisStoreClient(const RedisClientOptions &options) {
+  redis_client_.reset(new RedisClient(options));
 }
 
 RedisStoreClient::~RedisStoreClient() {}
 
 Status RedisStoreClient::Connect(std::shared_ptr<IOServicePool> io_service_pool) {
-  io_service_pool_ = io_service_pool;
-  Status status = redis_client_->Connect(io_service_pool->GetAll());
-  RAY_LOG(INFO) << "RedisStoreClient Connect status " << status.ToString();
+  io_service_pool_ = std::move(io_service_pool);
+  Status status = redis_client_->Connect(io_service_pool_->GetAll());
+  RAY_LOG(INFO) << "RedisStoreClient::Connect finished with status " << status.ToString();
   return status;
 }
 
@@ -37,10 +34,12 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
   return DoPut(full_key, value, callback);
 }
 
-Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
-                                  const std::string &index, const std::string &value,
-                                  const StatusCallback &callback) {
-  auto write_callback = [this, table_name, key, index, callback](Status status) {
+Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
+                                           const std::string &key,
+                                           const std::string &index_key,
+                                           const std::string &value,
+                                           const StatusCallback &callback) {
+  auto write_callback = [this, table_name, key, value, callback](Status status) {
     if (!status.ok()) {
       // Run callback if failed.
       if (callback != nullptr) {
@@ -49,9 +48,9 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
       return;
     }
 
-    // Write index to Redis.
-    std::string index_table_key = index + table_name + key;
-    status = DoPut(index_table_key, key, callback);
+    // Write data to Redis.
+    std::string full_key = table_name + key;
+    status = DoPut(full_key, value, callback);
 
     if (!status.ok()) {
       // Run callback if failed.
@@ -61,9 +60,9 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
     }
   };
 
-  // Write data to Redis.
-  std::string full_key = table_name + key;
-  return DoPut(full_key, value, write_callback);
+  // Write index to Redis.
+  std::string index_table_key = index_key + table_name + key;
+  return DoPut(index_table_key, key, write_callback);
 }
 
 Status RedisStoreClient::DoPut(const std::string &key, const std::string &value,
@@ -101,7 +100,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::stri
 }
 
 Status RedisStoreClient::AsyncGetByIndex(const std::string &table_name,
-                                         const std::string &index,
+                                         const std::string &index_key,
                                          const MultiItemCallback<std::string> &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();
@@ -134,7 +133,7 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
 }
 
 Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
-                                            const std::string &index,
+                                            const std::string &index_key,
                                             const StatusCallback &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();

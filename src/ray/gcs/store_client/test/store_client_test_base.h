@@ -20,23 +20,17 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
 
   virtual ~StoreClientTestBase() {}
 
-  virtual void SetUp() {
+  void SetUp() override {
     io_service_pool_ = std::make_shared<IOServicePool>(io_service_num_);
     io_service_pool_->Run();
-
     InitStoreClient();
-    Status status = store_client_->Connect(io_service_pool_);
-    RAY_CHECK_OK(status);
-
     GenTestData();
   }
 
-  virtual void TearDown() {
-    store_client_->Disconnect();
-    io_service_pool_->Stop();
+  void TearDown() override {
+    DisconnectStoreClient();
 
-    store_client_.reset();
-    io_service_pool_.reset();
+    io_service_pool_->Stop();
 
     key_to_value_.clear();
     key_to_index_.clear();
@@ -44,6 +38,8 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
   }
 
   virtual void InitStoreClient() = 0;
+
+  virtual void DisconnectStoreClient() = 0;
 
  protected:
   void GenTestData() {
@@ -75,8 +71,6 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
  protected:
   size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
-
-  std::shared_ptr<StoreClient> store_client_;
 
   std::string table_name_{"test_table"};
   size_t key_count_{5000};

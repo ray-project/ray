@@ -912,11 +912,11 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
+        ":hiredis",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
         "@boost//:asio",
-        ":hiredis",
     ],
 )
 
@@ -943,7 +943,7 @@ cc_library(
     ],
     copts = COPTS,
     deps = [
-        "redis_client",
+        "redis_store_client",
     ],
 )
 

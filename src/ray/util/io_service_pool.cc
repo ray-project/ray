@@ -28,7 +28,7 @@ void IOServicePool::Run() {
     }));
   }
 
-  RAY_LOG(INFO) << "IOServicePool is running.";
+  RAY_LOG(INFO) << "IOServicePool is running with " << io_service_num_ << " io_service.";
 }
 
 void IOServicePool::Stop() {

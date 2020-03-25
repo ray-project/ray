@@ -38,6 +38,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   Status status = redis_client_->Connect(io_service);
   if (!status.ok()) {
+    RAY_LOG(INFO) << "RedisGcsClient::Connect failed, status " << status.ToString();
     return status;
   }
 

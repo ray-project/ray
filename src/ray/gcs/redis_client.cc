@@ -21,7 +21,7 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
       break;
     }
 
-    // Sleep for a little, and try again if the entry isn't there yet. */
+    // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
     usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
     num_attempts++;

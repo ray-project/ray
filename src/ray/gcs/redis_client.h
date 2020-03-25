@@ -35,7 +35,7 @@ class RedisClientOptions {
 };
 
 /// \class RedisClient
-/// Implementation of
+/// This class is used to send commands to Redis.
 class RedisClient {
  public:
   RedisClient(const RedisClientOptions &options);
@@ -44,7 +44,8 @@ class RedisClient {
   /// Call this function before calling other functions.
   ///
   /// \param io_service The event loop for this client.
-  /// Must be single-threaded io_service (get more information from RedisAsioClient).
+  /// This io_service must be single-threaded. Because `RedisAsioClient` is
+  /// non-thread safe.
   /// \return Status
   Status Connect(boost::asio::io_service &io_service);
 
@@ -53,8 +54,8 @@ class RedisClient {
   /// Call this function before calling other functions.
   ///
   /// \param io_services The event loops for this client. Each RedisContext bind to
-  // a event loop.
-  /// Must be single-threaded io_service (get more information from RedisAsioClient).
+  /// an event loop. Each io_service must be single-threaded. Because `RedisAsioClient`
+  /// is non-thread safe.
   /// \return Status
   Status Connect(std::vector<boost::asio::io_service *> io_services);
 

@@ -11,9 +11,9 @@ namespace ray {
 
 namespace gcs {
 
-class RedisStoreClient : public StoreClient {
+class RedisStoreClient : public StoreClient<std::string, std::string, std::string> {
  public:
-  RedisStoreClient(const StoreClientOptions &options);
+  RedisStoreClient(const RedisClientOptions &options);
 
   virtual ~RedisStoreClient();
 
@@ -24,14 +24,14 @@ class RedisStoreClient : public StoreClient {
   Status AsyncPut(const std::string &table_name, const std::string &key,
                   const std::string &value, const StatusCallback &callback) override;
 
-  Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &index, const std::string &value,
-                  const StatusCallback &callback) override;
+  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
+                           const std::string &index_key, const std::string &value,
+                           const StatusCallback &callback) override;
 
   Status AsyncGet(const std::string &table_name, const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
 
-  Status AsyncGetByIndex(const std::string &table_name, const std::string &index,
+  Status AsyncGetByIndex(const std::string &table_name, const std::string &index_key,
                          const MultiItemCallback<std::string> &callback) override;
 
   Status AsyncGetAll(
@@ -41,7 +41,7 @@ class RedisStoreClient : public StoreClient {
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index,
+  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
 
  private:

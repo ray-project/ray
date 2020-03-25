@@ -262,8 +262,8 @@ RAY_CONFIG(int64_t, internal_gcs_service_connect_wait_milliseconds, 100)
 /// When this happens, gcs server will kill itself.
 RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 
-/// Maximum number of keys in one batch to scan from storage.
-RAY_CONFIG(uint32_t, gcs_service_scan_batch_size, 1000)
+/// Maximum number of keys in one batch to scan from redis.
+RAY_CONFIG(uint32_t, gcs_redis_scan_batch_size, 1000)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
