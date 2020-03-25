@@ -508,6 +508,18 @@ class TorchTrainer:
                 model.load_state_dict(state_dict)
         return models
 
+    def state_dict(self):
+        return self.local_worker.get_state()
+
+    def load_state_dict(self, state):
+        state_id = ray.put(state)
+
+        remote_calls = [
+            worker.set_state.remote(state_id) for worker in self.remote_workers
+        ]
+        self.local_worker.set_state(state)
+        ray.get(remote_calls)
+
     def save(self, checkpoint):
         """Saves the model(s) to the provided checkpoint.
 
@@ -517,8 +529,7 @@ class TorchTrainer:
         Returns:
             checkpoint (str): Path to target checkpoint file.
         """
-        state = self.local_worker.get_state()
-        torch.save(state, checkpoint)
+        torch.save(self.state_dict(), checkpoint)
         return checkpoint
 
     def restore(self, checkpoint):
@@ -528,13 +539,7 @@ class TorchTrainer:
             checkpoint (str): Path to target checkpoint file.
         """
         state = torch.load(checkpoint)
-        state_id = ray.put(state)
-
-        remote_calls = [
-            worker.set_state.remote(state_id) for worker in self.remote_workers
-        ]
-        self.local_worker.set_state(state_id)
-        ray.get(remote_calls)
+        self.load_state_dict(state)
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
