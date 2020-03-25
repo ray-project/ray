@@ -33,17 +33,10 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
-from ray.dashboard.interface.dashboard_controller_interface import (
-    BaseDashboardController)
-from ray.dashboard.interface.dashboard_route_handler_interface import (
-    BaseDashboardRouteHandler)
-try:
-    from ray.dashboard.metrics_exporter.exporter import Exporter
-    from ray.dashboard.metrics_exporter.client import MetricsExportClient
-except ImportError:
-    print("Pydantic is not donwloaded. pip install pydantic")
-    MetricsExportClient = None
-    Exporter = None
+from ray.dashboard.interface import BaseDashboardController
+from ray.dashboard.interface import BaseDashboardRouteHandler
+from ray.dashboard.metrics_exporter.client import Exporter
+from ray.dashboard.metrics_exporter.client import MetricsExportClient
 
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR

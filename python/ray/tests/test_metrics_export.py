@@ -4,8 +4,9 @@ import requests
 from unittest.mock import patch
 
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
-from ray.dashboard.metrics_exporter.exporter import Exporter
-from ray.dashboard.metrics_exporter.schema import AuthResponse
+from ray.dashboard.metrics_exporter.client import Exporter
+from ray.dashboard.metrics_exporter.schema import (AuthResponse, BaseModel,
+                                                   ValidationError)
 
 MOCK_DASHBOARD_ID = "1234"
 MOCK_DASHBOARD_ADDRESS = "127.0.0.1:9081"
@@ -120,6 +121,47 @@ def test_start_exporting_metrics_succeed(auth_request, mock_controller, start):
 
     with pytest.raises(AssertionError):
         client.start_exporting_metrics()
+
+
+"""
+BaseModel Test
+"""
+
+
+def test_base_model():
+    class A(BaseModel):
+        a: str
+        b: str
+
+    # Test the correct case.
+    obj = {"a": "1", "b": "1"}
+    a = A.parse_obj(obj)
+    assert a.a == "1"
+    assert a.b == "1"
+    assert a._dict == obj
+    string = "{name}\n{dict}".format(name=A.__name__, dict=str(obj))
+    assert str(a) == string
+
+    # Test wrong types. It is not checked in the current implementation.
+    obj = {"a": 1, "b": 2}
+    a = A.parse_obj(obj)
+    assert a.a == 1
+    assert a.b == 2
+
+    # Test wrong types. parse_obj can only parse dictionary.
+    obj = None
+    with pytest.raises(AssertionError):
+        a = A.parse_obj(obj)
+
+    # Test when fields are not sufficient.
+    obj = {"a": "1"}
+    with pytest.raises(ValidationError):
+        a = A.parse_obj(obj)
+
+    # Test when fields are more than expected.
+    obj = {"a": "1", "b": "1", "c": "1"}
+    with pytest.raises(ValidationError):
+        a = A.parse_obj(obj)
 
 
 if __name__ == "__main__":
