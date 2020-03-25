@@ -73,7 +73,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         trials = list(self._trial_generator)
         if self._shuffle:
             random.shuffle(trials)
-        self._finished = True
+        self.set_finished()
         return trials
 
     def _generate_trials(self, num_samples, unresolved_spec, output_path=""):
@@ -104,6 +104,3 @@ class BasicVariantGenerator(SearchAlgorithm):
                     evaluated_params=flatten_resolved_vars(resolved_vars),
                     trial_id=trial_id,
                     experiment_tag=experiment_tag)
-
-    def is_finished(self):
-        return self._finished

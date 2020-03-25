@@ -147,6 +147,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._stop_queue = []
+        self._should_stop_experiment = False  # used by TuneServer
         self._local_checkpoint_dir = local_checkpoint_dir
 
         if self._local_checkpoint_dir:
@@ -346,7 +347,7 @@ class TrialRunner:
 
         if self._server:
             with warn_if_slow("server"):
-                self._process_requests()
+                self._process_stop_requests()
 
             if self.is_finished():
                 self._server.shutdown()
@@ -393,7 +394,8 @@ class TrialRunner:
     def _stop_experiment_if_needed(self):
         """Stops all trials if the user condition is satisfied."""
 
-        if self._stopper.stop_all():
+        if self._stopper.stop_all() or self._should_stop_experiment:
+            self._search_alg.set_finished()
             [self.trial_executor.stop_trial(t) for t in self._trials]
             logger.info("All trials stopped due to ``stopper.stop_all``.")
 
@@ -688,7 +690,10 @@ class TrialRunner:
     def request_stop_trial(self, trial):
         self._stop_queue.append(trial)
 
-    def _process_requests(self):
+    def request_stop_experiment(self):
+        self._should_stop_experiment = True
+
+    def _process_stop_requests(self):
         while self._stop_queue:
             t = self._stop_queue.pop()
             self.stop_trial(t)
