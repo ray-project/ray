@@ -4,21 +4,18 @@ import logging
 import numbers
 import tempfile
 import time
-import asyncio
 import torch
 import torch.distributed as dist
 
 import ray
 
-from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import (VALID_SCHEDULER_STEP,
-                                          BATCH_LOGS_RATE_LIMIT)
+from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
 from ray.util.sgd.torch.tqdm_handler import TqdmHandler
 
 logger = logging.getLogger(__name__)
@@ -263,22 +260,23 @@ class TorchTrainer:
         if num_workers == 1:
             # Start local worker
             self.local_worker = TorchRunner.remote(
-                    model_creator=self.model_creator,
-                    data_creator=self.data_creator,
-                    optimizer_creator=self.optimizer_creator,
-                    loss_creator=self.loss_creator,
-                    scheduler_creator=self.scheduler_creator,
-                    training_operator_cls=self.training_operator_cls,
-                    config=worker_config,
-                    use_fp16=self.use_fp16,
-                    apex_args=self.apex_args,
-                    scheduler_step_freq=self.scheduler_step_freq)
+                model_creator=self.model_creator,
+                data_creator=self.data_creator,
+                optimizer_creator=self.optimizer_creator,
+                loss_creator=self.loss_creator,
+                scheduler_creator=self.scheduler_creator,
+                training_operator_cls=self.training_operator_cls,
+                config=worker_config,
+                use_fp16=self.use_fp16,
+                apex_args=self.apex_args,
+                scheduler_step_freq=self.scheduler_step_freq)
 
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
 
             self.local_worker.setup()
-            self.local_worker.set_reporters([h.create_reporter() for h in self.handlers])
+            self.local_worker.set_reporters(
+                [h.create_reporter() for h in self.handlers])
         else:
             params = dict(
                 model_creator=self.model_creator,
@@ -301,8 +299,7 @@ class TorchTrainer:
                 num_cpus=1, num_gpus=int(self.use_gpu))(DistributedTorchRunner)
             # Start workers
             self.remote_workers = [
-                RemoteRunner.remote(**params)
-                for i in range(num_workers - 1)
+                RemoteRunner.remote(**params) for i in range(num_workers - 1)
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
@@ -323,7 +320,8 @@ class TorchTrainer:
             ]
 
             self.local_worker.setup(address, 0, num_workers)
-            self.local_worker.set_reporters([h.create_reporter() for h in self.handlers])
+            self.local_worker.set_reporters(
+                [h.create_reporter() for h in self.handlers])
 
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_setups)
@@ -396,8 +394,8 @@ class TorchTrainer:
             else:
                 self._num_failures += 1
             self._resize_workers(checkpoint=checkpoint)
-            logger.info(
-                "Retrying training step with %d workers." % len(self.remote_workers) + 1)
+            logger.info("Retrying training step with %d workers." %
+                        len(self.remote_workers) + 1)
             success, worker_stats = self._train_epoch(
                 num_steps=num_steps, profile=profile, info=info)
         if not success:
@@ -426,8 +424,7 @@ class TorchTrainer:
         params = dict(num_steps=num_steps, profile=profile, info=info)
 
         remote_worker_stats = [
-            w.train_epoch.remote(**params)
-            for w in self.remote_workers
+            w.train_epoch.remote(**params) for w in self.remote_workers
         ]
 
         local_worker_stats = self.local_worker.train_epoch(**params)
@@ -460,7 +457,9 @@ class TorchTrainer:
             A list of objects returned by ``fn`` on each operator.
 
         """
-        remote_calls = [w.apply_operator.remote(fn) for w in self.remote_workers]
+        remote_calls = [
+            w.apply_operator.remote(fn) for w in self.remote_workers
+        ]
         local_call = self.local_worker.apply_operator(fn)
         return [local_call] + ray.get(remote_calls)
 
@@ -483,12 +482,12 @@ class TorchTrainer:
         params = dict(num_steps=num_steps, profile=profile, info=info)
 
         remote_worker_stats = [
-            w.validate.remote(**params)
-            for w in self.remote_workers
+            w.validate.remote(**params) for w in self.remote_workers
         ]
         local_worker_stats = self.local_worker.validate(**params)
 
-        return self._process_stats([local_worker_stats] + ray.get(remote_worker_stats))
+        return self._process_stats([local_worker_stats] +
+                                   ray.get(remote_worker_stats))
 
     def update_scheduler(self, metric):
         """Calls ``scheduler.step(metric)`` on all schedulers.
@@ -531,7 +530,9 @@ class TorchTrainer:
         state = torch.load(checkpoint)
         state_id = ray.put(state)
 
-        remote_calls = [worker.set_state.remote(state_id) for worker in self.remote_workers]
+        remote_calls = [
+            worker.set_state.remote(state_id) for worker in self.remote_workers
+        ]
         self.local_worker.set_state(state_id)
         ray.get(remote_calls)
 
@@ -539,9 +540,14 @@ class TorchTrainer:
         """Shuts down workers and releases resources."""
         self.local_worker.shutdown()
         if not force:
-            cleanup = [worker.shutdown.remote() for worker in self.remote_workers]
+            cleanup = [
+                worker.shutdown.remote() for worker in self.remote_workers
+            ]
             ray.get(cleanup)
-            [worker.__ray_terminate__.remote() for worker in self.remote_workers]
+            [
+                worker.__ray_terminate__.remote()
+                for worker in self.remote_workers
+            ]
         else:
             for worker in self.remote_workers:
                 logger.warning("Killing worker {}.".format(worker))
@@ -579,7 +585,8 @@ class TorchTrainer:
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             resources = ray.available_resources()
-            potential_workers = min(resources.get("CPU", 0), self.max_replicas - 1)
+            potential_workers = min(
+                resources.get("CPU", 0), self.max_replicas - 1)
             if self.use_gpu:
                 potential_workers = min(
                     resources.get("GPU", 0), potential_workers)

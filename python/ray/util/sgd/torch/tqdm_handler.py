@@ -1,8 +1,5 @@
 from tqdm import tqdm
 
-import ray
-from ray.util.sgd.torch.constants import BATCH_LOGS_RATE_LIMIT
-
 
 class TqdmReporter:
     def __init__(self, handler):
@@ -32,14 +29,8 @@ class TqdmHandler:
     def __init__(self):
         self.batch_pbar = None
 
-        self.setup = {
-            "new_data": False,
-            "data": None
-        }
-        self.logs = {
-            "new_data": False,
-            "data": None
-        }
+        self.setup = {"new_data": False, "data": None}
+        self.logs = {"new_data": False, "data": None}
 
     def create_reporter(self):
         return TqdmReporter(self)
