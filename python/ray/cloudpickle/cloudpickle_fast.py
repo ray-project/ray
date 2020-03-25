@@ -411,13 +411,13 @@ def _property_reduce(obj):
     return property, (obj.fget, obj.fset, obj.fdel, obj.__doc__)
 
 
-def _numpy_frombuffer(buffer, dtype, shape, order):
+def _numpy_frombuffer(buffer, dtype, shape, order, write):
     # Get the _frombuffer() function for reconstruction
     from numpy.core.numeric import _frombuffer
     array = _frombuffer(buffer, dtype, shape, order)
     # Unfortunately, numpy does not follow the standard, so we still
     # have to set the readonly flag for it here.
-    array.setflags(write=not buffer.readonly)
+    array.setflags(write=write)
     return array
 
 
@@ -453,7 +453,8 @@ def _numpy_ndarray_reduce(array):
         # (gh-12745).
         return array.__reduce__()
 
-    return _numpy_frombuffer, (buffer, array.dtype, array.shape, order)
+    write = not buffer.raw().readonly
+    return _numpy_frombuffer, (buffer, array.dtype, array.shape, order, write)
 
 
 class CloudPickler(Pickler):
