@@ -14,15 +14,15 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "twin_q": True,
     "use_state_preprocessor": False,
-    # RLlib model options for the Q function
+    # RLlib model options for the Q function(s).
     "Q_model": {
-        "hidden_activation": "relu",
-        "hidden_layer_sizes": (256, 256),
+        "fcnet_activation": "relu",
+        "fcnet_hiddens": [256, 256],
     },
-    # RLlib model options for the policy function
+    # RLlib model options for the policy function.
     "policy_model": {
-        "hidden_activation": "relu",
-        "hidden_layer_sizes": (256, 256),
+        "fcnet_activation": "relu",
+        "fcnet_hiddens": [256, 256],
     },
     # Unsquash actions to the upper and lower bounds of env's action space.
     # Ignored for discrete action spaces.

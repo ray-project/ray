@@ -15,7 +15,6 @@ from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
     TorchSquashedGaussian, TorchDiagGaussian)
 from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.tf_ops import minimize_and_clip
 
 torch, nn = try_import_torch()
 F = None
@@ -61,32 +60,23 @@ def action_distribution_fn(policy,
     return distribution_inputs, action_dist_class, []
 
 
-#def log_likelihood_fn(policy, model, actions, input_dict, obs_space,
-#                       action_space, config):
-#    model_out, _ = model({
-#        "obs": input_dict[SampleBatch.CUR_OBS],
-#        "is_training": policy._get_is_training_placeholder(),
-#    }, [], None)
-#    distribution_inputs = model.get_policy_output(model_out)
-#    action_dist_class = get_dist_class(policy.config, action_space)
-#    return action_dist_class(distribution_inputs, model).logp(actions)
-
-
 def actor_critic_loss(policy, model, _, train_batch):
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
-        "is_training": policy._get_is_training_placeholder(),
+        "is_training": True,
     }, [], None)
 
     model_out_tp1, _ = model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": policy._get_is_training_placeholder(),
+        "is_training": True,
     }, [], None)
 
     target_model_out_tp1, _ = policy.target_model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": policy._get_is_training_placeholder(),
+        "is_training": True,
     }, [], None)
+
+    alpha = torch.exp(model.log_alpha)
 
     # Discrete case.
     if model.discrete:
@@ -104,12 +94,12 @@ def actor_critic_loss(policy, model, _, train_batch):
             twin_q_t = model.get_twin_q_values(model_out_t)
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1)
-            q_tp1 = torch.min((q_tp1, twin_q_tp1), axis=0)
-        q_tp1 -= model.alpha * log_pis_tp1
+            q_tp1 = torch.min(q_tp1, twin_q_tp1)
+        q_tp1 -= alpha * log_pis_tp1
 
         # Actually selected Q-values (from the actions batch).
-        one_hot = torch.one_hot(
-            train_batch[SampleBatch.ACTIONS], depth=q_t.shape.as_list()[-1])
+        one_hot = F.one_hot(
+            train_batch[SampleBatch.ACTIONS], num_classes=q_t.size()[-1])
         q_t_selected = torch.sum(q_t * one_hot, dim=-1)
         if policy.config["twin_q"]:
             twin_q_t_selected = torch.sum(twin_q_t * one_hot, dim=-1)
@@ -120,7 +110,7 @@ def actor_critic_loss(policy, model, _, train_batch):
             q_tp1_best
     # Continuous actions case.
     else:
-        # Sample simgle actions from distribution.
+        # Sample single actions from distribution.
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
@@ -143,25 +133,30 @@ def actor_critic_loss(policy, model, _, train_batch):
             twin_q_t_det_policy = model.get_twin_q_values(
                 model_out_t, policy_t)
             q_t_det_policy = torch.min(
-                (q_t_det_policy, twin_q_t_det_policy), dim=0)
+                q_t_det_policy, twin_q_t_det_policy)
 
-        # target q network evaluation
+        # Target q network evaluation.
         q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
                                                  policy_tp1)
+        #print("q_tp1={}".format(q_tp1[0]))
         if policy.config["twin_q"]:
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
+            #print("twin_q_tp1={}".format(twin_q_tp1[0]))
+            # Take min over both twin-NNs.
+            q_tp1 = torch.min(q_tp1, twin_q_tp1)
+        #print("q_tp1(min)={}".format(q_tp1[0]))
 
-        q_t_selected = torch.squeeze(q_t, axis=len(q_t.shape) - 1)
+        q_t_selected = torch.squeeze(q_t, dim=-1)
         if policy.config["twin_q"]:
-            twin_q_t_selected = torch.squeeze(
-                twin_q_t, axis=len(q_t.shape) - 1)
-            q_tp1 = torch.min((q_tp1, twin_q_tp1), dim=0)
-        q_tp1 -= model.alpha * log_pis_tp1
+            twin_q_t_selected = torch.squeeze(twin_q_t, dim=-1)
+        q_tp1 -= alpha * log_pis_tp1
+        #print("q_tp1(min)-alpha log(pi(tp1))={}".format(q_tp1[0]))
 
-        q_tp1_best = torch.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
+        q_tp1_best = torch.squeeze(input=q_tp1, dim=-1)
         q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * \
             q_tp1_best
+        #print("q_tp1_best_masked={}".format(q_tp1_best_masked[0]))
 
     assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
 
@@ -188,31 +183,36 @@ def actor_critic_loss(policy, model, _, train_batch):
     # Auto-calculate the target entropy.
     if policy.config["target_entropy"] == "auto":
         if model.discrete:
-            target_entropy = np.array(-policy.action_space.n, dtype=np.float32)
+            target_entropy = -policy.action_space.n
         else:
             target_entropy = -np.prod(policy.action_space.shape)
     else:
         target_entropy = policy.config["target_entropy"]
+    target_entropy = torch.Tensor([target_entropy]).float()
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
     # Discrete case: Multiply the action probs as weights with the original
     # loss terms (no expectations needed).
     if model.discrete:
-        alpha_loss = torch.mean(torch.sum(torch.mul(
-            policy_t.detach(),
-            -model.log_alpha * (log_pis_t + target_entropy).detach()),
-            dim=-1))
+        weighted_log_alpha_loss = policy_t.detach() * (
+                -model.log_alpha * (log_pis_t + target_entropy).detach()
+        )
+        # Sum up weighted terms and mean over all batch items.
+        alpha_loss = torch.mean(torch.sum(weighted_log_alpha_loss, dim=-1))
+        # Actor loss.
         actor_loss = torch.mean(torch.sum(torch.mul(
             # NOTE: No stop_grad around policy output here
             # (compare with q_t_det_policy for continuous case).
             policy_t,
-            model.alpha * log_pis_t - q_t.detach()),
+            alpha * log_pis_t - q_t.detach()),
             dim=-1))
     else:
         alpha_loss = -torch.mean(
             model.log_alpha * (log_pis_t + target_entropy).detach())
-        actor_loss = torch.mean(model.alpha * log_pis_t - q_t_det_policy)
+        #print("alpha_loss={}".format(alpha_loss))
+        actor_loss = torch.mean(alpha * log_pis_t - q_t_det_policy)
+        #print("actor_loss={}".format(actor_loss))
 
     # save for stats function
     policy.q_t = q_t
@@ -220,7 +220,8 @@ def actor_critic_loss(policy, model, _, train_batch):
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
-    policy.alpha_value = model.alpha
+    policy.log_alpha_value = model.log_alpha
+    policy.alpha_value = alpha
     policy.target_entropy = target_entropy
 
     # In a custom apply op we handle the losses separately, but return them
@@ -251,9 +252,10 @@ def stats(policy, train_batch):
     return {
         "td_error": torch.mean(policy.td_error),
         "actor_loss": torch.mean(policy.actor_loss),
-        "critic_loss": torch.mean(policy.critic_loss),
+        "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
         "alpha_loss": torch.mean(policy.alpha_loss),
         "alpha_value": torch.mean(policy.alpha_value),
+        "log_alpha_value": torch.mean(policy.log_alpha_value),
         "target_entropy": policy.target_entropy,
         "mean_q": torch.mean(policy.q_t),
         "max_q": torch.max(policy.q_t),
@@ -262,15 +264,30 @@ def stats(policy, train_batch):
 
 
 def optimizer_fn(policy, config):
+    class Opt:
+        def __init__(self, *opts):
+            self.opts = opts
+
+        def step(self):
+            for o in self.opts:
+                o.step()
+
+        def zero_grad(self):
+            for o in self.opts:
+                o.zero_grad()
+
     # Joint optimizer for the different models using different learning rates.
-    return torch.optim.Adam([
-        {"params": policy.model.policy_variables(),
-         "lr": config["optimization"]["actor_learning_rate"]},
-        {"params": policy.model.q_variables(),
-         "lr": config["optimization"]["critic_learning_rate"]},
-        {"params": [policy.model.log_alpha],
-         "lr": config["optimization"]["entropy_learning_rate"]}
-    ])
+    return Opt(
+        torch.optim.Adam(
+            params=policy.model.policy_variables(),
+            lr=config["optimization"]["actor_learning_rate"]),
+        torch.optim.Adam(
+            params=policy.model.q_variables(),
+            lr=config["optimization"]["critic_learning_rate"]),
+        torch.optim.Adam(
+            params=[policy.model.log_alpha],
+            lr=config["optimization"]["entropy_learning_rate"])
+    )
 
 
 class ComputeTDErrorMixin:
@@ -311,15 +328,12 @@ class TargetNetworkMixin:
         else:
             model_vars = self.model.trainable_variables()
             target_model_vars = self.target_model.trainable_variables()
+            #print("model-var={} target-var={}".format(model_vars[0][0][0], target_model_vars[0][0][0]))
             assert len(model_vars) == len(target_model_vars), \
                 (model_vars, target_model_vars)
             for var, var_target in zip(model_vars, target_model_vars):
                 var_target.data = tau * var.data + \
                     (1.0 - tau) * var_target.data
-    
-    #@override(TorchPolicy)
-    #def variables(self):
-    #    return self.model.variables() + self.target_model.variables()
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):

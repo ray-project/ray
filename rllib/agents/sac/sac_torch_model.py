@@ -93,7 +93,6 @@ class SACTorchModel(TorchModelV2, nn.Module):
                 ins = n
 
             q_net.add_module("{}_out".format(name), nn.Linear(ins, q_outs))
-            #q_net = nn.ModuleList(q_net)
             return q_net
 
         self.q_net = build_q_net("q")
@@ -102,11 +101,10 @@ class SACTorchModel(TorchModelV2, nn.Module):
         else:
             self.twin_q_net = None
 
-        self.log_alpha = torch.Tensor([np.log(initial_alpha)]).float()
-        self.alpha = torch.exp(self.log_alpha)
-        
-        #self.network = nn.ModuleList([
-        #    self.shared_module, self.advantage_module, self.value_module])
+        self.log_alpha = torch.tensor(
+            data=[np.log(initial_alpha)],
+            dtype=torch.float32,
+            requires_grad=True)
 
     def get_q_values(self, model_out, actions=None):
         """Return the Q estimates for the most recent forward pass.

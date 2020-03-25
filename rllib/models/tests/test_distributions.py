@@ -191,7 +191,7 @@ class TestDistributions(unittest.TestCase):
 
             out = squashed_distribution.logp(
                 values if fw != "torch" else torch.Tensor(values))
-            check(out, log_prob)
+            check(out, log_prob, decimals=4)
 
             if eager_ctx:
                 eager_ctx.__exit__(None, None, None)

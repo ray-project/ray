@@ -173,8 +173,21 @@ class TorchPolicy(Policy):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         loss_out = self._loss(self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
-        loss_out.backward()
+        self._optimizer.opts[0].zero_grad()
+        self.actor_loss.backward()
+        self._optimizer.opts[0].step()
+
+        self._optimizer.opts[1].zero_grad()
+        (self.critic_loss[0] + self.critic_loss[1]).backward()
+        self._optimizer.opts[1].step()
+
+        #self._optimizer.zero_grad()
+        #self.critic_loss[1].backward()
+        #self._optimizer.step()
+
+        self._optimizer.opts[2].zero_grad()
+        self.alpha_loss.backward()
+        self._optimizer.opts[2].step()
 
         info = {}
         info.update(self.extra_grad_process())
@@ -209,7 +222,11 @@ class TorchPolicy(Policy):
 
         loss_out = self._loss(self, self.model, self.dist_class, train_batch)
         self._optimizer.zero_grad()
-        loss_out.backward()
+        #loss_out.backward()
+        self.actor_loss.backward(retain_graph=True)
+        self.critic_loss[0].backward(retain_graph=True)
+        self.critic_loss[1].backward(retain_graph=True)
+        self.alpha_loss.backward(retain_graph=True)
 
         grad_process_info = self.extra_grad_process()
 

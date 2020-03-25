@@ -110,8 +110,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         if torch is not None:
             # y should never be a Tensor (y=expected value).
             if isinstance(y, torch.Tensor):
-                raise ValueError("`y` (expected value) must not be a Tensor. "
-                                 "Use numpy.ndarray instead")
+                try:
+                    y = y.numpy()
+                except RuntimeError:
+                    y = y.detach().numpy()
             if isinstance(x, torch.Tensor):
                 try:
                     x = x.numpy()

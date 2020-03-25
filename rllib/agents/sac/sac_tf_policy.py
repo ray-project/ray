@@ -59,10 +59,10 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         default_model=default_model,
         name="sac_model",
-        actor_hidden_activation=config["policy_model"]["hidden_activation"],
-        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
-        critic_hidden_activation=config["Q_model"]["hidden_activation"],
-        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
+        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"])
 
@@ -75,10 +75,10 @@ def build_sac_model(policy, obs_space, action_space, config):
         model_interface=SACTorchModel if config["use_pytorch"] else SACTFModel,
         default_model=default_model,
         name="target_sac_model",
-        actor_hidden_activation=config["policy_model"]["hidden_activation"],
-        actor_hiddens=config["policy_model"]["hidden_layer_sizes"],
-        critic_hidden_activation=config["Q_model"]["hidden_activation"],
-        critic_hiddens=config["Q_model"]["hidden_layer_sizes"],
+        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"])
 
@@ -207,11 +207,12 @@ def actor_critic_loss(policy, model, _, train_batch):
         if policy.config["twin_q"]:
             twin_q_tp1 = policy.target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
+            # Take min over both twin-NNs.
+            q_tp1 = tf.reduce_min((q_tp1, twin_q_tp1), axis=0)
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if policy.config["twin_q"]:
             twin_q_t_selected = tf.squeeze(twin_q_t, axis=len(q_t.shape) - 1)
-            q_tp1 = tf.reduce_min((q_tp1, twin_q_tp1), axis=0)
         q_tp1 -= model.alpha * log_pis_tp1
 
         q_tp1_best = tf.squeeze(input=q_tp1, axis=len(q_tp1.shape) - 1)
