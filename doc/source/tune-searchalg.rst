@@ -144,7 +144,7 @@ In order to use this search algorithm, you will need to install Scikit-Optimize 
 
     $ pip install scikit-optimize
 
-This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/auto_examples/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows:
+This algorithm requires using the `Scikit-Optimize ask and tell interface <https://scikit-optimize.github.io/stable/auto_examples/ask-and-tell.html>`__. This interface requires using the `Optimizer <https://scikit-optimize.github.io/#skopt.Optimizer>`__ provided by Scikit-Optimize. You can use SkOptSearch like follows:
 
 .. code-block:: python
 
