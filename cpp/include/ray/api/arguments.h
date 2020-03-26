@@ -38,8 +38,8 @@ inline void Arguments::WrapArgs(msgpack::packer<msgpack::sbuffer> &packer,
                                 Arg1Type &arg1) {
   /// Notice RayObjectClassPrefix should be modified by RayObject class name or namespace.
   static const std::string RayObjectClassPrefix = "N3ray3api9RayObject";
-  std::string typeName = typeid(arg1).name();
-  if (typeName.rfind(RayObjectClassPrefix, 0) == 0) {
+  std::string type_name = typeid(arg1).name();
+  if (type_name.rfind(RayObjectClassPrefix, 0) == 0) {
     /// Pass by reference.
     Serializer::Serialize(packer, true);
   } else {

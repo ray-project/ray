@@ -13,10 +13,10 @@ namespace ray {
 namespace api {
 
 std::unique_ptr<AbstractRayRuntime> AbstractRayRuntime::ins_;
-std::once_flag AbstractRayRuntime::isInited_;
+std::once_flag AbstractRayRuntime::is_Inited_;
 
 AbstractRayRuntime &AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
-  std::call_once(isInited_, [config] {
+  std::call_once(is_Inited_, [config] {
     if (config->runMode == RunMode::SINGLE_PROCESS) {
       ins_.reset(new LocalModeRayRuntime(config));
       GenerateBaseAddressOfCurrentLibrary();
@@ -36,7 +36,7 @@ AbstractRayRuntime &AbstractRayRuntime::GetInstance() {
 
 void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
                              const ObjectID &object_id) {
-  objectStore_->Put(object_id, data);
+  object_store_->Put(object_id, data);
 }
 
 ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
@@ -48,17 +48,17 @@ ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
 }
 
 std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::Get(const ObjectID &object_id) {
-  return objectStore_->Get(object_id, -1);
+  return object_store_->Get(object_id, -1);
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
     const std::vector<ObjectID> &objects) {
-  return objectStore_->Get(objects, -1);
+  return object_store_->Get(objects, -1);
 }
 
 WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &objects, int num_objects,
                                     int64_t timeout_ms) {
-  return objectStore_->Wait(objects, num_objects, timeout_ms);
+  return object_store_->Wait(objects, num_objects, timeout_ms);
 }
 
 ObjectID AbstractRayRuntime::Call(RemoteFunctionPtrHolder &fptr,
@@ -72,12 +72,12 @@ ObjectID AbstractRayRuntime::Call(RemoteFunctionPtrHolder &fptr,
       (size_t)(fptr.function_pointer - dynamic_library_base_addr);
   invocationSpec.exec_func_offset =
       (size_t)(fptr.exec_function_pointer - dynamic_library_base_addr);
-  return taskSubmitter_->SubmitTask(invocationSpec);
+  return task_submitter_->SubmitTask(invocationSpec);
 }
 
 ActorID AbstractRayRuntime::CreateActor(RemoteFunctionPtrHolder &fptr,
                                         std::shared_ptr<msgpack::sbuffer> args) {
-  return taskSubmitter_->CreateActor(fptr, args);
+  return task_submitter_->CreateActor(fptr, args);
 }
 
 ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionPtrHolder &fptr,
@@ -92,7 +92,7 @@ ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionPtrHolder &fptr,
       (size_t)(fptr.function_pointer - dynamic_library_base_addr);
   invocationSpec.exec_func_offset =
       (size_t)(fptr.exec_function_pointer - dynamic_library_base_addr);
-  return taskSubmitter_->SubmitActorTask(invocationSpec);
+  return task_submitter_->SubmitActorTask(invocationSpec);
 }
 
 const TaskID &AbstractRayRuntime::GetCurrentTaskId() {

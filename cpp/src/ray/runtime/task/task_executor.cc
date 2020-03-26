@@ -14,14 +14,14 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(const InvocationSpec &invocation
   return std::unique_ptr<ObjectID>(new ObjectID());
 };
 
-void TaskExecutor::Invoke(const TaskSpecification &taskSpec,
+void TaskExecutor::Invoke(const TaskSpecification &task_spec,
                           std::shared_ptr<msgpack::sbuffer> actor) {
-  auto args = std::make_shared<msgpack::sbuffer>(taskSpec.ArgDataSize(0));
+  auto args = std::make_shared<msgpack::sbuffer>(task_spec.ArgDataSize(0));
   /// TODO(Guyang Song): Avoid the memory copy.
-  args->write(reinterpret_cast<const char *>(taskSpec.ArgData(0)),
-              taskSpec.ArgDataSize(0));
-  auto functionDescriptor = taskSpec.FunctionDescriptor();
-  auto typed_descriptor = functionDescriptor->As<ray::CppFunctionDescriptor>();
+  args->write(reinterpret_cast<const char *>(task_spec.ArgData(0)),
+              task_spec.ArgDataSize(0));
+  auto function_descriptor = task_spec.FunctionDescriptor();
+  auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
   std::shared_ptr<msgpack::sbuffer> data;
   if (actor) {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
@@ -39,8 +39,8 @@ void TaskExecutor::Invoke(const TaskSpecification &taskSpec,
     data = (*exec_function)(dynamic_library_base_addr,
                             std::stoul(typed_descriptor->FunctionOffset()), args);
   }
-  AbstractRayRuntime &rayRuntime = AbstractRayRuntime::GetInstance();
-  rayRuntime.Put(std::move(data), taskSpec.ReturnId(0, ray::TaskTransportType::RAYLET));
+  AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
+  runtime.Put(std::move(data), task_spec.ReturnId(0, ray::TaskTransportType::RAYLET));
 }
 }  // namespace api
 }  // namespace ray

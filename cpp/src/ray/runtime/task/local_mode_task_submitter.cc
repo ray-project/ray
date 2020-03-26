@@ -22,15 +22,15 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
       "SingleProcess", std::to_string(invocation.func_offset),
       std::to_string(invocation.exec_func_offset));
-  AbstractRayRuntime &rayRuntime = AbstractRayRuntime::GetInstance();
+  AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
   TaskSpecBuilder builder;
   builder.SetCommonTaskSpec(invocation.task_id, rpc::Language::CPP, functionDescriptor,
-                            rayRuntime.GetCurrentJobID(), rayRuntime.GetCurrentTaskId(),
-                            0, rayRuntime.GetCurrentTaskId(), address, 1,
-                            required_resources, required_placement_resources);
+                            runtime.GetCurrentJobID(), runtime.GetCurrentTaskId(), 0,
+                            runtime.GetCurrentTaskId(), address, 1, required_resources,
+                            required_placement_resources);
   if (type == TaskType::NORMAL_TASK) {
   } else if (type == TaskType::ACTOR_CREATION_TASK) {
     builder.SetActorCreationTaskSpec(invocation.actor_id);
@@ -49,21 +49,21 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
       true);
   /// TODO(Guyang Song): Use both 'AddByRefArg' and 'AddByValueArg' to distinguish
   builder.AddByValueArg(::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()));
-  auto taskSpecification = builder.Build();
+  auto task_specification = builder.Build();
   ObjectID return_object_id =
-      taskSpecification.ReturnId(0, ray::TaskTransportType::RAYLET);
+      task_specification.ReturnId(0, ray::TaskTransportType::RAYLET);
 
   std::shared_ptr<msgpack::sbuffer> actor;
   std::shared_ptr<absl::Mutex> mutex;
   if (type == TaskType::ACTOR_TASK) {
     absl::MutexLock lock(&actorContextsMutex_);
-    actor = actorContexts_.at(invocation.actor_id).get()->currentActor;
-    mutex = actorContexts_.at(invocation.actor_id).get()->actorMutex;
+    actor = actor_contexts_.at(invocation.actor_id).get()->current_actor;
+    mutex = actor_contexts_.at(invocation.actor_id).get()->actor_mutex;
   }
   if (type == TaskType::ACTOR_CREATION_TASK || type == TaskType::ACTOR_TASK) {
     /// Execute actor task directly in the main thread because we have not support actor
     /// handle. We must guarantee the actor task executed by calling order.
-    TaskExecutor::Invoke(taskSpecification, actor);
+    TaskExecutor::Invoke(task_specification, actor);
   } else {
     boost::asio::post(*thread_pool_.get(), std::bind(
                                                [actor, mutex](TaskSpecification &ts) {
@@ -72,7 +72,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
                                                  }
                                                  TaskExecutor::Invoke(ts, actor);
                                                },
-                                               std::move(taskSpecification)));
+                                               std::move(task_specification)));
   }
   return return_object_id;
 }
@@ -92,9 +92,9 @@ ActorID LocalModeTaskSubmitter::CreateActor(RemoteFunctionPtrHolder &fptr,
       (*exec_function)(dynamic_library_base_addr,
                        (size_t)(fptr.function_pointer - dynamic_library_base_addr), args);
   std::unique_ptr<ActorContext> actorContext(new ActorContext());
-  actorContext->currentActor = data;
+  actorContext->current_actor = data;
   absl::MutexLock lock(&actorContextsMutex_);
-  actorContexts_.emplace(id, std::move(actorContext));
+  actor_contexts_.emplace(id, std::move(actorContext));
   return id;
 }
 

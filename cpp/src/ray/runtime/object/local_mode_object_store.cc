@@ -12,7 +12,7 @@ namespace api {
 
 void LocalModeObjectStore::PutRaw(const ObjectID &object_id,
                                   std::shared_ptr<msgpack::sbuffer> data) {
-  absl::MutexLock lock(&dataMutex_);
+  absl::MutexLock lock(&data_mutex_);
   if (object_pool_.find(object_id) != object_pool_.end()) {
     throw RayException("object already exist");
   }
@@ -26,7 +26,7 @@ std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &o
 
   std::shared_ptr<msgpack::sbuffer> object;
 
-  absl::MutexLock lock(&dataMutex_);
+  absl::MutexLock lock(&data_mutex_);
 
   auto iterator = object_pool_.find(object_id);
   if (iterator == object_pool_.end()) {
@@ -44,7 +44,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
   }
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> result;
-  absl::MutexLock lock(&dataMutex_);
+  absl::MutexLock lock(&data_mutex_);
 
   for (auto it = objects.begin(); it != objects.end(); it++) {
     auto iterator = object_pool_.find(*it);
@@ -73,7 +73,7 @@ WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &objects,
       remainingTime -= sleepTime;
     }
     for (auto it = unready.begin(); it != unready.end(); it++) {
-      absl::MutexLock lock(&dataMutex_);
+      absl::MutexLock lock(&data_mutex_);
       if (object_pool_.find(*it) != object_pool_.end()) {
         readyCnt += 1;
         ready.push_back(*it);

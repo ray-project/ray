@@ -10,11 +10,11 @@ namespace api {
 
 class ActorContext {
  public:
-  std::shared_ptr<msgpack::sbuffer> currentActor = nullptr;
+  std::shared_ptr<msgpack::sbuffer> current_actor = nullptr;
 
-  std::shared_ptr<absl::Mutex> actorMutex;
+  std::shared_ptr<absl::Mutex> actor_mutex;
 
-  ActorContext() { actorMutex = std::shared_ptr<absl::Mutex>(new absl::Mutex); }
+  ActorContext() { actor_mutex = std::shared_ptr<absl::Mutex>(new absl::Mutex); }
 };
 
 class TaskExecutor {
@@ -22,7 +22,7 @@ class TaskExecutor {
   /// TODO(Guyang Song): support multiple tasks execution
   std::unique_ptr<ObjectID> Execute(const InvocationSpec &invocation);
 
-  static void Invoke(const TaskSpecification &taskSpec,
+  static void Invoke(const TaskSpecification &task_spec,
                      std::shared_ptr<msgpack::sbuffer> actor);
 
   virtual ~TaskExecutor(){};

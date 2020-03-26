@@ -48,17 +48,17 @@ class AbstractRayRuntime : public RayRuntime {
 
  protected:
   static std::unique_ptr<AbstractRayRuntime> ins_;
-  static std::once_flag isInited_;
+  static std::once_flag is_Inited_;
   std::shared_ptr<RayConfig> config_;
   std::unique_ptr<WorkerContext> worker_;
-  std::unique_ptr<TaskSubmitter> taskSubmitter_;
-  std::unique_ptr<TaskExecutor> TaskExecutor_;
-  std::unique_ptr<ObjectStore> objectStore_;
+  std::unique_ptr<TaskSubmitter> task_submitter_;
+  std::unique_ptr<TaskExecutor> task_executor_;
+  std::unique_ptr<ObjectStore> object_store_;
 
  private:
   static AbstractRayRuntime &DoInit(std::shared_ptr<RayConfig> config);
 
-  void Execute(const TaskSpecification &taskSpec);
+  void Execute(const TaskSpecification &task_spec);
 
   friend class Ray;
 };

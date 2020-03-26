@@ -24,7 +24,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
   ObjectID SubmitActorTask(const InvocationSpec &invocation);
 
  private:
-  std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actorContexts_;
+  std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
 
   absl::Mutex actorContextsMutex_;
 

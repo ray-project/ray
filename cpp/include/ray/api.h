@@ -84,7 +84,7 @@ class Ray {
   template <typename ReturnType, typename ActorType, typename FuncType,
             typename ExecFuncType, typename... ArgTypes>
   static RayObject<ReturnType> CallActorInternal(FuncType &actor_func,
-                                                 ExecFuncType &execFunc,
+                                                 ExecFuncType &exec_func,
                                                  RayActor<ActorType> &actor,
                                                  ArgTypes &... args);
 

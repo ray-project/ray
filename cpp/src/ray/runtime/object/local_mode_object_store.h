@@ -25,7 +25,7 @@ class LocalModeObjectStore : public ObjectStore {
 
   std::unordered_map<ObjectID, std::shared_ptr<msgpack::sbuffer>> object_pool_;
 
-  absl::Mutex dataMutex_;
+  absl::Mutex data_mutex_;
 };
 
 }  // namespace api
