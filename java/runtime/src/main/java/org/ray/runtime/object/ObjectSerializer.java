@@ -25,10 +25,10 @@ public class ObjectSerializer {
   private static final byte[] TASK_EXECUTION_EXCEPTION_META = String
       .valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
-  public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "Cross".getBytes();
-  public static final byte[] OBJECT_METADATA_TYPE_JAVA = "Java".getBytes();
-  public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "Python".getBytes();
-  public static final byte[] OBJECT_METADATA_TYPE_RAW = "Raw".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_RAW = "RAW".getBytes();
 
   /**
    * Deserialize an object from an {@link NativeRayObject} instance.

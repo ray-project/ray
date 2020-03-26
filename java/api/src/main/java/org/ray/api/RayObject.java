@@ -22,7 +22,7 @@ public interface RayObject<T> {
   /**
    * Get the Object type.
    */
-  Class<?> getType();
+  Class<T> getType();
 
 }
 

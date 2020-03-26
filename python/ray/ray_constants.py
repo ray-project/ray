@@ -175,11 +175,11 @@ PROCESS_TYPE_GCS_SERVER = "gcs_server"
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is cross language.
-OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"Cross"
+OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 # A constant used as object metadata to indicate the object is python specific.
-OBJECT_METADATA_TYPE_PYTHON = b"Python"
+OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
-OBJECT_METADATA_TYPE_RAW = b"Raw"
+OBJECT_METADATA_TYPE_RAW = b"RAW"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 

@@ -70,21 +70,21 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public <T> RayObject<T> put(T obj) {
     ObjectId objectId = objectStore.put(obj);
     try {
-      return new RayObjectImpl<>(objectId, obj.getClass());
+      return new RayObjectImpl<T>(objectId, (Class<T>)obj.getClass());
     } catch (Exception e) {
-      return new RayObjectImpl<>(objectId, Object.class);
+      return new RayObjectImpl<T>(objectId, null);
     }
   }
 
   @Override
-  public <T> T get(ObjectId objectId, Class<?> objectType) throws RayException {
+  public <T> T get(ObjectId objectId, Class<T> objectType) throws RayException {
     List<T> ret = get(ImmutableList.of(objectId), objectType);
     return ret.get(0);
   }
 
   @Override
-  public <T> List<T> get(List<ObjectId> objectIds, Class<?> elementType) {
-    return objectStore.get(objectIds, elementType);
+  public <T> List<T> get(List<ObjectId> objectIds, Class<T> objectType) {
+    return objectStore.get(objectIds, objectType);
   }
 
   @Override
