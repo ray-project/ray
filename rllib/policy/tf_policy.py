@@ -347,7 +347,9 @@ class TFPolicy(Policy):
             signature_def_map = self._build_signature_def()
             builder.add_meta_graph_and_variables(
                 self._sess, [tf.saved_model.tag_constants.SERVING],
-                signature_def_map=signature_def_map)
+                signature_def_map=signature_def_map,
+                saver=tf.summary.FileWriter(export_dir).add_graph(  # <-- HERE
+                    graph=self._sess.graph))
             builder.save()
 
     @override(Policy)

@@ -55,6 +55,7 @@ CONFIGS = {
         "observation_filter": "MeanStdFilter"
     },
     "PPO": {
+        "use_pytorch": True,
         "explore": False,
         "num_sgd_iter": 5,
         "train_batch_size": 1000,
@@ -125,8 +126,8 @@ def export_test(alg_name, failures):
         res = algo.train()
         print("current status: " + str(res))
 
-    export_dir = os.path.join(ray.utils.get_user_temp_dir(),
-                              "export_dir_%s" % alg_name)
+    export_dir = "/Users/sven/Dropbox/tmp/" #os.path.join(ray.utils.get_user_temp_dir(),
+                     #         "export_dir_%s" % alg_name)
     print("Exporting model ", alg_name, export_dir)
     algo.export_policy_model(export_dir)
     if not valid_tf_model(export_dir):
@@ -160,6 +161,12 @@ class TestCheckpointRestore(unittest.TestCase):
 
     def test_checkpoint_restore(self):
         failures = []
+        for name in ["PPO", "SAC", "DQN", "DDPG", "A3C"]:
+            export_test(name, failures)
+        assert not failures, failures
+        print("All export tests passed!")
+
+        failures = []
         for use_object_store in [False, True]:
             for name in [
                     "SAC", "ES", "DQN", "DDPG", "PPO", "A3C", "APEX_DDPG",
@@ -169,12 +176,6 @@ class TestCheckpointRestore(unittest.TestCase):
 
         assert not failures, failures
         print("All checkpoint restore tests passed!")
-
-        failures = []
-        for name in ["SAC", "DQN", "DDPG", "PPO", "A3C"]:
-            export_test(name, failures)
-        assert not failures, failures
-        print("All export tests passed!")
 
 
 if __name__ == "__main__":

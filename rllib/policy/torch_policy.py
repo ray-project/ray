@@ -11,6 +11,8 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
+if torch:
+    from torch.utils.tensorboard import SummaryWriter
 
 
 class TorchPolicy(Policy):
@@ -233,7 +235,6 @@ class TorchPolicy(Policy):
 
     def extra_grad_info(self, train_batch):
         """Return dict of extra grad info."""
-
         return {}
 
     def optimizer(self):
@@ -259,9 +260,14 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def export_model(self, export_dir):
-        """TODO(sven): implement for torch.
-        """
-        raise NotImplementedError
+        # Export the Model's graph.
+        writer = SummaryWriter(log_dir=export_dir)
+        input_dict = self._lazy_tensor_dict({
+            SampleBatch.CUR_OBS: self.observation_space.sample(),
+        })
+        state_batches = []
+        writer.add_graph(self.model, [input_dict, state_batches, self._convert_to_tensor([1])])
+        writer.close()
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
