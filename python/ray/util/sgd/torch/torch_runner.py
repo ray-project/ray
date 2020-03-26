@@ -133,6 +133,9 @@ class TorchRunner:
             self.models, self.optimizers = amp.initialize(
                 self.models, self.optimizers, **self.apex_args)
 
+    def set_reporters(self, reporters):
+        return self.training_operator.set_reporters(reporters)
+
     def setup(self):
         """Initializes the model."""
         logger.debug("Creating model")
@@ -156,6 +159,9 @@ class TorchRunner:
             models=self.models,
             optimizers=self.optimizers,
             criterion=self.criterion,
+            train_loader=self.train_loader,
+            validation_loader=self.validation_loader,
+            world_rank=0,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16)
 
