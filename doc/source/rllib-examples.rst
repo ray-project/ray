@@ -71,11 +71,11 @@ Multi-Agent and Hierarchical
    Example of customizing PPO to leverage a centralized value function.
 - `Centralized critic in the env <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__:
    A simpler method of implementing a centralized critic by augmentating agent observations with global information.
-- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_custom_policy.py>`__:
+- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_custom_policy.py>`__:
    Example of running a custom hand-coded policy alongside trainable policies.
-- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__:
+- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
-- `Multiple trainers <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_two_trainers.py>`__:
+- `Multiple trainers <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__:
    Example of alternating training between two DQN and PPO trainers.
 - `Hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.

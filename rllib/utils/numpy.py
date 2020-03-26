@@ -125,7 +125,10 @@ def fc(x, weights, biases=None):
     """
     # Torch stores matrices in transpose (faster for backprop).
     if torch and isinstance(weights, torch.Tensor):
-        weights = np.transpose(weights.numpy())
+        weights = np.transpose(weights.detach().numpy())
+        if isinstance(biases, torch.Tensor) and \
+                not isinstance(x, torch.Tensor):
+            biases = biases.detach().numpy()
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 

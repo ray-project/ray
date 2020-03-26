@@ -190,7 +190,8 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return self._squash(self.dist.mean)
+        self.last_sample = self._squash(self.dist.mean)
+        return self.last_sample
 
     @override(TorchDistributionWrapper)
     def sample(self):

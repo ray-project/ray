@@ -282,17 +282,6 @@ class SquashedGaussian(TFActionDistribution):
         self.high = high
         super().__init__(inputs, model)
 
-    #@override(TFActionDistribution)
-    #def sampled_action_logp(self):
-    #    unsquashed_values = self._unsquash(self.sample_op)
-    #    log_prob = tf.reduce_sum(
-    #        self.distr.log_prob(unsquashed_values), axis=-1)
-    #    unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
-    #    log_prob -= tf.math.reduce_sum(
-    #        tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
-    #        axis=-1)
-    #    return log_prob
-
     @override(ActionDistribution)
     def deterministic_sample(self):
         mean = self.distr.mean()

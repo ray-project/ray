@@ -178,7 +178,7 @@ class TorchPolicy(Policy):
         self._optimizer.opts[0].step()
 
         self._optimizer.opts[1].zero_grad()
-        (self.critic_loss[0] + self.critic_loss[1]).backward()
+        self.critic_loss[0].backward()
         self._optimizer.opts[1].step()
 
         #self._optimizer.zero_grad()

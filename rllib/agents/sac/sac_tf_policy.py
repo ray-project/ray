@@ -128,7 +128,7 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
     return policy.output_actions, policy.sampled_action_logp
 
 
-def actor_critic_loss(policy, model, _, train_batch):
+def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
@@ -180,12 +180,12 @@ def actor_critic_loss(policy, model, _, train_batch):
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
-        policy_t = action_dist_t.sample()
-        log_pis_t = tf.expand_dims(action_dist_t.sampled_action_logp(), -1)
+        policy_t = action_dist_t.sample() if not deterministic else action_dist_t.deterministic_sample()
+        log_pis_t = tf.expand_dims(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
-        policy_tp1 = action_dist_tp1.sample()
-        log_pis_tp1 = tf.expand_dims(action_dist_tp1.sampled_action_logp(), -1)
+        policy_tp1 = action_dist_tp1.sample() if not deterministic else action_dist_tp1.deterministic_sample()
+        log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
         q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])

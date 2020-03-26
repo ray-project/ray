@@ -60,7 +60,7 @@ def action_distribution_fn(policy,
     return distribution_inputs, action_dist_class, []
 
 
-def actor_critic_loss(policy, model, _, train_batch):
+def actor_critic_loss(policy, model, _, train_batch, deterministic=False):
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": True,
@@ -114,11 +114,11 @@ def actor_critic_loss(policy, model, _, train_batch):
         action_dist_class = get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
-        policy_t = action_dist_t.sample()
+        policy_t = action_dist_t.sample() if not deterministic else action_dist_t.deterministic_sample()
         log_pis_t = torch.unsqueeze(action_dist_t.sampled_action_logp(), -1)
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
-        policy_tp1 = action_dist_tp1.sample()
+        policy_tp1 = action_dist_tp1.sample() if not deterministic else action_dist_tp1.deterministic_sample()
         log_pis_tp1 = torch.unsqueeze(action_dist_tp1.sampled_action_logp(), -1)
 
         # Q-values for the actually selected actions.
