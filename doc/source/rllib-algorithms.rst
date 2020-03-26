@@ -465,6 +465,67 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+
+Contextual Bandits (contrib/bandits)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Multi-armed bandit (MAB) problem provides a simplified RL setting that
+involves learning to act under one situation only, i.e. the state is fixed.
+Contextual bandit is extension of the MAB problem, where at each
+round the agent has access not only to a set of bandit arms/actions but also
+to a context (state) associated with this iteration. The context changes
+with each iteration, but, is not affected by the action that the agent takes.
+The objective of the agent is to maximize the cumulative rewards, by
+collecting  enough information about how the context and the rewards of the
+arms are related to each other. The agent does this by balancing the
+trade-off between exploration and exploitation.
+
+Contextual bandit algorithms typically consist of an action-value model (Q
+model) and an exploration strategy (e-greedy, UCB, Thompson Sampling etc.)
+RLlib supports the following online contextual bandit algorithms,
+named after the exploration strategies that they employ:
+
+LinUCB (Upper Confidence Bound)
+-------------------------------
+|pytorch|
+`[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
+<https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ucb.py>`__
+LinUCB assumes a linear dependency between the expected reward of an action and
+its context. It estimates the Q value of each action using ridge regression.
+It constructs a confidence region around the weights of the linear
+regression model and uses this confidence ellipsoid to estimate the
+uncertainty of action values.
+
+**LinUCB-specific configs** (see also `common configs <rllib-training
+.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ucb.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
+LinTS (Linear Thompson Sampling)
+--------------------------------
+|pytorch|
+`[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__ `[implementation]
+<https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ts.py>`__
+Like LinUCB, LinTS also assumes a linear dependency between the expected
+reward of an action and its context and uses online ridge regression to
+estimate the Q values of actions given the context. It assumes a Gaussian
+prior on the weights and a Gaussian likelihood function. For deciding which
+action to take, the agent samples weights for each arm, using
+the posterior distributions, and plays the arm that produces the highest reward.
+
+**LinTS-specific configs** (see also `common configs <rllib-training
+.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ts.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
 .. |tensorflow| image:: tensorflow.png
     :width: 24
 
