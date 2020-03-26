@@ -15,7 +15,7 @@ def env_integer(key, default):
 
 def env_bool(key, default):
     if key in os.environ:
-        return True if os.environ[key].lower() == 'true' else False
+        return True if os.environ[key].lower() == "true" else False
     return default
 
 
