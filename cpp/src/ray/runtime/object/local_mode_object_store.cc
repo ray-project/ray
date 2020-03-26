@@ -5,88 +5,83 @@
 #include <thread>
 
 #include <ray/api/ray_exception.h>
+#include "../abstract_ray_runtime.h"
 #include "local_mode_object_store.h"
 
 namespace ray {
 namespace api {
+LocalModeObjectStore::LocalModeObjectStore() {
+  memory_store_ =
+      std::unique_ptr<::ray::CoreWorkerMemoryStore>(new ::ray::CoreWorkerMemoryStore());
+}
 
 void LocalModeObjectStore::PutRaw(const ObjectID &object_id,
                                   std::shared_ptr<msgpack::sbuffer> data) {
-  absl::MutexLock lock(&data_mutex_);
-  if (object_pool_.find(object_id) != object_pool_.end()) {
-    throw RayException("object already exist");
+  auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
+  auto status = memory_store_->Put(
+      ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), object_id);
+  if (status.ok()) {
+    throw RayException("Put object error: ");
   }
-  object_pool_.emplace(object_id, data);
 }
 
 std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &object_id,
                                                                int timeout_ms) {
-  const std::vector<ObjectID> objects = {object_id};
-  Wait(objects, 1, timeout_ms);
-
-  std::shared_ptr<msgpack::sbuffer> object;
-
-  absl::MutexLock lock(&data_mutex_);
-
-  auto iterator = object_pool_.find(object_id);
-  if (iterator == object_pool_.end()) {
-    throw RayException("Can not find object in local buffer");
-  }
-
-  return iterator->second;
+  std::vector<ObjectID> object_ids;
+  object_ids.push_back(object_id);
+  auto buffers = GetRaw(object_ids, timeout_ms);
+  RAY_CHECK(buffers.size() == 1);
+  return buffers[0];
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
-    const std::vector<ObjectID> &objects, int timeout_ms) {
-  WaitResult waitResult = Wait(objects, objects.size(), timeout_ms);
-  if (waitResult.unready.size() != 0) {
-    throw RayException("Objects are not all ready");
+    const std::vector<ObjectID> &ids, int timeout_ms) {
+  AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
+  std::vector<std::shared_ptr<::ray::RayObject>> results;
+  ::ray::Status status = memory_store_->Get(ids, (int)ids.size(), timeout_ms,
+                                            *runtime.GetWorkerContext(), false, &results);
+  if (!status.ok()) {
+    throw RayException("Get object error: " + status.ToString());
   }
-
-  std::vector<std::shared_ptr<msgpack::sbuffer>> result;
-  absl::MutexLock lock(&data_mutex_);
-
-  for (auto it = objects.begin(); it != objects.end(); it++) {
-    auto iterator = object_pool_.find(*it);
-    if (iterator == object_pool_.end()) {
-      throw RayException("Can not find object in local buffer");
-    }
-    result.push_back(iterator->second);
+  RAY_CHECK(results.size() == ids.size());
+  std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
+  result_sbuffers.reserve(results.size());
+  for (size_t i = 0; i < results.size(); i++) {
+    auto data_buffer = results[i]->GetData();
+    auto sbuffer = std::make_shared<msgpack::sbuffer>(data_buffer->Size());
+    sbuffer->write(reinterpret_cast<const char *>(data_buffer->Data()),
+                   data_buffer->Size());
+    result_sbuffers.push_back(sbuffer);
   }
-
-  return result;
+  return result_sbuffers;
 }
 
-WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &objects,
-                                      int num_objects, int64_t timeout_ms) {
-  static const int GET_CHECK_INTERVAL_MS = 100;
-  std::list<ObjectID> ready;
-  std::list<ObjectID> unready(objects.begin(), objects.end());
-  int readyCnt = 0;
-  int remainingTime = timeout_ms;
-  bool firstCheck = true;
-  while (readyCnt < num_objects && (timeout_ms < 0 || remainingTime > 0)) {
-    if (!firstCheck) {
-      long sleepTime = timeout_ms < 0 ? GET_CHECK_INTERVAL_MS
-                                      : std::min(remainingTime, GET_CHECK_INTERVAL_MS);
-      std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
-      remainingTime -= sleepTime;
-    }
-    for (auto it = unready.begin(); it != unready.end(); it++) {
-      absl::MutexLock lock(&data_mutex_);
-      if (object_pool_.find(*it) != object_pool_.end()) {
-        readyCnt += 1;
-        ready.push_back(*it);
-        it = unready.erase(it);
-      } else {
-      }
-    }
-    firstCheck = false;
+WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids, int num_objects,
+                                      int timeout_ms) {
+  absl::flat_hash_set<ObjectID> memory_object_ids;
+  for (const auto &object_id : ids) {
+    memory_object_ids.insert(object_id);
   }
-
-  std::vector<ObjectID> readyVector{std::begin(ready), std::end(ready)};
-  std::vector<ObjectID> unreadyVector{std::begin(unready), std::end(unready)};
-  WaitResult result(std::move(readyVector), std::move(unreadyVector));
+  absl::flat_hash_set<ObjectID> ready;
+  AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
+  ::ray::Status status = memory_store_->Wait(memory_object_ids, num_objects, timeout_ms,
+                                             *runtime.GetWorkerContext(), &ready);
+  if (!status.ok()) {
+    throw RayException("Wait object error: " + status.ToString());
+  }
+  std::vector<ObjectID> ready_vector;
+  ready_vector.reserve(ready.size());
+  std::vector<ObjectID> unready_vector;
+  unready_vector.reserve(ids.size() - ready.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (ready.find(ids[i]) != ready.end()) {
+      ready_vector.push_back(ids[i]);
+    } else {
+      unready_vector.push_back(ids[i]);
+    }
+  }
+  WaitResult result(std::move(ready_vector), std::move(unready_vector));
   return result;
 }
 }  // namespace api

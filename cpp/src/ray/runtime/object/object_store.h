@@ -34,22 +34,22 @@ class ObjectStore {
   /// Get a list of objects from the object store.
   /// This method will be blocked until all the objects are ready or wait for timeout.
   ///
-  /// \param[in] objects The object id array which should be got.
+  /// \param[in] ids The object id array which should be got.
   /// \param[in] timeout_ms The maximum wait time in milliseconds.
   /// \return shared pointer array of the result buffer.
   std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
-      const std::vector<ObjectID> &objects, int timeout_ms = default_get_timeout_ms);
+      const std::vector<ObjectID> &ids, int timeout_ms = default_get_timeout_ms);
 
   /// Wait for a list of RayObjects to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
   ///
-  /// \param[in] objects The object id array which should be waited.
+  /// \param[in] ids The object id array which should be waited.
   /// \param[in] num_objects The minimum number of objects to wait.
   /// \param[in] timeout_ms The maximum wait time in milliseconds.
   /// \return WaitResult Two arrays, one containing locally available objects, one
   /// containing the rest.
-  virtual WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
-                          int64_t timeout_ms) = 0;
+  virtual WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
+                          int timeout_ms) = 0;
 
  private:
   virtual void PutRaw(const ObjectID &object_id,
@@ -59,7 +59,7 @@ class ObjectStore {
                                                    int timeout_ms) = 0;
 
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
-      const std::vector<ObjectID> &objects, int timeout_ms) = 0;
+      const std::vector<ObjectID> &ids, int timeout_ms) = 0;
 };
 }  // namespace api
 }  // namespace ray

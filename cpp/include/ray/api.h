@@ -45,7 +45,7 @@ class Ray {
   /// \param[in] objects The object array which should be got.
   /// \return shared pointer array of the result.
   template <typename T>
-  static std::vector<std::shared_ptr<T>> Get(const std::vector<RayObject<T>> &objects);
+  static std::vector<std::shared_ptr<T>> Get(const std::vector<RayObject<T>> &ids);
 
   /// Wait for a list of RayObjects to be locally available,
   /// until specified number of objects are ready, or specified timeout has passed.
@@ -56,7 +56,7 @@ class Ray {
   /// \return Two arrays, one containing locally available objects, one containing the
   /// rest.
   static WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
-                         int64_t timeout_ms);
+                         int timeout_ms);
 
 /// Include the `Call` methods for calling remote functions.
 #include "api/generated/call_funcs.generated.h"
@@ -161,14 +161,13 @@ inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<ObjectID> &ids
 }
 
 template <typename T>
-inline std::vector<std::shared_ptr<T>> Ray::Get(
-    const std::vector<RayObject<T>> &objects) {
-  auto object_ids = RayObjectsToObjectIDs<T>(objects);
+inline std::vector<std::shared_ptr<T>> Ray::Get(const std::vector<RayObject<T>> &ids) {
+  auto object_ids = RayObjectsToObjectIDs<T>(ids);
   return Get<T>(object_ids);
 }
 
 inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                            int64_t timeout_ms) {
+                            int timeout_ms) {
   return runtime_->Wait(ids, num_objects, timeout_ms);
 }
 

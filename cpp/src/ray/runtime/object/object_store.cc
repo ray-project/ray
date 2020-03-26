@@ -17,8 +17,8 @@ std::shared_ptr<msgpack::sbuffer> ObjectStore::Get(const ObjectID &object_id,
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> ObjectStore::Get(
-    const std::vector<ObjectID> &objects, int timeout_ms) {
-  return GetRaw(objects, timeout_ms);
+    const std::vector<ObjectID> &ids, int timeout_ms) {
+  return GetRaw(ids, timeout_ms);
 }
 }  // namespace api
 }  // namespace ray

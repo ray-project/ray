@@ -44,7 +44,7 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   } else {
     throw RayException("unknown task type");
   }
-  auto buffer = std::make_shared<LocalMemoryBuffer>(
+  auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(invocation.args->data()), invocation.args->size(),
       true);
   /// TODO(Guyang Song): Use both 'AddByRefArg' and 'AddByValueArg' to distinguish

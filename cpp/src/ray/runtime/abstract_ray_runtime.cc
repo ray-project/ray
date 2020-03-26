@@ -52,13 +52,13 @@ std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::Get(const ObjectID &object
 }
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
-    const std::vector<ObjectID> &objects) {
-  return object_store_->Get(objects, -1);
+    const std::vector<ObjectID> &ids) {
+  return object_store_->Get(ids, -1);
 }
 
-WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &objects, int num_objects,
-                                    int64_t timeout_ms) {
-  return object_store_->Wait(objects, num_objects, timeout_ms);
+WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_objects,
+                                    int timeout_ms) {
+  return object_store_->Wait(ids, num_objects, timeout_ms);
 }
 
 ObjectID AbstractRayRuntime::Call(RemoteFunctionPtrHolder &fptr,
@@ -106,6 +106,10 @@ ActorID AbstractRayRuntime::GetNextActorID() {
   const ActorID actor_id = ActorID::Of(worker_->GetCurrentJobID(),
                                        worker_->GetCurrentTaskID(), next_task_index);
   return actor_id;
+}
+
+const std::unique_ptr<WorkerContext> &AbstractRayRuntime::GetWorkerContext() {
+  return worker_;
 }
 
 }  // namespace api

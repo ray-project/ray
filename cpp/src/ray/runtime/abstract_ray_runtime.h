@@ -26,11 +26,9 @@ class AbstractRayRuntime : public RayRuntime {
 
   std::shared_ptr<msgpack::sbuffer> Get(const ObjectID &id);
 
-  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(
-      const std::vector<ObjectID> &objects);
+  std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<ObjectID> &ids);
 
-  WaitResult Wait(const std::vector<ObjectID> &objects, int num_objects,
-                  int64_t timeout_ms);
+  WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
 
   ObjectID Call(RemoteFunctionPtrHolder &fptr, std::shared_ptr<msgpack::sbuffer> args);
 
@@ -45,6 +43,8 @@ class AbstractRayRuntime : public RayRuntime {
   const TaskID &GetCurrentTaskId();
 
   const JobID &GetCurrentJobID();
+
+  const std::unique_ptr<WorkerContext> &GetWorkerContext();
 
  protected:
   static std::unique_ptr<AbstractRayRuntime> ins_;
