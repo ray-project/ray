@@ -492,10 +492,6 @@ class TrialRunner:
                             result=flat_result,
                             early_terminated=True)
 
-            if not is_duplicate:
-                trial.update_last_result(
-                    result, terminate=(decision == TrialScheduler.STOP))
-
             # Checkpoints to disk. This should be checked even if
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
@@ -510,6 +506,12 @@ class TrialRunner:
                 self._cached_trial_decisions[trial.trial_id] = decision
             else:
                 self._execute_action(trial, decision)
+
+            # At the very end, log the entire trial state.
+            if not is_duplicate:
+                result.update(decision=decision, status=trial.status)
+                trial.update_last_result(
+                    result, terminate=(decision == TrialScheduler.STOP))
         except Exception:
             logger.exception("Trial %s: Error processing event.", trial)
             self._process_trial_failure(trial, traceback.format_exc())
