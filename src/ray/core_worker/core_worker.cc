@@ -303,7 +303,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
                              /*contained_object_ids=*/{}, object_id,
                              /*pin_object=*/pin_object));
-          }));
+          },
+          RayConfig::instance().lineage_pinning_enabled()));
 }
 
 CoreWorker::~CoreWorker() {

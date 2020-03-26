@@ -45,7 +45,8 @@ class ObjectRecoveryManager {
                         std::shared_ptr<PinnedObjectsInterface> pinned_objects,
                         std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
                         std::function<void(const ObjectID &object_id, bool pin_object)>
-                            reconstruction_failure_callback)
+                            reconstruction_failure_callback,
+                        bool lineage_reconstruction_enabled)
       : rpc_address_(rpc_address),
         client_factory_(client_factory),
         local_object_pinning_client_(local_object_pinning_client),
@@ -53,7 +54,8 @@ class ObjectRecoveryManager {
         task_resubmitter_(task_resubmitter),
         pinned_objects_(pinned_objects),
         in_memory_store_(in_memory_store),
-        reconstruction_failure_callback_(reconstruction_failure_callback) {}
+        reconstruction_failure_callback_(reconstruction_failure_callback),
+        lineage_reconstruction_enabled_(lineage_reconstruction_enabled) {}
 
   Status RecoverObject(const ObjectID &object_id);
 
@@ -80,17 +82,18 @@ class ObjectRecoveryManager {
   std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
-  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
+  const std::function<Status(const ObjectID &object_id,
+                             const ObjectLookupCallback &callback)>
       object_lookup_;
 
   /// Used to store object values (InPlasmaError or UnreconstructableError)
   /// once reconstruction finishes.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
-  std::function<void(const ObjectID &object_id)> reconstruction_success_callback_;
-
-  std::function<void(const ObjectID &object_id, bool pin_object)>
+  const std::function<void(const ObjectID &object_id, bool pin_object)>
       reconstruction_failure_callback_;
+
+  const bool lineage_reconstruction_enabled_;
 
   /// Protects below fields.
   mutable absl::Mutex mu_;

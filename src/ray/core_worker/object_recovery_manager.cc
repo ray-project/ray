@@ -48,7 +48,7 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   if (!already_pending_recovery) {
-    AttemptObjectRecovery(object_id);
+    RAY_RETURN_NOT_OK(AttemptObjectRecovery(object_id));
   }
   return Status::OK();
 }
@@ -68,7 +68,7 @@ Status ObjectRecoveryManager::AttemptObjectRecovery(const ObjectID &object_id) {
     }
 
     if (!pinned) {
-      if (RayConfig::instance().lineage_pinning_enabled()) {
+      if (lineage_reconstruction_enabled_) {
         // If we could not find another copy to pin, try to reconstruct the
         // object.
         ReconstructObject(object_id);
