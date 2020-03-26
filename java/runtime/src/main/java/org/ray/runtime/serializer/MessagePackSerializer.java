@@ -194,7 +194,7 @@ public class MessagePackSerializer {
       // Serialize input object by MessagePack.
       Serializer.Meta javaEncoderMeta = new Serializer.Meta();
       pack(obj, packer, ((object, packer1) -> {
-        byte[] payload = FSTSerializer.encode(object, javaEncoderMeta, classLoader);
+        byte[] payload = FstSerializer.encode(object, javaEncoderMeta, classLoader);
         packer1.packExtensionTypeHeader(LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID, payload.length);
         packer1.addPayload(payload);
         meta.isCrossLanguage = false;
@@ -232,7 +232,7 @@ public class MessagePackSerializer {
       if (type == null) {
         type = Object.class;
       }
-      return (T) unpack(v, type, ((ExtensionValue ev) -> FSTSerializer.decode(ev.getData(),
+      return (T) unpack(v, type, ((ExtensionValue ev) -> FstSerializer.decode(ev.getData(),
           classLoader)));
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -240,6 +240,6 @@ public class MessagePackSerializer {
   }
 
   public static void setClassloader(ClassLoader classLoader) {
-    FSTSerializer.setClassloader(classLoader);
+    FstSerializer.setClassloader(classLoader);
   }
 }
