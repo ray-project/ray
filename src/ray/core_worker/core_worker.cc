@@ -546,9 +546,10 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
     }
     RAY_CHECK(data.has_value() && metadata.has_value())
         << "Data & Metada required for Local Mode Seal";
-    return memory_store_->Put(
+    RAY_CHECK(memory_store_->Put(
         RayObject(data.value(), metadata.value(), contained_object_ids, false),
-        object_id);
+        object_id));
+    return Status::OK();
   }
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
