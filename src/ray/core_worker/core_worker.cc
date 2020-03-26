@@ -115,8 +115,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::InstallFailureSignalHandler();
   }
   // Initialize gcs client.
-  if (getenv(kRayGcsServiceEnabled) == nullptr ||
-      strcmp(getenv(kRayGcsServiceEnabled), "true") == 0) {
+  if (RayConfig::instance().gcs_service_enabled()) {
     gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
   } else {
     gcs_client_ = std::make_shared<ray::gcs::RedisGcsClient>(gcs_options);

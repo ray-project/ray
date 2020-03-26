@@ -9,6 +9,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
+from ray.rllib.utils.test_utils import check
 
 torch, _ = try_import_torch()
 
@@ -173,21 +174,64 @@ class TorchPolicy(Policy):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         loss_out = self._loss(self, self.model, self.dist_class, train_batch)
-        self._optimizer.opts[0].zero_grad()
-        self.actor_loss.backward()
-        self._optimizer.opts[0].step()
+        #self._optimizer.opts[0].zero_grad()
+        #self.actor_loss.backward()
+        #self._optimizer.opts[0].step()
 
-        self._optimizer.opts[1].zero_grad()
+        #self._optimizer.opts[1].zero_grad()
+        #self.critic_loss[0].backward()
+        #self._optimizer.opts[1].step()
+        critic_var_before = self.model.q_variables()[1][0].detach().numpy().copy()
+        actor_var_before = self.model.policy_variables()[1][0].detach().numpy().copy()
+        alpha_var_before = self.model.log_alpha.detach().numpy().copy()
+        self.critic_optim.zero_grad()
         self.critic_loss[0].backward()
-        self._optimizer.opts[1].step()
+        grd_critic = self.model.q_variables()[1].grad[0].numpy().copy()
+        self.critic_optim.step()
+        critic_var_1 = self.model.q_variables()[1][0].detach().numpy().copy()
+        actor_var_1 = self.model.policy_variables()[1][0].detach().numpy().copy()
+        alpha_var_1 = self.model.log_alpha.detach().numpy().copy()
+        #check(critic_var_1, critic_var_before - self.critic_optim.param_groups[0]["lr"] * grd_critic, rtol=0.00001)
+        assert actor_var_before == actor_var_1, (actor_var_before, actor_var_1)
+        assert alpha_var_before == alpha_var_1, (alpha_var_before, alpha_var_1)
+
+
+        self.critic_optim_2.zero_grad()
+        self.critic_loss[1].backward()
+        #grd_critic = self.model.q_variables()[1].grad[0].numpy().copy()
+        self.critic_optim_2.step()
+
+        self.actor_optim.zero_grad()
+        self.actor_loss.backward()
+        grd_actor = self.model.policy_variables()[1].grad[0].numpy().copy()
+        self.actor_optim.step()
+        critic_var_2 = self.model.q_variables()[1][0].detach().numpy().copy()
+        actor_var_2 = self.model.policy_variables()[1][0].detach().numpy().copy()
+        alpha_var_2 = self.model.log_alpha.detach().numpy().copy()
+        assert critic_var_1 == critic_var_2, (critic_var_1, critic_var_2)
+        #check(actor_var_2, actor_var_1 - self.actor_optim.param_groups[0]["lr"] * grd_actor, rtol=0.00001)
+        assert alpha_var_1 == alpha_var_2, (alpha_var_1, alpha_var_2)
+
+        self.alpha_optim.zero_grad()
+        self.alpha_loss.backward()
+        grd_alpha = self.model.log_alpha.grad.numpy().copy()
+        self.alpha_optim.step()
+        critic_var_3 = self.model.q_variables()[1][0].detach().numpy().copy()
+        actor_var_3 = self.model.policy_variables()[1][0].detach().numpy().copy()
+        alpha_var_3 = self.model.log_alpha.detach().numpy().copy()
+        assert critic_var_2 == critic_var_3, (critic_var_2, critic_var_3)
+        assert actor_var_2 == actor_var_3, (actor_var_2, actor_var_3)
+        #check(alpha_var_3, alpha_var_2 - self.alpha_optim.param_groups[0]["lr"] * grd_alpha, rtol=0.00001)
+
+        #self._optimizer.step()
 
         #self._optimizer.zero_grad()
         #self.critic_loss[1].backward()
         #self._optimizer.step()
 
-        self._optimizer.opts[2].zero_grad()
-        self.alpha_loss.backward()
-        self._optimizer.opts[2].step()
+        #self._optimizer.opts[2].zero_grad()
+        #self.alpha_loss.backward()
+        #self._optimizer.opts[2].step()
 
         info = {}
         info.update(self.extra_grad_process())
@@ -211,50 +255,52 @@ class TorchPolicy(Policy):
                     p.grad /= self.distributed_world_size
             info["allreduce_latency"] = time.time() - start
 
-        self._optimizer.step()
+        #self.critic_optim.step()
+        #self.actor_optim.step()
+        #self._optimizer.step()
         info.update(self.extra_grad_info(train_batch))
 
         return {LEARNER_STATS_KEY: info}
 
-    @override(Policy)
-    def compute_gradients(self, postprocessed_batch):
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+    #@override(Policy)
+    #def compute_gradients(self, postprocessed_batch):
+    #    train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
-        loss_out = self._loss(self, self.model, self.dist_class, train_batch)
-        self._optimizer.zero_grad()
-        #loss_out.backward()
-        self.actor_loss.backward(retain_graph=True)
-        self.critic_loss[0].backward(retain_graph=True)
-        self.critic_loss[1].backward(retain_graph=True)
-        self.alpha_loss.backward(retain_graph=True)
+    #    loss_out = self._loss(self, self.model, self.dist_class, train_batch)
+    #    self._optimizer.zero_grad()
+    #    #loss_out.backward()
+    #    self.actor_loss.backward(retain_graph=True)
+    #    self.critic_loss[0].backward(retain_graph=True)
+    #    self.critic_loss[1].backward(retain_graph=True)
+    #    self.alpha_loss.backward(retain_graph=True)
 
-        grad_process_info = self.extra_grad_process()
+    #    grad_process_info = self.extra_grad_process()
 
-        # Note that return values are just references;
-        # calling zero_grad will modify the values
-        grads = []
-        for p in self.model.parameters():
-            if p.grad is not None:
-                grads.append(p.grad.data.cpu().numpy())
-            else:
-                grads.append(None)
+    #    # Note that return values are just references;
+    #    # calling zero_grad will modify the values
+    #    grads = []
+    #    for p in self.model.parameters():
+    #        if p.grad is not None:
+    #            grads.append(p.grad.data.cpu().numpy())
+    #        else:
+    #            grads.append(None)
 
-        grad_info = self.extra_grad_info(train_batch)
-        grad_info.update(grad_process_info)
-        return grads, {LEARNER_STATS_KEY: grad_info}
+    #    grad_info = self.extra_grad_info(train_batch)
+    #    grad_info.update(grad_process_info)
+    #    return grads, {LEARNER_STATS_KEY: grad_info}
 
-    @override(Policy)
-    def apply_gradients(self, gradients):
-        model_params = self.model.parameters()
-        assert len(gradients) == len(model_params), \
-            "ERROR: num-grads={} vs num-params={}".format(
-                len(gradients), len(model_params))
+    #@override(Policy)
+    #def apply_gradients(self, gradients):
+    #    model_params = self.model.parameters()
+    #    assert len(gradients) == len(model_params), \
+    #        "ERROR: num-grads={} vs num-params={}".format(
+    #            len(gradients), len(model_params))
 
-        for g, p in zip(gradients, model_params):
-            if g is not None:
-                p.grad = torch.from_numpy(g).to(self.device)
+    #    for g, p in zip(gradients, model_params):
+    #        if g is not None:
+    #            p.grad = torch.from_numpy(g).to(self.device)
 
-        self._optimizer.step()
+    #    self._optimizer.step()
 
     @override(Policy)
     def get_weights(self):

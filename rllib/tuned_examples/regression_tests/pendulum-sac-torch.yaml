@@ -6,8 +6,15 @@ pendulum-sac-torch:
         timesteps_total: 100000
     config:
         use_pytorch: true
+        learning_starts: 1500
+        twin_q: true
         soft_horizon: true
         clip_actions: false
         normalize_actions: true
         metrics_smoothing_episodes: 5
-        no_done_at_end: true
+        train_batch_size: 1024
+        optimization:
+            critic_learning_rate: 0.00008
+            actor_learning_rate: 0.00005
+            entropy_learning_rate: 0.00008
+        #no_done_at_end: true

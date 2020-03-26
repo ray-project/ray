@@ -271,12 +271,12 @@ class SquashedGaussian(TFActionDistribution):
                 (excluding this value).
         """
         assert tfp is not None
-        loc, log_scale = tf.split(inputs, 2, axis=-1)
+        mean, log_std = tf.split(inputs, 2, axis=-1)
         # Clip `scale` values (coming from NN) to reasonable values.
-        log_scale = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
+        log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
                                      MAX_LOG_NN_OUTPUT)
-        scale = tf.exp(log_scale)
-        self.distr = tfp.distributions.Normal(loc=loc, scale=scale)
+        std = tf.exp(log_std)
+        self.distr = tfp.distributions.Normal(loc=mean, scale=std)
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high

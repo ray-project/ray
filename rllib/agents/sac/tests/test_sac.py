@@ -21,14 +21,19 @@ class TestSAC(unittest.TestCase):
         """Test whether an SACTrainer can be built with all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
+        config["twin_q"] = True
+        config["soft_horizon"] = True
+        config["clip_actions"] = False
+        config["normalize_actions"] = True
+        config["learning_starts"] = 0
+        #config["optimization"]["critic_learning_rate"] = 0.1
 
         #config["Q_model"]["fcnet_hiddens"] = [10]
         #config["Q_model"]["fcnet_activation"] = "linear"
         #config["policy_model"]["fcnet_hiddens"] = [10]
         #config["policy_model"]["fcnet_activation"] = "linear"
-        #config["learning_starts"] = 0
 
-        num_iterations = 200
+        num_iterations = 2000
 
         # eager (discrete and cont. actions).
         for fw in ["torch", "eager", "tf"]:

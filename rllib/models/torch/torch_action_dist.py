@@ -195,7 +195,8 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def sample(self):
-        self.last_sample = self._squash(self.dist.sample())
+        normal_sample = self.dist.sample()
+        self.last_sample = self._squash(normal_sample)
         return self.last_sample
 
     @override(ActionDistribution)
@@ -212,11 +213,9 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     def _squash(self, raw_values):
         # Make sure raw_values are not too high/low (such that tanh would
         # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
-        return (torch.clamp(
-            torch.tanh(raw_values),
-            -1.0 + SMALL_NUMBER,
-            1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
-               self.low
+        clamped = torch.clamp(
+            torch.tanh(raw_values), -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+        return (clamped + 1.0) / 2.0 * (self.high - self.low) + self.low
 
     def _unsquash(self, values):
         return atanh((values - self.low) / (self.high - self.low) * 2.0 - 1.0)
