@@ -1,5 +1,4 @@
 import json
-import typing
 
 
 class ValidationError(Exception):
@@ -32,7 +31,7 @@ class BaseModel:
     @classmethod
     def parse_obj(cls, obj):
         assert type(obj) == dict, ("It can only parse dict type object.")
-        required_args = cls.__dict__.get("__annotations__")
+        required_args = cls.__slots__
         given_args = obj.keys()
 
         # Check if given_args have args that is not required.
@@ -52,13 +51,10 @@ class BaseModel:
 
 
 class IngestRequest(BaseModel):
-    cluster_id: str
-    access_token: str
-    ray_config: typing.Any
-    node_info: dict
-    raylet_info: dict
-    tune_info: dict
-    tune_availability: dict
+    __slots__ = [
+        "cluster_id", "access_token", "ray_config", "node_info", "raylet_info",
+        "tune_info", "tune_availability"
+    ]
 
 
 # TODO(sang): Add piggybacked response.
@@ -67,9 +63,8 @@ class IngestResponse(BaseModel):
 
 
 class AuthRequest(BaseModel):
-    cluster_id: str
+    __slots__ = ["cluster_id"]
 
 
 class AuthResponse(BaseModel):
-    dashboard_url: str
-    access_token: str
+    __slots__ = ["dashboard_url", "access_token"]
