@@ -149,7 +149,8 @@ matrix:
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
 
-        - ./ci/travis/test-wheels.sh
+        # Explicitly sleep 60 seconds for logs to go through
+        - ./ci/travis/test-wheels.sh || cat /tmp/ray/session_latest/logs/* || sleep 60 || false
       cache: false
 
     # Build MacOS wheels.
@@ -166,7 +167,8 @@ matrix:
       script:
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
-        - ./ci/travis/test-wheels.sh
+        # Explicitly sleep 60 seconds for logs to go through
+        - ./ci/travis/test-wheels.sh || cat /tmp/ray/session_latest/logs/* || sleep 60 || false
 
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
