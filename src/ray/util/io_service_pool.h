@@ -54,24 +54,28 @@ class IOServicePool {
  private:
   size_t io_service_num_{0};
 
-  std::vector<std::thread *> threads_;
-  std::vector<boost::asio::io_service *> io_services_;
+  std::vector<std::thread> threads_;
+  std::vector<std::unique_ptr<boost::asio::io_service>> io_services_;
 
   std::atomic<size_t> current_index_;
 };
 
 inline boost::asio::io_service *IOServicePool::Get() {
   size_t index = ++current_index_ % io_service_num_;
-  return io_services_[index];
+  return io_services_[index].get();
 }
 
 inline boost::asio::io_service *IOServicePool::Get(size_t hash) {
   size_t index = hash % io_service_num_;
-  return io_services_[index];
+  return io_services_[index].get();
 }
 
 inline std::vector<boost::asio::io_service *> IOServicePool::GetAll() {
-  return io_services_;
+  std::vector<boost::asio::io_service *> io_services;
+  for (auto &io_service : io_services_) {
+    io_services.emplace_back(io_service.get());
+  }
+  return io_services;
 }
 
 }  // namespace ray
