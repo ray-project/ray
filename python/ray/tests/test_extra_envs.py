@@ -5,20 +5,18 @@ import sys
 import ray
 
 
-def test_normal_remote_task():
-    @ray.remote(num_cpus=1, extra_envs={"key2", "value1"})
+def test_normal_remote_task(ray_start_2_cpus):
+    @ray.remote(extra_envs={"key1": "value1"})
     def f1(key):
         return os.environ.get(key, "error")
 
-    @ray.remote(num_cpus=1, extra_envs={"key2": "value2"})
+    @ray.remote(extra_envs={"key2": "value2"})
     def f2(key):
         return os.environ.get(key, "error")
 
-    ray.init(num_cpus=1)
-
     assert ray.get(f1.remote("key1")) == "value1"
     assert ray.get(f1.remote("key3")) == "error"
-    v = ray.get(f1.options(extra_envs={"key1", "value3"}).remote("key"))
+    v = ray.get(f1.options(extra_envs={"key1", "value3"}).remote("key1"))
     assert v == "value3"
     v = ray.get(f1.options(extra_envs={}).remote("key1"))
     assert v == "error"
@@ -35,26 +33,22 @@ def test_normal_remote_task():
     assert str(excinfo.value) == \
         "Extra envs key and value must be str."
 
-    ray.shutdown()
 
-
-def test_actor():
-    @ray.remote(num_cpus=1, extra_envs={"actor1": "value1"})
+def test_actor(ray_start_2_cpus):
+    @ray.remote(extra_envs={"actor1": "value1"})
     class Actor1:
         def get(self, key):
             return os.environ.get(key, "error")
 
-    @ray.remote(num_cpus=1, extra_envs={"actor2": "value2"})
+    @ray.remote(extra_envs={"actor2": "value2"})
     class Actor2:
         def get(self, key):
             return os.environ.get(key, "error")
 
-    @ray.remote(num_cpus=1, extra_envs={"actor3": "value3"})
+    @ray.remote(extra_envs={"actor3": "value3"})
     class Actor3:
         def get(self, key):
             return os.environ.get(key, "error")
-
-    ray.init(num_cpus=2)
 
     actor1 = Actor1.remote()
     actor2 = Actor2.remote()
@@ -85,8 +79,6 @@ def test_actor():
         Actor1.options(extra_envs={"key": 1.0}).remote()
     assert str(excinfo.value) == \
         "Extra envs key and value must be str."
-
-    ray.shutdown()
 
 
 if __name__ == "__main__":
