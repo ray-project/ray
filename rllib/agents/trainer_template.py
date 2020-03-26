@@ -98,9 +98,9 @@ def build_trainer(name,
             else:
                 self.state = {}
             if get_policy_class is None:
-                policy = default_policy
+                self._policy = default_policy
             else:
-                policy = get_policy_class(config)
+                self._policy = get_policy_class(config)
             if before_init:
                 before_init(self)
             use_exec_api = (execution_plan
