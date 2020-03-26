@@ -252,19 +252,18 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(addr, *client_call_manager_));
   };
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
-            auto grpc_client = rpc::NodeManagerWorkerClient::make(ip_address, port,
-                                                                  *client_call_manager_);
-            return std::shared_ptr<raylet::RayletClient>(
-                new raylet::RayletClient(std::move(grpc_client)));
-          };
+    auto grpc_client =
+        rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
+    return std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+  };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          rpc_address_, local_raylet_client_, client_factory,
-          raylet_client_factory,
+          rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
@@ -273,20 +272,38 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     direct_task_receiver_->Init(client_factory, rpc_address_, local_raylet_client_);
   }
 
-  object_recovery_manager_ = std::unique_ptr<ObjectRecoveryManager>(new ObjectRecoveryManager(rpc_address_,
-        raylet_client_factory,
-        local_raylet_client_,
-        gcs_client_->Objects(),
-        gcs_client_->Nodes(),
-        task_manager_,
-        reference_counter_,
-        memory_store_,
-        [this](const ObjectID &object_id, bool pin_object) {
-          RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
-                           /*contained_object_ids=*/{}, object_id,
-                           /*pin_object=*/pin_object));
+  auto object_lookup_fn = [this](const ObjectID &object_id,
+                                 const ObjectLookupCallback &callback) {
+    return gcs_client_->Objects().AsyncGetLocations(
+        object_id,
+        [this, object_id, callback](const Status &status,
+                                    const std::vector<rpc::ObjectTableData> &results) {
+          RAY_CHECK_OK(status);
+          std::vector<rpc::Address> locations;
+          for (const auto &result : results) {
+            const auto &node_id = ClientID::FromBinary(result.manager());
+            auto node = gcs_client_->Nodes().Get(node_id);
+            RAY_CHECK(node.has_value());
+            if (node->state() == rpc::GcsNodeInfo::ALIVE) {
+              rpc::Address address;
+              address.set_raylet_id(node->node_id());
+              address.set_ip_address(node->node_manager_address());
+              address.set_port(node->node_manager_port());
+              locations.push_back(address);
+            }
           }
-        ));
+          callback(object_id, locations);
+        });
+  };
+  object_recovery_manager_ =
+      std::unique_ptr<ObjectRecoveryManager>(new ObjectRecoveryManager(
+          rpc_address_, raylet_client_factory, local_raylet_client_, object_lookup_fn,
+          task_manager_, reference_counter_, memory_store_,
+          [this](const ObjectID &object_id, bool pin_object) {
+            RAY_CHECK_OK(Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE),
+                             /*contained_object_ids=*/{}, object_id,
+                             /*pin_object=*/pin_object));
+          }));
 }
 
 CoreWorker::~CoreWorker() {

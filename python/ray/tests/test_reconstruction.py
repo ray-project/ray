@@ -41,8 +41,7 @@ def test_cached_object(ray_start_cluster):
     cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
     assert wait_for_condition(
-        lambda: not all(node["Alive"] for node in ray.nodes()),
-        timeout=10)
+        lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
 
     for _ in range(20):
         large_object.options(resources={"node2": 1}).remote()
@@ -64,9 +63,15 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
     cluster.add_node(
-        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node2": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address, _internal_config=config)
 
@@ -88,10 +93,12 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
     assert wait_for_condition(
-        lambda: not all(node["Alive"] for node in ray.nodes()),
-        timeout=10)
+        lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
 
     for _ in range(20):
         large_object.options(resources={"node2": 1}).remote()
@@ -118,9 +125,15 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
     cluster.add_node(
-        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node2": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address, _internal_config=config)
 
@@ -137,7 +150,10 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
 
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj))
@@ -161,9 +177,15 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
     cluster.add_node(
-        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node2": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address, _internal_config=config)
 
@@ -186,7 +208,10 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8, _internal_config=config)
+        num_cpus=1,
+        resources={"node1": 1},
+        object_store_memory=10**8,
+        _internal_config=config)
 
     if reconstruction_enabled:
         for obj in downstream:
@@ -214,7 +239,8 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0, _internal_config=config, object_store_memory=10**8)
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8, _internal_config=config)
+    node_to_kill = cluster.add_node(
+        num_cpus=1, object_store_memory=10**8, _internal_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address, _internal_config=config)
 
@@ -236,7 +262,8 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     ray.get(dependent_task.remote(obj))
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, object_store_memory=10**8, _internal_config=config)
+    cluster.add_node(
+        num_cpus=1, object_store_memory=10**8, _internal_config=config)
 
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj))

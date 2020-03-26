@@ -31,12 +31,12 @@ namespace ray {
 
 class PinnedObjectsInterface {
  public:
-  virtual void MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_returns_in_scope,
-                                 const ClientID &node_id) = 0;
+  virtual void MarkPlasmaObjectsPinnedAt(
+      const std::vector<ObjectID> &plasma_returns_in_scope, const ClientID &node_id) = 0;
 
   virtual const bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned) = 0;
 
-  virtual ~PinnedObjectsInterface(){}
+  virtual ~PinnedObjectsInterface() {}
 };
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage

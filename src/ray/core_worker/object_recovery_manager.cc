@@ -55,77 +55,72 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
 
 Status ObjectRecoveryManager::AttemptObjectRecovery(const ObjectID &object_id) {
   // Lookup the object in the GCS to find another copy.
-  return object_directory_.AsyncGetLocations(
-      object_id,
-      [this, object_id](Status status, const std::vector<rpc::ObjectTableData> &result) {
-        RAY_CHECK_OK(status);
-        bool pinned = PinNewObjectCopy(object_id, result);
-        if (!pinned) {
-          if (RayConfig::instance().lineage_pinning_enabled()) {
-            // If we could not find another copy to pin, try to reconstruct the
-            // object.
-            ReconstructObject(object_id);
-          } else {
+  return object_lookup_(object_id, [this](const ObjectID &object_id,
+                                          const std::vector<rpc::Address> &locations) {
+    RAY_LOG(INFO) << "Lost object " << object_id << " has " << locations.size()
+                  << " locations";
+    bool pinned = false;
+    for (const auto &location : locations) {
+      if (PinNewObjectCopy(object_id, location).ok()) {
+        pinned = true;
+        break;
+      }
+    }
+
+    if (!pinned) {
+      if (RayConfig::instance().lineage_pinning_enabled()) {
+        // If we could not find another copy to pin, try to reconstruct the
+        // object.
+        ReconstructObject(object_id);
+      } else {
+        reconstruction_failure_callback_(object_id, /*pin_object=*/true);
+      }
+    }
+  });
+}
+
+Status ObjectRecoveryManager::PinNewObjectCopy(const ObjectID &object_id,
+                                               const rpc::Address &raylet_address) {
+  // If a copy still exists, pin the object by sending a
+  // PinObjectIDs RPC.
+  const auto node_id = ClientID::FromBinary(raylet_address.raylet_id());
+  RAY_LOG(DEBUG) << "Trying to pin copy of lost object " << object_id << " at node "
+                 << node_id;
+
+  std::shared_ptr<PinObjectsInterface> client;
+  if (node_id == ClientID::FromBinary(rpc_address_.raylet_id())) {
+    client = local_object_pinning_client_;
+  } else {
+    auto client_it = remote_object_pinning_clients_.find(node_id);
+    if (client_it == remote_object_pinning_clients_.end()) {
+      RAY_LOG(DEBUG) << "Connecting to raylet " << node_id;
+      client_it = remote_object_pinning_clients_
+                      .emplace(node_id, client_factory_(raylet_address.ip_address(),
+                                                        raylet_address.port()))
+                      .first;
+    }
+    client = client_it->second;
+  }
+
+  return client->PinObjectIDs(
+      rpc_address_, {object_id},
+      [this, object_id, node_id](const Status &status,
+                                 const rpc::PinObjectIDsReply &reply) {
+        if (status.ok()) {
+          // TODO(swang): Make sure that the node is still alive when
+          // marking the object as pinned.
+          pinned_objects_->MarkPlasmaObjectsPinnedAt({object_id}, node_id);
+          RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                          object_id));
+        } else {
+          RAY_LOG(INFO) << "Error pinning new copy of lost object " << object_id
+                        << ", trying again";
+          auto status = AttemptObjectRecovery(object_id);
+          if (!status.ok()) {
             reconstruction_failure_callback_(object_id, /*pin_object=*/true);
           }
         }
       });
-}
-
-bool ObjectRecoveryManager::PinNewObjectCopy(const ObjectID &object_id,
-                                  const std::vector<rpc::ObjectTableData> &locations) {
-  // If a copy still exists, pin the object by sending a
-  // PinObjectIDs RPC.
-  RAY_LOG(INFO) << "Lost object " << object_id << " has " << locations.size() << " locations";
-  for (auto it = locations.begin(); it != locations.end(); it++) {
-    const auto new_node_id = ClientID::FromBinary(it->manager());
-    auto new_node = node_directory_.Get(new_node_id);
-    RAY_CHECK(new_node.has_value());
-    RAY_LOG(INFO) << "Lost object " << object_id << " on node " << new_node_id << " alive? " << ((new_node->state() == rpc::GcsNodeInfo::ALIVE) ? 1 : 0);
-    if (new_node->state() == rpc::GcsNodeInfo::ALIVE) {
-      RAY_LOG(DEBUG) << "Trying to pin copy of lost object " << object_id << " at node "
-                     << new_node_id;
-
-      std::shared_ptr<ObjectPinningInterface> client;
-      if (new_node_id == ClientID::FromBinary(rpc_address_.raylet_id())) {
-        client = local_object_pinning_client_;
-      } else {
-        auto client_it = remote_object_pinning_clients_.find(new_node_id);
-        if (client_it == remote_object_pinning_clients_.end()) {
-          RAY_LOG(DEBUG) << "Connecting to raylet " << new_node_id;
-          client_it = remote_object_pinning_clients_
-                   .emplace(new_node_id, client_factory_(new_node->node_manager_address(), new_node->node_manager_port()))
-                   .first;
-        }
-        client = client_it->second;
-      }
-
-      auto status = client->PinObjectIDs(
-          rpc_address_, {object_id},
-          [this, object_id, new_node_id](const Status &status,
-                                         const rpc::PinObjectIDsReply &reply) {
-            if (status.ok()) {
-              // TODO(swang): Make sure that the node is still alive when
-              // marking the object as pinned.
-              pinned_objects_->MarkPlasmaObjectsPinnedAt({object_id}, new_node_id);
-              RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                      object_id));
-            } else {
-              RAY_LOG(INFO) << "Error pinning new copy of lost object " << object_id
-                            << ", trying again";
-              auto status = AttemptObjectRecovery(object_id);
-              if (!status.ok()) {
-                reconstruction_failure_callback_(object_id, /*pin_object=*/true);
-              }
-            }
-          });
-      if (status.ok()) {
-        return true;
-      }
-    }
-  }
-
-  return false;
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
@@ -140,7 +135,8 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
     for (const auto &dep : task_deps) {
       auto status = RecoverObject(dep);
       if (!status.ok()) {
-        RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": " << status.message();
+        RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": "
+                      << status.message();
         // We do not pin the dependency because we may not be the owner.
         reconstruction_failure_callback_(dep, /*pin_object=*/false);
       }

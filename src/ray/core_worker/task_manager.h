@@ -45,7 +45,7 @@ class TaskFinisherInterface {
 class TaskResubmissionInterface {
  public:
   virtual Status ResubmitTask(const TaskID &task_id,
-                      std::vector<ObjectID> *task_deps) = 0;
+                              std::vector<ObjectID> *task_deps) = 0;
 
   virtual ~TaskResubmissionInterface() {}
 };
@@ -81,8 +81,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                       const TaskSpecification &spec, const std::string &call_site,
                       int max_retries = 0);
 
-  Status ResubmitTask(const TaskID &task_id,
-                      std::vector<ObjectID> *task_deps);
+  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps);
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
