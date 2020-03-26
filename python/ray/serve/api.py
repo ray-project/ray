@@ -8,7 +8,7 @@ import numpy as np
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_NURSERY_NAME)
+                                 SERVE_MASTER_NAME)
 from ray.serve.global_state import GlobalState, start_initial_state
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
@@ -113,9 +113,9 @@ def init(
     if not ray.is_initialized():
         ray.init(**ray_init_kwargs)
 
-    # Try to get serve nursery if there exists
+    # Try to get serve master actor if it exists
     try:
-        ray.util.get_actor(SERVE_NURSERY_NAME)
+        ray.util.get_actor(SERVE_MASTER_NAME)
         global_state = GlobalState()
         return
     except ValueError:
@@ -134,9 +134,9 @@ def init(
     def kv_store_connector(namespace):
         return SQLiteKVStore(namespace, db_path=kv_store_path)
 
-    nursery = start_initial_state(kv_store_connector)
+    master = start_initial_state(kv_store_connector)
 
-    global_state = GlobalState(nursery)
+    global_state = GlobalState(master)
     if start_server:
         global_state.init_or_get_http_server(host=http_host, port=http_port)
     global_state.init_or_get_router(
@@ -317,9 +317,9 @@ def _start_replica(backend_tag):
     # get actor creation kwargs
     actor_kwargs = backend_config.get_actor_creation_args(init_args)
 
-    # Create the runner in the nursery
+    # Create the runner in the master actor
     [runner_handle] = ray.get(
-        global_state.actor_nursery_handle.start_actor_with_creator.remote(
+        global_state.master_actor_handle.start_actor_with_creator.remote(
             creator, actor_kwargs, replica_tag))
 
     # Setup the worker
@@ -343,15 +343,14 @@ def _remove_replica(backend_tag):
 
     replica_tag = global_state.backend_table.remove_replica(backend_tag)
     [replica_handle] = ray.get(
-        global_state.actor_nursery_handle.get_handle.remote(replica_tag))
+        global_state.master_actor_handle.get_handle.remote(replica_tag))
 
     # Remove the replica from metric monitor.
     ray.get(global_state.init_or_get_metric_monitor().remove_target.remote(
         replica_handle))
 
-    # Remove the replica from actor nursery.
-    ray.get(
-        global_state.actor_nursery_handle.remove_handle.remote(replica_tag))
+    # Remove the replica from master actor.
+    ray.get(global_state.master_actor_handle.remove_handle.remote(replica_tag))
 
     # Remove the replica from router.
     # This will also destory the actor handle.
