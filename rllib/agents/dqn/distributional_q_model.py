@@ -256,15 +256,17 @@ class DistributionalQModel(TFModelV2):
             name=prefix + "_fc_w",
             shape=[in_size, out_size],
             dtype=tf.float32,
-            initializer=tf.initializers.GlorotUniform())
+            initializer=tf.initializers.glorot_uniform())
         b = tf.get_variable(
             name=prefix + "_fc_b",
             shape=[out_size],
             dtype=tf.float32,
             initializer=tf.zeros_initializer())
 
-        action_activation = tf.nn.xw_plus_b(action_in, w + sigma_w * epsilon_w,
-                                            b + sigma_b * epsilon_b)
+        action_activation = tf.keras.layers.Lambda(
+            lambda x: tf.matmul(
+                x, w + sigma_w * epsilon_w) + b + sigma_b * epsilon_b)(
+            action_in)
 
         if not non_linear:
             return action_activation
