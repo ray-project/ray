@@ -57,8 +57,8 @@ class Actor(object):
 for _ in range(5):
     for i in range(num_nodes):
         assert (ray.get(
-            f._remote(args=[], kwargs={{}}, resources={{str(i): 1}})) == 1)
-        actor = Actor._remote(args=[], kwargs={{}}, resources={{str(i): 1}})
+            f.options(resources={{str(i): 1}})) == 1).remote()
+        actor = Actor.options(resources={{str(i): 1}}).remote()
         assert ray.get(actor.method.remote()) == 1
 
 print("success")
@@ -73,9 +73,9 @@ def run_driver():
 
 iteration = 0
 running_ids = [
-    run_driver._remote(
-        args=[], kwargs={}, num_cpus=0, resources={str(i): 0.01})
-    for i in range(num_nodes)
+    run_driver.options(num_cpus=0, resources={
+        str(i): 0.01
+    }).remote() for i in range(num_nodes)
 ]
 start_time = time.time()
 previous_time = start_time
@@ -85,11 +85,8 @@ while True:
     ray.get(ready_id)
 
     running_ids.append(
-        run_driver._remote(
-            args=[],
-            kwargs={},
-            num_cpus=0,
-            resources={str(iteration % num_nodes): 0.01}))
+        run_driver.options(
+            num_cpus=0, resources={str(iteration % num_nodes): 0.01})).remote()
 
     new_time = time.time()
     print("Iteration {}:\n"

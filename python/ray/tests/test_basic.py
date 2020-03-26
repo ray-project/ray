@@ -1200,18 +1200,19 @@ def test_submit_api(shutdown_only):
     def g():
         return ray.get_gpu_ids()
 
-    assert f._remote([0], num_return_vals=0) is None
-    id1 = f._remote(args=[1], num_return_vals=1)
+    assert f.options(num_return_vals=0).remote(0) is None
+    id1 = f.options(num_return_vals=1).remote(1)
     assert ray.get(id1) == [0]
-    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    id1, id2 = f.options(num_return_vals=2).remote(2)
     assert ray.get([id1, id2]) == [0, 1]
-    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
+    id1, id2, id3 = f.options(num_return_vals=3).remote(3)
     assert ray.get([id1, id2, id3]) == [0, 1, 2]
     assert ray.get(
-        g._remote(args=[], num_cpus=1, num_gpus=1,
-                  resources={"Custom": 1})) == [0]
-    infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
-    assert ray.get(g._remote()) == []
+        g.options(num_cpus=1, num_gpus=1, resources={
+            "Custom": 1
+        }).remote()) == [0]
+    infeasible_id = g.options(resources={"NonexistentCustom": 1})
+    assert ray.get(g.remote()) == []
     ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
     assert len(ready_ids) == 0
     assert len(remaining_ids) == 1
@@ -1236,13 +1237,17 @@ def test_submit_api(shutdown_only):
         def method(self):
             pass
 
-    a = Actor._remote(
-        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+    a = Actor.options(
+        kwargs={
+            "y": 1
+        }, num_gpus=1, resources={
+            "Custom": 1
+        }).remote(args=[0])
 
-    a2 = Actor2._remote()
-    ray.get(a2.method._remote())
+    a2 = Actor2.remote()
+    ray.get(a2.method.remote())
 
-    id1, id2, id3, id4 = a.method._remote(
+    id1, id2, id3, id4 = a.method.remote(
         args=["test"], kwargs={"b": 2}, num_return_vals=4)
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
@@ -1268,14 +1273,18 @@ def test_many_fractional_resources(shutdown_only):
     result_ids = []
     for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
         resource_set = {"CPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
+        result_ids.append(
+            f.options(num_cpus=rand1).remote(False, resources_set))
 
         resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
+        result_ids.append(
+            f.options(num_gpus=rand1).remote(False, resources_set))
 
         resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
         result_ids.append(
-            f._remote([False, resource_set], resources={"Custom": rand1}))
+            f.options(resources={
+                "Custom": rand1
+            }).remote(False, resources_set))
 
         resource_set = {
             "CPU": int(rand1 * 10000) / 10000,
@@ -1283,17 +1292,15 @@ def test_many_fractional_resources(shutdown_only):
             "Custom": int(rand3 * 10000) / 10000
         }
         result_ids.append(
-            f._remote(
-                [False, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3}))
+            f.options(
+                num_cpus=rand1, num_gpus=rand2, resources={
+                    "Custom": rand3
+                }).remote(False, resources_set))
         result_ids.append(
-            f._remote(
-                [True, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3}))
+            f.options(
+                num_cpus=rand1, num_gpus=rand2, resources={
+                    "Custom": rand3
+                }).remote(False, resources_set))
     assert all(ray.get(result_ids))
 
     # Check that the available resources at the end are the same as the

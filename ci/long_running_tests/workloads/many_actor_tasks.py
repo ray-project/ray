@@ -46,8 +46,9 @@ class Actor(object):
 
 
 actors = [
-    Actor._remote([], {}, num_cpus=0.1, resources={str(i % num_nodes): 0.1})
-    for i in range(num_nodes * 5)
+    Actor.options(num_cpus=0.1, resources={
+        str(i % num_nodes): 0.1
+    }).remote() for i in range(num_nodes * 5)
 ]
 
 iteration = 0

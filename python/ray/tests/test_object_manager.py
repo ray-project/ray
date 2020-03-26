@@ -57,8 +57,9 @@ def test_object_broadcast(ray_start_cluster_with_resource):
         x_id = ray.put(x)
         object_ids.append(x_id)
         ray.get([
-            f._remote(args=[x_id], resources={str(i % num_nodes): 1})
-            for i in range(10 * num_nodes)
+            f.options(resources={
+                str(i % num_nodes): 1
+            }).remote(x_id) for i in range(10 * num_nodes)
         ])
 
     for _ in range(3):
@@ -66,8 +67,9 @@ def test_object_broadcast(ray_start_cluster_with_resource):
         x_id = create_object.remote()
         object_ids.append(x_id)
         ray.get([
-            f._remote(args=[x_id], resources={str(i % num_nodes): 1})
-            for i in range(10 * num_nodes)
+            f.options(resources={
+                str(i % num_nodes): 1
+            }).remote(x_id) for i in range(10 * num_nodes)
         ])
 
     # Wait for profiling information to be pushed to the profile table.
@@ -131,11 +133,9 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             pass
 
     actors = [
-        Actor._remote(
-            args=[],
-            kwargs={},
-            num_cpus=0.01,
-            resources={str(i % num_nodes): 1}) for i in range(30)
+        Actor.options(num_cpus=0.01, resources={
+            str(i % num_nodes): 1
+        }).remote() for i in range(30)
     ]
 
     # Wait for the actors to start up.
@@ -298,17 +298,16 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
         id_lists = []
         for i in range(num_nodes):
             id_lists.append([
-                f._remote(args=[], kwargs={}, resources={str(i): 1})
-                for _ in range(1000)
+                f.options(resources={
+                    str(i): 1
+                }).remote() for _ in range(1000)
             ])
         ids = []
         for i in range(num_nodes):
             for j in range(num_nodes):
                 if i == j:
                     continue
-                ids.append(
-                    f._remote(
-                        args=id_lists[j], kwargs={}, resources={str(i): 1}))
+                ids.append(f.options(resources={str(i): 1})).remote(id_lists[j])
 
         # Wait for all of the transfers to finish.
         ray.get(ids)

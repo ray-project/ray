@@ -109,7 +109,7 @@ class ActorMethod:
                 num_return_vals=None,
                 internal_called=False):
         if not internal_called:
-            deprecation_warning("_remote", new=".options")
+            deprecation_warning("_remote", new="remote")
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals

@@ -659,11 +659,11 @@ def test_detached_actor(ray_start_regular):
             return "pong"
 
     with pytest.raises(Exception, match="Detached actors must be named"):
-        DetachedActor._remote(detached=True)
+        DetachedActor.options(detached=True)
 
     with pytest.raises(ValueError, match="Please use a different name"):
-        _ = DetachedActor._remote(name="d_actor")
-        DetachedActor._remote(name="d_actor")
+        _ = DetachedActor.options(name="d_actor")
+        DetachedActor.options(name="d_actor")
 
     redis_address = ray_start_regular["redis_address"]
 
@@ -677,7 +677,7 @@ class DetachedActor:
     def ping(self):
         return "pong"
 
-actor = DetachedActor._remote(name="{}", detached=True)
+actor = DetachedActor.options(name="{}", detached=True)
 ray.get(actor.ping.remote())
 """.format(redis_address, actor_name)
 

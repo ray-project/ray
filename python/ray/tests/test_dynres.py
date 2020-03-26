@@ -346,8 +346,9 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
 
     # Launch the task with resource requirement of 4, thus the new available
     # capacity becomes 1
-    task = wait_func._remote(
-        args=[running_signal, finish_signal], resources={res_name: 4})
+    task = wait_func.options(resources={
+        res_name: 4
+    }).remote(running_signal, finish_signal)
     # Wait until wait_func is launched before updating resource
     ray.get(running_signal.wait.remote())
 
@@ -360,15 +361,17 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
 
     # Check if scheduler state is consistent by launching a task requiring
     # updated capacity
-    task_2 = test_func._remote(args=[], resources={res_name: updated_capacity})
+    task_2 = test_func.options(resources={
+        res_name: updated_capacity
+    }).remote()
     successful, unsuccessful = ray.wait([task_2], timeout=TIMEOUT_DURATION)
     assert successful  # The task completed
 
     # Check if scheduler state is consistent by launching a task requiring
     # updated capacity + 1. This should not execute
-    task_3 = test_func._remote(
-        args=[], resources={res_name: updated_capacity + 1
-                            })  # This should be infeasible
+    task_3 = test_func.options(resources={
+        res_name: updated_capacity + 1
+    }).remote()  # This should be infeasible
     successful, unsuccessful = ray.wait([task_3], timeout=TIMEOUT_DURATION)
     assert unsuccessful  # The task did not complete because it's infeasible
     assert ray.available_resources()[res_name] == updated_capacity
@@ -432,8 +435,9 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
 
     # Launch the task with resource requirement of 4, thus the new available
     # capacity becomes 1
-    task = wait_func._remote(
-        args=[running_signal, finish_signal], resources={res_name: 4})
+    task = wait_func.options(resources={
+        res_name: 4
+    }).remote(running_signal, finish_signal)
     # Wait until wait_func is launched before updating resource
     ray.get(running_signal.wait.remote())
 
@@ -446,15 +450,17 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
 
     # Check if scheduler state is consistent by launching a task requiring
     # updated capacity
-    task_2 = test_func._remote(args=[], resources={res_name: updated_capacity})
+    task_2 = test_func.options(resources={
+        res_name: updated_capacity
+    }).remote()
     successful, unsuccessful = ray.wait([task_2], timeout=TIMEOUT_DURATION)
     assert successful  # The task completed
 
     # Check if scheduler state is consistent by launching a task requiring
     # updated capacity + 1. This should not execute
-    task_3 = test_func._remote(
-        args=[], resources={res_name: updated_capacity + 1
-                            })  # This should be infeasible
+    task_3 = test_func.options(resources={
+        res_name: updated_capacity + 1
+    }).remote()  # This should be infeasible
     successful, unsuccessful = ray.wait([task_3], timeout=TIMEOUT_DURATION)
     assert unsuccessful  # The task did not complete because it's infeasible
     assert ray.available_resources()[res_name] == updated_capacity
@@ -521,8 +527,9 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
 
     # Launch the task with resource requirement of 4, thus the new available
     # capacity becomes 1
-    task = wait_func._remote(
-        args=[running_signal, finish_signal], resources={res_name: 4})
+    task = wait_func.options(resources={
+        res_name: 4
+    }).remote(running_signal, finish_signal)
     # Wait until wait_func is launched before updating resource
     ray.get(running_signal.wait.remote())
 
@@ -535,8 +542,9 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
 
     # Check if scheduler state is consistent by launching a task requiring
     # the deleted resource  This should not execute
-    task_2 = test_func._remote(
-        args=[], resources={res_name: 1})  # This should be infeasible
+    task_2 = test_func.options(resources={
+        res_name: 1
+    }).remote()  # This should be infeasible
     successful, unsuccessful = ray.wait([task_2], timeout=TIMEOUT_DURATION)
     assert unsuccessful  # The task did not complete because it's infeasible
     assert res_name not in ray.available_resources()

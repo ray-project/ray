@@ -69,8 +69,9 @@ previous_time = start_time
 while True:
     for _ in range(50):
         new_constrained_ids = [
-            f._remote(args=ids, resources={str(i % num_nodes): 1})
-            for i in range(25)
+            f.options(resources={
+                str(i % num_nodes): 1
+            }).remote(ids) for i in range(25)
         ]
         new_unconstrained_ids = [f.remote(*ids) for _ in range(25)]
         ids = new_constrained_ids + new_unconstrained_ids
@@ -79,8 +80,9 @@ while True:
     for i in range(num_nodes):
         for _ in range(10):
             [
-                churn._remote(args=[], resources={str(i % num_nodes): 1})
-                for _ in range(10)
+                churn.options(resources={
+                    str(i % num_nodes): 1
+                }).remote() for _ in range(10)
             ]
 
     # Make sure that the objects are still available.

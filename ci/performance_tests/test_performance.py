@@ -138,7 +138,7 @@ def warm_up_cluster(num_nodes, object_store_memory):
         for i in range(num_nodes):
             for _ in range(num_objects):
                 object_ids += [
-                    create_array._remote(args=[size], resources={str(i): 1})
+                    create_array.options(args=[size], resources={str(i): 1})
                 ]
         size = size // 2
         num_objects = min(num_objects * 2, 1000)
@@ -164,7 +164,7 @@ def run_multiple_trials(f, num_trials):
 def test_tasks(num_nodes):
     def one_thousand_serial_tasks_local_node():
         for _ in range(1000):
-            ray.get(no_op._remote(resources={"0": 1}))
+            ray.get(no_op.options(resources={"0": 1}))
 
     durations = run_multiple_trials(one_thousand_serial_tasks_local_node, 10)
     logger.warning(
@@ -176,7 +176,7 @@ def test_tasks(num_nodes):
 
     def one_thousand_serial_tasks_remote_node():
         for _ in range(1000):
-            ray.get(no_op._remote(resources={"1": 1}))
+            ray.get(no_op.options(resources={"1": 1}))
 
     durations = run_multiple_trials(one_thousand_serial_tasks_remote_node, 10)
     logger.warning(
@@ -187,7 +187,7 @@ def test_tasks(num_nodes):
         np.std(durations))
 
     def ten_thousand_parallel_tasks_local():
-        ray.get([no_op._remote(resources={"0": 1}) for _ in range(10000)])
+        ray.get([no_op.options(resources={"0": 1}) for _ in range(10000)])
 
     durations = run_multiple_trials(ten_thousand_parallel_tasks_local, 5)
     logger.warning(
@@ -199,7 +199,7 @@ def test_tasks(num_nodes):
 
     def ten_thousand_parallel_tasks_load_balanced():
         ray.get([
-            no_op._remote(resources={str(i % num_nodes): 1})
+            no_op.options(resources={str(i % num_nodes): 1})
             for i in range(10000)
         ])
 

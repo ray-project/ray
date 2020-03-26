@@ -265,7 +265,7 @@ def create_backend(func_or_class,
         # arg list for a fn is function itself
         arg_list = [func_or_class]
         # ignore lint on lambda expression
-        creator = lambda kwrgs: TaskRunnerActor._remote(**kwrgs)  # noqa: E731
+        creator = lambda kwrgs: TaskRunnerActor.remote(**kwrgs)  # noqa: E731
     elif inspect.isclass(func_or_class):
         # Python inheritance order is right-to-left. We put RayServeMixin
         # on the left to make sure its methods are not overriden.
@@ -278,7 +278,7 @@ def create_backend(func_or_class,
 
         arg_list = actor_init_args
         # ignore lint on lambda expression
-        creator = lambda kwargs: CustomActor._remote(**kwargs)  # noqa: E731
+        creator = lambda kwargs: CustomActor.remote(**kwargs)  # noqa: E731
     else:
         raise TypeError(
             "Backend must be a function or class, it is {}.".format(

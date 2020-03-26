@@ -160,7 +160,7 @@ def main():
 
     n = 5000
     n_cpu = multiprocessing.cpu_count() // 2
-    actors = [Actor._remote() for _ in range(n_cpu)]
+    actors = [Actor.remote() for _ in range(n_cpu)]
     client = Client.remote(actors)
 
     def actor_async_direct():
@@ -181,7 +181,7 @@ def main():
     timeit("n:n actor calls async", actor_multi2, m * n)
 
     n = 1000
-    actors = [Actor._remote() for _ in range(n_cpu)]
+    actors = [Actor.remote() for _ in range(n_cpu)]
     clients = [Client.remote(a) for a in actors]
 
     def actor_multi2_direct_arg():

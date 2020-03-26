@@ -288,17 +288,17 @@ def test_fractional_resources(shutdown_only):
             pass
 
     # Create an actor that requires 0.7 of the custom resource.
-    f1 = Foo2._remote([], {}, resources={"Custom": 0.7})
+    f1 = Foo2.options(resources={"Custom": 0.7}).remote()
     ray.get(f1.method.remote())
     # Make sure that we cannot create an actor that requires 0.7 of the
     # custom resource. TODO(rkn): Re-enable this once ray.wait is
     # implemented.
-    f2 = Foo2._remote([], {}, resources={"Custom": 0.7})
+    f2 = Foo2.options(resources={"Custom": 0.7}).remote()
     ready, _ = ray.wait([f2.method.remote()], timeout=0.5)
     assert len(ready) == 0
     # Make sure we can start an actor that requries only 0.3 of the custom
     # resource.
-    f3 = Foo2._remote([], {}, resources={"Custom": 0.3})
+    f3 = Foo2.options(resources={"Custom": 0.3}).remote()
     ray.get(f3.method.remote())
 
     del f1, f3
@@ -314,7 +314,7 @@ def test_fractional_resources(shutdown_only):
         test.remote()
 
     with pytest.raises(ValueError):
-        Foo2._remote([], {}, resources={"Custom": 1.5})
+        Foo2.options(resources={"Custom": 1.5}).remote()
 
 
 def test_multiple_raylets(ray_start_cluster):

@@ -63,8 +63,8 @@ class TestMemoryLimits(unittest.TestCase):
                 object_store_memory=300 * MB,
                 driver_object_store_memory=driver_quota)
             z = ray.put("hi", weakref=True)
-            a = LightActor._remote(object_store_memory=a_quota)
-            b = GreedyActor._remote(object_store_memory=b_quota)
+            a = LightActor.options(object_store_memory=a_quota).remote()
+            b = GreedyActor.options(object_store_memory=b_quota).remote()
             for _ in range(5):
                 r_a = a.sample.remote()
                 for _ in range(20):

@@ -260,14 +260,17 @@ def test_object_transfer_dump(ray_start_cluster):
 
     # These objects will live on different nodes.
     object_ids = [
-        f._remote(args=[1], resources={str(i): 1}) for i in range(num_nodes)
+        f.options(resources={
+            str(i): 1
+        }).remote(1) for i in range(num_nodes)
     ]
 
     # Broadcast each object from each machine to each other machine.
     for object_id in object_ids:
         ray.get([
-            f._remote(args=[object_id], resources={str(i): 1})
-            for i in range(num_nodes)
+            f.options(resources={
+                str(i): 1
+            }).remote(object_id) for i in range(num_nodes)
         ])
 
     # The profiling information only flushes once every second.
