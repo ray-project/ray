@@ -29,7 +29,7 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "kl_target": 0.01,
 
     # == IMPALA optimizer params (see documentation in impala.py) ==
-    "sample_batch_size": 50,
+    "rollout_fragment_length": 50,
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,

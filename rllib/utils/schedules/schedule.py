@@ -22,7 +22,7 @@ class Schedule(metaclass=ABCMeta):
     value and returns the value dependent on the Schedule and the passed time.
     """
 
-    def __init__(self, framework=None):
+    def __init__(self, framework):
         self.framework = check_framework(framework)
 
     @abstractmethod
@@ -39,11 +39,11 @@ class Schedule(metaclass=ABCMeta):
         raise NotImplementedError
 
     def value(self, t):
-        if self.framework == "tf" and tf.executing_eagerly() is False:
+        if self.framework == "tf":
             return tf.cast(
-                tf.py_func(self._value, [t], tf.float64),
+                tf.py_function(self._value, [t], tf.float64),
                 tf.float32,
-                name="schedule-value")
+                name="schedule_value")
         return self._value(t)
 
     def __call__(self, t):

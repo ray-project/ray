@@ -8,14 +8,14 @@
 
 #pragma comment(lib, "IPHlpAPI.lib")
 
-int socketpair(int domain, int type, int protocol, int sv[2]) {
+int socketpair(int domain, int type, int protocol, SOCKET sv[2]) {
   if ((domain != AF_UNIX && domain != AF_INET) || type != SOCK_STREAM) {
-    return (int)INVALID_SOCKET;
+    return -1;
   }
   SOCKET sockets[2];
   int r = dumb_socketpair(sockets);
-  sv[0] = (int)sockets[0];
-  sv[1] = (int)sockets[1];
+  sv[0] = sockets[0];
+  sv[1] = sockets[1];
   return r;
 }
 
@@ -63,7 +63,7 @@ static DWORD getsockpid(SOCKET client) {
   return pid;
 }
 
-ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
+ssize_t sendmsg(SOCKET sock, struct msghdr *msg, int flags) {
   ssize_t result = -1;
   struct cmsghdr *header = CMSG_FIRSTHDR(msg);
   if (header->cmsg_level == SOL_SOCKET && header->cmsg_type == SCM_RIGHTS) {
@@ -76,14 +76,11 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
      * that the child process closes AND that its process ID is reassigned
      * to another existing process.
      */
-    struct msghdr const old_msg = *msg;
-    int *const pfd = (int *)CMSG_DATA(header);
-    msg->msg_control = NULL;
-    msg->msg_controllen = 0;
+    SOCKET *const pfd = (SOCKET *)CMSG_DATA(header);
     WSAPROTOCOL_INFO protocol_info = {0};
     /* assume socket if it's a pipe, until proven otherwise */
     BOOL is_socket = GetFileType((HANDLE)(SOCKET)(*pfd)) == FILE_TYPE_PIPE;
-    DWORD const target_pid = getsockpid(sockfd);
+    DWORD const target_pid = getsockpid(sock);
     HANDLE target_process = NULL;
     if (target_pid) {
       if (is_socket) {
@@ -104,31 +101,17 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
       }
     }
     if (result == 0) {
-      int const nbufs = msg->dwBufferCount + 1;
-      WSABUF *const bufs = (struct _WSABUF *)_alloca(sizeof(*msg->lpBuffers) * nbufs);
+      DWORD const nbufs = msg->dwBufferCount + 1;
+      WSABUF *const bufs = (WSABUF *)_alloca(sizeof(*msg->lpBuffers) * nbufs);
       bufs[0].buf = (char *)&protocol_info;
       bufs[0].len = sizeof(protocol_info);
       memcpy(&bufs[1], msg->lpBuffers, msg->dwBufferCount * sizeof(*msg->lpBuffers));
       DWORD nb;
-      msg->lpBuffers = bufs;
-      msg->dwBufferCount = nbufs;
-      GUID wsaid_WSASendMsg = {
-          0xa441e712, 0x754f, 0x43ca, {0x84, 0xa7, 0x0d, 0xee, 0x44, 0xcf, 0x60, 0x6d}};
-      typedef INT PASCAL WSASendMsg_t(
-          SOCKET s, LPWSAMSG lpMsg, DWORD dwFlags, LPDWORD lpNumberOfBytesSent,
-          LPWSAOVERLAPPED lpOverlapped,
-          LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-      WSASendMsg_t *WSASendMsg = NULL;
-      result = WSAIoctl(sockfd, SIO_GET_EXTENSION_FUNCTION_POINTER, &wsaid_WSASendMsg,
-                        sizeof(wsaid_WSASendMsg), &WSASendMsg, sizeof(WSASendMsg), &nb,
-                        NULL, 0);
-      if (result == 0) {
-        result = (*WSASendMsg)(sockfd, msg, flags, &nb, NULL, NULL) == 0
-                     ? (ssize_t)(nb - sizeof(protocol_info))
-                     : 0;
-      }
+      result = WSASend(sock, bufs, nbufs, &nb, flags, NULL, NULL) == 0
+                   ? (ssize_t)(nb - sizeof(protocol_info))
+                   : -1;
     }
-    if (result != 0 && target_process && !is_socket) {
+    if (result == -1 && target_process && !is_socket) {
       /* we failed to send the handle, and it needs cleaning up! */
       HANDLE duplicated_back = NULL;
       if (DuplicateHandle(target_process, *(HANDLE *)&protocol_info, GetCurrentProcess(),
@@ -139,52 +122,37 @@ ssize_t sendmsg(int sockfd, struct msghdr *msg, int flags) {
     if (target_process) {
       CloseHandle(target_process);
     }
-    *msg = old_msg;
   }
   return result;
 }
 
-ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
+ssize_t recvmsg(SOCKET sock, struct msghdr *msg, int flags) {
   int result = -1;
   struct cmsghdr *header = CMSG_FIRSTHDR(msg);
   if (msg->msg_controllen && flags == 0 /* We can't send flags on Windows... */) {
-    struct msghdr const old_msg = *msg;
-    msg->msg_control = NULL;
-    msg->msg_controllen = 0;
     WSAPROTOCOL_INFO protocol_info = {0};
-    int const nbufs = msg->dwBufferCount + 1;
-    WSABUF *const bufs = (struct _WSABUF *)_alloca(sizeof(*msg->lpBuffers) * nbufs);
+    DWORD const nbufs = msg->dwBufferCount + 1;
+    WSABUF *const bufs = (WSABUF *)_alloca(sizeof(*msg->lpBuffers) * nbufs);
     bufs[0].buf = (char *)&protocol_info;
     bufs[0].len = sizeof(protocol_info);
     memcpy(&bufs[1], msg->lpBuffers, msg->dwBufferCount * sizeof(*msg->lpBuffers));
-    typedef INT PASCAL WSARecvMsg_t(
-        SOCKET s, LPWSAMSG lpMsg, LPDWORD lpNumberOfBytesRecvd,
-        LPWSAOVERLAPPED lpOverlapped,
-        LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-    WSARecvMsg_t *WSARecvMsg = NULL;
     DWORD nb;
-    GUID wsaid_WSARecvMsg = {
-        0xf689d7c8, 0x6f1f, 0x436b, {0x8a, 0x53, 0xe5, 0x4f, 0xe3, 0x51, 0xc3, 0x22}};
-    result =
-        WSAIoctl(sockfd, SIO_GET_EXTENSION_FUNCTION_POINTER, &wsaid_WSARecvMsg,
-                 sizeof(wsaid_WSARecvMsg), &WSARecvMsg, sizeof(WSARecvMsg), &nb, NULL, 0);
-    if (result == 0) {
-      result = (*WSARecvMsg)(sockfd, msg, &nb, NULL, NULL) == 0
-                   ? (ssize_t)(nb - sizeof(protocol_info))
-                   : 0;
-    }
-    if (result == 0) {
-      int *const pfd = (int *)CMSG_DATA(header);
+    DWORD dwFlags = flags;
+    result = WSARecv(sock, bufs, nbufs, &nb, &dwFlags, NULL, NULL) == 0
+                 ? (ssize_t)(nb - sizeof(protocol_info))
+                 : -1;
+    if (result != -1) {
+      SOCKET *const pfd = (SOCKET *)CMSG_DATA(header);
       if (protocol_info.iSocketType == 0 && protocol_info.iProtocol == 0) {
-        *pfd = *(int *)&protocol_info;
+        *pfd = *(SOCKET *)&protocol_info;
       } else {
         *pfd = WSASocket(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO,
-                         &protocol_info, 0, 0);
+                         &protocol_info, 0, WSA_FLAG_OVERLAPPED);
       }
+      header->cmsg_len = CMSG_LEN(sizeof(*pfd));
       header->cmsg_level = SOL_SOCKET;
       header->cmsg_type = SCM_RIGHTS;
     }
-    *msg = old_msg;
   }
   return result;
 }

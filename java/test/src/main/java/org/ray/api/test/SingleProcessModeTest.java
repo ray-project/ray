@@ -8,7 +8,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -19,7 +18,6 @@ public class SingleProcessModeTest extends BaseTest {
 
   private static final int TIMES_TO_CALL_PER_ACTOR = 10;
 
-  @RayRemote
   static class MyActor {
     public MyActor() {
     }
@@ -38,7 +36,7 @@ public class SingleProcessModeTest extends BaseTest {
     for (int i = 0; i < NUM_ACTOR_INSTANCE; ++i) {
       RayActor<MyActor> actor = Ray.createActor(MyActor::new);
       actors.add(actor);
-      actorThreadIds.put(actor.getId(), Ray.call(MyActor::getThreadId, actor).get());
+      actorThreadIds.put(actor.getId(), actor.call(MyActor::getThreadId).get());
     }
 
     Map<ActorId, List<RayObject<Long>>> allResults = new HashMap<>();
@@ -46,7 +44,7 @@ public class SingleProcessModeTest extends BaseTest {
       final RayActor<MyActor> actor = actors.get(i);
       List<RayObject<Long>> thisActorResult = new ArrayList<>();
       for (int j = 0; j < TIMES_TO_CALL_PER_ACTOR; ++j) {
-        thisActorResult.add(Ray.call(MyActor::getThreadId, actor));
+        thisActorResult.add(actor.call(MyActor::getThreadId));
       }
       allResults.put(actor.getId(), thisActorResult);
     }

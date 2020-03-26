@@ -5,14 +5,14 @@ import os
 import numpy as np
 import ray
 import ray.experimental.tf_utils
+from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, \
     ACTION_PROB, ACTION_LOGP
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.debug import log_once, summarize
-from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -211,10 +211,8 @@ class TFPolicy(Policy):
             self._loss = loss
 
         self._optimizer = self.optimizer()
-        self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
-            if g is not None
-        ]
+        self._grads_and_vars = [(g, v) for (g, v) in self.gradients(
+            self._optimizer, self._loss) if g is not None]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
         # TODO(sven/ekl): Deprecate support for v1 models.
@@ -331,8 +329,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def get_exploration_info(self):
-        if isinstance(self.exploration, Exploration):
-            return self._sess.run(self.exploration_info)
+        return self._sess.run(self.exploration_info)
 
     @override(Policy)
     def get_weights(self):
@@ -366,6 +363,14 @@ class TFPolicy(Policy):
         with self._sess.graph.as_default():
             saver = tf.train.Saver()
             saver.save(self._sess, save_path)
+
+    @override(Policy)
+    def import_model_from_h5(self, import_file):
+        """Imports weights into tf model."""
+        # Make sure the session is the right one (see issue #7046).
+        with self._sess.graph.as_default():
+            with self._sess.as_default():
+                return self.model.import_from_h5(import_file)
 
     @DeveloperAPI
     def copy(self, existing_inputs):
@@ -663,10 +668,10 @@ class LearningRateSchedule:
     def __init__(self, lr, lr_schedule):
         self.cur_lr = tf.get_variable("lr", initializer=lr, trainable=False)
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr)
+            self.lr_schedule = ConstantSchedule(lr, framework=None)
         else:
             self.lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1])
+                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
@@ -690,18 +695,21 @@ class EntropyCoeffSchedule:
             "entropy_coeff", initializer=entropy_coeff, trainable=False)
 
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff)
+            self.entropy_coeff_schedule = ConstantSchedule(
+                entropy_coeff, framework=None)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1])
+                    outside_value=entropy_coeff_schedule[-1][-1],
+                    framework=None)
             else:
                 # Implements previous version but enforces outside_value
                 self.entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0)
+                    outside_value=0.0,
+                    framework=None)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):

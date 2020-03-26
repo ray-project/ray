@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "task_dependency_manager.h"
 
 #include "absl/time/clock.h"
@@ -323,23 +337,21 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   //     and eventually assigned to a worker. In this case we need
   //     the task lease to make sure there's only one raylet can
   //     resubmit the task.
-  if (task.GetTaskSpecification().IsDirectCall()) {
-    // We can use `OnDispatch` to differeniate whether this task is
-    // a worker lease request.
-    // For direct actor creation task:
-    //   - when it's submitted by core worker, we guarantee that
-    //     we always request a new worker lease, in that case
-    //     `OnDispatch` is overriden to an actual callback.
-    //   - when it's resubmitted by raylet because of reconstruction,
-    //     `OnDispatch` will not be overriden and thus is nullptr.
-    if (task.GetTaskSpecification().IsActorCreationTask() &&
-        task.OnDispatch() == nullptr) {
-      // This is an actor creation task, and it's being reconstructed,
-      // in this case we still need the task lease. Note that we don't
-      // require task lease for direct actor creation task.
-    } else {
-      return;
-    }
+  //
+  // We can use `OnDispatch` to differeniate whether this task is
+  // a worker lease request.
+  // For direct actor creation task:
+  //   - when it's submitted by core worker, we guarantee that
+  //     we always request a new worker lease, in that case
+  //     `OnDispatch` is overriden to an actual callback.
+  //   - when it's resubmitted by raylet because of reconstruction,
+  //     `OnDispatch` will not be overriden and thus is nullptr.
+  if (task.GetTaskSpecification().IsActorCreationTask() && task.OnDispatch() == nullptr) {
+    // This is an actor creation task, and it's being reconstructed,
+    // in this case we still need the task lease. Note that we don't
+    // require task lease for direct actor creation task.
+  } else {
+    return;
   }
 
   TaskID task_id = task.GetTaskSpecification().TaskId();

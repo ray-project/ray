@@ -23,34 +23,16 @@ from custom_directives import CustomGalleryItemDirective
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
 MOCK_MODULES = [
-    "blist",
-    "gym",
-    "gym.spaces",
-    "ray._raylet",
-    "ray.core.generated",
-    "ray.core.generated.gcs_pb2",
-    "ray.core.generated.ray.protocol.Task",
-    "scipy",
-    "scipy.signal",
-    "scipy.stats",
-    "tensorflow_probability",
-    "tensorflow",
-    "tensorflow.contrib",
-    "tensorflow.contrib.all_reduce",
-    "tensorflow.contrib.all_reduce.python",
-    "tensorflow.contrib.layers",
-    "tensorflow.contrib.rnn",
-    "tensorflow.contrib.slim",
-    "tensorflow.core",
-    "tensorflow.core.util",
-    "tensorflow.python",
-    "tensorflow.python.client",
-    "tensorflow.python.util",
-    "torch",
-    "torch.distributed",
-    "torch.nn",
-    "torch.nn.parallel",
-    "torch.utils.data",
+    "blist", "gym", "gym.spaces", "psutil", "ray._raylet",
+    "ray.core.generated", "ray.core.generated.gcs_pb2",
+    "ray.core.generated.ray.protocol.Task", "scipy", "scipy.signal",
+    "scipy.stats", "tensorflow_probability", "tensorflow",
+    "tensorflow.contrib", "tensorflow.contrib.all_reduce",
+    "tensorflow.contrib.all_reduce.python", "tensorflow.contrib.layers",
+    "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
+    "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
+    "tensorflow.python.util", "torch", "torch.distributed", "torch.nn",
+    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed"
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
@@ -64,17 +46,6 @@ sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 import ray
-
-
-# Avoid @ray.remote run when doc generating
-def fake_remote(*args, **kwargs):
-    def _inner_wrapper(cls_or_func):
-        return cls_or_func
-
-    return _inner_wrapper
-
-
-ray.remote = fake_remote
 
 # -- General configuration ------------------------------------------------
 
@@ -404,5 +375,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
+    app.add_stylesheet('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)

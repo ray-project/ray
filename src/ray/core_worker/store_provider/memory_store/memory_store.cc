@@ -157,18 +157,21 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   return nullptr;
 }
 
-Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
-  RAY_CHECK(object_id.IsDirectCallType());
+bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
                                                   object.GetNestedIds(), true);
+  bool stored_in_direct_memory = true;
 
+  // TODO(edoakes): we should instead return a flag to the caller to put the object in
+  // plasma.
+  bool should_put_in_plasma = false;
   {
     absl::MutexLock lock(&mu_);
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return Status::OK();  // Object already exists in the store, which is fine.
+      return true;  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -181,11 +184,9 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     auto promoted_it = promoted_to_plasma_.find(object_id);
     if (promoted_it != promoted_to_plasma_.end()) {
       RAY_CHECK(store_in_plasma_ != nullptr);
-      if (!object.IsInPlasmaError()) {
-        // Only need to promote to plasma if it wasn't already put into plasma
-        // by the task that created the object.
-        store_in_plasma_(object, object_id);
-      }
+      // Only need to promote to plasma if it wasn't already put into plasma
+      // by the task that created the object.
+      should_put_in_plasma = !object.IsInPlasmaError();
       promoted_to_plasma_.erase(promoted_it);
     }
 
@@ -212,12 +213,20 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     }
   }
 
+  // Must be called without holding the lock because store_in_plasma_ goes
+  // through the regular CoreWorker::Put() codepath, which calls into the
+  // in-memory store (would cause deadlock).
+  if (should_put_in_plasma) {
+    store_in_plasma_(object, object_id);
+    stored_in_direct_memory = false;
+  }
+
   // It's important for performance to run the callbacks outside the lock.
   for (const auto &cb : async_callbacks) {
     cb(object_entry);
   }
 
-  return Status::OK();
+  return stored_in_direct_memory;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
@@ -250,7 +259,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       if (iter != objects_.end()) {
         (*results)[i] = iter->second;
         if (remove_after_get) {
-          RAY_LOG(ERROR) << "REMOVE_AFTER_GET";
           // Note that we cannot remove the object_id from `objects_` now,
           // because `object_ids` might have duplicate ids.
           ids_to_remove.insert(object_id);
@@ -437,7 +445,6 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   if (it != objects_.end()) {
     if (it->second->IsInPlasmaError()) {
       *in_plasma = true;
-      return false;
     }
     return true;
   }

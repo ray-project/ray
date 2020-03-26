@@ -9,12 +9,8 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
-
-@pytest.mark.skipif(
-    RAY_FORCE_DIRECT,
-    reason="No reconstruction for objects placed in plasma yet")
+@pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [{
@@ -24,7 +20,7 @@ RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
         "object_store_memory": 1000 * 1024 * 1024,
         "_internal_config": json.dumps({
             # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100,
+            "num_heartbeats_timeout": 10,
             "object_manager_pull_timeout_ms": 1000,
             "object_manager_push_timeout_ms": 1000,
             "object_manager_repeated_push_delay_ms": 1000,
@@ -136,7 +132,10 @@ def test_driver_lives_sequential(ray_start_regular):
     ray.worker._global_node.kill_plasma_store()
     ray.worker._global_node.kill_log_monitor()
     ray.worker._global_node.kill_monitor()
-    ray.worker._global_node.kill_raylet_monitor()
+    if ray_constants.GCS_SERVICE_ENABLED:
+        ray.worker._global_node.kill_gcs_server()
+    else:
+        ray.worker._global_node.kill_raylet_monitor()
 
     # If the driver can reach the tearDown method, then it is still alive.
 
@@ -146,11 +145,19 @@ def test_driver_lives_sequential(ray_start_regular):
     reason="Hanging with new GCS API.")
 def test_driver_lives_parallel(ray_start_regular):
     all_processes = ray.worker._global_node.all_processes
-    process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
+    if ray_constants.GCS_SERVICE_ENABLED:
+        process_infos = (all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE]
+                         + all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER]
+                         + all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+                         all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR]
+                         + all_processes[ray_constants.PROCESS_TYPE_MONITOR])
+    else:
+        process_infos = (
+            all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
+            all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_MONITOR] +
+            all_processes[ray_constants.PROCESS_TYPE_RAYLET_MONITOR])
     assert len(process_infos) == 5
 
     # Kill all the components in parallel.

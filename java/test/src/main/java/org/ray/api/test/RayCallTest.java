@@ -7,7 +7,6 @@ import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ObjectId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -17,62 +16,50 @@ import org.testng.annotations.Test;
  */
 public class RayCallTest extends BaseTest {
 
-  @RayRemote
   private static int testInt(int val) {
     return val;
   }
 
-  @RayRemote
   private static byte testByte(byte val) {
     return val;
   }
 
-  @RayRemote
   private static short testShort(short val) {
     return val;
   }
 
-  @RayRemote
   private static long testLong(long val) {
     return val;
   }
 
-  @RayRemote
   private static double testDouble(double val) {
     return val;
   }
 
-  @RayRemote
   private static float testFloat(float val) {
     return val;
   }
 
-  @RayRemote
   private static boolean testBool(boolean val) {
     return val;
   }
 
-  @RayRemote
   private static String testString(String val) {
     return val;
   }
 
-  @RayRemote
   private static List<Integer> testList(List<Integer> val) {
     return val;
   }
 
-  @RayRemote
   private static Map<String, Integer> testMap(Map<String, Integer> val) {
     return val;
   }
 
-  @RayRemote
   private static LargeObject testLargeObject(LargeObject largeObject) {
     return largeObject;
   }
 
-  @RayRemote
   private static void testNoReturn(ObjectId objectId) {
     // Put an object in object store to inform driver that this function is executing.
     TestUtils.getRuntime().getObjectStore().put(1, objectId);
@@ -103,37 +90,30 @@ public class RayCallTest extends BaseTest {
     Assert.assertEquals(((int) Ray.get(randomObjectId)), 1);
   }
 
-  @RayRemote
   private static int testNoParam() {
     return 0;
   }
 
-  @RayRemote
   private static int testOneParam(int a) {
     return a;
   }
 
-  @RayRemote
   private static int testTwoParams(int a, int b) {
     return a + b;
   }
 
-  @RayRemote
   private static int testThreeParams(int a, int b, int c) {
     return a + b + c;
   }
 
-  @RayRemote
   private static int testFourParams(int a, int b, int c, int d) {
     return a + b + c + d;
   }
 
-  @RayRemote
   private static int testFiveParams(int a, int b, int c, int d, int e) {
     return a + b + c + d + e;
   }
 
-  @RayRemote
   private static int testSixParams(int a, int b, int c, int d, int e, int f) {
     return a + b + c + d + e + f;
   }

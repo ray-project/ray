@@ -5,9 +5,13 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
+from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
+from ray.rllib.utils.experimental_dsl import (
+    ParallelRollouts, Concurrently, StoreToReplayBuffer, LocalReplay,
+    TrainOneStep, StandardMetricsReporting, UpdateTargetNetwork)
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +86,7 @@ DEFAULT_CONFIG = with_common_config({
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
-    "compress_observations": True,
+    "compress_observations": False,
 
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -97,7 +101,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "sample_batch_size": 4,
+    "rollout_fragment_length": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
@@ -153,7 +157,7 @@ def make_policy_optimizer(workers, config):
 def validate_config_and_setup_param_noise(config):
     """Checks and updates the config based on settings.
 
-    Rewrites sample_batch_size to take into account n_step truncation.
+    Rewrites rollout_fragment_length to take into account n_step truncation.
     """
     # PyTorch check.
     if config["use_pytorch"]:
@@ -211,7 +215,7 @@ def validate_config_and_setup_param_noise(config):
     if config.get("soft_q", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning(
             "soft_q", "exploration_config={"
-            "type=StochasticSampling, temperature=[float]"
+            "type=SoftQ, temperature=[float]"
             "}")
         config["exploration_config"] = {
             "type": "SoftQ",
@@ -219,9 +223,9 @@ def validate_config_and_setup_param_noise(config):
         }
 
     # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["sample_batch_size"],
+    adjusted_batch_size = max(config["rollout_fragment_length"],
                               config.get("n_step", 1))
-    config["sample_batch_size"] = adjusted_batch_size
+    config["rollout_fragment_length"] = adjusted_batch_size
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):
@@ -268,7 +272,7 @@ def get_initial_state(config):
     }
 
 
-# TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
+# TODO(sven): Move this to generic Trainer. Every Algo should do this.
 def update_worker_exploration(trainer):
     """Sets epsilon exploration values in all policies to updated values.
 
@@ -308,6 +312,30 @@ def update_target_if_needed(trainer, fetches):
         trainer.state["num_target_updates"] += 1
 
 
+# Experimental distributed execution impl; enable with "use_exec_api": True.
+def execution_plan(workers, config):
+    local_replay_buffer = ReplayBuffer(config["buffer_size"])
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    # We execute the following steps concurrently:
+    # (1) Generate rollouts and store them in our local replay buffer. Calling
+    # next() on store_op drives this.
+    store_op = rollouts.for_each(StoreToReplayBuffer(local_replay_buffer))
+
+    # (2) Read and train on experiences from the replay buffer. Every batch
+    # returned from the LocalReplay() iterator is passed to TrainOneStep to
+    # take a SGD step, and then we decide whether to update the target network.
+    replay_op = LocalReplay(local_replay_buffer, config["train_batch_size"]) \
+        .for_each(TrainOneStep(workers)) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
+
+    # Alternate deterministically between (1) and (2).
+    train_op = Concurrently([store_op, replay_op], mode="round_robin")
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
@@ -317,7 +345,8 @@ GenericOffPolicyTrainer = build_trainer(
     make_policy_optimizer=make_policy_optimizer,
     before_train_step=update_worker_exploration,
     after_optimizer_step=update_target_if_needed,
-    after_train_result=after_train_result)
+    after_train_result=after_train_result,
+    execution_plan=execution_plan)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)

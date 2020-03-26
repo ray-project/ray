@@ -98,6 +98,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const CWorkerID &worker_id) nogil,
                     CRayStatus() nogil,
                     void() nogil,
+                    void(c_string *stack_out) nogil,
                     c_bool ref_counting_enabled)
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
@@ -116,7 +117,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
-        CRayStatus KillActor(const CActorID &actor_id)
+        CRayStatus KillActor(
+            const CActorID &actor_id, c_bool force_kill,
+            c_bool no_reconstruction)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -134,9 +137,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetWebuiDisplay(const c_string &key, const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
-        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
+        void RemoveActorHandleReference(const CActorID &actor_id)
+        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
+                                                   CObjectID &outer_object_id)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
-                                        *bytes)
+                                        *bytes,
+                                        CObjectID *c_actor_handle_id)
         CRayStatus GetActorHandle(const CActorID &actor_id,
                                   CActorHandle **actor_handle) const
         void AddLocalReference(const CObjectID &object_id)
@@ -183,7 +189,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
 
         void GetAsync(const CObjectID &object_id,
-                      ray_callback_function successs_callback,
+                      ray_callback_function success_callback,
                       ray_callback_function fallback_callback,
                       void* python_future)
 
@@ -197,4 +203,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const double capacity,
                                const CClientID &client_Id)
 
-        void SubscribeToAsyncPlasma(plasma_callback_function callback)
+        void SetPlasmaAddedCallback(plasma_callback_function callback)
+
+        void SubscribeToPlasmaAdd(const CObjectID &object_id)

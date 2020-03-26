@@ -15,7 +15,7 @@ class BayesOptSearch(SuggestionAlgorithm):
     """A wrapper around BayesOpt to provide trial suggestions.
 
     Requires BayesOpt to be installed. You can install BayesOpt with the
-    command: `pip install bayesian-optimization`.
+    command: ``pip install bayesian-optimization``.
 
     Parameters:
         space (dict): Continuous search space. Parameters will be sampled from
@@ -32,14 +32,22 @@ class BayesOptSearch(SuggestionAlgorithm):
         use_early_stopped_trials (bool): Whether to use early terminated
             trial results in the optimization process.
 
-    Example:
-        >>> space = {
-        >>>     'width': (0, 20),
-        >>>     'height': (-100, 100),
-        >>> }
-        >>> algo = BayesOptSearch(
-        >>>     space, max_concurrent=4, metric="mean_loss", mode="min")
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+
+        space = {
+            'width': (0, 20),
+            'height': (-100, 100),
+        }
+        algo = BayesOptSearch(
+            space, max_concurrent=4, metric="mean_loss", mode="min")
+
+        tune.run(my_func, algo=algo)
     """
+    # bayes_opt.BayesianOptimization: Optimization object
+    optimizer = None
 
     def __init__(self,
                  space,
@@ -80,9 +88,10 @@ class BayesOptSearch(SuggestionAlgorithm):
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
-        super(BayesOptSearch, self).__init__(**kwargs)
+        super(BayesOptSearch, self).__init__(
+            metric=self._metric, mode=mode, **kwargs)
 
-    def _suggest(self, trial_id):
+    def suggest(self, trial_id):
         if self._num_live_trials() >= self._max_concurrent:
             return None
 

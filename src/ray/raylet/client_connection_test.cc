@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <list>
 #include <memory>
 
@@ -23,7 +37,8 @@ class ClientConnectionTest : public ::testing::Test {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
     boost::asio::local::connect_pair(in_, out_);
 #else
-    int pair[2] = {};  // TODO(mehrdadn): This should be type SOCKET for Windows
+    boost::asio::detail::socket_type pair[2] = {boost::asio::detail::invalid_socket,
+                                                boost::asio::detail::invalid_socket};
     RAY_CHECK(socketpair(AF_INET, SOCK_STREAM, 0, pair) == 0);
     in_.assign(local_stream_protocol::v4(), pair[0]);
     out_.assign(local_stream_protocol::v4(), pair[1]);

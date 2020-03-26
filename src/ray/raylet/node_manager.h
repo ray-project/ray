@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_RAYLET_NODE_MANAGER_H
 #define RAY_RAYLET_NODE_MANAGER_H
 
@@ -70,6 +84,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The raylet config list of this node.
+  std::unordered_map<std::string, std::string> raylet_config;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -538,6 +554,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
                         bool success);
 
+  /// Process worker subscribing to plasma.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return void.
+  void ProcessSubscribePlasmaReady(const std::shared_ptr<LocalClientConnection> &client,
+                                   const uint8_t *message_data);
+
+  /// Setup callback with Object Manager.
+  ///
+  /// \return Status indicating whether setup was successful.
+  ray::Status SetupPlasmaSubscription();
+
   /// Handle a `WorkerLease` request.
   void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,
@@ -567,6 +596,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleGlobalGC(const rpc::GlobalGCRequest &request, rpc::GlobalGCReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `FormatGlobalMemoryInfo`` request.
+  void HandleFormatGlobalMemoryInfo(const rpc::FormatGlobalMemoryInfoRequest &request,
+                                    rpc::FormatGlobalMemoryInfoReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 
@@ -583,8 +617,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
-  /// Whether a task is an direct actor creation task.
-  bool IsDirectActorCreationTask(const TaskID &task_id);
+  /// Whether a task is an actor creation task.
+  bool IsActorCreationTask(const TaskID &task_id);
 
   /// ID of this node.
   ClientID self_node_id_;
@@ -717,6 +751,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
   absl::flat_hash_set<ClientID> failed_nodes_cache_;
+
+  /// Concurrency for the following map
+  mutable absl::Mutex plasma_object_notification_lock_;
+
+  /// Keeps track of workers waiting for objects
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<Worker>>>
+      async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
   /// Objects that are out of scope in the application and that should be freed
   /// from plasma. The cache is flushed when it reaches the config's

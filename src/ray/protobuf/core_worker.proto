@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
@@ -13,23 +27,26 @@ message ActorHandle {
   // ID of the actor.
   bytes actor_id = 1;
 
+  // The task or actor ID of the actor's owner.
+  bytes owner_id = 2;
+
+  // The address of the actor's owner.
+  Address owner_address = 3;
+
   // ID of the job that created the actor (it is possible that the handle
   // exists on a job with a different job ID).
-  bytes creation_job_id = 3;
+  bytes creation_job_id = 4;
 
   // Language of the actor.
-  Language actor_language = 4;
+  Language actor_language = 5;
 
   // Function descriptor of actor creation task.
-  FunctionDescriptor actor_creation_task_function_descriptor = 5;
+  FunctionDescriptor actor_creation_task_function_descriptor = 6;
 
   // The unique id of the dummy object returned by the actor creation task.
   // It's used as a dependency for the first task.
   // TODO: Remove this once scheduling is done by task counter only.
-  bytes actor_cursor = 6;
-
-  // Whether direct actor call is used.
-  bool is_direct_call = 7;
+  bytes actor_cursor = 7;
 
   // An extension field that is used for storing app-language-specific data.
   bytes extension_data = 8;
@@ -65,6 +82,8 @@ message ReturnObject {
   bytes metadata = 4;
   // ObjectIDs that were nested in data. This is only set for inlined objects.
   repeated bytes nested_inlined_ids = 5;
+  // Size of this object.
+  int64 size = 6;
 }
 
 message PushTaskRequest {
@@ -79,7 +98,6 @@ message PushTaskRequest {
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
-  // This mode of behaviour is used for direct task submission only.
   int64 sequence_number = 4;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
@@ -88,6 +106,13 @@ message PushTaskRequest {
   int64 client_processed_up_to = 5;
   // Resource mapping ids assigned to the worker executing the task.
   repeated ResourceMapEntry resource_mapping = 6;
+  // The version of the caller. This is used to distinguish on-the-fly
+  // requests from a caller before it die, and requests from the reconstructed
+  // caller, which might happen theoretically when network has issues.
+  // - For an actor, this is set to the timestamp when the actor is created,
+  //   so it can be used to differentiate which is the new reconstructed actor.
+  // - For a non-actor task, it's set to the timestamp the task starts execution.
+  int64 caller_version = 7;
 }
 
 message PushTaskReply {
@@ -150,6 +175,10 @@ message WaitForObjectEvictionReply {
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
+  // Whether to force kill the actor.
+  bool force_kill = 2;
+  // If set to true, the killed actor will not be reconstructed anymore.
+  bool no_reconstruction = 3;
 }
 
 message KillActorReply {
@@ -158,6 +187,9 @@ message KillActorReply {
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 2;
 }
 
 message GetCoreWorkerStatsReply {
@@ -224,6 +256,15 @@ message LocalGCRequest {
 message LocalGCReply {
 }
 
+message PlasmaObjectReadyRequest {
+  bytes object_id = 1;
+  int64 data_size = 2;
+  int64 metadata_size = 3;
+}
+
+message PlasmaObjectReadyReply {
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -246,4 +287,6 @@ service CoreWorkerService {
   rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Notification from raylet that an object ID is available in local plasma.
+  rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }
