@@ -28,30 +28,30 @@ class LoggerSuite(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def testCSV(self):
-        config = {"a": 2, "b": 5}
+        config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
         t = Trial(evaluated_params=config, trial_id="csv")
         logger = CSVLogger(config=config, logdir=self.test_dir, trial=t)
         logger.on_result(result(2, 4))
         logger.on_result(result(2, 4))
-        logger.on_result(result(2, 4, score=[1, 2, 3]))
+        logger.on_result(result(2, 4, score=[1, 2, 3], hello={"world": 1}))
         logger.close()
 
     def testJSON(self):
-        config = {"a": 2, "b": 5}
+        config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
         t = Trial(evaluated_params=config, trial_id="json")
         logger = JsonLogger(config=config, logdir=self.test_dir, trial=t)
         logger.on_result(result(0, 4))
         logger.on_result(result(1, 4))
-        logger.on_result(result(2, 4, score=[1, 2, 3]))
+        logger.on_result(result(2, 4, score=[1, 2, 3], hello={"world": 1}))
         logger.close()
 
     def testTBX(self):
-        config = {"a": 2, "b": 5}
+        config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
         t = Trial(evaluated_params=config, trial_id="tbx")
         logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
         logger.on_result(result(0, 4))
         logger.on_result(result(1, 4))
-        logger.on_result(result(2, 4, score=[1, 2, 3]))
+        logger.on_result(result(2, 4, score=[1, 2, 3], hello={"world": 1}))
         logger.close()
 
 

@@ -34,11 +34,11 @@ class SuggestionAlgorithm(SearchAlgorithm):
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
-        self._finished = False
         self._metric = metric
         assert mode in ["min", "max"]
         self._mode = mode
         self._use_early_stopped = use_early_stopped_trials
+        self._finished = False
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
@@ -69,7 +69,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 return trials
             trials += [trial]
 
-        self._finished = True
+        self.set_finished()
         return trials
 
     def _generate_trials(self, num_samples, experiment_spec, output_path=""):
@@ -104,9 +104,6 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 evaluated_params=flatten_dict(suggested_config),
                 experiment_tag=tag,
                 trial_id=trial_id)
-
-    def is_finished(self):
-        return self._finished
 
     def suggest(self, trial_id):
         """Queries the algorithm to retrieve the next set of parameters.

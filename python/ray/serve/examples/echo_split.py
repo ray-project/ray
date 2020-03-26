@@ -20,7 +20,7 @@ def echo_v2(_):
 
 serve.init(blocking=True)
 
-serve.create_endpoint("my_endpoint", "/echo", blocking=True)
+serve.create_endpoint("my_endpoint", "/echo")
 serve.create_backend(echo_v1, "echo:v1")
 serve.link("my_endpoint", "echo:v1")
 

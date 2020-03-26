@@ -88,7 +88,6 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     break;
   }
   case REDIS_REPLY_ARRAY: {
-    // Array replies are only used for pub-sub messages. Parse the published message.
     redisReply *message_type = redis_reply->element[0];
     if (strcmp(message_type->str, "subscribe") == 0) {
       // If the message is for the initial subscription call, return the empty
@@ -101,7 +100,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
       RAY_CHECK(!string_reply_.empty()) << "Empty message received on subscribe channel.";
     } else {
       // Array replies are used for scan or get.
-      ParseAsScanArray(redis_reply);
+      ParseAsStringArrayOrScanArray(redis_reply);
     }
     break;
   }
@@ -111,7 +110,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
   }
 }
 
-void CallbackReply::ParseAsScanArray(redisReply *redis_reply) {
+void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
   RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
   const auto array_size = static_cast<size_t>(redis_reply->elements);
   if (array_size == 2) {
@@ -121,21 +120,32 @@ void CallbackReply::ParseAsScanArray(redisReply *redis_reply) {
       // Parse as a scan array
       RAY_CHECK(REDIS_REPLY_STRING == cursor_entry->type);
       std::string cursor_str(cursor_entry->str, cursor_entry->len);
-      next_scan_cursor_ = std::stoi(cursor_str);
+      next_scan_cursor_reply_ = std::stoi(cursor_str);
       const auto scan_array_size = array_entry->elements;
-      string_array_.reserve(scan_array_size);
+      string_array_reply_.reserve(scan_array_size);
       for (size_t i = 0; i < scan_array_size; ++i) {
         auto *entry = array_entry->element[i];
         RAY_CHECK(REDIS_REPLY_STRING == entry->type)
             << "Unexcepted type: " << entry->type;
-        string_array_.push_back(std::string(entry->str, entry->len));
+        string_array_reply_.push_back(std::string(entry->str, entry->len));
         RAY_LOG(DEBUG) << "Element index is " << i << ", element length is "
                        << entry->len;
       }
       return;
     }
   }
-  RAY_LOG(FATAL) << "Unknown reply array, array_size " << array_size;
+  ParseAsStringArray(redis_reply);
+}
+
+void CallbackReply::ParseAsStringArray(redisReply *redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
+  const auto array_size = static_cast<size_t>(redis_reply->elements);
+  string_array_reply_.reserve(array_size);
+  for (size_t i = 0; i < array_size; ++i) {
+    auto *entry = redis_reply->element[i];
+    RAY_CHECK(REDIS_REPLY_STRING == entry->type) << "Unexcepted type: " << entry->type;
+    string_array_reply_.push_back(std::string(entry->str, entry->len));
+  }
 }
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == reply_type_; }
@@ -150,20 +160,25 @@ Status CallbackReply::ReadAsStatus() const {
   return status_reply_;
 }
 
-std::string CallbackReply::ReadAsString() const {
+const std::string &CallbackReply::ReadAsString() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_STRING) << "Unexpected type: " << reply_type_;
   return string_reply_;
 }
 
-std::string CallbackReply::ReadAsPubsubData() const {
+const std::string &CallbackReply::ReadAsPubsubData() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
   return string_reply_;
 }
 
 size_t CallbackReply::ReadAsScanArray(std::vector<std::string> *array) const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
-  *array = string_array_;
-  return next_scan_cursor_;
+  *array = string_array_reply_;
+  return next_scan_cursor_reply_;
+}
+
+const std::vector<std::string> &CallbackReply::ReadAsStringArray() const {
+  RAY_CHECK(reply_type_ == REDIS_REPLY_ARRAY) << "Unexpected type: " << reply_type_;
+  return string_array_reply_;
 }
 
 // This is a global redis callback which will be registered for every
@@ -303,6 +318,27 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
   SetDisconnectCallback(async_redis_subscribe_context_.get());
 
   return Status::OK();
+}
+
+std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
+    const std::vector<std::string> &args) {
+  RAY_CHECK(context_);
+  // Build the arguments.
+  std::vector<const char *> argv;
+  std::vector<size_t> argc;
+  for (const auto &arg : args) {
+    argv.push_back(arg.data());
+    argc.push_back(arg.size());
+  }
+  auto redis_reply = reinterpret_cast<redisReply *>(
+      ::redisCommandArgv(context_, args.size(), argv.data(), argc.data()));
+  if (redis_reply == nullptr) {
+    RAY_LOG(ERROR) << "Failed to send redis command (sync).";
+    return nullptr;
+  }
+  std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(redis_reply));
+  freeReplyObject(redis_reply);
+  return callback_reply;
 }
 
 Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,

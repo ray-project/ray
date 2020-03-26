@@ -141,6 +141,18 @@ Here is an example of the basic usage (for a more complete example, see `custom_
            checkpoint = trainer.save()
            print("checkpoint saved at", checkpoint)
 
+    # Also, in case you have trained a model outside of ray/RLlib and have created
+    # an h5-file with weight values in it, e.g.
+    # my_keras_model_trained_outside_rllib.save_weights("model.h5")
+    # (see: https://keras.io/models/about-keras-models/)
+
+    # ... you can load the h5-weights into your Trainer's Policy's ModelV2
+    # (tf or torch) by doing:
+    trainer.import_model("my_weights.h5")
+    # NOTE: In order for this to work, your (custom) model needs to implement
+    # the `import_from_h5` method.
+    # See https://github.com/ray-project/ray/blob/master/rllib/tests/test_model_imports.py
+    # for detailed examples for tf- and torch trainers/models.
 
 .. note::
 
