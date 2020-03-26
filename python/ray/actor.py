@@ -13,6 +13,7 @@ import ray.worker
 from ray import ActorID, ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
+from ray.utils import deprecation_warning
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +101,16 @@ class ActorMethod:
                                                        self._method_name))
 
     def remote(self, *args, **kwargs):
-        return self._remote(args, kwargs)
+        return self._remote(args, kwargs, internal_called=True)
 
-    def _remote(self, args=None, kwargs=None, num_return_vals=None):
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                num_return_vals=None,
+                internal_called=False):
+        if not internal_called:
+            deprecation_warning("_remote", new=".options")
+
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
@@ -376,7 +384,7 @@ class ActorClass:
         Returns:
             A handle to the newly created actor.
         """
-        return self._remote(args=args, kwargs=kwargs)
+        return self._remote(args=args, kwargs=kwargs, internal_called=True)
 
     def options(self, **options):
         """Convenience method for creating an actor with options.
@@ -394,7 +402,8 @@ class ActorClass:
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
-                return actor_cls._remote(args=args, kwargs=kwargs, **options)
+                return actor_cls._remote(
+                    args=args, kwargs=kwargs, internal_called=True, **options)
 
         return ActorOptionWrapper()
 
@@ -409,7 +418,8 @@ class ActorClass:
                 is_direct_call=None,
                 max_concurrency=None,
                 name=None,
-                detached=False):
+                detached=False,
+                internal_called=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -439,6 +449,12 @@ class ActorClass:
         Returns:
             A handle to the newly created actor.
         """
+        if not internal_called:
+            # NOTE: We still want this method, we just dont want user to
+            # call this directly outside of this class.  In the upcoming
+            # release, simply add `error=True` to this call will raise an
+            # Exception.
+            deprecation_warning("_remote", new=".options")
         if args is None:
             args = []
         if kwargs is None:

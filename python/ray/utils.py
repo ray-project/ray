@@ -693,3 +693,24 @@ def try_to_symlink(symlink_path, target_path):
         os.symlink(target_path, symlink_path)
     except OSError:
         return
+
+
+def deprecation_warning(old, new=None, error=None):
+    """Logs (via the `logger` object) or throws a deprecation warning/error.
+
+    Args:
+        old (str): A description of the "thing" that is to be deprecated.
+        new (Optional[str]): A description of the new "thing" that replaces it.
+        error (Optional[bool,Exception]): Whether or which exception to throw.
+            If True, throw ValueError.
+    """
+    msg = "`{}` has been deprecated.{}".format(
+        old, (" Use `{}` instead.".format(new) if new else ""))
+
+    if error is True:
+        raise ValueError(msg)
+    elif error and issubclass(error, Exception):
+        raise error(msg)
+    else:
+        logger.warning("DeprecationWarning: " + msg +
+                       " This will raise an error in the future!")

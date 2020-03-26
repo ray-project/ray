@@ -4,6 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
+from ray.utils import deprecation_warning
 import ray.signature
 
 # Default parameters for remote functions.
@@ -92,7 +93,7 @@ class RemoteFunction:
         # Override task.remote's signature and docstring
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
-            return self._remote(args=args, kwargs=kwargs)
+            return self._remote(args=args, kwargs=kwargs, internal_called=True)
 
         self.remote = _remote_proxy
 
@@ -116,7 +117,8 @@ class RemoteFunction:
             num_return_vals=num_return_vals,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
-            resources=resources)
+            resources=resources,
+            internal_called=True)
 
     def options(self, **options):
         """Convenience method for executing a task with options.
@@ -134,7 +136,8 @@ class RemoteFunction:
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **options)
+                return func_cls._remote(
+                    args=args, kwargs=kwargs, internal_called=True, **options)
 
         return FuncWrapper()
 
@@ -148,8 +151,16 @@ class RemoteFunction:
                 memory=None,
                 object_store_memory=None,
                 resources=None,
-                max_retries=None):
+                max_retries=None,
+                internal_called=False):
         """Submit the remote function for execution."""
+        if not internal_called:
+            # NOTE: We still want this method, we just dont want user to
+            # call this directly outside of this class.  In the upcoming
+            # release, simply add `error=True` to this call will raise an
+            # Exception.
+            deprecation_warning("_remote", new=".options")
+
         worker = ray.worker.global_worker
         worker.check_connected()
 

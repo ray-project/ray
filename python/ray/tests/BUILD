@@ -407,3 +407,11 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_deprecate_remote",
+    size = "small",
+    srcs = ["test_deprecate_remote.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
