@@ -91,8 +91,6 @@ class Searcher:
             minimizing or maximizing the metric attribute.
         use_clipped_trials (bool): Whether to use early terminated
             trial results in the optimization process.
-        repeat (int): Number of times to generate a trial with a repeated
-            configuration.
 
     .. code-block:: python
 
@@ -121,8 +119,7 @@ class Searcher:
                  metric="episode_reward_mean",
                  mode="max",
                  use_clipped_trials=False,
-                 max_concurrent=10,
-                 repeat=1):
+                 max_concurrent=10):
         assert type(max_concurrent) is int and max_concurrent > 0
 
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
@@ -130,7 +127,6 @@ class Searcher:
         self._mode = mode
         self.use_clipped_trials = use_clipped_trials
         self.max_concurrent = max_concurrent
-        self.repeat = repeat
 
     def on_trial_result(self, trial_id, result):
         """Notification for result during training.
