@@ -30,6 +30,10 @@ def _validate_scheduler_step_freq(scheduler_step_freq):
                     VALID_SCHEDULER_STEP, scheduler_step_freq))
 
 
+class _DummyActor:
+    def cuda_devices(self):
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
 class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
@@ -258,6 +262,17 @@ class TorchTrainer:
         self.remote_workers = []
 
         if num_workers == 1:
+            ip = ray.services.get_node_ip_address()
+
+            # Reserve a local GPU or CPU for the local worker
+            self._dummy_local_actor = ray.remote(
+                num_cpus=1,
+                num_gpus=int(self.use_gpu),
+                resources={"node:"+ip: 1})(_DummyActor).remote()
+
+            head_cuda = ray.get(self._dummy_local_actor.cuda_devices.remote())
+            os.environ["CUDA_VISIBLE_DEVICES"] = head_cuda
+
             # Start local worker
             self.local_worker = TorchRunner.remote(
                 model_creator=self.model_creator,
@@ -278,6 +293,14 @@ class TorchTrainer:
             self.local_worker.set_reporters(
                 [h.create_reporter() for h in self.handlers])
         else:
+            ip = ray.services.get_node_ip_address()
+
+            # Reserve a local GPU or CPU for the local worker
+            self._dummy_local_actor = ray.remote(
+                num_cpus=1,
+                num_gpus=int(self.use_gpu),
+                resources={"node:"+ip: 1})(_DummyActor).remote()
+
             params = dict(
                 model_creator=self.model_creator,
                 data_creator=self.data_creator,
@@ -290,6 +313,9 @@ class TorchTrainer:
                 use_fp16=self.use_fp16,
                 apex_args=self.apex_args,
                 scheduler_step_freq=self.scheduler_step_freq)
+
+            head_cuda = ray.get(self._dummy_local_actor.cuda_devices.remote())
+            os.environ["CUDA_VISIBLE_DEVICES"] = head_cuda
 
             # Start local worker
             self.local_worker = DistributedTorchRunner(**params)
@@ -305,7 +331,6 @@ class TorchTrainer:
                 self.apply_all_workers(self.initialization_hook)
 
             # Compute URL for initializing distributed PyTorch
-            ip = self.local_worker.get_node_ip()
             port = self.local_worker.find_free_port()
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
 
@@ -545,6 +570,8 @@ class TorchTrainer:
         """Shuts down workers and releases resources."""
         self.local_worker.shutdown()
         if not force:
+            self._dummy_local_actor.__ray_terminate__.remote()
+
             cleanup = [
                 worker.shutdown.remote() for worker in self.remote_workers
             ]
@@ -554,10 +581,13 @@ class TorchTrainer:
                 for worker in self.remote_workers
             ]
         else:
+            self._dummy_local_actor.__ray_kill__()
+
             for worker in self.remote_workers:
                 logger.warning("Killing worker {}.".format(worker))
                 worker.__ray_kill__()
 
+        self._dummy_local_actor = None
         self.local_worker = None
         self.remote_workers = []
 
