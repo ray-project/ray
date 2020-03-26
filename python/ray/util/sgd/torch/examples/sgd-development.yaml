@@ -3,9 +3,9 @@ cluster_name: sgd-pytorch
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 0
-initial_workers: 0
-max_workers: 0
+min_workers: 1
+initial_workers: 1
+max_workers: 1
 
 target_utilization_fraction: 0.9
 
@@ -27,7 +27,7 @@ auth:
     # ssh_private_key: ...
 
 head_node:
-    InstanceType: p3dn.24xlarge
+    InstanceType: p3.2xlarge
     ImageId: ami-0698bcaf8bd9ef56d
     # KeyName: ...
     InstanceMarketOptions:
@@ -41,7 +41,7 @@ head_node:
 
 
 worker_nodes:
-    InstanceType: p3.16xlarge
+    InstanceType: p3.8xlarge
     ImageId: ami-0698bcaf8bd9ef56d
     # KeyName: ...
     InstanceMarketOptions:
@@ -65,7 +65,7 @@ setup_commands:
 
     # Installing this without -U to make sure we don't replace the existing Ray installation
     - pip install ray[rllib]
-    - pip install -U ipdb torch torchvision
+    - pip install -U ipdb torch torchvision tqdm
     # Install Apex
     - rm -rf apex || true
     - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./ || true
@@ -73,7 +73,7 @@ setup_commands:
 
 file_mounts: {
     # This should point to ray/python/ray/util/sgd.
-    # ~/sgd: ../../../sgd,
+    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd: ../../../sgd,
 }
 
 # Custom commands that will be run on the head node after common setup.
