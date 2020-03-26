@@ -260,14 +260,9 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def export_model(self, export_dir):
-        # Export the Model's graph.
-        writer = SummaryWriter(log_dir=export_dir)
-        input_dict = self._lazy_tensor_dict({
-            SampleBatch.CUR_OBS: self.observation_space.sample(),
-        })
-        state_batches = []
-        writer.add_graph(self.model, [input_dict, state_batches, self._convert_to_tensor([1])])
-        writer.close()
+        """TODO(sven): implement for torch.
+        """
+        raise NotImplementedError
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
