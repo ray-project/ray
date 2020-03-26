@@ -11,8 +11,6 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
-if torch:
-    from torch.utils.tensorboard import SummaryWriter
 
 
 class TorchPolicy(Policy):
