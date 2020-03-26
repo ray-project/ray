@@ -130,8 +130,7 @@ BaseModel Test
 
 def test_base_model():
     class A(BaseModel):
-        a: str
-        b: str
+        __slots__ = ["a", "b"]
 
     # Test the correct case.
     obj = {"a": "1", "b": "1"}
