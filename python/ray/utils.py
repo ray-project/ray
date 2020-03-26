@@ -310,7 +310,7 @@ def prepare_envs(extra_envs):
     global previous_extra_envs
     if extra_envs:
         previous_extra_envs = {}
-        for k, v in extra_envs:
+        for k, v in extra_envs.items():
             if k == "CUDA_VISIBLE_DEVICES":
                 logger.error(
                     '"CUDA_VISIBLE_DEVICES" env should not be set by user')
@@ -322,11 +322,12 @@ def prepare_envs(extra_envs):
 def reset_envs():
     global previous_extra_envs
     if previous_extra_envs:
-        for k, v in previous_extra_envs:
+        for k, v in previous_extra_envs.items():
             if v is None:
                 del os.environ[k]
             else:
                 os.environ[k] = v
+        previous_extra_envs = None
 
 
 def resources_from_resource_arguments(
