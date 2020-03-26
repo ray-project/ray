@@ -10,28 +10,42 @@ def py_return_input(v):
 
 
 @ray.remote
-def py_return_java():
-    f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
-                          "pack")
-    input = [100, "hello", 1.23, [1, "2", 3.0]]
-    r = f.remote(*input)
-    v = ray.get(r)
-    return v == input
-
-
-@ray.remote
-def py_func(value):
-    assert isinstance(value, bytes)
-    return b"Response from Python: " + value
-
-
-@ray.remote
-def py_func_call_java_function(value):
-    assert isinstance(value, bytes)
-    f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
-                          "bytesEcho")
-    r = f.remote(value)
-    return b"[Python]py_func -> " + ray.get(r)
+def py_func_call_java_function():
+    try:
+        # None
+        r = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                              "returnInput").remote(None)
+        assert ray.get(r) is None
+        # bool
+        r = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                              "returnInputBoolean").remote(True)
+        assert ray.get(r) is True
+        # int
+        r = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                              "returnInputInt").remote(100)
+        assert ray.get(r) == 100
+        # double
+        r = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                              "returnInputDouble").remote(1.23)
+        assert ray.get(r) == 1.23
+        # string
+        r = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                              "returnInputString").remote("Hello World!")
+        assert ray.get(r) == "Hello World!"
+        # list (tuple will be packed by pickle,
+        # so only list can be transferred across language)
+        r = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                              "returnInputIntList").remote([1, 2, 3])
+        assert ray.get(r) == [1, 2, 3]
+        # pack
+        f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                              "pack")
+        input = [100, "hello", 1.23, [1, "2", 3.0]]
+        r = f.remote(*input)
+        assert ray.get(r) == input
+        return "success"
+    except Exception as ex:
+        return str(ex)
 
 
 @ray.remote
