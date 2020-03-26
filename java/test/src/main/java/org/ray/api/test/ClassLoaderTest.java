@@ -4,6 +4,7 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Optional;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.apache.commons.io.FileUtils;
@@ -102,13 +103,13 @@ public class ClassLoaderTest extends BaseTest {
     RayActor<?> actor1 = createActor(constructor);
     FunctionDescriptor getPid = new JavaFunctionDescriptor("ClassLoaderTester", "getPid", "()I");
     int pid = this.<Integer>callActorFunction(actor1, getPid, new Object[0],
-        new Class<?>[]{Integer.class}).get();
+        Optional.of(Integer.class)).get();
     RayActor<?> actor2;
     while (true) {
       // Create another actor which share the same process of actor 1.
       actor2 = createActor(constructor);
       int actor2Pid = this.<Integer>callActorFunction(actor2, getPid, new Object[0],
-          new Class<?>[]{Integer.class}).get();
+          Optional.of(Integer.class)).get();
       if (actor2Pid == pid) {
         break;
       }
@@ -118,17 +119,17 @@ public class ClassLoaderTest extends BaseTest {
         "getClassLoaderHashCode",
         "()I");
     RayObject<Integer> hashCode1 = callActorFunction(actor1, getClassLoaderHashCode, new Object[0],
-        new Class<?>[]{Integer.class});
+        Optional.of(Integer.class));
     RayObject<Integer> hashCode2 = callActorFunction(actor2, getClassLoaderHashCode, new Object[0],
-        new Class<?>[]{Integer.class});
+        Optional.of(Integer.class));
     Assert.assertEquals(hashCode1.get(), hashCode2.get());
 
     FunctionDescriptor increase = new JavaFunctionDescriptor("ClassLoaderTester", "increase",
         "()I");
     RayObject<Integer> value1 = callActorFunction(actor1, increase, new Object[0],
-        new Class<?>[]{Integer.class});
+        Optional.of(Integer.class));
     RayObject<Integer> value2 = callActorFunction(actor2, increase, new Object[0],
-        new Class<?>[]{Integer.class});
+        Optional.of(Integer.class));
     Assert.assertNotEquals(value1.get(), value2.get());
   }
 
@@ -142,12 +143,12 @@ public class ClassLoaderTest extends BaseTest {
   }
 
   private <T> RayObject<T> callActorFunction(RayActor<?> rayActor,
-      FunctionDescriptor functionDescriptor, Object[] args, Class<?>[] returnTypes)
+      FunctionDescriptor functionDescriptor, Object[] args, Optional<Class<?>> returnType)
       throws Exception {
     Method callActorFunctionMethod = AbstractRayRuntime.class.getDeclaredMethod("callActorFunction",
-        BaseActor.class, FunctionDescriptor.class, Object[].class, Class[].class);
+        BaseActor.class, FunctionDescriptor.class, Object[].class, Optional.class);
     callActorFunctionMethod.setAccessible(true);
     return (RayObject<T>) callActorFunctionMethod
-        .invoke(TestUtils.getRuntime(), rayActor, functionDescriptor, args, returnTypes);
+        .invoke(TestUtils.getRuntime(), rayActor, functionDescriptor, args, returnType);
   }
 }

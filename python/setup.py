@@ -171,19 +171,19 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.16",
-    "filelock",
-    "jsonschema",
+    "aiohttp",
     "click",
     "colorama",
-    "pyyaml",
-    "redis >= 3.3.2",
-    "protobuf >= 3.8.0",
-    "py-spy >= 0.2.0",
-    "aiohttp",
+    "filelock",
     "google",
     "grpcio",
+    "jsonschema",
     "msgpack >= 0.6.0, < 1.0.0",
+    "numpy >= 1.16",
+    "protobuf >= 3.8.0",
+    "py-spy >= 0.2.0",
+    "pyyaml",
+    "redis >= 3.3.2",
 ]
 
 setup(
