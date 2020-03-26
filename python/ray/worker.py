@@ -1225,9 +1225,7 @@ def connect(node,
             worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
-    elif LOCAL_MODE:
-        pass
-    else:
+    elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
     redis_address, redis_port = node.redis_address.split(":")
