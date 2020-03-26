@@ -25,34 +25,36 @@ namespace ray {
 
 namespace gcs {
 
-class RedisStoreClient : public StoreClient<std::string, std::string, std::string> {
+template <typename Key, typename Data, typename SecondaryKey>
+class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
  public:
-  RedisStoreClient(const RedisClientOptions &options);
+  RedisStoreClient(const RedisClientOptions &options) {
+    redis_client_.reset(new RedisClient(options));
+  }
 
-  virtual ~RedisStoreClient();
+  virtual ~RedisStoreClient() {}
 
   Status Connect(std::shared_ptr<IOServicePool> io_service_pool) override;
 
   void Disconnect() override;
 
-  Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &value, const StatusCallback &callback) override;
+  Status AsyncPut(const std::string &table_name, const Key &key, const Data &value,
+                  const StatusCallback &callback) override;
 
-  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                           const std::string &index_key, const std::string &value,
+  Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
+                           const SecondaryKey &index_key, const Data &value,
                            const StatusCallback &callback) override;
 
-  Status AsyncGet(const std::string &table_name, const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+  Status AsyncGet(const std::string &table_name, const Key &key,
+                  const OptionalItemCallback<Data> &callback) override;
 
-  Status AsyncGetAll(
-      const std::string &table_name,
-      const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
+  Status AsyncGetAll(const std::string &table_name,
+                     const SegmentedCallback<std::pair<Key, Data>> &callback) override;
 
-  Status AsyncDelete(const std::string &table_name, const std::string &key,
+  Status AsyncDelete(const std::string &table_name, const Key &key,
                      const StatusCallback &callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
+  Status AsyncDeleteByIndex(const std::string &table_name, const SecondaryKey &index_key,
                             const StatusCallback &callback) override;
 
  private:
