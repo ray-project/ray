@@ -1,10 +1,12 @@
 from gym.spaces import Discrete, MultiDiscrete, Tuple
+from typing import Union
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    tf_function
+    TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -38,11 +40,11 @@ class Random(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs,
-                               action_dist_class,
-                               model=None,
-                               explore=True,
-                               timestep=None):
+                               distribution_inputs: TensorType,
+                               action_dist_class: type,
+                               model: ModelV2,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
         # Instantiate the distribution object.
         action_dist = action_dist_class(distribution_inputs, model)
         if self.framework == "tf":
@@ -50,16 +52,22 @@ class Random(Exploration):
         else:
             return self.get_torch_exploration_action(action_dist, explore)
 
-    @tf_function(tf)
     def get_tf_exploration_action_op(self, action_dist, explore):
-        if explore:
+        def true_fn():
             action = tf.py_function(self.action_space.sample, [],
                                     self.dtype_sample)
             # Will be unnecessary, once we support batch/time-aware Spaces.
-            action = tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
-        else:
-            action = tf.cast(
+            return tf.expand_dims(tf.cast(action, dtype=self.dtype), 0)
+
+        def false_fn():
+            return tf.cast(
                 action_dist.deterministic_sample(), dtype=self.dtype)
+
+        action = tf.cond(
+            pred=tf.constant(explore, dtype=tf.bool)
+            if isinstance(explore, bool) else explore,
+            true_fn=true_fn,
+            false_fn=false_fn)
 
         # TODO(sven): Move into (deterministic_)sample(logp=True|False)
         if isinstance(action, TupleActions):

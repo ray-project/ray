@@ -2,7 +2,6 @@ package org.ray.api.test;
 
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
-import org.ray.api.annotation.RayRemote;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -11,17 +10,14 @@ import org.testng.annotations.Test;
  */
 public class HelloWorldTest extends BaseTest {
 
-  @RayRemote
   private static String hello() {
     return "hello";
   }
 
-  @RayRemote
   private static String world() {
     return "world!";
   }
 
-  @RayRemote
   private static String merge(String hello, String world) {
     return hello + "," + world;
   }

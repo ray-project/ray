@@ -5,14 +5,12 @@ import java.util.Arrays;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.TaskId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class PlasmaFreeTest extends BaseTest {
 
-  @RayRemote
   private static String hello() {
     return "hello";
   }
@@ -27,11 +25,11 @@ public class PlasmaFreeTest extends BaseTest {
     final boolean result = TestUtils.waitForCondition(() ->
         !TestUtils.getRuntime().getObjectStore()
           .wait(ImmutableList.of(helloId.getId()), 1, 0).get(0), 50);
-    if (TestUtils.isDirectActorCallEnabled()) {
-      // Direct call will not delete object from im-memory store.
-      Assert.assertFalse(result);
-    } else {
+    if (TestUtils.isSingleProcessMode()) {
       Assert.assertTrue(result);
+    } else {
+      // The object will not be deleted under cluster mode.
+      Assert.assertFalse(result);
     }
   }
 

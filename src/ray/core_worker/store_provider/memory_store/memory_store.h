@@ -42,8 +42,9 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  /// \return Status.
-  Status Put(const RayObject &object, const ObjectID &object_id);
+  /// \return Whether the object was put into the memory store. If false, then
+  /// this is because the object was promoted to and stored in plasma instead.
+  bool Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -111,7 +112,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object_id The object to check.
   /// \param[out] in_plasma Set to true if the object was spilled to plasma.
-  /// If this is set to true, Contains() will return false.
+  /// Will only be true if the store contains the object.
   /// \return Whether the store has the object.
   bool Contains(const ObjectID &object_id, bool *in_plasma);
 

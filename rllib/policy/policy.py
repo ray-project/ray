@@ -120,7 +120,7 @@ class Policy(metaclass=ABCMeta):
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
-            clip_actions (bool): should the action be clipped
+            clip_actions (bool): Should actions be clipped?
             explore (bool): Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
@@ -375,6 +375,15 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    @DeveloperAPI
+    def import_model_from_h5(self, import_file):
+        """Imports Policy from local file.
+
+        Arguments:
+            import_file (str): Local readable file.
+        """
+        raise NotImplementedError
+
     def _create_exploration(self, action_space, config):
         """Creates the Policy's Exploration object.
 
@@ -386,8 +395,8 @@ class Policy(metaclass=ABCMeta):
             Exploration,
             config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=action_space,
-            num_workers=config.get("num_workers"),
-            worker_index=config.get("worker_index"),
+            num_workers=config.get("num_workers", 0),
+            worker_index=config.get("worker_index", 0),
             framework=getattr(self, "framework", "tf"))
         # If config is further passed around, it'll contain an already
         # instantiated object.

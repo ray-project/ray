@@ -13,7 +13,7 @@ import LogicalView from "./logical-view/LogicalView";
 import NodeInfo from "./node-info/NodeInfo";
 import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
-import Tune from "./Tune";
+import Tune from "./tune/Tune";
 
 const styles = (theme: Theme) =>
   createStyles({

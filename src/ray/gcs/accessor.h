@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_ACCESSOR_H
 #define RAY_GCS_ACCESSOR_H
 
@@ -17,6 +31,12 @@ namespace gcs {
 class ActorInfoAccessor {
  public:
   virtual ~ActorInfoAccessor() = default;
+
+  /// Get all actor specification from GCS synchronously.
+  ///
+  /// \param actor_table_data_list The container to hold the actor specification.
+  /// \return Status
+  virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
 
   /// Get actor specification from GCS asynchronously.
   ///
@@ -93,10 +113,11 @@ class ActorInfoAccessor {
   /// Get actor checkpoint data from GCS asynchronously.
   ///
   /// \param checkpoint_id The ID of checkpoint to lookup in GCS.
+  /// \param actor_id The ID of actor that this checkpoint belongs to.
   /// \param callback The callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id,
+      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
       const OptionalItemCallback<rpc::ActorCheckpointData> &callback) = 0;
 
   /// Get actor checkpoint id data from GCS asynchronously.

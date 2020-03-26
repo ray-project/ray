@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "raylet_client.h"
 
 #include <inttypes.h>
@@ -178,14 +192,6 @@ raylet::RayletClient::RayletClient(
 }
 
 Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    if (task_spec.ArgByRef(i)) {
-      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
-            << "Passing direct call objects to non-direct tasks is not allowed.";
-      }
-    }
-  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));

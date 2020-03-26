@@ -9,7 +9,7 @@ halfcheetah-appo:
         vtrace: True
         gamma: 0.99
         lambda: 0.95
-        sample_batch_size: 512
+        rollout_fragment_length: 512
         train_batch_size: 4096
         num_workers: 16
         num_gpus: 1

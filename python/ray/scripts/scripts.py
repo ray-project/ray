@@ -268,18 +268,13 @@ def dashboard(cluster_config_file, cluster_name, port):
 @click.option(
     "--internal-config",
     default=None,
-    type=str,
+    type=json.loads,
     help="Do NOT use this. This is for debugging/development purposes ONLY.")
 @click.option(
     "--load-code-from-local",
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
-@click.option(
-    "--use-pickle/--no-use-pickle",
-    is_flag=True,
-    default=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
-    help="Use pickle for serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port, memory,
@@ -287,8 +282,7 @@ def start(node_ip_address, redis_address, address, redis_port,
           head, include_webui, webui_host, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, use_pickle,
-          internal_config):
+          java_worker_options, load_code_from_local, internal_config):
     if redis_address is not None:
         raise DeprecationWarning("The --redis-address argument is "
                                  "deprecated. Please use --address instead.")
@@ -334,7 +328,6 @@ def start(node_ip_address, redis_address, address, redis_port,
         webui_host=webui_host,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        use_pickle=use_pickle,
         _internal_config=internal_config)
     if head:
         # Start Ray on the head node.
@@ -401,7 +394,7 @@ def start(node_ip_address, redis_address, address, redis_port,
             raise Exception("If --head is not passed in, --redis-shard-ports "
                             "is not allowed.")
         if redis_address is None:
-            raise Exception("If --head is not passed in, --redis-address must "
+            raise Exception("If --head is not passed in, --address must "
                             "be provided.")
         if num_redis_shards is not None:
             raise Exception("If --head is not passed in, --num-redis-shards "
@@ -919,7 +912,8 @@ def timeline(address):
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = "/tmp/ray-timeline-{}.json".format(time)
+    filename = os.path.join(ray.utils.get_user_temp_dir(),
+                            "ray-timeline-{}.json".format(time))
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))
@@ -951,8 +945,38 @@ def stat(address):
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         reply = stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest(), timeout=2.0)
+            node_manager_pb2.GetNodeStatsRequest(include_memory_info=False),
+            timeout=2.0)
         print(reply)
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def memory(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+    print(ray.internal.internal_api.memory_summary())
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def globalgc(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+    ray.internal.internal_api.global_gc()
+    print("Triggered gc.collect() on all workers.")
 
 
 cli.add_command(dashboard)
@@ -972,6 +996,8 @@ cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(stat)
+cli.add_command(memory)
+cli.add_command(globalgc)
 cli.add_command(timeline)
 cli.add_command(project_cli)
 cli.add_command(session_cli)

@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package ray.rpc;
@@ -99,10 +113,8 @@ message TaskSpec {
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 15;
-  // Whether this task is a direct call task.
-  bool is_direct_call = 16;
   // Number of times this task may be retried on worker failure.
-  int32 max_retries = 17;
+  int32 max_retries = 16;
 }
 
 // Argument in the task.
@@ -132,14 +144,12 @@ message ActorCreationTaskSpec {
   // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
   // `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1`, etc) in the worker command.
   repeated string dynamic_worker_options = 4;
-  // Whether direct actor call is used.
-  bool is_direct_call = 5;
   // The max number of concurrent calls for direct call actors.
-  int32 max_concurrency = 6;
+  int32 max_concurrency = 5;
   // Whether the actor is persistent
-  bool is_detached = 7;
+  bool is_detached = 6;
   // Whether the actor use async actor calls
-  bool is_asyncio = 8;
+  bool is_asyncio = 7;
 }
 
 // Task spec of an actor task.
@@ -210,6 +220,24 @@ message ViewData {
   repeated Measure measures = 2;
 }
 
+// Debug info for a referenced object.
+message ObjectRefInfo {
+  // Object id that is referenced.
+  bytes object_id = 1;
+  // Language call site of the object reference (i.e., file and line number).
+  string call_site = 2;
+  // Size of the object if this core worker is the owner, otherwise -1.
+  int64 object_size = 3;
+  // Number of local references to the object.
+  int64 local_ref_count = 4;
+  // Number of references in submitted tasks.
+  int64 submitted_task_ref_count = 5;
+  // Object ids that contain this object.
+  repeated bytes contained_in_owned = 6;
+  // True if this object is pinned in memory by the current process.
+  bool pinned_in_memory = 7;
+}
+
 // Debug info returned from the core worker.
 message CoreWorkerStats {
   // Debug string of the currently executing task.
@@ -240,4 +268,6 @@ message CoreWorkerStats {
   int32 num_executed_tasks = 14;
   // Actor constructor.
   string actor_title = 15;
+  // Local reference table.
+  repeated ObjectRefInfo object_refs = 16;
 }

@@ -2,16 +2,16 @@
 
 It supports both traced and non-traced eager execution modes."""
 
-import logging
 import functools
+import logging
 import numpy as np
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
+    ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -332,8 +332,15 @@ def build_eager_tf_policy(name,
             if action_sampler_fn is not None:
                 state_out = []
                 action, logp = action_sampler_fn(
-                    self, self.model, input_dict, self.observation_space,
-                    self.action_space, explore, self.config, timestep)
+                    self,
+                    self.model,
+                    input_dict,
+                    self.observation_space,
+                    self.action_space,
+                    explore,
+                    self.config,
+                    timestep=timestep
+                    if timestep is not None else self.global_timestep)
             # Use Exploration object.
             else:
                 with tf.variable_creator_scope(_disallow_var_creation):
@@ -343,9 +350,9 @@ def build_eager_tf_policy(name,
                         model_out,
                         self.dist_class,
                         self.model,
-                        explore=explore,
                         timestep=timestep
-                        if timestep is not None else self.global_timestep)
+                        if timestep is not None else self.global_timestep,
+                        explore=explore)
 
             extra_fetches = {}
             if logp is not None:
@@ -538,18 +545,14 @@ def build_eager_tf_policy(name,
             action_dtype, action_shape = ModelCatalog.get_action_shape(
                 self.action_space)
             dummy_batch = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(
-                    np.array([self.observation_space.sample()])),
-                SampleBatch.NEXT_OBS: tf.convert_to_tensor(
-                    np.array([self.observation_space.sample()])),
-                SampleBatch.DONES: tf.convert_to_tensor(
-                    np.array([False], dtype=np.bool)),
-                SampleBatch.ACTIONS: tf.convert_to_tensor(
-                    np.zeros(
-                        (1, ) + action_shape[1:],
-                        dtype=action_dtype.as_numpy_dtype())),
-                SampleBatch.REWARDS: tf.convert_to_tensor(
-                    np.array([0], dtype=np.float32)),
+                SampleBatch.CUR_OBS: np.array(
+                    [self.observation_space.sample()]),
+                SampleBatch.NEXT_OBS: np.array(
+                    [self.observation_space.sample()]),
+                SampleBatch.DONES: np.array([False], dtype=np.bool),
+                SampleBatch.ACTIONS: tf.nest.map_structure(
+                    lambda c: np.array([c]), self.action_space.sample()),
+                SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
             if obs_include_prev_action_reward:
                 dummy_batch.update({
@@ -561,8 +564,11 @@ def build_eager_tf_policy(name,
                 dummy_batch["state_out_{}".format(i)] = h
 
             if self._state_in:
-                dummy_batch["seq_lens"] = tf.convert_to_tensor(
-                    np.array([1], dtype=np.int32))
+                dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
+
+            # Convert everything to tensors.
+            dummy_batch = tf.nest.map_structure(tf.convert_to_tensor,
+                                                dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.
             def tile_to(tensor, n):
@@ -570,10 +576,9 @@ def build_eager_tf_policy(name,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])
 
             if get_batch_divisibility_req:
-                dummy_batch = {
-                    k: tile_to(v, get_batch_divisibility_req(self))
-                    for k, v in dummy_batch.items()
-                }
+                dummy_batch = tf.nest.map_structure(
+                    lambda c: tile_to(c, get_batch_divisibility_req(self)),
+                    dummy_batch)
 
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
@@ -590,10 +595,8 @@ def build_eager_tf_policy(name,
             # overwrite any tensor state from that call)
             self.model.from_batch(dummy_batch)
 
-            postprocessed_batch = {
-                k: tf.convert_to_tensor(v)
-                for k, v in postprocessed_batch.items()
-            }
+            postprocessed_batch = tf.nest.map_structure(
+                lambda c: tf.convert_to_tensor(c), postprocessed_batch.data)
 
             loss_fn(self, self.model, self.dist_class, postprocessed_batch)
             if stats_fn:

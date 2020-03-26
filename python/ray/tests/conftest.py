@@ -22,6 +22,8 @@ def get_default_fixure_internal_config():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
+        "object_store_full_max_retries": 3,
+        "object_store_full_initial_delay_ms": 100,
     })
     return internal_config
 

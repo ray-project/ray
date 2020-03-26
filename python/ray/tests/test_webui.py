@@ -35,4 +35,7 @@ def test_get_webui(shutdown_only):
 if __name__ == "__main__":
     import pytest
     import sys
+    import os
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
     sys.exit(pytest.main(["-v", __file__]))

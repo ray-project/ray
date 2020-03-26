@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef RAY_GCS_REDIS_GCS_CLIENT_H
 #define RAY_GCS_REDIS_GCS_CLIENT_H
 
@@ -64,6 +78,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   /// The following xxx_table methods implement the Accessor interfaces.
   /// Implements the Actors() interface.
+  LogBasedActorTable &log_based_actor_table();
   ActorTable &actor_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
@@ -99,6 +114,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
+  std::unique_ptr<LogBasedActorTable> log_based_actor_table_;
   std::unique_ptr<ActorTable> actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;

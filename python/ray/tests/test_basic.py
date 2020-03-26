@@ -23,6 +23,17 @@ from ray.exceptions import RayTimeoutError
 logger = logging.getLogger(__name__)
 
 
+def is_named_tuple(cls):
+    """Return True if cls is a namedtuple and False otherwise."""
+    b = cls.__bases__
+    if len(b) != 1 or b[0] != tuple:
+        return False
+    f = getattr(cls, "_fields", None)
+    if not isinstance(f, tuple):
+        return False
+    return all(type(n) == str for n in f)
+
+
 # https://github.com/ray-project/ray/issues/6662
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)
@@ -143,6 +154,17 @@ def test_background_tasks_with_max_calls(shutdown_only):
     # wait for g to finish before exiting.
     ray.get([x[0] for x in nested])
 
+    @ray.remote(max_calls=1, max_retries=0)
+    def f():
+        return os.getpid(), g.remote()
+
+    nested = ray.get([f.remote() for _ in range(10)])
+    while nested:
+        pid, g_id = nested.pop(0)
+        ray.get(g_id)
+        del g_id
+        ray.test_utils.wait_for_pid_to_exit(pid)
+
 
 def test_fair_queueing(shutdown_only):
     ray.init(
@@ -169,7 +191,7 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
-def complex_serialization(use_pickle):
+def test_complex_serialization(ray_start_regular):
     def assert_equal(obj1, obj2):
         module_numpy = (type(obj1).__module__ == np.__name__
                         or type(obj2).__module__ == np.__name__)
@@ -208,8 +230,7 @@ def complex_serialization(use_pickle):
                                                 obj1, obj2))
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
-        elif (ray.serialization.is_named_tuple(type(obj1))
-              or ray.serialization.is_named_tuple(type(obj2))):
+        elif (is_named_tuple(type(obj1)) or is_named_tuple(type(obj2))):
             assert len(obj1) == len(obj2), (
                 "Objects {} and {} are named "
                 "tuples with different lengths.".format(obj1, obj2))
@@ -369,15 +390,6 @@ def complex_serialization(use_pickle):
     assert ray.get(ray.put(s)).readline() == line
 
 
-def test_complex_serialization(ray_start_regular):
-    complex_serialization(use_pickle=False)
-
-
-def test_complex_serialization_with_pickle(shutdown_only):
-    ray.init(use_pickle=True)
-    complex_serialization(use_pickle=True)
-
-
 def test_numpy_serialization(ray_start_regular):
     array = np.zeros(314)
     from ray.cloudpickle import dumps
@@ -421,8 +433,6 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
             print(self.constant)
 
     constant = MyNumpyConstant(123)
-    ray.register_custom_serializer(type(constant), use_pickle=True)
-
     repr_orig = repr(constant)
     repr_ser = repr(ray.get(ray.put(constant)))
     assert repr_orig == repr_ser
@@ -515,16 +525,9 @@ def test_ray_recursive_objects(ray_start_regular):
     # Create a list of recursive objects.
     recursive_objects = [lst, a1, a2, a3, d1]
 
-    if ray.worker.global_worker.use_pickle:
-        # Serialize the recursive objects.
-        for obj in recursive_objects:
-            ray.put(obj)
-    else:
-        # Check that exceptions are thrown when we serialize the recursive
-        # objects.
-        for obj in recursive_objects:
-            with pytest.raises(Exception):
-                ray.put(obj)
+    # Serialize the recursive objects.
+    for obj in recursive_objects:
+        ray.put(obj)
 
 
 def test_reducer_override_no_reference_cycle(ray_start_regular):
@@ -647,7 +650,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-def custom_serializers():
+def test_custom_serializers(ray_start_regular):
     class Foo:
         def __init__(self):
             self.x = 3
@@ -675,30 +678,6 @@ def custom_serializers():
         return Bar()
 
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
-
-
-def test_custom_serializers(ray_start_regular):
-    custom_serializers()
-
-
-def test_custom_serializers_with_pickle(shutdown_only):
-    ray.init(use_pickle=True)
-    custom_serializers()
-
-    class Foo:
-        def __init__(self):
-            self.x = 4
-
-    # Test the pickle serialization backend without serializer.
-    # NOTE: 'use_pickle' here is different from 'use_pickle' in
-    # ray.init
-    ray.register_custom_serializer(Foo, use_pickle=True)
-
-    @ray.remote
-    def f():
-        return Foo()
-
-    assert type(ray.get(f.remote())) == Foo
 
 
 def test_serialization_final_fallback(ray_start_regular):

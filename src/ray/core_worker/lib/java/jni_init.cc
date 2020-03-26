@@ -1,3 +1,17 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/core_worker/lib/java/jni_utils.h"
 
 jclass java_boolean_class;
@@ -50,8 +64,6 @@ jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
-jfieldID java_base_task_options_use_direct_call;
-jfieldID java_base_task_options_default_use_direct_call;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_max_reconstructions;
@@ -155,10 +167,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
-  java_base_task_options_use_direct_call =
-      env->GetFieldID(java_base_task_options_class, "useDirectCall", "Z");
-  java_base_task_options_default_use_direct_call =
-      env->GetStaticFieldID(java_base_task_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
 
   java_actor_creation_options_class =
       LoadClass(env, "org/ray/api/options/ActorCreationOptions");
