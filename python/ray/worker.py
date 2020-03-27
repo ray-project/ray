@@ -263,7 +263,6 @@ class Worker:
                 "call 'put' on it (or return it).")
 
         if self.mode == LOCAL_MODE:
-            # TODO(ilr): Figure out how to make this work
             assert object_id is None, ("Local Mode does not support "
                                        "inserting with an objectID")
 
