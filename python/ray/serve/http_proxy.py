@@ -1,4 +1,3 @@
-import resource
 import socket
 
 import uvicorn
@@ -9,12 +8,6 @@ from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 
 from urllib.parse import parse_qs
-
-
-def ensure_open_files_limit(soft_limit=1024 * 80):
-    _, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    soft = soft_limit if soft_limit <= hard else hard
-    resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
 
 
 class HTTPProxy:
@@ -168,10 +161,6 @@ class HTTPProxyActor:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((host, port))
         sock.set_inheritable(True)
-
-        # Make sure we have enough file descriptors
-        # to support concurrent connections.
-        ensure_open_files_limit()
 
         config = uvicorn.Config(self.app, lifespan="on", access_log=False)
         server = uvicorn.Server(config=config)
