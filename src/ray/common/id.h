@@ -455,7 +455,7 @@ template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
   RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
       << "expected size is " << T::Size() << ", but got " << binary.size();
-  T t = T::Nil();
+  T t;
   std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;
 }
