@@ -3,9 +3,9 @@ cluster_name: sgd-pytorch
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 1
-initial_workers: 1
-max_workers: 1
+min_workers: 2
+initial_workers: 2
+max_workers: 2
 
 target_utilization_fraction: 0.9
 
@@ -32,6 +32,8 @@ head_node:
     # KeyName: ...
     InstanceMarketOptions:
         MarketType: spot
+        SpotOptions:
+            BlockDurationMinutes: 360
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -46,6 +48,8 @@ worker_nodes:
     # KeyName: ...
     InstanceMarketOptions:
         MarketType: spot
+        SpotOptions:
+            BlockDurationMinutes: 360
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:

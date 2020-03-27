@@ -322,11 +322,11 @@ class TorchTrainer:
             ]
 
             self.local_worker.setup(address, 0, num_workers)
-            self.local_worker.set_reporters(
-                [h.create_reporter() for h in self.handlers])
-
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_setups)
+
+            self.local_worker.set_reporters(
+                [h.create_reporter() for h in self.handlers])
             ray.get(remote_reporter_sets)
 
     def train(self,
@@ -395,6 +395,7 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
+            h.prepare_for_retry()
             self._resize_workers(checkpoint=checkpoint)
             logger.info("Retrying training step with %d workers." %
                         len(self.remote_workers) + 1)
@@ -429,10 +430,17 @@ class TorchTrainer:
             w.train_epoch.remote(**params) for w in self.remote_workers
         ]
 
-        local_worker_stats = self.local_worker.train_epoch(**params)
+        try:
+            local_worker_stats = self.local_worker.train_epoch(**params)
+        except RuntimeError as err:
+            print(err)
+            return False, None
 
         success = check_for_failure(remote_worker_stats)
-        return success, [local_worker_stats] + ray.get(remote_worker_stats)
+        if success:
+            return success, [local_worker_stats] + ray.get(remote_worker_stats)
+
+        return success, None
 
     def apply_all_workers(self, fn):
         """Run a function on all operators on the workers.
@@ -571,7 +579,7 @@ class TorchTrainer:
         time.sleep(1)
         for i in range(max_retries):
             resources = ray.available_resources()
-            new_workers = min(resources.get("CPU", 0), self.max_replicas - 1)
+            new_workers = min(resources.get("CPU", 0), self.max_replicas)
             if self.use_gpu:
                 new_workers = min(resources.get("GPU", 0), new_workers)
             if new_workers:
@@ -593,7 +601,7 @@ class TorchTrainer:
         if past_cooldown and worker_gap:
             resources = ray.available_resources()
             potential_workers = min(
-                resources.get("CPU", 0), self.max_replicas - 1)
+                resources.get("CPU", 0), self.max_replicas)
             if self.use_gpu:
                 potential_workers = min(
                     resources.get("GPU", 0), potential_workers)

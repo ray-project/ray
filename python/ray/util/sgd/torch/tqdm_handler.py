@@ -57,3 +57,7 @@ class TqdmHandler:
     def record_train_info(self, info, num_steps):
         self.train_info = info
         self.num_steps = num_steps
+
+    def prepare_for_retry(self):
+        self.batch_pbar.close()
+        self.batch_pbar = None
