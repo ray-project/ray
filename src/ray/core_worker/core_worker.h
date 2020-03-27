@@ -139,7 +139,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TOOD(ilr): better way of keeping an object from being deleted
-    if (ref_counting_enabled_ && !local_mode_enabled_) {
+    if (ref_counting_enabled_ && !is_local_mode_) {
       memory_store_->Delete(deleted);
     }
   }
@@ -253,13 +253,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
   /// \param[in] owner_address Address of the owner of the object who will be contacted by
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
-  /// \param[in] data of the object to be written (for local_mode).
-  /// \param[in] metadata Metadata of the object to be written (for local_mode).
   /// \return Status.
   Status Seal(const ObjectID &object_id, bool pin_object,
-              const absl::optional<rpc::Address> &owner_address = absl::nullopt,
-              const absl::optional<std::shared_ptr<Buffer>> &data = absl::nullopt,
-              const absl::optional<std::shared_ptr<Buffer>> &metadata = absl::nullopt);
+              const absl::optional<rpc::Address> &owner_address = absl::nullopt);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -699,7 +695,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const bool ref_counting_enabled_;
 
   /// Is local mode being used.
-  const bool local_mode_enabled_;
+  const bool is_local_mode_;
 
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
