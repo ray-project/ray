@@ -29,25 +29,6 @@ namespace ray {
 // overhead for the very simple timeout logic we currently have.
 int64_t kLongTimeout = 1024 * 1024 * 1024;
 
-class MockPinnedObjects : public PinnedObjectsInterface {
- public:
-  MockPinnedObjects() {}
-
-  void MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_returns_in_scope,
-                                 const ClientID &node_id) override {
-    for (const auto &return_id : plasma_returns_in_scope) {
-      RAY_CHECK(pinned_objects.emplace(return_id, node_id).second);
-    }
-  }
-
-  const bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned) override {
-    *pinned = pinned_objects.count(object_id) > 0;
-    return true;
-  }
-
-  std::unordered_map<ObjectID, ClientID> pinned_objects;
-};
-
 class MockTaskResubmitter : public TaskResubmissionInterface {
  public:
   MockTaskResubmitter() {}
@@ -119,14 +100,16 @@ class MockObjectDirectory {
   std::unordered_map<ObjectID, std::vector<rpc::Address>> locations;
 };
 
-class ObjectRecoveryManagerUnitTest : public ::testing::Test {
+class ObjectRecoveryManagerTest : public ::testing::Test {
  public:
-  ObjectRecoveryManagerUnitTest()
+  ObjectRecoveryManagerTest()
       : object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
-        pinned_objects_(std::make_shared<MockPinnedObjects>()),
+        ref_counter_(std::make_shared<ReferenceCounter>(
+            rpc::Address(), /*distributed_ref_counting_enabled=*/true,
+            /*lineage_pinning_enabled=*/true)),
         manager_(rpc::Address(),
                  [&](const std::string &ip, int port) { return raylet_client_; },
                  raylet_client_,
@@ -134,7 +117,7 @@ class ObjectRecoveryManagerUnitTest : public ::testing::Test {
                    object_directory_->AsyncGetLocations(object_id, callback);
                    return Status::OK();
                  },
-                 task_resubmitter_, pinned_objects_, memory_store_,
+                 task_resubmitter_, ref_counter_, memory_store_,
                  [&](const ObjectID &object_id, bool pin_object) {
                    RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
                    failed_reconstructions_[object_id] = pin_object;
@@ -156,12 +139,13 @@ class ObjectRecoveryManagerUnitTest : public ::testing::Test {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<MockRayletClient> raylet_client_;
   std::shared_ptr<MockTaskResubmitter> task_resubmitter_;
-  std::shared_ptr<MockPinnedObjects> pinned_objects_;
+  std::shared_ptr<ReferenceCounter> ref_counter_;
   ObjectRecoveryManager manager_;
 };
 
-TEST_F(ObjectRecoveryManagerUnitTest, TestNoReconstruction) {
+TEST_F(ObjectRecoveryManagerTest, TestNoReconstruction) {
   ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0);
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_TRUE(object_directory_->Flush() == 1);
@@ -169,8 +153,9 @@ TEST_F(ObjectRecoveryManagerUnitTest, TestNoReconstruction) {
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }
 
-TEST_F(ObjectRecoveryManagerUnitTest, TestPinNewCopy) {
+TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0);
   std::vector<rpc::Address> addresses({rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
@@ -181,8 +166,9 @@ TEST_F(ObjectRecoveryManagerUnitTest, TestPinNewCopy) {
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }
 
-TEST_F(ObjectRecoveryManagerUnitTest, TestReconstruction) {
+TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0);
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
