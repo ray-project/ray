@@ -77,7 +77,7 @@ setup_commands:
 
 file_mounts: {
     # This should point to ray/python/ray/util/sgd.
-    ~/anaconda3/lib/python3.6/site-packages/ray/util/sgd: ../../../sgd,
+    # ~/sgd: ../../../sgd,
 }
 
 # Custom commands that will be run on the head node after common setup.
