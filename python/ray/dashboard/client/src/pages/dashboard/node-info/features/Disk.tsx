@@ -1,11 +1,11 @@
-import Typography from "@material-ui/core/Typography";
+import { Typography } from "@material-ui/core";
 import React from "react";
 import { formatUsage } from "../../../../common/formatUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const ClusterDisk: ClusterFeatureComponent = ({ nodes }) => {
