@@ -506,7 +506,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     policy=p,
                     environment=base_env,
                     episode=episode,
-                    tf_sess=getattr(p, "_sess", None))
+                    tf_sess=tf_sess)
             # Call custom on_episode_end callback.
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
