@@ -272,7 +272,9 @@ class WorkerSet:
             _fake_sampler=config.get("_fake_sampler", False))
 
         # Check for correct policy class, if `use_pytorch` explicitly set.
-        expected_class = TorchPolicy if config["use_pytorch"] else Policy
-        assert issubclass(type(worker.get_policy()), expected_class)
+        # Do not check for remote workers (should behave the same).
+        if type(worker) is RolloutWorker:
+            expected_class = TorchPolicy if config["use_pytorch"] else Policy
+            assert issubclass(type(worker.get_policy()), expected_class)
 
         return worker
