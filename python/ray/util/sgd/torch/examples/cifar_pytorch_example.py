@@ -92,7 +92,7 @@ def train_example(num_workers=1,
         info["epoch_idx"] = i
         info["num_epochs"] = num_epochs
         # Increase `max_retries` to turn on fault tolerance.
-        stats = trainer1.train(max_retries=0, info=info)
+        stats = trainer1.train(max_retries=1, info=info)
         pbar.set_postfix(dict(loss=stats["mean_train_loss"]))
 
     print(trainer1.validate())

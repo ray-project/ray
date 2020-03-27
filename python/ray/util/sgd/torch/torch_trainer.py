@@ -571,9 +571,17 @@ class TorchTrainer:
         self.local_worker = None
         self.remote_workers = []
 
+    def _reset(self):
+        self.local_worker.shutdown(cleanup=False)
+        for worker in self.remote_workers:
+            logger.warning("Killing worker {}.".format(worker))
+            worker.__ray_kill__()
+        self.local_worker = None
+        self.remote_workers = []
+
     def _resize_workers(self, checkpoint, max_retries=10):
         # check available resources
-        self.shutdown(force=True)
+        self._reset()
         assert checkpoint, "Cannot restore without checkpoint."
 
         time.sleep(1)
@@ -615,8 +623,8 @@ class TorchTrainable(Trainable):
         return Resources(
             cpu=1,
             gpu=int(config["use_gpu"]),
-            extra_cpu=remote_worker_count,
-            extra_gpu=int(config["use_gpu"]) * remote_worker_count)
+            extra_cpu=int(remote_worker_count),
+            extra_gpu=int(int(config["use_gpu"]) * remote_worker_count))
 
     def _setup(self, config):
         self._trainer = TorchTrainer(**config)
