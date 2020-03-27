@@ -7,7 +7,7 @@ namespace gcs {
 RedisMessagePublisher::RedisMessagePublisher(const RedisClientOptions &options)
     : redis_client_(new RedisClient(options)) {}
 
-Status RedisMessagePublisher::Connect(std::shared_ptr<IOServicePool> io_service_pool) {
+Status RedisMessagePublisher::Init(std::shared_ptr<IOServicePool> io_service_pool) {
   auto io_services = io_service_pool->GetAll();
   Status status = redis_client_->Connect(io_services);
   RAY_LOG(INFO) << "RedisMessagePublisher::Connect finished with status "
@@ -15,7 +15,7 @@ Status RedisMessagePublisher::Connect(std::shared_ptr<IOServicePool> io_service_
   return status;
 }
 
-void RedisMessagePublisher::Disconnect() {
+void RedisMessagePublisher::Shutdown() {
   redis_client_->Disconnect();
   RAY_LOG(INFO) << "RedisMessagePublisher disconnected.";
 }
@@ -35,13 +35,6 @@ Status RedisMessagePublisher::PublishMessage(const std::string &channel,
   // Select shard context by channel.
   auto shard_context = redis_client_->GetShardContext(channel);
   return shard_context->RunArgvAsync(args, pub_callback);
-}
-
-template <typename Message>
-Status RedisMessagePublisher::PublishMessage(const std::string &channel,
-                                             const Message &message,
-                                             const StatusCallback &callback) {
-  return PublishMessage(channel, message.SerilizeToString(), callback);
 }
 
 }  // namespace gcs

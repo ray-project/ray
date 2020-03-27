@@ -15,15 +15,11 @@ class MessagePublisher {
  public:
   virtual ~MessagePublisher() {}
 
-  Status Connect(std::shared_ptr<IOServicePool> io_service_pool) = 0;
+  virtual Status Init(std::shared_ptr<IOServicePool> io_service_pool) = 0;
 
-  void Disconnect() = 0;
+  virtual void Shutdown() = 0;
 
   virtual Status PublishMessage(const std::string &channel, const std::string &message,
-                                const StatusCallback &callback) = 0;
-
-  template <typename Message>
-  virtual Status PublishMessage(const std::string &channel, const Message &message,
                                 const StatusCallback &callback) = 0;
 
  protected:

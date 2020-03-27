@@ -10,17 +10,13 @@ namespace gcs {
 
 class RedisMessagePublisher : public MessagePublisher {
  public:
-  RedisMessagePublisher(std::shared_ptr<RedisClient> redis_client);
+  RedisMessagePublisher(const RedisClientOptions &options);
 
-  Status Connect(std::shared_ptr<IOServicePool> io_service_pool) override;
+  Status Init(std::shared_ptr<IOServicePool> io_service_pool) override;
 
-  void Disconnect() override;
+  void Shutdown() override;
 
   Status PublishMessage(const std::string &channel, const std::string &message,
-                        const StatusCallback &callback) override;
-
-  template <typename Message>
-  Status PublishMessage(const std::string &channel, const Message &message,
                         const StatusCallback &callback) override;
 
  private:
