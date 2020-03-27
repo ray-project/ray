@@ -4,7 +4,7 @@ import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const ClusterRAM: ClusterFeatureComponent = ({ nodes }) => {
