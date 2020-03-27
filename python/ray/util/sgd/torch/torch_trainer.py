@@ -315,16 +315,15 @@ class TorchTrainer:
                 worker.setup.remote(address, i + 1, num_workers)
                 for i, worker in enumerate(self.remote_workers)
             ]
+            self.local_worker.setup(address, 0, num_workers)
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_setups)
+
             remote_reporter_sets = [
                 w.set_reporters.remote(
                     [h.create_reporter() for h in self.handlers])
                 for w in self.remote_workers
             ]
-
-            self.local_worker.setup(address, 0, num_workers)
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_setups)
-
             self.local_worker.set_reporters(
                 [h.create_reporter() for h in self.handlers])
             ray.get(remote_reporter_sets)
@@ -553,17 +552,18 @@ class TorchTrainer:
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
-        self.local_worker.shutdown()
         if not force:
             cleanup = [
                 worker.shutdown.remote() for worker in self.remote_workers
             ]
+            self.local_worker.shutdown()
             ray.get(cleanup)
             [
                 worker.__ray_terminate__.remote()
                 for worker in self.remote_workers
             ]
         else:
+            self.local_worker.shutdown()
             for worker in self.remote_workers:
                 logger.warning("Killing worker {}.".format(worker))
                 worker.__ray_kill__()
