@@ -41,7 +41,7 @@ class Exploration:
                             explore=None,
                             tf_sess=None,
                             **kwargs):
-        """May be overridden to perform preparations before a forward pass.
+        """Hook for preparations before policy.compute_actions() is called.
 
         Args:
             obs_batch (dict): The observations batch.
