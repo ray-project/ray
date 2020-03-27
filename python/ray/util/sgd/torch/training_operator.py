@@ -148,13 +148,12 @@ class TrainingOperator:
                     desc = "{}/{}e".format(info["epoch_idx"] + 1,
                                            info["num_epochs"])
                 else:
-                    desc = "{}e".format(info["epoch_idx"]+1)
+                    desc = "{}e".format(info["epoch_idx"] + 1)
             _progress_bar = tqdm(
                 total=info[NUM_STEPS] or len(self.train_loader),
                 desc=desc,
                 unit="batch",
                 leave=False)
-
 
         metric_meters = AverageMeterCollection()
 

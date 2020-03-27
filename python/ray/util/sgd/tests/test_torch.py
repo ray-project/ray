@@ -507,7 +507,7 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
 
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError as err:
+        except RuntimeError:
             return False, None
 
         success = check_for_failure(remote_worker_stats)
@@ -551,7 +551,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
 
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError as err:
+        except RuntimeError:
             return False, None
 
         success = check_for_failure(remote_worker_stats)
@@ -601,7 +601,7 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
 
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError as err:
+        except RuntimeError:
             return False, None
 
         success = check_for_failure(remote_worker_stats)
