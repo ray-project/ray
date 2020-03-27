@@ -566,7 +566,7 @@ class TorchTrainer:
             self.local_worker.shutdown()
             for worker in self.remote_workers:
                 logger.warning("Killing worker {}.".format(worker))
-                worker.__ray_kill__()
+                ray.kill(worker)
 
         self.local_worker = None
         self.remote_workers = []
@@ -576,7 +576,7 @@ class TorchTrainer:
         self.local_worker.shutdown(cleanup=False)
         for worker in self.remote_workers:
             logger.warning("Killing worker {}.".format(worker))
-            worker.__ray_kill__()
+            ray.kill(worker)
         self.local_worker = None
         self.remote_workers = []
 
