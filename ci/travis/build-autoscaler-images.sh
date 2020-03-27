@@ -13,7 +13,7 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
 
     docker build -q -t rayproject/base-deps docker/base-deps
 
-    wheel="ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl"
+    wheel=$(cd $ROOT_DIR/.whl; ls | grep cp36m-manylinux)
     commit_sha=$(echo $TRAVIS_COMMIT | head -c 6)
     cp -r $ROOT_DIR/.whl $ROOT_DIR/docker/autoscaler/.whl
 
@@ -26,8 +26,10 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
 
     # We have a branch build, e.g. release/v0.7.0
     if [[ "$TRAVIS_BRANCH" != "master" ]]; then
-       docker tag rayproject/autoscaler:$commit_sha rayproject/autoscaler:$TRAVIS_BRANCH
-       docker push rayproject/autoscaler:$TRAVIS_BRANCH
+       # Replace / in branch name to - so it is legal tag name
+       normalized_branch_name=$(echo $TRAVIS_BRANCH | sed -e "s/\//-/")
+       docker tag rayproject/autoscaler:$commit_sha rayproject/autoscaler:$normalized_branch_name
+       docker push rayproject/autoscaler:$normalized_branch_name
     else
        docker tag rayproject/autoscaler:$commit_sha rayproject/autoscaler:latest
        docker push rayproject/autoscaler:latest

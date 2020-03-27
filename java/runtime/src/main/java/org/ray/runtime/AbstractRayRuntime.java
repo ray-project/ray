@@ -5,11 +5,15 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
+import org.ray.api.function.PyActorClass;
+import org.ray.api.function.PyActorMethod;
+import org.ray.api.function.PyRemoteFunction;
 import org.ray.api.function.RayFunc;
 import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
@@ -17,7 +21,6 @@ import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtimecontext.RuntimeContext;
-import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.RuntimeContextImpl;
 import org.ray.runtime.context.WorkerContext;
@@ -98,12 +101,33 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RayObject callActor(RayFunc func, RayActor<?> actor, Object[] args) {
+  public RayObject call(PyRemoteFunction pyRemoteFunction, Object[] args,
+                        CallOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyRemoteFunction.moduleName,
+        "",
+        pyRemoteFunction.functionName);
+    // Python functions always have a return value, even if it's `None`.
+    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
+  }
+
+  @Override
+  public RayObject callActor(RayActor<?> actor, RayFunc func, Object[] args) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
     int numReturns = func instanceof RayFuncVoid ? 0 : 1;
     return callActorFunction(actor, functionDescriptor, args, numReturns);
+  }
+
+  @Override
+  public RayObject callActor(RayPyActor pyActor, PyActorMethod pyActorMethod, Object... args) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
+        pyActor.getClassName(), pyActorMethod.methodName);
+    // Python functions always have a return value, even if it's `None`.
+    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
   }
 
   @Override
@@ -116,6 +140,17 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return (RayActor<T>) createActorImpl(functionDescriptor, args, options);
   }
 
+  @Override
+  public RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
+                                ActorCreationOptions options) {
+    checkPyArguments(args);
+    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
+        pyActorClass.moduleName,
+        pyActorClass.className,
+        PYTHON_INIT_METHOD_NAME);
+    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
+  }
+
   private void checkPyArguments(Object[] args) {
     for (Object arg : args) {
       Preconditions.checkArgument(
@@ -123,34 +158,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
           "Python argument can only be a RayPyActor or a byte array, not {}.",
           arg.getClass().getName());
     }
-  }
-
-  @Override
-  public RayObject callPy(String moduleName, String functionName, Object[] args,
-      CallOptions options) {
-    checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, "",
-        functionName);
-    // Python functions always have a return value, even if it's `None`.
-    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
-  }
-
-  @Override
-  public RayObject callPy(RayPyActor pyActor, String functionName, Object... args) {
-    checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
-        pyActor.getClassName(), functionName);
-    // Python functions always have a return value, even if it's `None`.
-    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
-  }
-
-  @Override
-  public RayPyActor createPyActor(String moduleName, String className, Object[] args,
-      ActorCreationOptions options) {
-    checkPyArguments(args);
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, className,
-        PYTHON_INIT_METHOD_NAME);
-    return (RayPyActor) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override
@@ -166,7 +173,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, int numReturns, CallOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage(), /*isDirectCall*/false);
+        .wrap(args, functionDescriptor.getLanguage());
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
         functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -177,10 +184,10 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
   }
 
-  private RayObject callActorFunction(RayActor rayActor,
+  private RayObject callActorFunction(BaseActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage(), isDirectCall(rayActor));
+        .wrap(args, functionDescriptor.getLanguage());
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
         functionDescriptor, functionArgs, numReturns, null);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -191,22 +198,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
   }
 
-  private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
+  private BaseActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
     List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage(),  /*isDirectCall*/false);
+        .wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
-    RayActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
+    BaseActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
-  }
-
-  private boolean isDirectCall(RayActor rayActor) {
-    if (rayActor instanceof NativeRayActor) {
-      return ((NativeRayActor) rayActor).isDirectCallActor();
-    }
-    return false;
   }
 
   public WorkerContext getWorkerContext() {

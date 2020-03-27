@@ -1,6 +1,35 @@
 RLlib Algorithms
 ================
 
+.. tip::
+
+    Check out the `environments <rllib-env.html>`__ page to learn more about different environment types.
+
+Feature Compatibility Matrix
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+=============  =======================  ==================  ===========  ===========================
+Algorithm      Discrete Actions         Continuous          Multi-Agent  Model Support
+=============  =======================  ==================  ===========  ===========================
+A2C, A3C        **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PPO, APPO       **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+PG              **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+IMPALA          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_, `+autoreg`_
+DQN, Rainbow    **Yes** `+parametric`_  No                  **Yes**
+DDPG, TD3       No                      **Yes**             **Yes**
+APEX-DQN        **Yes** `+parametric`_  No                  **Yes**
+APEX-DDPG       No                      **Yes**             **Yes**
+SAC             **Yes**                 **Yes**             **Yes**
+ES              **Yes**                 **Yes**             No
+ARS             **Yes**                 **Yes**             No
+QMIX            **Yes**                 No                  **Yes**      `+RNN`_
+MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
+=============  =======================  ==================  ===========  ===========================
+
+.. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
+.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -212,7 +241,7 @@ RLlib DQN is implemented using the SyncReplayOptimizer. The algorithm can be sca
 
     DQN architecture
 
-Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pong-dqn.yaml>`__, `Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pong-rainbow.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/atari-basic-dqn.yaml>`__, `with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/atari-duel-ddqn.yaml>`__, `with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/atari-dist-dqn.yaml>`__.
+Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pong-dqn.yaml>`__, `Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pong-rainbow.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/atari-dqn.yaml>`__, `with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/atari-duel-ddqn.yaml>`__, `with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/atari-dist-dqn.yaml>`__.
 
 .. tip::
     Consider using `Ape-X <#distributed-prioritized-experience-replay-ape-x>`__ for faster training with similar timestep efficiency.
@@ -321,7 +350,7 @@ Soft Actor Critic (SAC)
 
     SAC architecture (same as DQN)
 
-RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions.
+RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``.
 
 Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__, `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/halfcheetah-sac.yaml>`__
 
@@ -435,6 +464,67 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+
+Contextual Bandits (contrib/bandits)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Multi-armed bandit (MAB) problem provides a simplified RL setting that
+involves learning to act under one situation only, i.e. the state is fixed.
+Contextual bandit is extension of the MAB problem, where at each
+round the agent has access not only to a set of bandit arms/actions but also
+to a context (state) associated with this iteration. The context changes
+with each iteration, but, is not affected by the action that the agent takes.
+The objective of the agent is to maximize the cumulative rewards, by
+collecting  enough information about how the context and the rewards of the
+arms are related to each other. The agent does this by balancing the
+trade-off between exploration and exploitation.
+
+Contextual bandit algorithms typically consist of an action-value model (Q
+model) and an exploration strategy (e-greedy, UCB, Thompson Sampling etc.)
+RLlib supports the following online contextual bandit algorithms,
+named after the exploration strategies that they employ:
+
+LinUCB (Upper Confidence Bound)
+-------------------------------
+|pytorch|
+`[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
+<https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ucb.py>`__
+LinUCB assumes a linear dependency between the expected reward of an action and
+its context. It estimates the Q value of each action using ridge regression.
+It constructs a confidence region around the weights of the linear
+regression model and uses this confidence ellipsoid to estimate the
+uncertainty of action values.
+
+**LinUCB-specific configs** (see also `common configs <rllib-training
+.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ucb.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
+LinTS (Linear Thompson Sampling)
+--------------------------------
+|pytorch|
+`[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__ `[implementation]
+<https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ts.py>`__
+Like LinUCB, LinTS also assumes a linear dependency between the expected
+reward of an action and its context and uses online ridge regression to
+estimate the Q values of actions given the context. It assumes a Gaussian
+prior on the weights and a Gaussian likelihood function. For deciding which
+action to take, the agent samples weights for each arm, using
+the posterior distributions, and plays the arm that produces the highest reward.
+
+**LinTS-specific configs** (see also `common configs <rllib-training
+.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ts.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 
 .. |tensorflow| image:: tensorflow.png
     :width: 24

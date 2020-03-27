@@ -41,14 +41,6 @@ if os.path.exists(so_path):
 
 import ray._raylet  # noqa: E402
 
-# See https://github.com/ray-project/ray/issues/131.
-helpful_message = """
-
-If you are using Anaconda, try fixing this problem by running:
-
-    conda install libgcc
-"""
-
 from ray._raylet import (
     ActorCheckpointID,
     ActorClassID,
@@ -96,7 +88,6 @@ import ray.projects  # noqa: E402
 # some functions in the worker.
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
-from ray.runtime_context import _get_runtime_context  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray import util  # noqa: E402
 

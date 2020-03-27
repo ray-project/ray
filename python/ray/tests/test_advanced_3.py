@@ -299,12 +299,12 @@ def test_specific_job_id():
     ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
-    assert dummy_driver_id == ray._get_runtime_context().current_driver_id
+    assert dummy_driver_id == ray.worker.global_worker.current_job_id
 
     # in worker
     @ray.remote
     def f():
-        return ray._get_runtime_context().current_driver_id
+        return ray.worker.global_worker.current_job_id
 
     assert dummy_driver_id == ray.get(f.remote())
 
@@ -465,7 +465,8 @@ def test_pandas_parquet_serialization():
 
 def test_socket_dir_not_existing(shutdown_only):
     random_name = ray.ObjectID.from_random().hex()
-    temp_raylet_socket_dir = "/tmp/ray/tests/{}".format(random_name)
+    temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
+                                          "tests", random_name)
     temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
                                            "raylet_socket")
     ray.init(num_cpus=1, raylet_socket_name=temp_raylet_socket_name)
