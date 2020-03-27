@@ -13,15 +13,15 @@ const styles = (theme: Theme) =>
     header: {
       lineHeight: 1,
       marginBottom: theme.spacing(3),
-      marginTop: theme.spacing(3)
+      marginTop: theme.spacing(3),
     },
     log: {
       backgroundColor: fade(theme.palette.primary.main, 0.04),
       borderLeftColor: theme.palette.primary.main,
       borderLeftStyle: "solid",
       borderLeftWidth: 2,
-      padding: theme.spacing(2)
-    }
+      padding: theme.spacing(2),
+    },
   });
 
 interface Props {
@@ -38,7 +38,7 @@ interface State {
 class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
     result: null,
-    error: null
+    error: null,
   };
 
   async componentDidMount() {

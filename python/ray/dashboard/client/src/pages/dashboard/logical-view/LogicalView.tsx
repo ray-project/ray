@@ -12,16 +12,16 @@ const styles = (theme: Theme) =>
   createStyles({
     warning: {
       fontSize: "0.8125rem",
-      marginBottom: theme.spacing(2)
+      marginBottom: theme.spacing(2),
     },
     warningIcon: {
       fontSize: "1.25em",
-      verticalAlign: "text-bottom"
-    }
+      verticalAlign: "text-bottom",
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  rayletInfo: state.dashboard.rayletInfo
+  rayletInfo: state.dashboard.rayletInfo,
 });
 
 class LogicalView extends React.Component<

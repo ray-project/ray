@@ -146,7 +146,7 @@ export interface ErrorsResponse {
 export const getErrors = (hostname: string, pid: number | null) =>
   get<ErrorsResponse>("/api/errors", {
     hostname,
-    pid: pid === null ? "" : pid
+    pid: pid === null ? "" : pid,
   });
 
 export interface LogsResponse {
@@ -156,7 +156,7 @@ export interface LogsResponse {
 export const getLogs = (hostname: string, pid: number | null) =>
   get<LogsResponse>("/api/logs", {
     hostname,
-    pid: pid === null ? "" : pid
+    pid: pid === null ? "" : pid,
   });
 
 export type LaunchProfilingResponse = string;
@@ -164,12 +164,12 @@ export type LaunchProfilingResponse = string;
 export const launchProfiling = (
   nodeId: string,
   pid: number,
-  duration: number
+  duration: number,
 ) =>
   get<LaunchProfilingResponse>("/api/launch_profiling", {
     node_id: nodeId,
     pid: pid,
-    duration: duration
+    duration: duration,
   });
 
 export type CheckProfilingStatusResponse =
@@ -179,23 +179,23 @@ export type CheckProfilingStatusResponse =
 
 export const checkProfilingStatus = (profilingId: string) =>
   get<CheckProfilingStatusResponse>("/api/check_profiling_status", {
-    profiling_id: profilingId
+    profiling_id: profilingId,
   });
 
 export const getProfilingResultURL = (profilingId: string) =>
   `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
-    `${base}/api/get_profiling_info?profiling_id=${profilingId}`
+    `${base}/api/get_profiling_info?profiling_id=${profilingId}`,
   )}`;
 
 export const launchKillActor = (
   actorId: string,
   actorIpAddress: string,
-  actorPort: number
+  actorPort: number,
 ) =>
   get<string>("/api/kill_actor", {
     actor_id: actorId,
     ip_address: actorIpAddress,
-    port: actorPort
+    port: actorPort,
   });
 
 export interface TuneTrial {

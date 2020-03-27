@@ -18,20 +18,20 @@ import TotalRow from "./TotalRow";
 const styles = (theme: Theme) =>
   createStyles({
     table: {
-      marginTop: theme.spacing(1)
+      marginTop: theme.spacing(1),
     },
     cell: {
       padding: theme.spacing(1),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
-    }
+        paddingRight: theme.spacing(1),
+      },
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
   nodeInfo: state.dashboard.nodeInfo,
-  rayletInfo: state.dashboard.rayletInfo
+  rayletInfo: state.dashboard.rayletInfo,
 });
 
 interface State {
@@ -44,7 +44,7 @@ class NodeInfo extends React.Component<
 > {
   state: State = {
     logDialog: null,
-    errorDialog: null
+    errorDialog: null,
   };
 
   setLogDialog = (hostname: string, pid: number | null) => {
@@ -135,7 +135,7 @@ class NodeInfo extends React.Component<
             </TableRow>
           </TableHead>
           <TableBody>
-            {nodeInfo.clients.map(client => (
+            {nodeInfo.clients.map((client) => (
               <NodeRowGroup
                 key={client.ip}
                 node={client}

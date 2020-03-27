@@ -4,7 +4,7 @@ import { formatByteAmount } from "../../../../common/formatUtils";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const ClusterReceived: ClusterFeatureComponent = ({ nodes }) => {

@@ -21,19 +21,19 @@ const styles = (theme: Theme) =>
       backgroundColor: theme.palette.background.paper,
       padding: theme.spacing(2),
       "& > :not(:first-child)": {
-        marginTop: theme.spacing(4)
-      }
+        marginTop: theme.spacing(4),
+      },
     },
     tabs: {
       borderBottomColor: theme.palette.divider,
       borderBottomStyle: "solid",
-      borderBottomWidth: 1
-    }
+      borderBottomWidth: 1,
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
   tab: state.dashboard.tab,
-  tuneAvailability: state.dashboard.tuneAvailability
+  tuneAvailability: state.dashboard.tuneAvailability,
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -50,7 +50,7 @@ class Dashboard extends React.Component<
       const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
-        getTuneAvailability()
+        getTuneAvailability(),
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
       this.props.setTuneAvailability({ tuneAvailability });
@@ -80,7 +80,7 @@ class Dashboard extends React.Component<
       { label: "Machine view", component: NodeInfo },
       { label: "Logical view", component: LogicalView },
       { label: "Ray config", component: RayConfig },
-      { label: "Tune", component: Tune }
+      { label: "Tune", component: Tune },
     ];
 
     // if Tune information is not available, remove Tune tab from the dashboard
@@ -112,5 +112,5 @@ class Dashboard extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(Dashboard));

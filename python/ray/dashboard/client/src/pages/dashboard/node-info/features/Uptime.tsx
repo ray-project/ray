@@ -4,7 +4,7 @@ import { formatDuration } from "../../../../common/formatUtils";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 const getUptime = (bootTime: number) => Date.now() / 1000 - bootTime;

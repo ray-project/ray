@@ -9,9 +9,9 @@ const styles = (theme: Theme) =>
       color: theme.palette.primary.main,
       "&:hover": {
         cursor: "pointer",
-        textDecoration: "underline"
-      }
-    }
+        textDecoration: "underline",
+      },
+    },
   });
 
 class SpanButton extends React.Component<

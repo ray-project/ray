@@ -11,7 +11,7 @@ import {
   getProfilingResultURL,
   launchKillActor,
   launchProfiling,
-  RayletInfoResponse
+  RayletInfoResponse,
 } from "../../../api";
 import Actors from "./Actors";
 
@@ -22,40 +22,40 @@ const styles = (theme: Theme) =>
       borderStyle: "solid",
       borderWidth: 1,
       marginTop: theme.spacing(2),
-      padding: theme.spacing(2)
+      padding: theme.spacing(2),
     },
     title: {
       color: theme.palette.text.secondary,
-      fontSize: "0.75rem"
+      fontSize: "0.75rem",
     },
     action: {
       color: theme.palette.primary.main,
       textDecoration: "none",
       "&:hover": {
-        cursor: "pointer"
-      }
+        cursor: "pointer",
+      },
     },
     invalidStateTypeInfeasible: {
-      color: theme.palette.error.main
+      color: theme.palette.error.main,
     },
     invalidStateTypePendingActor: {
-      color: orange[500]
+      color: orange[500],
     },
     information: {
-      fontSize: "0.875rem"
+      fontSize: "0.875rem",
     },
     datum: {
       "&:not(:first-child)": {
-        marginLeft: theme.spacing(2)
-      }
+        marginLeft: theme.spacing(2),
+      },
     },
     webuiDisplay: {
-      fontSize: "0.875rem"
+      fontSize: "0.875rem",
     },
     inlineHTML: {
       fontSize: "0.875rem",
-      display: "inline"
-    }
+      display: "inline",
+    },
   });
 
 interface Props {
@@ -75,7 +75,7 @@ interface State {
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
     expanded: true,
-    profiling: {}
+    profiling: {},
   };
 
   setExpanded = (expanded: boolean) => () => {
@@ -88,24 +88,24 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       const profilingId = await launchProfiling(
         actor.nodeId,
         actor.pid,
-        duration
+        duration,
       );
-      this.setState(state => ({
+      this.setState((state) => ({
         profiling: {
           ...state.profiling,
-          [profilingId]: { startTime: Date.now(), latestResponse: null }
-        }
+          [profilingId]: { startTime: Date.now(), latestResponse: null },
+        },
       }));
       const checkProfilingStatusLoop = async () => {
         const response = await checkProfilingStatus(profilingId);
-        this.setState(state => ({
+        this.setState((state) => ({
           profiling: {
             ...state.profiling,
             [profilingId]: {
               ...state.profiling[profilingId],
-              latestResponse: response
-            }
-          }
+              latestResponse: response,
+            },
+          },
         }));
         if (response.status === "pending") {
           setTimeout(checkProfilingStatusLoop, 1000);
@@ -131,11 +131,11 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         ? [
             {
               label: "ActorTitle",
-              value: actor.actorTitle
+              value: actor.actorTitle,
             },
             {
               label: "State",
-              value: actor.state.toLocaleString()
+              value: actor.state.toLocaleString(),
             },
             {
               label: "Resources",
@@ -144,28 +144,28 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 Object.entries(actor.usedResources)
                   .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-                  .join(", ")
+                  .join(", "),
             },
             {
               label: "Pending",
-              value: actor.taskQueueLength.toLocaleString()
+              value: actor.taskQueueLength.toLocaleString(),
             },
             {
               label: "Executed",
-              value: actor.numExecutedTasks.toLocaleString()
+              value: actor.numExecutedTasks.toLocaleString(),
             },
             {
               label: "NumObjectIdsInScope",
-              value: actor.numObjectIdsInScope.toLocaleString()
+              value: actor.numObjectIdsInScope.toLocaleString(),
             },
             {
               label: "NumLocalObjects",
-              value: actor.numLocalObjects.toLocaleString()
+              value: actor.numLocalObjects.toLocaleString(),
             },
             {
               label: "UsedLocalObjectMemory",
-              value: actor.usedObjectStoreMemory.toLocaleString()
-            }
+              value: actor.usedObjectStoreMemory.toLocaleString(),
+            },
             // {
             //   label: "Task",
             //   value: actor.currentTaskFuncDesc.join(".")
@@ -174,7 +174,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         : [
             {
               label: "ID",
-              value: actor.actorId
+              value: actor.actorId,
             },
             {
               label: "Required resources",
@@ -183,8 +183,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 Object.entries(actor.requiredResources)
                   .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-                  .join(", ")
-            }
+                  .join(", "),
+            },
           ];
 
     // Construct the custom message from the actor.
@@ -242,7 +242,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               )}{" "}
               (Profile for
-              {[10, 30, 60].map(duration => (
+              {[10, 30, 60].map((duration) => (
                 <React.Fragment>
                   {" "}
                   <span
@@ -268,7 +268,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       (
                       {latestResponse.status === "pending" ? (
                         `Profiling for ${Math.round(
-                          (Date.now() - startTime) / 1000
+                          (Date.now() - startTime) / 1000,
                         )}s...`
                       ) : latestResponse.status === "finished" ? (
                         <a
@@ -281,12 +281,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                         </a>
                       ) : latestResponse.status === "error" ? (
                         `Profiling error: ${latestResponse.error.trim()}`
-                      ) : (
-                        undefined
-                      )}
+                      ) : undefined}
                       ){" "}
                     </React.Fragment>
-                  )
+                  ),
               )}
             </React.Fragment>
           ) : actor.invalidStateType === "infeasibleActor" ? (
@@ -310,7 +308,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                     {label}: {value}
                   </span>{" "}
                 </React.Fragment>
-              )
+              ),
           )}
         </Typography>
         {actor.state !== -1 && (

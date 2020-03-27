@@ -13,7 +13,7 @@ const styles = (theme: Theme) =>
     header: {
       lineHeight: 1,
       marginBottom: theme.spacing(3),
-      marginTop: theme.spacing(3)
+      marginTop: theme.spacing(3),
     },
     error: {
       backgroundColor: fade(theme.palette.error.main, 0.04),
@@ -21,12 +21,12 @@ const styles = (theme: Theme) =>
       borderLeftStyle: "solid",
       borderLeftWidth: 2,
       marginTop: theme.spacing(3),
-      padding: theme.spacing(2)
+      padding: theme.spacing(2),
     },
     timestamp: {
       color: theme.palette.text.secondary,
-      marginBottom: theme.spacing(1)
-    }
+      marginBottom: theme.spacing(1),
+    },
   });
 
 interface Props {
@@ -43,7 +43,7 @@ interface State {
 class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
     result: null,
-    error: null
+    error: null,
   };
 
   async componentDidMount() {

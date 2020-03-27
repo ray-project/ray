@@ -5,7 +5,7 @@ import UsageBar from "../../../../common/UsageBar";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const ClusterDisk: ClusterFeatureComponent = ({ nodes }) => {

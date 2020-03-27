@@ -18,23 +18,23 @@ const styles = (theme: Theme) =>
     root: {
       padding: theme.spacing(2),
       "& > :not(:first-child)": {
-        marginTop: theme.spacing(2)
-      }
+        marginTop: theme.spacing(2),
+      },
     },
     table: {
-      marginTop: theme.spacing(1)
+      marginTop: theme.spacing(1),
     },
     cell: {
       padding: theme.spacing(1),
       textAlign: "right",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
-    }
+        paddingRight: theme.spacing(1),
+      },
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  tuneInfo: state.dashboard.tuneInfo
+  tuneInfo: state.dashboard.tuneInfo,
 });
 
 interface State {
@@ -56,7 +56,7 @@ class TuneTable extends React.Component<
   state: State = {
     sortedColumn: undefined,
     ascending: true,
-    metricParamColumn: ""
+    metricParamColumn: "",
   };
 
   onColumnClick = (column: keyof TuneTrial, metricParamColumn?: string) => {
@@ -68,12 +68,12 @@ class TuneTable extends React.Component<
     }
     this.setState({
       sortedColumn: column,
-      ascending: ascending
+      ascending: ascending,
     });
 
     if (metricParamColumn) {
       this.setState({
-        metricParamColumn: metricParamColumn
+        metricParamColumn: metricParamColumn,
       });
     }
   };
@@ -154,11 +154,11 @@ class TuneTable extends React.Component<
     if (sortedColumn) {
       if (ascending) {
         trialDetails.sort((a, b) =>
-          getAttribute(a) > getAttribute(b) ? 1 : -1
+          getAttribute(a) > getAttribute(b) ? 1 : -1,
         );
       } else if (!ascending) {
         trialDetails.sort((a, b) =>
-          getAttribute(a) < getAttribute(b) ? 1 : -1
+          getAttribute(a) < getAttribute(b) ? 1 : -1,
         );
       }
     }
@@ -178,10 +178,10 @@ class TuneTable extends React.Component<
 
     const firstTrial = Object.keys(tuneInfo["trial_records"])[0];
     const paramsDict = tuneInfo["trial_records"][firstTrial]["params"];
-    const paramNames = Object.keys(paramsDict).filter(k => k !== "args");
+    const paramNames = Object.keys(paramsDict).filter((k) => k !== "args");
 
     const metricNames = Object.keys(
-      tuneInfo["trial_records"][firstTrial]["metrics"]
+      tuneInfo["trial_records"][firstTrial]["metrics"],
     );
 
     const trialDetails = this.sortedTrialRecords();
@@ -194,9 +194,9 @@ class TuneTable extends React.Component<
               {this.sortedCell("trial_id")}
               {this.sortedCell("job_id")}
               {this.sortedCell("start_time")}
-              {paramNames.map(value => this.sortedCell("params", value))}
+              {paramNames.map((value) => this.sortedCell("params", value))}
               {this.sortedCell("status")}
-              {metricNames.map(value => this.sortedCell("metrics", value))}
+              {metricNames.map((value) => this.sortedCell("metrics", value))}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -212,7 +212,7 @@ class TuneTable extends React.Component<
                   <TableCell className={classes.cell}>
                     {trial["start_time"]}
                   </TableCell>
-                  {paramNames.map(value => (
+                  {paramNames.map((value) => (
                     <TableCell className={classes.cell} key={value}>
                       {trial["params"][value]}
                     </TableCell>
@@ -221,7 +221,7 @@ class TuneTable extends React.Component<
                     {trial["status"]}
                   </TableCell>
                   {trial["metrics"] &&
-                    metricNames.map(value => (
+                    metricNames.map((value) => (
                       <TableCell className={classes.cell} key={value}>
                         {trial["metrics"][value]}
                       </TableCell>
@@ -237,5 +237,5 @@ class TuneTable extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(TuneTable));

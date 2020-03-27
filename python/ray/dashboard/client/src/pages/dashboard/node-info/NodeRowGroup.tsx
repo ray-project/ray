@@ -25,21 +25,21 @@ const styles = (theme: Theme) =>
       padding: theme.spacing(1),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
+        paddingRight: theme.spacing(1),
+      },
     },
     expandCollapseCell: {
-      cursor: "pointer"
+      cursor: "pointer",
     },
     expandCollapseIcon: {
       color: theme.palette.text.secondary,
       fontSize: "1.5em",
-      verticalAlign: "middle"
+      verticalAlign: "middle",
     },
     extraInfo: {
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      whiteSpace: "pre"
-    }
+      whiteSpace: "pre",
+    },
   });
 
 type ArrayType<T> = T extends Array<infer U> ? U : never;
@@ -70,12 +70,12 @@ class NodeRowGroup extends React.Component<
   State
 > {
   state: State = {
-    expanded: this.props.initialExpanded
+    expanded: this.props.initialExpanded,
   };
 
   toggleExpand = () => {
-    this.setState(state => ({
-      expanded: !state.expanded
+    this.setState((state) => ({
+      expanded: !state.expanded,
     }));
   };
 
@@ -87,7 +87,7 @@ class NodeRowGroup extends React.Component<
       logCounts,
       errorCounts,
       setLogDialog,
-      setErrorDialog
+      setErrorDialog,
     } = this.props;
     const { expanded } = this.state;
 
@@ -102,12 +102,12 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
       {
         NodeFeature: makeNodeLogs(logCounts, setLogDialog),
-        WorkerFeature: makeWorkerLogs(logCounts, setLogDialog)
+        WorkerFeature: makeWorkerLogs(logCounts, setLogDialog),
       },
       {
         NodeFeature: makeNodeErrors(errorCounts, setErrorDialog),
-        WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog)
-      }
+        WorkerFeature: makeWorkerErrors(errorCounts, setErrorDialog),
+      },
     ];
 
     return (

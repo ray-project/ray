@@ -13,21 +13,21 @@ const styles = (theme: Theme) =>
       backgroundColor: theme.palette.background.paper,
       padding: theme.spacing(2),
       "& > :not(:first-child)": {
-        marginTop: theme.spacing(4)
-      }
+        marginTop: theme.spacing(4),
+      },
     },
     board: {
       width: "100%",
       height: "1000px",
-      border: "none"
+      border: "none",
     },
     warning: {
-      fontSize: "0.8125rem"
-    }
+      fontSize: "0.8125rem",
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  error: state.dashboard.error
+  error: state.dashboard.error,
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -60,5 +60,5 @@ class TuneTensorBoard extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(TuneTensorBoard));

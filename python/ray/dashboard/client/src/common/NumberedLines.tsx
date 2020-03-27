@@ -11,15 +11,15 @@ import React from "react";
 const styles = (theme: Theme) =>
   createStyles({
     root: {
-      overflowX: "auto"
+      overflowX: "auto",
     },
     cell: {
       borderWidth: 0,
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       padding: 0,
       "&:last-child": {
-        paddingRight: 0
-      }
+        paddingRight: 0,
+      },
     },
     lineNumber: {
       color: theme.palette.text.secondary,
@@ -30,13 +30,13 @@ const styles = (theme: Theme) =>
       // Use a ::before pseudo-element for the line number so that it won't
       // interact with user selections or searching.
       "&::before": {
-        content: "attr(data-line-number)"
-      }
+        content: "attr(data-line-number)",
+      },
     },
     line: {
       textAlign: "left",
-      whiteSpace: "pre-wrap"
-    }
+      whiteSpace: "pre-wrap",
+    },
   });
 
 interface Props {

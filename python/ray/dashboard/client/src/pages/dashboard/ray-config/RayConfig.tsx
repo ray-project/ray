@@ -18,7 +18,7 @@ const styles = (theme: Theme) =>
   createStyles({
     table: {
       marginTop: theme.spacing(1),
-      width: "auto"
+      width: "auto",
     },
     cell: {
       paddingTop: theme.spacing(1),
@@ -27,16 +27,16 @@ const styles = (theme: Theme) =>
       paddingRight: theme.spacing(3),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(3)
-      }
+        paddingRight: theme.spacing(3),
+      },
     },
     key: {
-      color: theme.palette.text.secondary
-    }
+      color: theme.palette.text.secondary,
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  rayConfig: state.dashboard.rayConfig
+  rayConfig: state.dashboard.rayConfig,
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -74,34 +74,34 @@ class RayConfig extends React.Component<
     const formattedRayConfig = [
       {
         key: "Autoscaling mode",
-        value: rayConfig.autoscaling_mode
+        value: rayConfig.autoscaling_mode,
       },
       {
         key: "Head node type",
-        value: rayConfig.head_type
+        value: rayConfig.head_type,
       },
       {
         key: "Worker node type",
-        value: rayConfig.worker_type
+        value: rayConfig.worker_type,
       },
       {
         key: "Min worker nodes",
-        value: rayConfig.min_workers
+        value: rayConfig.min_workers,
       },
       {
         key: "Initial worker nodes",
-        value: rayConfig.initial_workers
+        value: rayConfig.initial_workers,
       },
       {
         key: "Max worker nodes",
-        value: rayConfig.max_workers
+        value: rayConfig.max_workers,
       },
       {
         key: "Idle timeout",
         value: `${rayConfig.idle_timeout_minutes} ${
           rayConfig.idle_timeout_minutes === 1 ? "minute" : "minutes"
-        }`
-      }
+        }`,
+      },
     ];
 
     return (
@@ -132,5 +132,5 @@ class RayConfig extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(RayConfig));
