@@ -277,10 +277,12 @@ class WorkerSet:
         else:
             actual_class = ray.get(worker.for_policy.remote(lambda p: type(p)))
 
+        # Pytorch case: Policy must be a TorchPolicy.
         if config["use_pytorch"]:
             assert issubclass(actual_class, TorchPolicy), \
                 "Worker policy must be subclass of `TorchPolicy`, " \
                 "but is {}!".format(actual_class.__name__)
+        # non-Pytorch case: Policy may be None AND must not be a TorchPolicy.
         else:
             assert actual_class is type(None) or \
                    (issubclass(actual_class, Policy) and
