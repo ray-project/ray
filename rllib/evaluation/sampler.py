@@ -312,7 +312,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
                 policy=p,
                 environment=base_env,
                 episode=episode,
-                tf_sess=getattr(p, "_sess", None))
+                tf_sess=tf_sess)
         # Call custom on_episode_start callback.
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
