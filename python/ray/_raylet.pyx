@@ -651,6 +651,7 @@ cdef class CoreWorker:
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, gc_collect,
             get_py_stack, True, local_mode))
+        self.local_mode_enabled = local_mode
 
     def run_task_loop(self):
         with nogil:

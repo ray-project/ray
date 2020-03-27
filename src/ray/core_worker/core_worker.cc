@@ -526,11 +526,11 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                           const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
-  if (!local_mode_enabled_) {
-    return plasma_store_provider_->Create(metadata, data_size, object_id, data);
-  } else {
+  if (local_mode_enabled_) {
     return Status::NotImplemented(
-        "Create without list...pre-existing ObjID not supported");
+        "Creating an object with a pre-existing ObjectID is not supported in local mode");
+  } else {
+    return plasma_store_provider_->Create(metadata, data_size, object_id, data);
   }
 }
 
@@ -882,15 +882,16 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
+  Status status;
   if (local_mode_enabled_) {
-    return ExecuteTaskLocalMode(task_spec);
-  }
+    status =  ExecuteTaskLocalMode(task_spec);
+  } else {
   task_manager_->AddPendingTask(
       GetCallerId(), rpc_address_, task_spec, CurrentCallSite(),
       std::max(RayConfig::instance().actor_creation_min_retries(),
                actor_creation_options.max_reconstructions));
-  Status status = direct_task_submitter_->SubmitTask(task_spec);
-
+   status = direct_task_submitter_->SubmitTask(task_spec);
+  }
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data));
