@@ -51,7 +51,12 @@ class DistributedTorchRunner(TorchRunner):
             url, world_rank, world_size))
         logger.debug("using {}".format(self.backend))
 
-        os.environ["NCCL_BLOCKING_WAIT"] = '1'
+        if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
+            logger.debug(
+                "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
+                "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
+            os.environ["NCCL_BLOCKING_WAIT"] = "1"
+
         timeout = timedelta(seconds=NCCL_TIMEOUT_IN_SECONDS)
         dist.init_process_group(
             backend=self.backend,
@@ -164,22 +169,38 @@ class _DummyActor:
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
 
+# This is a bit of a hack. It prevents the reassignment of CUDA_VISIBLE_DEVICES
+# during a trainer resize. We won't need this if we don't shutdown
+# all the actors.
+_dummy_actor = None
+
+
 class LocalDistributedRunner(DistributedTorchRunner):
+    """A wrapper for running a distributed Runner on the driver.
+
+    A dummy actor is used to reserve resources on the driver node,
+    as specified by `num_cpus` and `num_gpus`.
+    """
+
     def __init__(self, *args, num_cpus=None, num_gpus=None, **kwargs):
         ip = ray.services.get_node_ip_address()
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
-        self._dummy_local_actor = ray.remote(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources={"node:" + ip: 0.1})(_DummyActor).remote()
+        global _dummy_actor
+        if _dummy_actor is None:
+            _dummy_actor = ray.remote(
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                resources={"node:" + ip: 0.1})(_DummyActor).remote()
 
-        head_cuda = ray.get(self._dummy_local_actor.cuda_devices.remote())
-        os.environ["CUDA_VISIBLE_DEVICES"] = head_cuda
+            head_cuda = ray.get(_dummy_actor.cuda_devices.remote())
+            os.environ["CUDA_VISIBLE_DEVICES"] = head_cuda
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
 
-    def shutdown(self):
+    def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()
-        self._dummy_local_actor.__ray_kill__()
-        self._dummy_local_actor = None
+        if cleanup:
+            global _dummy_actor
+            ray.kill(_dummy_actor)
+            _dummy_actor = None

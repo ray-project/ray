@@ -432,7 +432,7 @@ class TorchTrainer:
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
-            print(err)
+            logger.warning(err)
             return False, None
 
         success = check_for_failure(remote_worker_stats)
@@ -566,25 +566,41 @@ class TorchTrainer:
             self.local_worker.shutdown()
             for worker in self.remote_workers:
                 logger.warning("Killing worker {}.".format(worker))
-                worker.__ray_kill__()
+                ray.kill(worker)
 
         self.local_worker = None
         self.remote_workers = []
 
+    def _reset(self):
+        """Terminates models without giving up local resource reservation."""
+        self.local_worker.shutdown(cleanup=False)
+        for worker in self.remote_workers:
+            logger.warning("Killing worker {}.".format(worker))
+            ray.kill(worker)
+        self.local_worker = None
+        self.remote_workers = []
+
+    def _check_potential_remote_workers_size(self):
+        # ASSUME 1 GPU + 1 CPU is already reserved for the local worker
+        remote_resources = ray.available_resources()
+        max_remote_workers = self.max_replicas - 1
+        new_remote_workers = min(
+            remote_resources.get("CPU", 0), max_remote_workers)
+        if self.use_gpu:
+            new_remote_workers = min(
+                remote_resources.get("GPU", 0), new_remote_workers)
+        return new_remote_workers
+
     def _resize_workers(self, checkpoint, max_retries=10):
-        # check available resources
-        self.shutdown(force=True)
+        self._reset()
         assert checkpoint, "Cannot restore without checkpoint."
 
         time.sleep(1)
         for i in range(max_retries):
-            resources = ray.available_resources()
-            new_workers = min(resources.get("CPU", 0), self.max_replicas)
-            if self.use_gpu:
-                new_workers = min(resources.get("GPU", 0), new_workers)
-            if new_workers:
+            new_remote_workers = self._check_potential_remote_workers_size()
+            if new_remote_workers:
                 self._last_resize = time.time()
-                self._start_workers(int(new_workers))
+                self._start_workers(int(new_remote_workers) + 1)
                 self.restore(checkpoint)
                 return
             else:
@@ -599,24 +615,21 @@ class TorchTrainer:
         worker_gap = self.max_replicas - 1 - len(self.remote_workers)
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
-            resources = ray.available_resources()
-            potential_workers = min(
-                resources.get("CPU", 0), self.max_replicas)
-            if self.use_gpu:
-                potential_workers = min(
-                    resources.get("GPU", 0), potential_workers)
-            return potential_workers > 0
+            # Assume 1 resource is already reserved for local worker.
+            potential_remote_size = self._check_potential_remote_workers_size()
+            return potential_remote_size > 0
         return False
 
 
 class TorchTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
+        remote_worker_count = config["num_workers"] - 1
         return Resources(
-            cpu=0,
-            gpu=0,
-            extra_cpu=config["num_workers"],
-            extra_gpu=int(config["use_gpu"]) * config["num_workers"])
+            cpu=1,
+            gpu=int(config["use_gpu"]),
+            extra_cpu=int(remote_worker_count),
+            extra_gpu=int(int(config["use_gpu"]) * remote_worker_count))
 
     def _setup(self, config):
         self._trainer = TorchTrainer(**config)
