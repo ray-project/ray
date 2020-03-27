@@ -45,14 +45,15 @@ def do_test_log_likelihood(run,
         config["use_pytorch"] = fw == "torch"
 
         eager_ctx = None
-        if fw == "eager":
+        if fw == "tf":
+            assert not tf.executing_eagerly()
+        elif fw == "eager":
             eager_ctx = eager_mode()
             eager_ctx.__enter__()
             assert tf.executing_eagerly()
-        elif fw == "tf":
-            assert not tf.executing_eagerly()
 
         trainer = run(config=config, env=env)
+
         policy = trainer.get_policy()
         vars = policy.get_weights()
         # Sample n actions, then roughly check their logp against their

@@ -261,15 +261,16 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def postprocess_trajectory(self,
-                                   samples,
+                                   sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
             assert tf.executing_eagerly()
+            # Call super's postprocess_trajectory first.
+            sample_batch = Policy.postprocess_trajectory(self, sample_batch)
             if postprocess_fn:
-                return postprocess_fn(self, samples, other_agent_batches,
+                return postprocess_fn(self, sample_batch, other_agent_batches,
                                       episode)
-            else:
-                return samples
+            return sample_batch
 
         @override(Policy)
         @convert_eager_inputs

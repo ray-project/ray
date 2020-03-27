@@ -32,6 +32,30 @@ class Exploration:
         self.worker_index = worker_index
         self.framework = check_framework(framework)
 
+    def before_forward_pass(self,
+                            obs_batch,
+                            *,
+                            state_batches=None,
+                            seq_lens=None,
+                            timestep=None,
+                            explore=None,
+                            tf_sess=None,
+                            **kwargs):
+        """May be overridden to perform preparations before a forward pass.
+
+        Args:
+            obs_batch (dict): The observations batch.
+            state_batches (Optional[List[TensorType]]): The list of internal
+                state batches to pass through the model.
+            seq_lens (Optional[List[TensorType]]): The sequence lengths for the
+                RNN case.
+            timestep (Optional[TensorType]): An optional timestep tensor.
+            explore (Optional[TensorType]): An optional explore boolean flag.
+            tf_sess (Optional[tf.Session]): The tf-session object to use.
+            **kwargs: Forward compatibility kwargs.
+        """
+        pass
+
     def get_exploration_action(self,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
@@ -64,24 +88,49 @@ class Exploration:
         """
         pass
 
-    def get_loss_exploration_term(self,
-                                  model_output: TensorType,
-                                  model: ModelV2,
-                                  action_dist: type,
-                                  action_sample: TensorType = None):
-        """Returns an extra loss term to be added to a loss.
+    def on_episode_start(self,
+                         policy,
+                         *,
+                         environment=None,
+                         episode=None,
+                         tf_sess=None):
+        """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
-            model_output (TensorType): The Model's output Tensor(s).
-            model (ModelV2): The Model object.
-            action_dist: The ActionDistribution object resulting from
-                `model_output`. TODO: Or the class?
-            action_sample (TensorType): An optional action sample.
-
-        Returns:
-            TensorType: The extra loss term to add to the loss.
+            policy (Policy): The Policy object that holds this Exploration.
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
         """
-        pass  # TODO(sven): implement for some example Exploration class.
+        pass
+
+    def on_episode_end(self,
+                       policy,
+                       *,
+                       environment=None,
+                       episode=None,
+                       tf_sess=None):
+        """Handles necessary exploration logic at the end of an episode.
+
+        Args:
+            policy (Policy): The Policy object that holds this Exploration.
+            environment (BaseEnv): The environment object we are acting in.
+            episode (int): The number of the episode that is starting.
+            tf_sess (Optional[tf.Session]): In case of tf, the session object.
+        """
+        pass
+
+    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+        """Handles post-processing of done episode trajectories.
+
+        Changes the given batch in place.
+
+        Args:
+            policy (Policy): The owning policy object.
+            sample_batch (SampleBatch): The SampleBatch object to post-process.
+            tf_sess (Optional[tf.Session]): An optional tf.Session object.
+        """
+        return sample_batch
 
     def get_info(self):
         """Returns a description of the current exploration state.
