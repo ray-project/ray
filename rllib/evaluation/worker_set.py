@@ -5,7 +5,7 @@ import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
-from ray.rllib.policy import Policy, TFPolicy, TorchPolicy
+from ray.rllib.policy import Policy, TorchPolicy
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.utils import merge_dicts, try_import_tf
@@ -285,12 +285,12 @@ class WorkerSet:
                 "but is {}!".format(actual_class.__name__)
         # non-Pytorch case: Policy may be None AND must not be a TorchPolicy.
         else:
-            assert actual_class is type(None) or \
+            assert issubclass(actual_class, type(None)) or \
                    (issubclass(actual_class, Policy) and
-                    not issubclass(actual_class, TorchPolicy)), \
-                "Worker policy must be subclass of `Policy`, but NOT " \
-                "`TorchPolicy` (your class={})! If you have a Torch " \
-                "Agent/Policy, make sure to set `use_pytorch=True` in your " \
-                "Agent's config)!".format(actual_class.__name__)
+                    not issubclass(actual_class, TorchPolicy)), "Worker " \
+                   "policy must be subclass of `Policy`, but NOT " \
+                   "`TorchPolicy` (your class={})! If you have a Torch " \
+                   "Agent/Policy, make sure to set `use_pytorch=True` in " \
+                   "your Agent's config)!".format(actual_class.__name__)
 
         return worker
