@@ -272,13 +272,21 @@ class WorkerSet:
             _fake_sampler=config.get("_fake_sampler", False))
 
         # Check for correct policy class.
-        expected_class = TorchPolicy if config["use_pytorch"] else Policy
-        non_expected_class = TFPolicy if config["use_pytorch"] else TorchPolicy
         if type(worker) is RolloutWorker:
             actual_class = type(worker.get_policy())
         else:
             actual_class = ray.get(worker.for_policy.remote(lambda p: type(p)))
-        assert issubclass(actual_class, expected_class)
-        assert not issubclass(actual_class, non_expected_class)
+
+        if config["use_pytorch"]:
+            assert issubclass(actual_class, TorchPolicy), \
+                "Worker policy must be subclass of `TorchPolicy`, " \
+                "but is {}!".format(actual_class.__name__)
+        else:
+            assert issubclass(actual_class, Policy) and \
+                   not issubclass(actual_class, TorchPolicy), \
+                "Worker policy must be subclass of `Policy`, but NOT " \
+                "`TorchPolicy` (your class={})! If you have a Torch " \
+                "Agent/Policy, make sure to set `use_pytorch=True` in your " \
+                "Agent's config)!".format(actual_class.__name__)
 
         return worker
