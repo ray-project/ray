@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <msgpack.hpp>
 #include <mutex>
 #include <random>
 #include <string>
@@ -106,6 +107,8 @@ class UniqueID : public BaseID<UniqueID> {
 
   UniqueID() : BaseID() {}
 
+  MSGPACK_DEFINE(id_);
+
  protected:
   UniqueID(const std::string &binary);
 
@@ -125,6 +128,8 @@ class JobID : public BaseID<JobID> {
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -170,6 +175,8 @@ class ActorID : public BaseID<ActorID> {
   ///
   /// \return The job id to which this actor belongs.
   JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -237,6 +244,8 @@ class TaskID : public BaseID<TaskID> {
   ///
   /// \return The `JobID` of the job which creates this task.
   JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
 
  private:
   uint8_t id_[kLength];
@@ -370,6 +379,8 @@ class ObjectID : public BaseID<ObjectID> {
   /// \param actor_id The ID of the actor to track.
   /// \return The computed object ID.
   static ObjectID ForActorHandle(const ActorID &actor_id);
+
+  MSGPACK_DEFINE(id_);
 
  private:
   /// A helper method to generate an ObjectID.
