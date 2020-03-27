@@ -187,7 +187,7 @@ class CentralizedQueues:
             request_kwargs,
             request_context,
             request_slo_ms,
-            call_method=request_in_object.call_method,
+            call_method=request_meta.call_method,
             async_future=asyncio.get_event_loop().create_future())
         await self.service_queues[service].put(query)
         await self.flush()
