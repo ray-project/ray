@@ -165,7 +165,7 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 RLlib will create three distinct policies and route agent decisions to its bound policy. When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to. RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
 
 .. code-block:: bash
    :emphasize-lines: 6,14,22
@@ -223,7 +223,7 @@ RLlib will create each policy's model in a separate ``tf.variable_scope``. Howev
                 auxiliary_name_scope=False):
             <create the shared layers here>
 
-There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multiagent_cartpole.py>`__.
+There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__.
 
 Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

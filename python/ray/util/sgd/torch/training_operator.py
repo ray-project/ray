@@ -1,4 +1,5 @@
 import collections
+
 import torch
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
@@ -49,6 +50,9 @@ class TrainingOperator:
                  config,
                  models,
                  optimizers,
+                 train_loader,
+                 validation_loader,
+                 world_rank,
                  criterion=None,
                  schedulers=None,
                  use_fp16=False):
@@ -59,6 +63,9 @@ class TrainingOperator:
         self._optimizers = optimizers  # List of optimizers
         assert isinstance(optimizers, collections.Iterable), (
             "Components need to be iterable. Got: {}".format(type(optimizers)))
+        self._train_loader = train_loader
+        self._validation_loader = validation_loader
+        self._world_rank = world_rank
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
@@ -77,7 +84,11 @@ class TrainingOperator:
                         "TrainingOperator if using multi-scheduler, "
                         "multi-model or multi-optimizer training/validation.")
         self.timers = TimerCollection()
+        self.reporters = []
         self.setup(config)
+
+    def set_reporters(self, reporters):
+        self.reporters = reporters
 
     def _set_timers(self, timers):
         """Passes in the timers from the Runner."""
@@ -131,6 +142,9 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
+        for r in self.reporters:
+            r.on_epoch_begin(info, self)
+
         metric_meters = AverageMeterCollection()
 
         self.model.train()
@@ -141,6 +155,9 @@ class TrainingOperator:
             }
             batch_info.update(info)
             metrics = self.train_batch(batch, batch_info=batch_info)
+
+            for r in self.reporters:
+                r.on_batch_end(batch_info, metrics, self)
 
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
@@ -209,6 +226,7 @@ class TrainingOperator:
         # Call step of optimizer to update model params.
         with self.timers.record("apply"):
             self.optimizer.step()
+
         return {"train_loss": loss.item(), NUM_SAMPLES: features.size(0)}
 
     def validate(self, val_iterator, info):
@@ -317,6 +335,25 @@ class TrainingOperator:
     def optimizers(self):
         """List of optimizers created by the ``optimizer_creator``."""
         return self._optimizers
+
+    @property
+    def train_loader(self):
+        """
+        Data loader for the validation dataset created by the ``data_creator``.
+        """
+        return self._train_loader
+
+    @property
+    def validation_loader(self):
+        """
+        Data loader for the train dataset created by the ``data_creator``.
+        """
+        return self._validation_loader
+
+    @property
+    def world_rank(self):
+        """The rank of the parent runner. Always 0 if not distributed."""
+        return self._world_rank
 
     @property
     def criterion(self):

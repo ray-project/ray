@@ -25,7 +25,7 @@ class MagicCounter:
 
 
 serve.init(blocking=True)
-serve.create_endpoint("magic_counter", "/counter", blocking=True)
+serve.create_endpoint("magic_counter", "/counter")
 serve.create_backend(MagicCounter, "counter:v1", 42)  # increment=42
 serve.link("magic_counter", "counter:v1")
 

@@ -23,7 +23,6 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/gcs/gcs_server",
     "ray/core/src/ray/raylet/raylet",
-    "ray/dashboard/dashboard.py",
     "ray/streaming/_streaming.so",
 ]
 
@@ -77,7 +76,7 @@ extras = {
     "debug": [],
     "dashboard": [],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate", "tensorboardX"]
+    "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
 extras["rllib"] = extras["tune"] + [
