@@ -580,21 +580,24 @@ class TorchTrainer:
         self.local_worker = None
         self.remote_workers = []
 
+    def _check_potential_remote_workers_size(self):
+        # ASSUME 1 GPU + 1 CPU is already reserved for the local worker
+        remote_resources = ray.available_resources()
+        max_remote_workers = self.max_replicas - 1
+        new_remote_workers = min(
+            remote_resources.get("CPU", 0), max_remote_workers)
+        if self.use_gpu:
+            new_remote_workers = min(
+                remote_resources.get("GPU", 0), new_remote_workers)
+        return new_remote_workers
+
     def _resize_workers(self, checkpoint, max_retries=10):
         self._reset()
         assert checkpoint, "Cannot restore without checkpoint."
 
         time.sleep(1)
         for i in range(max_retries):
-            # ASSUME 1 GPU + 1 CPU is already reserved for the local worker
-            # check available Resources
-            remote_resources = ray.available_resources()
-            max_remote_workers = self.max_replicas - 1
-            new_remote_workers = min(
-                remote_resources.get("CPU", 0), max_remote_workers)
-            if self.use_gpu:
-                new_remote_workers = min(
-                    remote_resources.get("GPU", 0), new_remote_workers)
+            new_remote_workers = self._check_potential_remote_workers_size()
             if new_remote_workers:
                 self._last_resize = time.time()
                 self._start_workers(int(new_remote_workers) + 1)
@@ -613,14 +616,8 @@ class TorchTrainer:
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             # Assume 1 resource is already reserved for local worker.
-            max_remote_replicas = self.max_replicas - 1
-            remote_resources = ray.available_resources()
-            potential_remote_workers = min(
-                remote_resources.get("CPU", 0), max_remote_replicas)
-            if self.use_gpu:
-                potential_remote_workers = min(
-                    remote_resources.get("GPU", 0), potential_remote_workers)
-            return potential_remote_workers > 0
+            potential_remote_size = self._check_potential_remote_workers_size()
+            return potential_remote_size > 0
         return False
 
 
