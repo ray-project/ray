@@ -1,9 +1,11 @@
-import Collapse from "@material-ui/core/Collapse";
-import orange from "@material-ui/core/colors/orange";
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
+import {
+  Collapse,
+  createStyles,
+  Theme,
+  Typography,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import React from "react";
 import {
   checkProfilingStatus,
@@ -39,7 +41,7 @@ const styles = (theme: Theme) =>
       color: theme.palette.error.main,
     },
     invalidStateTypePendingActor: {
-      color: orange[500],
+      color: theme.palette.secondary.main,
     },
     information: {
       fontSize: "0.875rem",

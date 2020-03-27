@@ -1,10 +1,13 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableRow from "@material-ui/core/TableRow";
+import {
+  createStyles,
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+  Theme,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
 

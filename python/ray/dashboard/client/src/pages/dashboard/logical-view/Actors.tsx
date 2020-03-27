@@ -1,6 +1,4 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import { createStyles, Theme, withStyles, WithStyles } from "@material-ui/core";
 import React from "react";
 import { RayletInfoResponse } from "../../../api";
 import Actor from "./Actor";
