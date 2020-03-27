@@ -58,11 +58,11 @@ const styles = (theme: Theme) =>
     },
   });
 
-interface Props {
+type Props = {
   actor: RayletInfoResponse["actors"][keyof RayletInfoResponse["actors"]];
-}
+};
 
-interface State {
+type State = {
   expanded: boolean;
   profiling: {
     [profilingId: string]: {
@@ -70,7 +70,7 @@ interface State {
       latestResponse: CheckProfilingStatusResponse | null;
     };
   };
-}
+};
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {

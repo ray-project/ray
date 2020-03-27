@@ -29,10 +29,10 @@ const styles = (theme: Theme) =>
     },
   });
 
-interface Props {
+type Props = {
   handleClose: () => void;
   title: string;
-}
+};
 
 class DialogWithTitle extends React.Component<
   Props & WithStyles<typeof styles>

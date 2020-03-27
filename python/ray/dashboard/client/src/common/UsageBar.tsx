@@ -26,10 +26,10 @@ const styles = (theme: Theme) =>
     },
   });
 
-interface Props {
+type Props = {
   percent: number;
   text: string;
-}
+};
 
 class UsageBar extends React.Component<Props & WithStyles<typeof styles>> {
   render() {

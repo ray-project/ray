@@ -36,7 +36,7 @@ const styles = (theme: Theme) =>
     },
   });
 
-interface Props {
+type Props = {
   nodes: NodeInfoResponse["clients"];
   logCounts: {
     [ip: string]: {
@@ -50,7 +50,7 @@ interface Props {
       total: number;
     };
   };
-}
+};
 
 class TotalRow extends React.Component<Props & WithStyles<typeof styles>> {
   render() {

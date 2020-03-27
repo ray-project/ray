@@ -45,7 +45,7 @@ const styles = (theme: Theme) =>
 type ArrayType<T> = T extends Array<infer U> ? U : never;
 type Node = ArrayType<NodeInfoResponse["clients"]>;
 
-interface Props {
+type Props = {
   node: Node;
   raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
@@ -59,11 +59,11 @@ interface Props {
   setLogDialog: (hostname: string, pid: number | null) => void;
   setErrorDialog: (hostname: string, pid: number | null) => void;
   initialExpanded: boolean;
-}
+};
 
-interface State {
+type State = {
   expanded: boolean;
-}
+};
 
 class NodeRowGroup extends React.Component<
   Props & WithStyles<typeof styles>,

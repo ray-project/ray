@@ -1,17 +1,17 @@
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import React from "react";
-import { connect } from "react-redux";
-import { StoreState } from "../../../store";
-import { dashboardActions } from "../state";
 import Table from "@material-ui/core/Table";
 import TableBody from "@material-ui/core/TableBody";
 import TableCell from "@material-ui/core/TableCell";
 import TableHead from "@material-ui/core/TableHead";
 import TableRow from "@material-ui/core/TableRow";
 import TableSortLabel from "@material-ui/core/TableSortLabel";
+import React from "react";
+import { connect } from "react-redux";
 import { TuneTrial } from "../../../api";
+import { StoreState } from "../../../store";
+import { dashboardActions } from "../state";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -37,11 +37,11 @@ const mapStateToProps = (state: StoreState) => ({
   tuneInfo: state.dashboard.tuneInfo,
 });
 
-interface State {
+type State = {
   metricParamColumn: string;
   ascending: boolean;
   sortedColumn: keyof TuneTrial | undefined;
-}
+};
 
 const mapDispatchToProps = dashboardActions;
 
@@ -82,14 +82,11 @@ class TuneTable extends React.Component<
    * Replaces all underscores with spaces and capitalizes all words
    * in str
    */
-  humanize = (str: string) => {
-    var i,
-      frags = str.split("_");
-    for (i = 0; i < frags.length; i++) {
-      frags[i] = frags[i].charAt(0).toUpperCase() + frags[i].slice(1);
-    }
-    return frags.join(" ");
-  };
+  humanize = (str: string) =>
+    str
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
 
   sortedCell = (name: keyof TuneTrial, chosenMetricParam?: string) => {
     const { tuneInfo, classes } = this.props;

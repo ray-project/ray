@@ -29,16 +29,16 @@ const styles = (theme: Theme) =>
     },
   });
 
-interface Props {
+type Props = {
   clearErrorDialog: () => void;
   hostname: string;
   pid: number | null;
-}
+};
 
-interface State {
+type State = {
   result: ErrorsResponse | null;
   error: string | null;
-}
+};
 
 class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {

@@ -22,7 +22,7 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   return result as T;
 };
 
-export interface RayConfigResponse {
+export type RayConfigResponse = {
   min_workers: number;
   max_workers: number;
   initial_workers: number;
@@ -30,11 +30,11 @@ export interface RayConfigResponse {
   idle_timeout_minutes: number;
   head_type: string;
   worker_type: string;
-}
+};
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
-export interface NodeInfoResponse {
+export type NodeInfoResponse = {
   clients: Array<{
     now: number;
     hostname: string;
@@ -82,11 +82,11 @@ export interface NodeInfoResponse {
       [pid: string]: number;
     };
   };
-}
+};
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
-export interface RayletInfoResponse {
+export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
       extraInfo?: string;
@@ -130,18 +130,18 @@ export interface RayletInfoResponse {
           invalidStateType?: "infeasibleActor" | "pendingActor";
         };
   };
-}
+};
 
 export const getRayletInfo = () =>
   get<RayletInfoResponse>("/api/raylet_info", {});
 
-export interface ErrorsResponse {
+export type ErrorsResponse = {
   [pid: string]: Array<{
     message: string;
     timestamp: number;
     type: string;
   }>;
-}
+};
 
 export const getErrors = (hostname: string, pid: number | null) =>
   get<ErrorsResponse>("/api/errors", {
@@ -149,9 +149,9 @@ export const getErrors = (hostname: string, pid: number | null) =>
     pid: pid === null ? "" : pid,
   });
 
-export interface LogsResponse {
+export type LogsResponse = {
   [pid: string]: string[];
-}
+};
 
 export const getLogs = (hostname: string, pid: number | null) =>
   get<LogsResponse>("/api/logs", {
@@ -198,7 +198,7 @@ export const launchKillActor = (
     port: actorPort,
   });
 
-export interface TuneTrial {
+export type TuneTrial = {
   date: string;
   episodes_total: string;
   experiment_id: string;
@@ -221,17 +221,17 @@ export interface TuneTrial {
   job_id: string;
   params: { [key: string]: string | number };
   metrics: { [key: string]: string | number };
-}
+};
 
-export interface TuneJobResponse {
+export type TuneJobResponse = {
   trial_records: { [key: string]: TuneTrial };
-}
+};
 
 export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
 
-export interface TuneAvailabilityResponse {
+export type TuneAvailabilityResponse = {
   available: boolean;
-}
+};
 
 export const getTuneAvailability = () =>
   get<TuneAvailabilityResponse>("/api/tune_availability", {});

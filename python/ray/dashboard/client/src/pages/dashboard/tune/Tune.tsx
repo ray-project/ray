@@ -1,15 +1,15 @@
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import Tab from "@material-ui/core/Tab";
+import Tabs from "@material-ui/core/Tabs";
+import Typography from "@material-ui/core/Typography";
+import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
 import React from "react";
 import { connect } from "react-redux";
 import { getTuneInfo } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import Typography from "@material-ui/core/Typography";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
-import Tab from "@material-ui/core/Tab";
-import Tabs from "@material-ui/core/Tabs";
 import TuneTable from "./TuneTable";
 import TuneTensorBoard from "./TuneTensorBoard";
 
@@ -38,9 +38,9 @@ const mapStateToProps = (state: StoreState) => ({
 
 const mapDispatchToProps = dashboardActions;
 
-interface State {
+type State = {
   tabIndex: number;
-}
+};
 
 class Tune extends React.Component<
   WithStyles<typeof styles> &

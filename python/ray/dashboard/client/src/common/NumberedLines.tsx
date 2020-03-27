@@ -39,9 +39,9 @@ const styles = (theme: Theme) =>
     },
   });
 
-interface Props {
+type Props = {
   lines: string[];
-}
+};
 
 class NumberedLines extends React.Component<Props & WithStyles<typeof styles>> {
   render() {

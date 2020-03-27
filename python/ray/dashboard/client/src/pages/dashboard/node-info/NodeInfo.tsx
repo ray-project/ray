@@ -34,10 +34,10 @@ const mapStateToProps = (state: StoreState) => ({
   rayletInfo: state.dashboard.rayletInfo,
 });
 
-interface State {
+type State = {
   logDialog: { hostname: string; pid: number | null } | null;
   errorDialog: { hostname: string; pid: number | null } | null;
-}
+};
 
 class NodeInfo extends React.Component<
   WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>

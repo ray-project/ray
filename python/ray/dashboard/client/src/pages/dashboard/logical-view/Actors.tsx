@@ -7,9 +7,9 @@ import Actor from "./Actor";
 
 const styles = (theme: Theme) => createStyles({});
 
-interface Props {
+type Props = {
   actors: RayletInfoResponse["actors"];
-}
+};
 
 class Actors extends React.Component<Props & WithStyles<typeof styles>> {
   render() {

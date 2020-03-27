@@ -77,7 +77,6 @@
         }
       ],
       "prefer-const": "error",
-      "react/destructuring-assignment": "warn",
       "react/jsx-fragments": [
         "warn",
         "element"

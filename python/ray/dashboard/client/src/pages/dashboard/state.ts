@@ -3,13 +3,13 @@ import {
   NodeInfoResponse,
   RayConfigResponse,
   RayletInfoResponse,
-  TuneJobResponse,
   TuneAvailabilityResponse,
+  TuneJobResponse,
 } from "../../api";
 
 const name = "dashboard";
 
-interface State {
+type State = {
   tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
@@ -18,7 +18,7 @@ interface State {
   tuneAvailability: boolean;
   lastUpdatedAt: number | null;
   error: string | null;
-}
+};
 
 const initialState: State = {
   tab: 0,

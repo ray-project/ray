@@ -24,16 +24,16 @@ const styles = (theme: Theme) =>
     },
   });
 
-interface Props {
+type Props = {
   clearLogDialog: () => void;
   hostname: string;
   pid: number | null;
-}
+};
 
-interface State {
+type State = {
   result: LogsResponse | null;
   error: string | null;
-}
+};
 
 class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
