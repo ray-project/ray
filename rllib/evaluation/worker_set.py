@@ -5,7 +5,7 @@ import ray
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
-from ray.rllib.policy import Policy, TorchPolicy
+from ray.rllib.policy import Policy, TFPolicy, TorchPolicy
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
 from ray.rllib.utils import merge_dicts, try_import_tf
@@ -271,13 +271,14 @@ class WorkerSet:
             if config["seed"] is not None else None,
             _fake_sampler=config.get("_fake_sampler", False))
 
-        # Check for correct policy class, if `use_pytorch` explicitly set.
-        # Do not check for remote workers (should behave the same).
+        # Check for correct policy class.
         expected_class = TorchPolicy if config["use_pytorch"] else Policy
+        non_expected_class = TFPolicy if config["use_pytorch"] else TorchPolicy
         if type(worker) is RolloutWorker:
             actual_class = type(worker.get_policy())
         else:
             actual_class = ray.get(worker.for_policy.remote(lambda p: type(p)))
         assert issubclass(actual_class, expected_class)
+        assert not issubclass(actual_class, non_expected_class)
 
         return worker
