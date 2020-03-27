@@ -78,40 +78,45 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
   }
 }
 
-Status TaskManager::ResubmitTask(const TaskID &task_id, bool *resubmit,
+Status TaskManager::ResubmitTask(const TaskID &task_id,
                                  std::vector<ObjectID> *task_deps) {
+  TaskSpecification spec;
+  bool resubmit = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
-      return Status::Invalid("Task is not resubmittable");
+      return Status::Invalid("Task spec missing");
     }
 
-    if (it->second.pending) {
-      *resubmit = false;
-    } else {
-      *resubmit = true;
+    if (!it->second.pending) {
+      resubmit = true;
       it->second.pending = true;
       RAY_CHECK(it->second.num_retries_left > 0);
       it->second.num_retries_left--;
-      const auto &spec = it->second.spec;
-      for (size_t i = 0; i < spec.NumArgs(); i++) {
-        if (spec.ArgByRef(i)) {
-          for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
-            task_deps->push_back(spec.ArgId(i, j));
-          }
-        } else {
-          const auto &inlined_ids = spec.ArgInlinedIds(i);
-          for (const auto &inlined_id : inlined_ids) {
-            task_deps->push_back(inlined_id);
-          }
-        }
+      spec = it->second.spec;
+    }
+  }
+
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i)) {
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        task_deps->push_back(spec.ArgId(i, j));
+      }
+    } else {
+      const auto &inlined_ids = spec.ArgInlinedIds(i);
+      for (const auto &inlined_id : inlined_ids) {
+        task_deps->push_back(inlined_id);
       }
     }
   }
 
   if (!task_deps->empty()) {
     reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
+  }
+
+  if (resubmit) {
+    retry_task_callback_(spec, /*delay=*/false);
   }
 
   return Status::OK();
@@ -279,7 +284,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left > 0) {
     RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
                    << ", attempting to resubmit.";
-    retry_task_callback_(spec);
+    retry_task_callback_(spec, /*delay=*/true);
   } else {
     // Throttled logging of task failure errors.
     {
@@ -422,13 +427,6 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
     // a number of retries.
     actor_manager_->PublishTerminatedActor(spec);
   }
-}
-
-TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
-  absl::MutexLock lock(&mu_);
-  auto it = submissible_tasks_.find(task_id);
-  RAY_CHECK(it != submissible_tasks_.end());
-  return it->second.spec;
 }
 
 }  // namespace ray

@@ -3254,7 +3254,9 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
           pinned_objects_.erase(object_id);
 
           // Try to evict all copies of the object from the cluster.
-          objects_to_free_.push_back(object_id);
+          if (free_objects_period_ >= 0) {
+            objects_to_free_.push_back(object_id);
+          }
           if (objects_to_free_.size() ==
                   RayConfig::instance().free_objects_batch_size() ||
               free_objects_period_ == 0) {
@@ -3271,10 +3273,6 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
 }
 
 void NodeManager::FlushObjectsToFree() {
-  if (free_objects_period_ < 0) {
-    return;
-  }
-
   if (!objects_to_free_.empty()) {
     RAY_LOG(DEBUG) << "Freeing " << objects_to_free_.size() << " out-of-scope objects";
     object_manager_.FreeObjects(objects_to_free_, /*local_only=*/false);
