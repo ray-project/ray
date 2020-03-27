@@ -254,8 +254,8 @@ class TFPolicy(Policy):
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
 
-        # Call the exploration before_forward_pass hook.
-        self.exploration.before_forward_pass(
+        # Call the exploration before_compute_actions hook.
+        self.exploration.before_compute_actions(
             obs_batch=obs_batch,
             timestep=self.global_timestep,
             tf_sess=self.get_session())

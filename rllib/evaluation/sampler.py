@@ -578,8 +578,8 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
             obs_batch = [t.obs for t in eval_data]
             state_batches = _to_column_format(rnn_in)
 
-            # Call the exploration before_forward_pass hook.
-            policy.exploration.before_forward_pass(
+            # Call the exploration before_compute_actions hook.
+            policy.exploration.before_compute_actions(
                 obs_batch=obs_batch,
                 timestep=policy.global_timestep,
                 tf_sess=policy.get_session())
