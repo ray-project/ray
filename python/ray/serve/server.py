@@ -28,16 +28,16 @@ class HTTPProxy:
 
     def __init__(self):
         assert ray.is_initialized()
-
-        # Delay import due to GlobalState depends on HTTP actor
-        from ray.serve.global_state import GlobalState
-
-        self.serve_global_state = GlobalState()
         # Must be set via set_route_table.
         self.route_table = dict()
+        # Must be set via set_router_handle.
+        self.router_handle = None
 
     def set_route_table(self, route_table):
         self.route_table = route_table
+
+    def set_router_handle(self, router_handle):
+        self.router_handle = router_handle
 
     async def handle_lifespan_message(self, scope, receive, send):
         assert scope["type"] == "lifespan"
@@ -150,8 +150,8 @@ class HTTPProxy:
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
 
         try:
-            result = await (self.serve_global_state.init_or_get_router()
-                            .enqueue_request.remote(request_in_object, *args))
+            result = await self.router_handle.enqueue_request.remote(
+                request_in_object, *args)
             await Response(result).send(scope, receive, send)
         except Exception as e:
             error_message = "Internal Error. Traceback: {}.".format(e)
@@ -183,3 +183,6 @@ class HTTPActor:
 
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)
+
+    async def set_router_handle(self, router_handle):
+        self.app.set_router_handle(router_handle)

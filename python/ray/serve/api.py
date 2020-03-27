@@ -137,12 +137,13 @@ def init(
     master = start_initial_state(kv_store_connector)
 
     global_state = GlobalState(master)
-    if start_server:
-        global_state.init_or_get_http_server(host=http_host, port=http_port)
-    global_state.init_or_get_router(
+    router = global_state.init_or_get_router(
         queueing_policy=queueing_policy, policy_kwargs=policy_kwargs)
     global_state.init_or_get_metric_monitor(
         gc_window_seconds=gc_window_seconds)
+    if start_server:
+        global_state.init_or_get_http_server(
+            host=http_host, port=http_port).set_router_handle.remote(router)
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
