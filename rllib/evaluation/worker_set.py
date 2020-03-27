@@ -282,8 +282,9 @@ class WorkerSet:
                 "Worker policy must be subclass of `TorchPolicy`, " \
                 "but is {}!".format(actual_class.__name__)
         else:
-            assert issubclass(actual_class, Policy) and \
-                   not issubclass(actual_class, TorchPolicy), \
+            assert actual_class is type(None) or \
+                   (issubclass(actual_class, Policy) and
+                    not issubclass(actual_class, TorchPolicy)), \
                 "Worker policy must be subclass of `Policy`, but NOT " \
                 "`TorchPolicy` (your class={})! If you have a Torch " \
                 "Agent/Policy, make sure to set `use_pytorch=True` in your " \
