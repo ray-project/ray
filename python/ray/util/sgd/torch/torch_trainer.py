@@ -572,6 +572,7 @@ class TorchTrainer:
         self.remote_workers = []
 
     def _reset(self):
+        """Terminates models without giving up local resource reservation."""
         self.local_worker.shutdown(cleanup=False)
         for worker in self.remote_workers:
             logger.warning("Killing worker {}.".format(worker))
@@ -580,13 +581,13 @@ class TorchTrainer:
         self.remote_workers = []
 
     def _resize_workers(self, checkpoint, max_retries=10):
-        # check available resources
         self._reset()
         assert checkpoint, "Cannot restore without checkpoint."
 
         time.sleep(1)
         for i in range(max_retries):
             # ASSUME 1 GPU + 1 CPU is already reserved for the local worker
+            # check available Resources
             remote_resources = ray.available_resources()
             max_remote_workers = self.max_replicas - 1
             new_remote_workers = min(
