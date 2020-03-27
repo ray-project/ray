@@ -6,7 +6,7 @@ import argparse
 import os
 import torch
 import torch.optim as optim
-import random
+
 import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
@@ -45,8 +45,6 @@ class TrainMNIST(tune.Trainable):
             momentum=config.get("momentum", 0.9))
 
     def _train(self):
-        if random.random() < .1:
-            assert(1 == 2)
         train(
             self.model, self.optimizer, self.train_loader, device=self.device)
         acc = test(self.model, self.test_loader, self.device)

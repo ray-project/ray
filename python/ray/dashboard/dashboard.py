@@ -775,7 +775,7 @@ class TuneCollector(threading.Thread):
                 self.collect()
             time.sleep(self._reload_interval)
 
-    def collect_errors_alt(self, job_name, df):
+    def collect_errors(self, job_name, df):
         sub_dirs = os.listdir(os.path.join(self._logdir, job_name))
         trial_names = filter(
             lambda d: os.path.isdir(os.path.join(self._logdir, job_name, d)),
@@ -798,8 +798,7 @@ class TuneCollector(threading.Thread):
                         self._errors[str(trial)]["trial_id"] = str(trial_id)
                         if str(trial_id) in self._trial_records.keys():
                             self._trial_records[str(trial_id)]["error"] = text
-                            self._trial_records[str(trial_id)][
-                                "status"] = "ERROR"
+                            self._trial_records[str(trial_id)]["status"] = "ERROR"
 
     def collect(self):
         """
@@ -835,6 +834,13 @@ class TuneCollector(threading.Thread):
             df["trial_id_key"] = df["trial_id"].astype(str)
             df = df.fillna(0)
 
+            trial_ids = df["trial_id"]
+            for i, value in df["trial_id"].iteritems():
+                if type(value) != str and type(value) != int:
+                    trial_ids[i] = int(value)
+
+            df["trial_id"] = trial_ids
+
             # convert df to python dict
             df = df.set_index("trial_id_key")
             trial_data = df.to_dict(orient="index")
@@ -844,7 +850,7 @@ class TuneCollector(threading.Thread):
                 trial_data = self.clean_trials(trial_data, job_name)
                 self._trial_records.update(trial_data)
 
-            self.collect_errors_alt(job_name, df)
+            self.collect_errors(job_name, df)
 
     def clean_trials(self, trial_details, job_name):
         first_trial = trial_details[list(trial_details.keys())[0]]
