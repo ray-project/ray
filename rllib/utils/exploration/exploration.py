@@ -39,7 +39,7 @@ class Exploration:
                                explore=None,
                                tf_sess=None,
                                **kwargs):
-        """May be overridden to perform preparations before a forward pass.
+        """Hook for preparations before policy.compute_actions() is called.
 
         Args:
             obs_batch (dict): The observations batch.
@@ -117,7 +117,7 @@ class Exploration:
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
-        Changes the given batch in place.
+        Changes the given batch in place. This callback is invoked by the sampler after policy.postprocess_trajectory() is called.
 
         Args:
             policy (Policy): The owning policy object.
