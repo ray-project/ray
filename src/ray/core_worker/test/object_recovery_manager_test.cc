@@ -92,7 +92,9 @@ class MockObjectDirectory {
     for (const auto &pair : callbacks) {
       pair.second(pair.first, locations[pair.first]);
     }
-    callbacks.clear();
+    for (size_t i = 0; i < flushed; i++) {
+      callbacks.erase(callbacks.begin());
+    }
     return flushed;
   }
 
@@ -176,6 +178,48 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 1);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+
+  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  // A second attempt to recover the object will not trigger any more
+  // callbacks.
+  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(object_directory_->Flush() == 1);
+  failed_reconstructions_.clear();
+
+  // The object has been marked as failed. Another attempt to recover the
+  // object will not trigger any callbacks.
+  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(object_directory_->Flush() == 0);
+
+  // The object is removed and can be recovered again.
+  memory_store_->Delete({object_id});
+  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(object_directory_->Flush() == 1);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
+  std::vector<ObjectID> object_ids;
+  std::vector<ObjectID> dependencies;
+  for (int i = 0; i < 3; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    ref_counter_->AddOwnedObject(object_id, {}, TaskID::Nil(), rpc::Address(), "", 0);
+    task_resubmitter_->AddTask(object_id.TaskId(), dependencies);
+    dependencies = {object_id};
+    object_ids.push_back(object_id);
+  }
+
+  ASSERT_TRUE(manager_.RecoverObject(object_ids.back()).ok());
+  for (int i = 0; i < 3; i++) {
+    RAY_LOG(INFO) << i;
+    ASSERT_EQ(object_directory_->Flush(), 1);
+    ASSERT_TRUE(failed_reconstructions_.empty());
+    ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, i + 1);
+  }
 }
 
 }  // namespace ray

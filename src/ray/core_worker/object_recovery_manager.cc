@@ -27,9 +27,9 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
         "is disabled or this object ID is borrowed.");
   }
 
-  bool pinned = in_memory_store_->GetPlasmaObjectPinnedAtNodeId(object_id);
   bool already_pending_recovery = true;
-  if (!pinned) {
+  bool has_object = in_memory_store_->HasObject(object_id);
+  if (!has_object) {
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent

@@ -110,7 +110,7 @@ class CoreWorkerMemoryStore {
 
   std::vector<ObjectID> GetAndDeletePlasmaObjectsOnRemovedNode(const ClientID &node_id);
 
-  bool GetPlasmaObjectPinnedAtNodeId(const ObjectID &object_id) const;
+  bool HasObject(const ObjectID &object_id) const;
 
   /// Check whether this store contains the object.
   ///

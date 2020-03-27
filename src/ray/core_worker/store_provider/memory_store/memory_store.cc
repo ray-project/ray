@@ -469,7 +469,7 @@ std::vector<ObjectID> CoreWorkerMemoryStore::GetAndDeletePlasmaObjectsOnRemovedN
   std::vector<ObjectID> lost_objects;
   {
     absl::MutexLock lock(&mu_);
-    for (auto &it : objects_) {
+    for (const auto &it : objects_) {
       if (it.second->IsInPlasmaError()) {
         RAY_LOG(INFO) << "Plasma object " << it.first << " pinned at "
                       << it.second->PinnedAtNodeId().value_or(ClientID::Nil());
@@ -483,17 +483,9 @@ std::vector<ObjectID> CoreWorkerMemoryStore::GetAndDeletePlasmaObjectsOnRemovedN
   return lost_objects;
 }
 
-bool CoreWorkerMemoryStore::GetPlasmaObjectPinnedAtNodeId(
-    const ObjectID &object_id) const {
+bool CoreWorkerMemoryStore::HasObject(const ObjectID &object_id) const {
   absl::MutexLock lock(&mu_);
-  bool pinned = false;
-  auto it = objects_.find(object_id);
-  if (it != objects_.end() && it->second->IsInPlasmaError()) {
-    if (it->second->PinnedAtNodeId().has_value()) {
-      pinned = true;
-    }
-  }
-  return pinned;
+  return objects_.count(object_id) > 0;
 }
 
 }  // namespace ray
