@@ -70,6 +70,135 @@ def test_omp_threads_set(shutdown_only):
     assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
+def test_submit_api(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
+
+    @ray.remote
+    def f(n):
+        return list(range(n))
+
+    @ray.remote
+    def g():
+        return ray.get_gpu_ids()
+
+    assert f._remote([0], num_return_vals=0) is None
+    id1 = f._remote(args=[1], num_return_vals=1)
+    assert ray.get(id1) == [0]
+    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    assert ray.get([id1, id2]) == [0, 1]
+    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
+    assert ray.get([id1, id2, id3]) == [0, 1, 2]
+    assert ray.get(
+        g._remote(args=[], num_cpus=1, num_gpus=1,
+                  resources={"Custom": 1})) == [0]
+    infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
+    assert ray.get(g._remote()) == []
+    ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
+    assert len(ready_ids) == 0
+    assert len(remaining_ids) == 1
+
+    @ray.remote
+    class Actor:
+        def __init__(self, x, y=0):
+            self.x = x
+            self.y = y
+
+        def method(self, a, b=0):
+            return self.x, self.y, a, b
+
+        def gpu_ids(self):
+            return ray.get_gpu_ids()
+
+    @ray.remote
+    class Actor2:
+        def __init__(self):
+            pass
+
+        def method(self):
+            pass
+
+    a = Actor._remote(
+        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+
+    a2 = Actor2._remote()
+    ray.get(a2.method._remote())
+
+    id1, id2, id3, id4 = a.method._remote(
+        args=["test"], kwargs={"b": 2}, num_return_vals=4)
+    assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+
+
+def test_many_fractional_resources(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
+
+    @ray.remote
+    def g():
+        return 1
+
+    @ray.remote
+    def f(block, accepted_resources):
+        true_resources = {
+            resource: value[0][1]
+            for resource, value in ray.get_resource_ids().items()
+        }
+        if block:
+            ray.get(g.remote())
+        return true_resources == accepted_resources
+
+    # Check that the resource are assigned correctly.
+    result_ids = []
+    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
+        resource_set = {"CPU": int(rand1 * 10000) / 10000}
+        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
+
+        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
+        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
+
+        resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
+        result_ids.append(
+            f._remote([False, resource_set], resources={"Custom": rand1}))
+
+        resource_set = {
+            "CPU": int(rand1 * 10000) / 10000,
+            "GPU": int(rand2 * 10000) / 10000,
+            "Custom": int(rand3 * 10000) / 10000
+        }
+        result_ids.append(
+            f._remote(
+                [False, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
+        result_ids.append(
+            f._remote(
+                [True, resource_set],
+                num_cpus=rand1,
+                num_gpus=rand2,
+                resources={"Custom": rand3}))
+    assert all(ray.get(result_ids))
+
+    # Check that the available resources at the end are the same as the
+    # beginning.
+    stop_time = time.time() + 10
+    correct_available_resources = False
+    while time.time() < stop_time:
+        if (ray.available_resources()["CPU"] == 2.0
+                and ray.available_resources()["GPU"] == 2.0
+                and ray.available_resources()["Custom"] == 2.0):
+            correct_available_resources = True
+            break
+    if not correct_available_resources:
+        assert False, "Did not get correct available resources."
+
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.
@@ -190,7 +319,13 @@ def test_fair_queueing(shutdown_only):
         [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
     assert len(ready) == 1000, len(ready)
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_complex_serialization(ray_start_regular):
     def assert_equal(obj1, obj2):
         module_numpy = (type(obj1).__module__ == np.__name__
@@ -543,7 +678,13 @@ def test_ray_recursive_objects(ray_start_regular):
     for obj in recursive_objects:
         ray.put(obj)
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_reducer_override_no_reference_cycle(ray_start_regular):
     # bpo-39492: reducer_override used to induce a spurious reference cycle
     # inside the Pickler object, that could prevent all serialized objects
@@ -579,7 +720,13 @@ def test_reducer_override_no_reference_cycle(ray_start_regular):
     del obj
     assert new_obj() is None
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_deserialized_from_buffer_immutable(ray_start_regular):
     x = np.full((2, 2), 1.)
     o = ray.put(x)
@@ -588,7 +735,13 @@ def test_deserialized_from_buffer_immutable(ray_start_regular):
             ValueError, match="assignment destination is read-only"):
         y[0, 0] = 9.
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
     @ray.remote
     def f(x):
@@ -620,7 +773,13 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
     # won't be "equal" to Foo.
     ray.get(ray.put(Foo))
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_putting_object_that_closes_over_object_id(ray_start_regular):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
@@ -663,7 +822,13 @@ def test_put_get(shutdown_only):
         value_after = ray.get(objectid)
         assert value_before == value_after
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_custom_serializers(ray_start_regular):
     class Foo:
         def __init__(self):
@@ -693,7 +858,13 @@ def test_custom_serializers(ray_start_regular):
 
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_serialization_final_fallback(ray_start_regular):
     pytest.importorskip("catboost")
     # This test will only run when "catboost" is installed.
@@ -854,6 +1025,13 @@ def test_register_class(ray_start_2_cpus):
         assert not hasattr(c2, "method1")
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_keyword_args(ray_start_regular):
     @ray.remote
     def keyword_fct1(a, b="hello"):
@@ -1053,7 +1231,13 @@ def test_args_stars_after(ray_start_regular):
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
 
-
+@pytest.mark.parametrize(
+    "shutdown_only", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct1(*a):
@@ -1098,7 +1282,13 @@ def test_variable_number_of_args(shutdown_only):
 
         ray.get(no_op.remote())
 
-
+@pytest.mark.parametrize(
+    "shutdown_only", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_defining_remote_functions(shutdown_only):
     ray.init(num_cpus=3)
 
@@ -1146,7 +1336,13 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
 
-
+@pytest.mark.parametrize(
+    "shutdown_only", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_redefining_remote_functions(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -1202,128 +1398,13 @@ def test_redefining_remote_functions(shutdown_only):
     for i in range(20):
         assert ray.get(ray.get(h.remote(i))) == i
 
-
-def test_submit_api(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
-
-    @ray.remote
-    def f(n):
-        return list(range(n))
-
-    @ray.remote
-    def g():
-        return ray.get_gpu_ids()
-
-    assert f._remote([0], num_return_vals=0) is None
-    id1 = f._remote(args=[1], num_return_vals=1)
-    assert ray.get(id1) == [0]
-    id1, id2 = f._remote(args=[2], num_return_vals=2)
-    assert ray.get([id1, id2]) == [0, 1]
-    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
-    assert ray.get([id1, id2, id3]) == [0, 1, 2]
-    assert ray.get(
-        g._remote(args=[], num_cpus=1, num_gpus=1,
-                  resources={"Custom": 1})) == [0]
-    infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
-    assert ray.get(g._remote()) == []
-    ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
-    assert len(ready_ids) == 0
-    assert len(remaining_ids) == 1
-
-    @ray.remote
-    class Actor:
-        def __init__(self, x, y=0):
-            self.x = x
-            self.y = y
-
-        def method(self, a, b=0):
-            return self.x, self.y, a, b
-
-        def gpu_ids(self):
-            return ray.get_gpu_ids()
-
-    @ray.remote
-    class Actor2:
-        def __init__(self):
-            pass
-
-        def method(self):
-            pass
-
-    a = Actor._remote(
-        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
-
-    a2 = Actor2._remote()
-    ray.get(a2.method._remote())
-
-    id1, id2, id3, id4 = a.method._remote(
-        args=["test"], kwargs={"b": 2}, num_return_vals=4)
-    assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
-
-
-def test_many_fractional_resources(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
-
-    @ray.remote
-    def g():
-        return 1
-
-    @ray.remote
-    def f(block, accepted_resources):
-        true_resources = {
-            resource: value[0][1]
-            for resource, value in ray.get_resource_ids().items()
-        }
-        if block:
-            ray.get(g.remote())
-        return true_resources == accepted_resources
-
-    # Check that the resource are assigned correctly.
-    result_ids = []
-    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
-        resource_set = {"CPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
-
-        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
-
-        resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], resources={"Custom": rand1}))
-
-        resource_set = {
-            "CPU": int(rand1 * 10000) / 10000,
-            "GPU": int(rand2 * 10000) / 10000,
-            "Custom": int(rand3 * 10000) / 10000
-        }
-        result_ids.append(
-            f._remote(
-                [False, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3}))
-        result_ids.append(
-            f._remote(
-                [True, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3}))
-    assert all(ray.get(result_ids))
-
-    # Check that the available resources at the end are the same as the
-    # beginning.
-    stop_time = time.time() + 10
-    correct_available_resources = False
-    while time.time() < stop_time:
-        if (ray.available_resources()["CPU"] == 2.0
-                and ray.available_resources()["GPU"] == 2.0
-                and ray.available_resources()["Custom"] == 2.0):
-            correct_available_resources = True
-            break
-    if not correct_available_resources:
-        assert False, "Did not get correct available resources."
-
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_get_multiple(ray_start_regular):
     object_ids = [ray.put(i) for i in range(10)]
     assert ray.get(object_ids) == list(range(10))
@@ -1334,7 +1415,13 @@ def test_get_multiple(ray_start_regular):
     results = ray.get([object_ids[i] for i in indices])
     assert results == indices
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_get_multiple_experimental(ray_start_regular):
     object_ids = [ray.put(i) for i in range(10)]
 
@@ -1344,7 +1431,13 @@ def test_get_multiple_experimental(ray_start_regular):
     object_ids_nparray = np.array(object_ids)
     assert ray.experimental.get(object_ids_nparray) == list(range(10))
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_get_dict(ray_start_regular):
     d = {str(i): ray.put(i) for i in range(5)}
     for i in range(5, 10):
@@ -1374,7 +1467,13 @@ def test_get_with_timeout(ray_start_regular):
     ray.get(result_id, timeout=30)
     assert time.time() - start < 30
 
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 # https://github.com/ray-project/ray/issues/6329
 def test_call_actors_indirect_through_tasks(ray_start_regular):
     @ray.remote
