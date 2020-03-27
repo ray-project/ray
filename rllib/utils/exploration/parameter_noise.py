@@ -50,10 +50,12 @@ class ParameterNoise(Exploration):
         assert framework is not None
         super().__init__(
             action_space,
-            policy_config=policy_config,
-            model=model,
             framework=framework,
             **kwargs)
+
+        # TODO(sven): Move these to base-Exploration class.
+        self.policy_config = policy_config,
+        self.model = model,
 
         self.stddev = get_variable(
             initial_stddev, framework=self.framework, tf_name="stddev")
@@ -234,8 +236,10 @@ class ParameterNoise(Exploration):
             noise_free_action_dist = action_dist
 
         # Categorical case (e.g. DQN).
-        if dist_class is Categorical:
+        if isinstance(distribution, Categorical):
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
+            # TODO(sven): Allow KL-divergence to be calculated by our
+            #  Distribution classes (don't support off-graph/numpy yet).
             kl_divergence = np.nanmean(
                 np.sum(
                     noise_free_action_dist *

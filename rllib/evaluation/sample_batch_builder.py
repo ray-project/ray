@@ -153,10 +153,8 @@ class MultiAgentSampleBatchBuilder:
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
             # Call the Policy's Exploration's postprocess method.
-            if hasattr(policy, "exploration") and isinstance(
-                    policy.exploration, Exploration):
-                policy.exploration.postprocess_trajectory(
-                    post_batches[agent_id])
+            policy.exploration.postprocess_trajectory(
+                post_batches[agent_id])
 
         if log_once("after_post"):
             logger.info(

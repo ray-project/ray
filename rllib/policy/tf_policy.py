@@ -253,6 +253,13 @@ class TFPolicy(Policy):
                         timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
+
+        # Call the exploration before_forward_pass hook.
+        self.exploration.before_forward_pass(
+            obs_batch=obs_batch,
+            timestep=self.global_timestep,
+            tf_sess=self.get_session())
+
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -533,15 +540,6 @@ class TFPolicy(Policy):
             raise ValueError(
                 "Must pass in RNN state batches for placeholders {}, got {}".
                 format(self._state_inputs, state_batches))
-
-        # Call the exploration before_forward_pass hook.
-        self.exploration.before_forward_pass(
-            obs_batch=obs_batch,
-            state_batches=state_batches,
-            prev_action_batch=prev_action_batch,
-            prev_reward_batch=prev_reward_batch,
-            timestep=self.global_timestep,
-            tf_sess=self.get_session())
 
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
         builder.add_feed_dict({self._obs_input: obs_batch})
