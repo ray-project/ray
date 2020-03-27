@@ -23,7 +23,6 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/gcs/gcs_server",
     "ray/core/src/ray/raylet/raylet",
-    "ray/dashboard/dashboard.py",
     "ray/streaming/_streaming.so",
 ]
 
@@ -77,7 +76,7 @@ extras = {
     "debug": [],
     "dashboard": [],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate", "tensorboardX"]
+    "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -171,9 +170,9 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.16", "filelock", "jsonschema", "click", "colorama",
-    "packaging", "pyyaml", "redis >= 3.3.2", "protobuf >= 3.8.0",
-    "py-spy >= 0.2.0", "aiohttp", "google", "grpcio"
+    "numpy >= 1.16", "filelock", "jsonschema", "click", "colorama", "pyyaml",
+    "redis >= 3.3.2", "protobuf >= 3.8.0", "py-spy >= 0.2.0", "aiohttp",
+    "google", "grpcio"
 ]
 
 setup(

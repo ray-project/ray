@@ -274,7 +274,6 @@ class TorchPolicy(Policy):
 
     def extra_grad_info(self, train_batch):
         """Return dict of extra grad info."""
-
         return {}
 
     def optimizer(self):

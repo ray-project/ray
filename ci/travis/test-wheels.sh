@@ -24,6 +24,9 @@ fi
 TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_microbenchmarks.py"
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+
 if [[ "$platform" == "linux" ]]; then
   # Now test Python 3.6.
 

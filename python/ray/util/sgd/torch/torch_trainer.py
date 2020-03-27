@@ -4,19 +4,22 @@ import logging
 import numbers
 import tempfile
 import time
+import asyncio
 import torch
 import torch.distributed as dist
 
 import ray
 
+from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner)
-from ray.util.sgd import utils
-from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
+from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.torch.constants import (VALID_SCHEDULER_STEP,
+                                          BATCH_LOGS_RATE_LIMIT)
+from ray.util.sgd.torch.tqdm_handler import TqdmHandler
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -146,6 +149,7 @@ class TorchTrainer:
             use_gpu=False,
             backend="auto",
             use_fp16=False,
+            tqdm=False,
             apex_args=None,
             scheduler_step_freq="batch",
             num_replicas=None,
@@ -217,6 +221,10 @@ class TorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
+        self.handlers = []
+        if tqdm:
+            self.handlers.append(TqdmHandler())
+
         _validate_scheduler_step_freq(scheduler_step_freq)
         self.scheduler_step_freq = scheduler_step_freq
 
@@ -271,6 +279,8 @@ class TorchTrainer:
                 self.apply_all_workers(self.initialization_hook)
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
+            ray.get(self.workers[0].set_reporters.remote(
+                [h.create_reporter() for h in self.handlers]))
         else:
             # Generate actor class
             Runner = ray.remote(
@@ -302,6 +312,11 @@ class TorchTrainer:
             ray.get([
                 worker.setup.remote(address, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
+            ])
+            ray.get([
+                w.set_reporters.remote(
+                    [h.create_reporter() for h in self.handlers])
+                for w in self.workers
             ])
 
     def train(self,
@@ -359,6 +374,9 @@ class TorchTrainer:
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers(checkpoint=checkpoint)
 
+        for h in self.handlers:
+            h.record_train_info(info, num_steps)
+
         success, worker_stats = self._train_epoch(
             num_steps=num_steps, profile=profile, info=info)
         # Fault handling
@@ -395,14 +413,42 @@ class TorchTrainer:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
 
-    def _train_epoch(self, num_steps=None, profile=False, info=None):
-        worker_stats = [
+    def _train_epoch(self,
+                     num_steps=None,
+                     profile=False,
+                     info=None,
+                     batch_logs_handler=None):
+        worker_trains = [
             w.train_epoch.remote(
                 num_steps=num_steps, profile=profile, info=info)
             for w in self.workers
         ]
-        success = utils.check_for_failure(worker_stats)
-        return success, worker_stats
+
+        if not self.handlers:
+            success = check_for_failure(worker_trains)
+            return success, worker_trains
+
+        unfinished = worker_trains
+        try:
+            while len(unfinished) > 0:
+                finished, unfinished = ray.wait(
+                    unfinished, timeout=BATCH_LOGS_RATE_LIMIT)
+
+                # throw errors on agent failure
+                finished = ray.get(finished)
+
+                futures = [h.update() for h in self.handlers]
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                loop.run_until_complete(asyncio.wait(futures))
+                loop.close()
+
+            return True, worker_trains
+        except RayActorError as exc:
+            logger.exception(str(exc))
+        return False, worker_trains
 
     def apply_all_workers(self, fn):
         """Run a function on all operators on the workers.
