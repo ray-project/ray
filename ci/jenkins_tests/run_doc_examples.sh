@@ -6,25 +6,30 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
-MEMORY_SIZE="8G"
-SHM_SIZE="4G"
+MEMORY_SIZE=$1
+SHM_SIZE=$2
+DOCKER_SHA=$3
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-
-DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
+
+if [ "$MEMORY_SIZE" == "" ]; then
+    MEMORY_SIZE="20G"
+fi
+if [ "$SHM_SIZE" == "" ]; then
+    SHM_SIZE="20G"
+fi
+if [ "$DOCKER_SHA" == "" ]; then
+    echo "Building application docker."
+    docker build -q --no-cache -t ray-project/base-deps docker/base-deps
+
+    # Add Ray source
+    git rev-parse HEAD > ./docker/tune_test/git-rev
+    git archive -o ./docker/tune_test/ray.tar $(git rev-parse HEAD)
+    DOCKER_SHA=$(docker build --no-cache -q -t ray-project/tune_test docker/tune_test)
+fi
+
 echo "Using Docker image" $DOCKER_SHA
-
-######################## RLLIB TESTS #################################
-
-# DEPRECATED: All RLlib tests have been moved to /ray/rllib/BUILD
-# source $ROOT_DIR/run_rllib_tests.sh
-
-######################## TUNE TESTS #################################
-
-bash $ROOT_DIR/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE} $DOCKER_SHA
-
-######################## EXAMPLE TESTS #################################
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/doc/examples/plot_pong_example.py
@@ -40,9 +45,3 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} --memory-swap=-1 $DOCKER_SHA \
     python /ray/doc/examples/doc_code/tf_example.py
-
-######################## RAY BACKEND TESTS #################################
-
-# TODO: this should be part of the periodic stress test
-# $SUPPRESS_OUTPUT docker run --rm --shm-size=60G --memory=60G --memory-swap=-1 $DOCKER_SHA \
-#     python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py
