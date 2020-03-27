@@ -55,11 +55,31 @@ const styles = (theme: Theme) =>
     inlineHTML: {
       fontSize: "0.875rem",
       display: "inline"
+    },
+    warningTooManyPendingTask: {
+      fontWeight: "bold",
+      color: theme.palette.error.main,
+      "&:not(:first-child)": {
+        marginLeft: theme.spacing(2)
+      }
+    },
+    actorTitle: {
+      fontWeight: "bold"
+    },
+    secondaryFields: {
+      color: theme.palette.text.secondary,
+      "&:not(:first-child)": {
+        marginLeft: theme.spacing(2)
+      }
+    },
+    secondaryFieldsHeader: {
+      color: theme.palette.text.secondary
     }
   });
 
+type ActorType = RayletInfoResponse["actors"][keyof RayletInfoResponse["actors"]];
 interface Props {
-  actor: RayletInfoResponse["actors"][keyof RayletInfoResponse["actors"]];
+  actor: ActorType;
 }
 
 interface State {
@@ -70,6 +90,12 @@ interface State {
       latestResponse: CheckProfilingStatusResponse | null;
     };
   };
+}
+
+interface ActorInformation {
+  label: string;
+  value: string | null;
+  rendered?: JSX.Element;
 }
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
@@ -126,7 +152,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     const { classes, actor } = this.props;
     const { expanded, profiling } = this.state;
 
-    const information =
+    let information: ActorInformation[] =
       actor.state !== -1
         ? [
             {
@@ -140,11 +166,12 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {
               label: "Resources",
               value:
-                Object.entries(actor.usedResources).length > 0 &&
-                Object.entries(actor.usedResources)
-                  .sort((a, b) => a[0].localeCompare(b[0]))
-                  .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-                  .join(", ")
+                Object.entries(actor.usedResources).length > 0
+                  ? Object.entries(actor.usedResources)
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([key, value]) => `${value.toLocaleString()} ${key}`)
+                      .join(", ")
+                  : null
             },
             {
               label: "Pending",
@@ -166,10 +193,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               label: "UsedLocalObjectMemory",
               value: actor.usedObjectStoreMemory.toLocaleString()
             }
-            // {
-            //   label: "Task",
-            //   value: actor.currentTaskFuncDesc.join(".")
-            // }
           ]
         : [
             {
@@ -179,13 +202,96 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {
               label: "Required resources",
               value:
-                Object.entries(actor.requiredResources).length > 0 &&
-                Object.entries(actor.requiredResources)
-                  .sort((a, b) => a[0].localeCompare(b[0]))
-                  .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-                  .join(", ")
+                Object.entries(actor.requiredResources).length > 0
+                  ? Object.entries(actor.requiredResources)
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([key, value]) => `${value.toLocaleString()} ${key}`)
+                      .join(", ")
+                  : null
             }
           ];
+
+    // Apply transformation to add styling for information field
+    const transforms: Record<
+      string,
+      (info: ActorInformation) => ActorInformation
+    > = {
+      Pending: (info: ActorInformation) => {
+        if (actor.state !== -1 && actor.taskQueueLength >= 50) {
+          info.rendered = (
+            <React.Fragment key={info.label}>
+              <span className={classes.warningTooManyPendingTask}>
+                {info.label}: {info.value}
+              </span>
+            </React.Fragment>
+          );
+        }
+        return info;
+      },
+      ActorTitle: (info: ActorInformation) => {
+        info.rendered = (
+          <React.Fragment key={info.label}>
+            <span className={classes.actorTitle}>{info.value}</span>{" "}
+          </React.Fragment>
+        );
+        return info;
+      },
+      NumObjectIdsInScope: (info: ActorInformation) => {
+        info.rendered = (
+          <React.Fragment key={info.label}>
+            <span className={classes.secondaryFieldsHeader}>
+              <br></br>
+              {info.label}: {info.value}
+            </span>
+          </React.Fragment>
+        );
+        return info;
+      },
+      NumLocalObjects: (info: ActorInformation) => {
+        info.rendered = (
+          <React.Fragment key={info.label}>
+            <span className={classes.secondaryFields}>
+              {info.label}: {info.value}
+            </span>
+          </React.Fragment>
+        );
+        return info;
+      },
+      UsedLocalObjectMemory: (info: ActorInformation) => {
+        info.rendered = (
+          <React.Fragment key={info.label}>
+            <span className={classes.secondaryFields}>
+              {info.label}: {info.value}
+            </span>
+          </React.Fragment>
+        );
+        return info;
+      }
+    };
+    // Apply the styling transformation
+    information = information.map(val => {
+      const transform = transforms[val.label];
+      if (transform !== undefined) {
+        return transform(val);
+      } else {
+        return val;
+      }
+    });
+
+    // Move some fields to the back and de-prioritize them.
+    const pushFieldsToBack = [
+      "NumObjectIdsInScope",
+      "NumLocalObjects",
+      "UsedLocalObjectMemory"
+    ];
+    pushFieldsToBack.forEach(fieldName => {
+      const foundIdx = information.findIndex(info => info.label === fieldName);
+      if (foundIdx !== -1) {
+        const foundValue = information[foundIdx];
+        information.splice(foundIdx, 1);
+        information.push(foundValue);
+      }
+    });
 
     // Construct the custom message from the actor.
     let actorCustomDisplay: JSX.Element[] = [];
@@ -243,7 +349,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               )}{" "}
               (Profile for
               {[10, 30, 60].map(duration => (
-                <React.Fragment>
+                <React.Fragment key={duration}>
                   {" "}
                   <span
                     className={classes.action}
@@ -264,7 +370,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               {Object.entries(profiling).map(
                 ([profilingId, { startTime, latestResponse }]) =>
                   latestResponse !== null && (
-                    <React.Fragment>
+                    <React.Fragment key={profilingId}>
                       (
                       {latestResponse.status === "pending" ? (
                         `Profiling for ${Math.round(
@@ -302,15 +408,15 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         <Typography className={classes.information}>
           {information.map(
-            ({ label, value }) =>
-              value &&
-              value.length > 0 && (
+            ({ label, value, rendered }) =>
+              rendered ||
+              (value && value.length > 0 && (
                 <React.Fragment key={label}>
                   <span className={classes.datum}>
                     {label}: {value}
                   </span>{" "}
                 </React.Fragment>
-              )
+              ))
           )}
         </Typography>
         {actor.state !== -1 && (
