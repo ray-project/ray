@@ -1123,7 +1123,13 @@ def connect(node,
     worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode is SCRIPT_MODE:
+    if mode is WORKER_MODE:
+        # We should not specify the job_id if it's `WORKER_MODE`.
+        assert job_id is None
+        job_id = JobID.nil()
+        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
+        worker.worker_id = _random_string()
+    else:
         # This is the code path of driver mode.
         if job_id is None:
             # TODO(qwang): use `GcsClient::GenerateJobId()` here.
@@ -1135,14 +1141,9 @@ def connect(node,
         # the correct driver.
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
-    else:
-        # We should not specify the job_id if it's `WORKER_MODE` or `LOCAL_MODE`.
-        assert job_id is None
-        job_id = JobID.nil()
-        # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
-        worker.worker_id = _random_string()
-        if setproctitle:
-            setproctitle.setproctitle("ray::IDLE")
+    
+    if mode is not SCRIPT_MODE and setproctitle:
+        setproctitle.setproctitle("ray::IDLE")
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
