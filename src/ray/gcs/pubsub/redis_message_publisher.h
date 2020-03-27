@@ -1,8 +1,8 @@
 #ifndef RAY_GCS_PUBSUB_REDIS_MESSAGE_PUBLISHER_H
 #define RAY_GCS_PUBSUB_REDIS_MESSAGE_PUBLISHER_H
 
-#include "ray/gcs/redis_client.h"
 #include "ray/gcs/pubsub/message_publisher.h"
+#include "ray/gcs/redis_client.h"
 
 namespace ray {
 
@@ -18,8 +18,8 @@ class RedisMessagePublisher : public MessagePublisher {
 
   Status PublishMessage(const std::string &channel, const std::string &message,
                         const StatusCallback &callback) override;
- 
-  template<typename Message>
+
+  template <typename Message>
   Status PublishMessage(const std::string &channel, const Message &message,
                         const StatusCallback &callback) override;
 

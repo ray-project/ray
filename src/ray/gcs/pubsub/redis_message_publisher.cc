@@ -10,7 +10,8 @@ RedisMessagePublisher::RedisMessagePublisher(const RedisClientOptions &options)
 Status RedisMessagePublisher::Connect(std::shared_ptr<IOServicePool> io_service_pool) {
   auto io_services = io_service_pool->GetAll();
   Status status = redis_client_->Connect(io_services);
-  RAY_LOG(INFO) << "RedisMessagePublisher::Connect finished with status " << status.ToString();
+  RAY_LOG(INFO) << "RedisMessagePublisher::Connect finished with status "
+                << status.ToString();
   return status;
 }
 
@@ -19,9 +20,9 @@ void RedisMessagePublisher::Disconnect() {
   RAY_LOG(INFO) << "RedisMessagePublisher disconnected.";
 }
 
-Status RedisMessagePublisher::PublishMessage(
-    const std::string &channel, const std::string &message,
-    const StatusCallback &callback) {
+Status RedisMessagePublisher::PublishMessage(const std::string &channel,
+                                             const std::string &message,
+                                             const StatusCallback &callback) {
   std::vector<std::string> args = {"PUBLISH", channel, message};
 
   RedisCallback pub_callback = nullptr;
@@ -36,10 +37,10 @@ Status RedisMessagePublisher::PublishMessage(
   return shard_context->RunArgvAsync(args, pub_callback);
 }
 
-template<typename Message>
-Status RedisMessagePublisher::PublishMessage(
-    const std::string &channel, const Message &message,
-    const StatusCallback &callback) {
+template <typename Message>
+Status RedisMessagePublisher::PublishMessage(const std::string &channel,
+                                             const Message &message,
+                                             const StatusCallback &callback) {
   return PublishMessage(channel, message.SerilizeToString(), callback);
 }
 

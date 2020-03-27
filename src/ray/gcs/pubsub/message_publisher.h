@@ -21,8 +21,8 @@ class MessagePublisher {
 
   virtual Status PublishMessage(const std::string &channel, const std::string &message,
                                 const StatusCallback &callback) = 0;
-  
-  template<typename Message>
+
+  template <typename Message>
   virtual Status PublishMessage(const std::string &channel, const Message &message,
                                 const StatusCallback &callback) = 0;
 
@@ -30,7 +30,7 @@ class MessagePublisher {
   MessagePublisher() {}
 };
 
-}  // namespace gcs 
+}  // namespace gcs
 
 }  // namespace ray
 
