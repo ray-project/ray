@@ -164,6 +164,9 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
     methods = [m.upper() for m in methods]
     global_state.route_table.register_service(
         route, endpoint_name, methods=methods)
+    ray.get(global_state.init_or_get_http_server().set_route_table.remote(
+        global_state.route_table.list_service(
+            include_methods=True, include_headless=False)))
 
 
 @_ensure_connected

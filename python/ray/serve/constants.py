@@ -1,6 +1,3 @@
-#: The interval which http server refreshes its routing table
-HTTP_ROUTER_CHECKER_INTERVAL_S = 2
-
 #: Actor name used to register master actor
 SERVE_MASTER_NAME = "SERVE_MASTER_ACTOR"
 
