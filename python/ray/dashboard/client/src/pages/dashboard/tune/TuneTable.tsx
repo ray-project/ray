@@ -228,7 +228,7 @@ class TuneTable extends React.Component<
         metricColumns: metricColumns
       });
     } else {
-      metricColumns = metricColumns.filter(value => value != name);
+      metricColumns = metricColumns.filter(value => value !== name);
       this.setState({
         metricColumns: metricColumns
       });
@@ -236,7 +236,6 @@ class TuneTable extends React.Component<
   };
 
   metricChoices = (metricNames: string[]) => {
-    const { classes } = this.props;
     const { metricColumns } = this.state;
 
     return (
@@ -273,7 +272,7 @@ class TuneTable extends React.Component<
         paramColumns: paramColumns
       });
     } else {
-      paramColumns = paramColumns.filter(value => value != name);
+      paramColumns = paramColumns.filter(value => value !== name);
       this.setState({
         paramColumns: paramColumns
       });
