@@ -1,6 +1,8 @@
 from datetime import timedelta
 import collections
 import logging
+import os
+
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -8,6 +10,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
+import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner
 
 logger = logging.getLogger(__name__)
@@ -146,12 +149,37 @@ class DistributedTorchRunner(TorchRunner):
         for model, model_state_dict in zip(self.models, model_state_dicts):
             model.module.load_state_dict(model_state_dict)
 
-    # def shutdown(self):
+    def shutdown(self):
         """Attempts to shut down the worker."""
-        # super(DistributedTorchRunner, self).shutdown()
-        # TODO: Temporarily removing since it causes hangs on MacOSX.
         # However, it seems to be harmless to remove permanently
         # since the processes are shutdown anyways. This comment can be
         # removed in a future release if it is still not documented
         # the stable Pytorch docs.
-        # dist.destroy_process_group()
+        dist.destroy_process_group()
+        super(DistributedTorchRunner, self).shutdown()
+
+
+class _DummyActor:
+    def cuda_devices(self):
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+
+class LocalDistributedRunner(DistributedTorchRunner):
+    def __init__(self, *args, num_cpus=None, num_gpus=None, **kwargs):
+        ip = ray.services.get_node_ip_address()
+
+        # Reserve a local GPU or CPU for the local worker
+        # TODO: we should make sure this NEVER dies.
+        self._dummy_local_actor = ray.remote(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources={"node:" + ip: 0.1})(_DummyActor).remote()
+
+        head_cuda = ray.get(self._dummy_local_actor.cuda_devices.remote())
+        os.environ["CUDA_VISIBLE_DEVICES"] = head_cuda
+        super(LocalDistributedRunner, self).__init__(*args, **kwargs)
+
+    def shutdown(self):
+        super(LocalDistributedRunner, self).shutdown()
+        self._dummy_local_actor.__ray_kill__()
+        self._dummy_local_actor = None
