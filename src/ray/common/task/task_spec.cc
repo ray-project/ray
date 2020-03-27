@@ -221,16 +221,6 @@ ObjectID TaskSpecification::ActorDummyObject() const {
   return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
 }
 
-bool TaskSpecification::IsDirectCall() const { return message_->is_direct_call(); }
-
-bool TaskSpecification::IsDirectActorCreationCall() const {
-  if (IsActorCreationTask()) {
-    return message_->actor_creation_task_spec().is_direct_call();
-  } else {
-    return false;
-  }
-}
-
 int TaskSpecification::MaxActorConcurrency() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_concurrency();
@@ -261,7 +251,6 @@ std::string TaskSpecification::DebugString() const {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_reconstructions=" << MaxActorReconstructions()
-           << ", is_direct_call=" << IsDirectCall()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -272,6 +261,20 @@ std::string TaskSpecification::DebugString() const {
            << "}";
   }
 
+  return stream.str();
+}
+
+std::string TaskSpecification::CallSiteString() const {
+  std::ostringstream stream;
+  auto desc = FunctionDescriptor();
+  if (IsActorCreationTask()) {
+    stream << "(deserialize actor creation task arg) ";
+  } else if (IsActorTask()) {
+    stream << "(deserialize actor task arg) ";
+  } else {
+    stream << "(deserialize task arg) ";
+  }
+  stream << FunctionDescriptor()->CallSiteString();
   return stream.str();
 }
 

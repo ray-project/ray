@@ -23,6 +23,14 @@ py_test(
 )
 
 py_test(
+    name = "test_memstat",
+    size = "small",
+    srcs = ["test_memstat.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_iter",
     size = "medium",
     srcs = ["test_iter.py"],
@@ -204,6 +212,22 @@ py_test(
 )
 
 py_test(
+    name = "test_reference_counting_2",
+    size = "medium",
+    srcs = ["test_reference_counting_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_global_gc",
+    size = "medium",
+    srcs = ["test_global_gc.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_global_state",
     size = "small",
     srcs = ["test_global_state.py"],
@@ -231,6 +255,14 @@ py_test(
     name = "test_metrics",
     size = "small",
     srcs = ["test_metrics.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_metrics_export",
+    size = "small",
+    srcs = ["test_metrics_export.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

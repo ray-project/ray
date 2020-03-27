@@ -1,5 +1,4 @@
 import asyncio
-import json
 
 import uvicorn
 
@@ -7,46 +6,10 @@ import ray
 from ray.experimental.async_api import _async_init
 from ray.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.serve.context import TaskContext
-from ray.serve.utils import BytesEncoder
 from ray.serve.request_params import RequestMetadata
+from ray.serve.http_util import Response
 
 from urllib.parse import parse_qs
-
-
-class JSONResponse:
-    """ASGI compliant response class.
-
-    It is expected to be called in async context and pass along
-    `scope, receive, send` as in ASGI spec.
-
-    >>> await JSONResponse({"k": "v"})(scope, receive, send)
-    """
-
-    def __init__(self, content=None, status_code=200):
-        """Construct a JSON HTTP Response.
-
-        Args:
-            content (optional): Any JSON serializable object.
-            status_code (int, optional): Default status code is 200.
-        """
-        self.body = self.render(content)
-        self.status_code = status_code
-        self.raw_headers = [[b"content-type", b"application/json"]]
-
-    def render(self, content):
-        if content is None:
-            return b""
-        if isinstance(content, bytes):
-            return content
-        return json.dumps(content, cls=BytesEncoder, indent=2).encode()
-
-    async def __call__(self, scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": self.status_code,
-            "headers": self.raw_headers,
-        })
-        await send({"type": "http.response.body", "body": self.body})
 
 
 class HTTPProxy:
@@ -63,6 +26,7 @@ class HTTPProxy:
 
         # Delay import due to GlobalState depends on HTTP actor
         from ray.serve.global_state import GlobalState
+
         self.serve_global_state = GlobalState()
         self.route_table_cache = dict()
 
@@ -75,7 +39,8 @@ class HTTPProxy:
                 return
 
             self.route_table_cache = (
-                self.serve_global_state.route_table.list_service())
+                self.serve_global_state.route_table.list_service(
+                    include_methods=True, include_headless=False))
 
             await asyncio.sleep(interval)
 
@@ -105,19 +70,38 @@ class HTTPProxy:
 
         return b"".join(body_buffer)
 
-    def _check_slo_ms(self, request_slo_ms):
-        if request_slo_ms is not None:
-            if len(request_slo_ms) != 1:
-                raise ValueError(
-                    "Multiple SLO specified, please specific only one.")
-            request_slo_ms = request_slo_ms[0]
-            request_slo_ms = float(request_slo_ms)
-            if request_slo_ms < 0:
-                raise ValueError(
-                    "Request SLO must be positive, it is {}".format(
-                        request_slo_ms))
-            return request_slo_ms
-        return None
+    def _parse_latency_slo(self, scope):
+        query_string = scope["query_string"].decode("ascii")
+        query_kwargs = parse_qs(query_string)
+
+        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
+        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
+        relative_slo_ms = self._validate_slo_ms(relative_slo_ms)
+        absolute_slo_ms = self._validate_slo_ms(absolute_slo_ms)
+        if relative_slo_ms is not None and absolute_slo_ms is not None:
+            raise ValueError("Both relative and absolute slo's"
+                             "cannot be specified.")
+        return relative_slo_ms, absolute_slo_ms
+
+    def _validate_slo_ms(self, request_slo_ms):
+        if request_slo_ms is None:
+            return None
+        if len(request_slo_ms) != 1:
+            raise ValueError(
+                "Multiple SLO specified, please specific only one.")
+        request_slo_ms = request_slo_ms[0]
+        request_slo_ms = float(request_slo_ms)
+        if request_slo_ms < 0:
+            raise ValueError("Request SLO must be positive, it is {}".format(
+                request_slo_ms))
+        return request_slo_ms
+
+    def _make_error_sender(self, scope, receive, send):
+        async def sender(error_message, status_code):
+            response = Response(error_message, status_code=status_code)
+            await response.send(scope, receive, send)
+
+        return sender
 
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
@@ -127,39 +111,39 @@ class HTTPProxy:
             await self.handle_lifespan_message(scope, receive, send)
             return
 
+        error_sender = self._make_error_sender(scope, receive, send)
+
         assert scope["type"] == "http"
         current_path = scope["path"]
-        if current_path == "/":
-            await JSONResponse(self.route_table_cache)(scope, receive, send)
+        if current_path == "/-/routes":
+            await Response(self.route_table_cache).send(scope, receive, send)
             return
 
         # TODO(simon): Use werkzeug route mapper to support variable path
         if current_path not in self.route_table_cache:
-            error_message = ("Path {} not found. "
-                             "Please ping http://.../ for routing table"
-                             ).format(current_path)
-            await JSONResponse(
-                {
-                    "error": error_message
-                }, status_code=404)(scope, receive, send)
+            error_message = (
+                "Path {} not found. "
+                "Please ping http://.../-/routes for routing table"
+            ).format(current_path)
+            await error_sender(error_message, 404)
             return
 
-        endpoint_name = self.route_table_cache[current_path]
+        endpoint_name, methods_allowed = self.route_table_cache[current_path]
+
+        if scope["method"] not in methods_allowed:
+            error_message = ("Methods {} not allowed. "
+                             "Avaiable HTTP methods are {}.").format(
+                                 scope["method"], methods_allowed)
+            await error_sender(error_message, 405)
+            return
+
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         # get slo_ms before enqueuing the query
-        query_string = scope["query_string"].decode("ascii")
-        query_kwargs = parse_qs(query_string)
-        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
-        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
         try:
-            relative_slo_ms = self._check_slo_ms(relative_slo_ms)
-            absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
-            if relative_slo_ms is not None and absolute_slo_ms is not None:
-                raise ValueError("Both relative and absolute slo's"
-                                 "cannot be specified.")
+            relative_slo_ms, absolute_slo_ms = self._parse_latency_slo(scope)
         except ValueError as e:
-            await JSONResponse({"error": str(e)})(scope, receive, send)
+            await error_sender(str(e), 400)
             return
 
         # create objects necessary for enqueue
@@ -167,23 +151,21 @@ class HTTPProxy:
         # https://github.com/ray-project/ray/issues/6944
         # TODO(alind):  remove list enclosing after issue is fixed
         args = (scope, [http_body_bytes])
+        headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_in_object = RequestMetadata(
             endpoint_name,
             TaskContext.Web,
             relative_slo_ms=relative_slo_ms,
-            absolute_slo_ms=absolute_slo_ms)
+            absolute_slo_ms=absolute_slo_ms,
+            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
 
-        actual_result = await (self.serve_global_state.init_or_get_router()
-                               .enqueue_request.remote(request_in_object,
-                                                       *args))
-        result = actual_result
-
-        if isinstance(result, ray.exceptions.RayTaskError):
-            await JSONResponse({
-                "error": "internal error, please use python API to debug"
-            })(scope, receive, send)
-        else:
-            await JSONResponse({"result": result})(scope, receive, send)
+        try:
+            result = await (self.serve_global_state.init_or_get_router()
+                            .enqueue_request.remote(request_in_object, *args))
+            await Response(result).send(scope, receive, send)
+        except Exception as e:
+            error_message = "Internal Error. Traceback: {}.".format(e)
+            await error_sender(error_message, 500)
 
 
 @ray.remote

@@ -82,6 +82,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 
+# APEXTrainer
+py_test(
+    name = "test_apex",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_apex.py"]
+)
+
 # IMPALA
 py_test(
     name = "test_vtrace",
@@ -420,7 +428,7 @@ py_test(
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"buffer_size\": 10000, \"sample_batch_size\": 4, \"learning_starts\": 10000, \"target_network_update_freq\": 1000, \"gamma\": 0.99, \"prioritized_replay\": true}'"
+        "--config", "'{\"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"buffer_size\": 10000, \"rollout_fragment_length\": 4, \"learning_starts\": 10000, \"target_network_update_freq\": 1000, \"gamma\": 0.99, \"prioritized_replay\": true}'"
         ]
 )
 
@@ -541,17 +549,8 @@ py_test(
         "--run", "IMPALA",
         "--stop", "'{\"timesteps_total\": 40000}'",
         "--ray-object-store-memory=1000000000",
-        "--config", "'{\"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"sample_batch_size\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
+        "--config", "'{\"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"rollout_fragment_length\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
         ]
-)
-
-# From test_rollout.sh (deprecated test file).
-py_test(
-    name = "test_impala_rollout",
-    main = "tests/test_rollout.py",
-    data = ["train.py", "rollout.py"],
-    tags = ["quick_train"],
-    srcs = ["tests/test_rollout.py"]
 )
 
 # MARWIL
@@ -581,7 +580,7 @@ py_test(
         "--env", "FrozenLake-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -595,7 +594,7 @@ py_test(
         "--env", "FrozenLake-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -608,7 +607,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -621,7 +620,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500}'"
+        "--config", "'{\"rollout_fragment_length\": 500}'"
         ]
 )
 
@@ -633,7 +632,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1, \"model\": {\"use_lstm\": true, \"max_seq_len\": 100}}'"
         ]
 )
 
@@ -646,7 +645,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1, \"num_envs_per_worker\": 10}'"
         ]
 )
 
@@ -659,7 +658,7 @@ py_test(
         "--env", "Pong-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        "--config", "'{\"rollout_fragment_length\": 500, \"num_workers\": 1}'"
         ]
 )
 
@@ -847,6 +846,34 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Optimizers and Memories
+# rllib/optimizers/
+#
+# Tag: optimizers
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_optimizers",
+    tags = ["optimizers"],
+    size = "large",
+    srcs = ["optimizers/tests/test_optimizers.py"]
+)
+
+py_test(
+    name = "test_segment_tree",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_segment_tree.py"]
+)
+
+py_test(
+    name = "test_prioritized_replay_buffer",
+    tags = ["optimizers"],
+    size = "small",
+    srcs = ["optimizers/tests/test_prioritized_replay_buffer.py"]
+)
+
+# --------------------------------------------------------------------
 # Policies
 # rllib/policy/
 #
@@ -868,11 +895,10 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_framework_agnostic_components",
+    name = "test_explorations",
     tags = ["utils"],
-    size = "small",
-    data = glob(["utils/tests/**"]),
-    srcs = ["utils/tests/test_framework_agnostic_components.py"]
+    size = "large",
+    srcs = ["utils/exploration/tests/test_explorations.py"]
 )
 
 # Schedules
@@ -881,6 +907,14 @@ py_test(
     tags = ["utils"],
     size = "small",
     srcs = ["utils/schedules/tests/test_schedules.py"]
+)
+
+py_test(
+    name = "test_framework_agnostic_components",
+    tags = ["utils"],
+    size = "small",
+    data = glob(["utils/tests/**"]),
+    srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
 # TaskPool
@@ -952,13 +986,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_explorations",
-    tags = ["tests_dir", "tests_dir_E", "explorations"],
-    size = "large",
-    srcs = ["tests/test_explorations.py"]
-)
-
-py_test(
     name = "tests/test_external_env",
     tags = ["tests_dir", "tests_dir_E"],
     size = "large",
@@ -968,7 +995,7 @@ py_test(
 py_test(
     name = "tests/test_external_multi_agent_env",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
@@ -989,22 +1016,30 @@ py_test(
 py_test(
     name = "tests/test_io",
     tags = ["tests_dir", "tests_dir_I"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_io.py"]
 )
 
 py_test(
     name = "tests/test_local",
     tags = ["tests_dir", "tests_dir_L"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_local.py"]
 )
 
 py_test(
     name = "tests/test_lstm",
     tags = ["tests_dir", "tests_dir_L"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_lstm.py"]
+)
+
+py_test(
+    name = "tests/test_model_imports",
+    tags = ["tests_dir", "tests_dir_M", "model_imports"],
+    size = "small",
+    data = glob(["tests/data/model_weights/**"]),
+    srcs = ["tests/test_model_imports.py"]
 )
 
 py_test(
@@ -1024,22 +1059,15 @@ py_test(
 py_test(
     name = "tests/test_nested_spaces",
     tags = ["tests_dir", "tests_dir_N"],
-    size = "large",
+    size = "small",
     srcs = ["tests/test_nested_spaces.py"]
 )
 
 py_test(
-    name = "tests/test_optimizers",
-    tags = ["tests_dir", "tests_dir_O"],
-    size = "large",
-    srcs = ["tests/test_optimizers.py"]
-)
-
-py_test(
-    name = "tests/test_pipeline",
-    tags = ["tests_dir", "tests_dir_P"],
+    name = "tests/test_exec_api",
+    tags = ["tests_dir", "tests_dir_E"],
     size = "small",
-    srcs = ["tests/test_pipeline.py"]
+    srcs = ["tests/test_exec_api.py"]
 )
 
 py_test(
@@ -1047,6 +1075,15 @@ py_test(
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_reproducibility.py"]
+)
+
+py_test(
+    name = "test_rollout",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "enormous",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"]
 )
 
 py_test(
@@ -1307,6 +1344,22 @@ py_test(
     args = ["--num-cpus=4"]
 )
 
+sh_test(
+    name = "examples/serving/test_local_inference",
+    tags = ["examples", "examples_L", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_local_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "examples/serving/test_remote_inference",
+    tags = ["examples", "examples_R", "exclusive"],
+    size = "medium",
+    srcs = ["examples/serving/test_remote_inference.sh"],
+    data = glob(["examples/serving/*.py"]),
+)
+
 py_test(
     name = "examples/rock_paper_scissors_multiagent", main = "examples/rock_paper_scissors_multiagent.py",
     tags = ["examples", "examples_R"],
@@ -1321,6 +1374,24 @@ py_test(
     size = "large",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ts",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinTS"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ucb",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
 )
 
 py_test(

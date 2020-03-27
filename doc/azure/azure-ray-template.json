@@ -21,21 +21,37 @@
                 "description": "Password for the Virtual Machine and JupyterLab"
             }
         },
-        "vmSizeHead": {
+        "headNodeSize": {
             "type": "string",
             "defaultValue": "Standard_D2s_v3",
             "metadata": {
                 "description": "The size of the head-node Virtual Machine"
             }
         },
-        "vmSizeWorker": {
+        "headNodePriority": {
+            "type": "string",
+            "defaultValue": "Regular",
+            "allowedValues": ["Regular", "Low", "Spot"],
+            "metadata": { 
+                "description": "Use Azure Spot instance for worker nodes"
+            }
+        },
+         "workerNodeSize": {
             "type": "string",
             "defaultValue": "Standard_D2s_v3",
             "metadata": {
                 "description": "The size of the worker node Virtual Machine"
             }
         },
-         "workerInitial": {
+        "workerNodePriority": {
+            "type": "string",
+            "defaultValue": "Spot",
+            "allowedValues": ["Regular", "Low", "Spot"],
+            "metadata": { 
+                "description": "Use Azure Spot instance for worker nodes"
+            }
+        },
+        "workerInitial": {
             "type": "int",
             "defaultValue": 1,
             "minValue": 0,
@@ -246,7 +262,7 @@
         },
         {
             "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-03-01",
+            "apiVersion": "2019-07-01",
             "name": "[variables('vmNameHead')]",
             "location": "[resourceGroup().location]",
             "dependsOn": [
@@ -254,8 +270,9 @@
             ],
             "properties": {
                 "hardwareProfile": {
-                    "vmSize": "[parameters('vmSizeHead')]"
+                    "vmSize": "[parameters('headNodeSize')]"
                 },
+                "priority": "[parameters('headNodePriority')]",
                 "storageProfile": {
                     "osDisk": {
                         "createOption": "fromImage",
@@ -327,7 +344,7 @@
                 "Microsoft.Network/virtualNetworks/ray-vnet"
             ],
             "sku": {
-                "name": "[parameters('vmSizeWorker')]",
+                "name": "[parameters('workerNodeSize')]",
                 "tier": "Standard",
                 "capacity": "[parameters('workerInitial')]"
             },
@@ -336,6 +353,7 @@
                     "mode": "Manual"
                 },
                 "virtualMachineProfile": {
+                    "priority": "[parameters('workerNodePriority')]",
                     "storageProfile": {
                         "osDisk": {
                             "createOption": "fromImage",

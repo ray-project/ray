@@ -18,8 +18,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxConcurrency;
 
   private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
-                               boolean useDirectCall, String jvmOptions, int maxConcurrency) {
-    super(resources, useDirectCall);
+                               String jvmOptions, int maxConcurrency) {
+    super(resources);
     this.maxReconstructions = maxReconstructions;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
@@ -32,7 +32,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
-    private boolean useDirectCall = DEFAULT_USE_DIRECT_CALL;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
 
@@ -46,14 +45,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    // Since direct call is not fully supported yet (see issue #5559),
-    // users are not allowed to set the option to true.
-    // TODO (kfstorm): uncomment when direct call is ready.
-    // public Builder setUseDirectCall(boolean useDirectCall) {
-    //   this.useDirectCall = useDirectCall;
-    //   return this;
-    // }
-
     public Builder setJvmOptions(String jvmOptions) {
       this.jvmOptions = jvmOptions;
       return this;
@@ -61,9 +52,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     // The max number of concurrent calls to allow for this actor.
     //
-    // This only works with direct actor calls. The max concurrency defaults to 1
-    // for threaded execution. Note that the execution order is not guaranteed
-    // when max_concurrency > 1.
+    // The max concurrency defaults to 1 for threaded execution.
+    // Note that the execution order is not guaranteed when max_concurrency > 1.
     public Builder setMaxConcurrency(int maxConcurrency) {
       if (maxConcurrency <= 0) {
         throw new IllegalArgumentException("maxConcurrency must be greater than 0.");
@@ -75,7 +65,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions createActorCreationOptions() {
       return new ActorCreationOptions(
-          resources, maxReconstructions, useDirectCall, jvmOptions, maxConcurrency);
+          resources, maxReconstructions, jvmOptions, maxConcurrency);
     }
   }
 

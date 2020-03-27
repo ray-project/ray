@@ -1,4 +1,5 @@
-from contextlib import closing
+import collections
+from contextlib import closing, contextmanager
 import logging
 import numpy as np
 import socket
@@ -8,6 +9,10 @@ import ray
 from ray.exceptions import RayActorError
 
 logger = logging.getLogger(__name__)
+
+BATCH_COUNT = "batch_count"
+NUM_SAMPLES = "num_samples"
+BATCH_SIZE = "*batch_size"
 
 
 class TimerStat:
@@ -103,6 +108,46 @@ class TimerStat:
         self.count = 0
 
 
+@contextmanager
+def _nullcontext(enter_result=None):
+    """Used for mocking timer context."""
+    yield enter_result
+
+
+class TimerCollection:
+    """A grouping of Timers."""
+
+    def __init__(self):
+        self._timers = collections.defaultdict(TimerStat)
+        self._enabled = True
+
+    def disable(self):
+        self._enabled = False
+
+    def enable(self):
+        self._enabled = True
+
+    def reset(self):
+        for timer in self._timers.values():
+            timer.reset()
+
+    def record(self, key):
+        if self._enabled:
+            return self._timers[key]
+        else:
+            return _nullcontext()
+
+    def stats(self, mean=True, last=False):
+        aggregates = {}
+        for k, t in self._timers.items():
+            if t.count > 0:
+                if mean:
+                    aggregates["mean_%s_s" % k] = t.mean
+                if last:
+                    aggregates["last_%s_s" % k] = t.last
+        return aggregates
+
+
 def find_free_port():
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
         s.bind(("", 0))
@@ -127,6 +172,29 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+class AverageMeterCollection:
+    """A grouping of AverageMeters."""
+
+    def __init__(self):
+        self._batch_count = 0
+        self.n = 0
+        self._meters = collections.defaultdict(AverageMeter)
+
+    def update(self, metrics, n=1):
+        self._batch_count += 1
+        self.n += n
+        for metric, value in metrics.items():
+            self._meters[metric].update(value, n=n)
+
+    def summary(self):
+        """Returns a dict of average and most recent values for each metric."""
+        stats = {BATCH_COUNT: self._batch_count, NUM_SAMPLES: self.n}
+        for metric, meter in self._meters.items():
+            stats["mean_" + str(metric)] = meter.avg
+            stats["last_" + str(metric)] = meter.val
+        return stats
 
 
 def check_for_failure(remote_values):
