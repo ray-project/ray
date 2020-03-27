@@ -21,7 +21,7 @@ void LocalModeObjectStore::PutRaw(const ObjectID &object_id,
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = memory_store_->Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), object_id);
-  if (status.ok()) {
+  if (!status) {
     throw RayException("Put object error: ");
   }
 }
