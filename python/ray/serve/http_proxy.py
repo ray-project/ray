@@ -159,7 +159,7 @@ class HTTPProxy:
 
 
 @ray.remote
-class HTTPActor:
+class HTTPProxyActor:
     def __init__(self):
         self.app = HTTPProxy()
 

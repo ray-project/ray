@@ -7,7 +7,7 @@ from ray.serve.kv_store_service import (BackendTable, RoutingTable,
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 
 from ray.serve.policy import RoutePolicy
-from ray.serve.server import HTTPActor
+from ray.serve.http_proxy import HTTPProxyActor
 
 
 def start_initial_state(kv_store_connector):
@@ -108,17 +108,17 @@ class GlobalState:
         self.actor_handle_cache = ray.get(
             self.master_actor_handle.get_all_handles.remote())
 
-    def init_or_get_http_server(self,
-                                host=DEFAULT_HTTP_HOST,
-                                port=DEFAULT_HTTP_PORT):
-        if "http_server" not in self.actor_handle_cache:
+    def init_or_get_http_proxy(self,
+                               host=DEFAULT_HTTP_HOST,
+                               port=DEFAULT_HTTP_PORT):
+        if "http_proxy" not in self.actor_handle_cache:
             [handle] = ray.get(
                 self.master_actor_handle.start_actor.remote(
-                    HTTPActor, tag="http_server"))
+                    HTTPProxyActor, tag="http_proxy"))
 
             handle.run.remote(host=host, port=port)
             self.refresh_actor_handle_cache()
-        return self.actor_handle_cache["http_server"]
+        return self.actor_handle_cache["http_proxy"]
 
     def _get_queueing_policy(self, default_policy):
         return_policy = default_policy

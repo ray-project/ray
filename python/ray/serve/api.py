@@ -142,7 +142,7 @@ def init(
     global_state.init_or_get_metric_monitor(
         gc_window_seconds=gc_window_seconds)
     if start_server:
-        global_state.init_or_get_http_server(
+        global_state.init_or_get_http_proxy(
             host=http_host, port=http_port).set_router_handle.remote(router)
 
     if start_server and blocking:
@@ -165,7 +165,7 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
     methods = [m.upper() for m in methods]
     global_state.route_table.register_service(
         route, endpoint_name, methods=methods)
-    ray.get(global_state.init_or_get_http_server().set_route_table.remote(
+    ray.get(global_state.init_or_get_http_proxy().set_route_table.remote(
         global_state.route_table.list_service(
             include_methods=True, include_headless=False)))
 
