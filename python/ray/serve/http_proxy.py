@@ -156,7 +156,7 @@ class HTTPProxyActor:
     def __init__(self):
         self.app = HTTPProxy()
 
-    async def run(self, host="0.0.0.0", port=8000):
+    async def run(self, host, port):
         sock = socket.socket()
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((host, port))

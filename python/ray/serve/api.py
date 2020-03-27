@@ -143,9 +143,9 @@ def init(
     global_state.init_or_get_metric_monitor(
         gc_window_seconds=gc_window_seconds)
     if start_server:
-        router = ray.get(master.get_router.remote())[0]
-        global_state.init_or_get_http_proxy(
-            host=http_host, port=http_port).set_router_handle.remote(router)
+        print("start http proxy")
+        ray.get(master.start_http_proxy.remote(http_host, http_port))
+        print("start http proxy done")
 
     if start_server and blocking:
         block_until_http_ready("http://{}:{}/-/routes".format(
@@ -167,7 +167,7 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
     methods = [m.upper() for m in methods]
     global_state.route_table.register_service(
         route, endpoint_name, methods=methods)
-    ray.get(global_state.init_or_get_http_proxy().set_route_table.remote(
+    ray.get(global_state.get_http_proxy().set_route_table.remote(
         global_state.route_table.list_service(
             include_methods=True, include_headless=False)))
 
@@ -360,7 +360,7 @@ def _remove_replica(backend_tag):
     ray.get(global_state.master_actor_handle.remove_handle.remote(replica_tag))
 
     # Remove the replica from router.
-    # This will also destory the actor handle.
+    # This will also destroy the actor handle.
     ray.get(global_state.get_router().remove_and_destory_replica.remote(
         backend_tag, replica_handle))
 

@@ -1,6 +1,5 @@
 import ray
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_MASTER_NAME, ASYNC_CONCURRENCY)
+from ray.serve.constants import (SERVE_MASTER_NAME, ASYNC_CONCURRENCY)
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
@@ -23,7 +22,8 @@ class ServeMaster:
         self.kv_store_connector = kv_store_connector
         self.tag_to_actor_handles = dict()
 
-        self.router_handle = None
+        self.router = None
+        self.http_proxy = None
 
     def get_kv_store_connector(self):
         return self.kv_store_connector
@@ -46,13 +46,26 @@ class ServeMaster:
         return [handle]
 
     def start_router(self, router_class, init_kwargs):
-        assert self.router_handle is None
-        self.router_handle = router_class.options(
+        assert self.router is None, "Router already started."
+        self.router = router_class.options(
             max_concurrency=ASYNC_CONCURRENCY).remote(**init_kwargs)
 
     def get_router(self):
-        assert self.router_handle is not None
-        return [self.router_handle]
+        assert self.router is not None, "Router not started yet."
+        return [self.router]
+
+    def start_http_proxy(self, host, port):
+        assert self.http_proxy is None, "HTTP proxy already started."
+        assert self.router is not None, (
+            "Router must be started before HTTP proxy.")
+        self.http_proxy = HTTPProxyActor.options(
+            max_concurrency=ASYNC_CONCURRENCY).remote()
+        self.http_proxy.run.remote(host, port)
+        ray.get(self.http_proxy.set_router_handle.remote(self.router))
+
+    def get_http_proxy(self):
+        assert self.http_proxy is not None, "HTTP proxy not started yet."
+        return [self.http_proxy]
 
     def start_actor_with_creator(self, creator, kwargs, tag):
         """
@@ -103,17 +116,8 @@ class GlobalState:
         self.actor_handle_cache = ray.get(
             self.master_actor_handle.get_all_handles.remote())
 
-    def init_or_get_http_proxy(self,
-                               host=DEFAULT_HTTP_HOST,
-                               port=DEFAULT_HTTP_PORT):
-        if "http_proxy" not in self.actor_handle_cache:
-            [handle] = ray.get(
-                self.master_actor_handle.start_actor.remote(
-                    HTTPProxyActor, tag="http_proxy"))
-
-            handle.run.remote(host=host, port=port)
-            self.refresh_actor_handle_cache()
-        return self.actor_handle_cache["http_proxy"]
+    def get_http_proxy(self):
+        return ray.get(self.master_actor_handle.get_http_proxy.remote())[0]
 
     def _get_queueing_policy(self, default_policy):
         return_policy = default_policy
