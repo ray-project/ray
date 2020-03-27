@@ -98,7 +98,8 @@ class DistributedTorchRunner(TorchRunner):
             validation_loader=self.validation_loader,
             world_rank=self.world_rank,
             schedulers=self.schedulers,
-            use_fp16=self.use_fp16)
+            use_fp16=self.use_fp16,
+            tqdm=self.tqdm)
 
     def _initialize_dataloaders(self):
         super(DistributedTorchRunner, self)._initialize_dataloaders()

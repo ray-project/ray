@@ -16,7 +16,6 @@ from ray.util.sgd.torch.distributed_torch_runner import (
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
-from ray.util.sgd.torch.tqdm_handler import TqdmHandler
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -209,6 +208,7 @@ class TorchTrainer:
         self.max_replicas = num_workers
 
         self.use_fp16 = use_fp16
+        self.tqdm = tqdm
 
         if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
@@ -217,10 +217,6 @@ class TorchTrainer:
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
-
-        self.handlers = []
-        if tqdm:
-            self.handlers.append(TqdmHandler())
 
         _validate_scheduler_step_freq(scheduler_step_freq)
         self.scheduler_step_freq = scheduler_step_freq
@@ -268,6 +264,7 @@ class TorchTrainer:
                 training_operator_cls=self.training_operator_cls,
                 config=worker_config,
                 use_fp16=self.use_fp16,
+                tqdm=self.tqdm,
                 apex_args=self.apex_args,
                 scheduler_step_freq=self.scheduler_step_freq)
 
@@ -275,8 +272,6 @@ class TorchTrainer:
                 self.apply_all_workers(self.initialization_hook)
 
             self.local_worker.setup()
-            self.local_worker.set_reporters(
-                [h.create_reporter() for h in self.handlers])
         else:
             params = dict(
                 model_creator=self.model_creator,
@@ -288,6 +283,7 @@ class TorchTrainer:
                 training_operator_cls=self.training_operator_cls,
                 config=worker_config,
                 use_fp16=self.use_fp16,
+                tqdm=self.tqdm,
                 apex_args=self.apex_args,
                 scheduler_step_freq=self.scheduler_step_freq)
 
@@ -318,15 +314,6 @@ class TorchTrainer:
             self.local_worker.setup(address, 0, num_workers)
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_setups)
-
-            remote_reporter_sets = [
-                w.set_reporters.remote(
-                    [h.create_reporter() for h in self.handlers])
-                for w in self.remote_workers
-            ]
-            self.local_worker.set_reporters(
-                [h.create_reporter() for h in self.handlers])
-            ray.get(remote_reporter_sets)
 
     def train(self,
               num_steps=None,
@@ -383,9 +370,6 @@ class TorchTrainer:
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers(checkpoint=checkpoint)
 
-        for h in self.handlers:
-            h.record_train_info(info, num_steps)
-
         success, worker_stats = self._train_epoch(
             num_steps=num_steps, profile=profile, info=info)
         # Fault handling
@@ -394,7 +378,6 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            h.prepare_for_retry()
             self._resize_workers(checkpoint=checkpoint)
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))

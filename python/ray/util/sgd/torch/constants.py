@@ -1,4 +1,5 @@
 USE_FP16 = "__use_fp16__"
+NUM_STEPS = "__num_steps__"
 SCHEDULER_STEP = "scheduler_step"
 SCHEDULER_STEP_BATCH = "batch"
 SCHEDULER_STEP_EPOCH = "epoch"
