@@ -113,6 +113,10 @@ def init(
     if not ray.is_initialized():
         ray.init(**ray_init_kwargs)
 
+    # Register serialization context once
+    ray.register_custom_serializer(Query, Query.ray_serialize,
+                                   Query.ray_deserialize)
+
     # Try to get serve master actor if it exists
     try:
         ray.util.get_actor(SERVE_MASTER_NAME)
@@ -120,10 +124,6 @@ def init(
         return
     except ValueError:
         pass
-
-    # Register serialization context once
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
 
     if kv_store_path is None:
         _, kv_store_path = mkstemp()

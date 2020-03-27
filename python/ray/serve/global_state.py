@@ -1,6 +1,5 @@
 import ray
-from ray.serve.constants import (BOOTSTRAP_KV_STORE_CONN_KEY,
-                                 DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME, ASYNC_CONCURRENCY)
 from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
@@ -11,12 +10,8 @@ from ray.serve.http_proxy import HTTPProxyActor
 
 
 def start_initial_state(kv_store_connector):
-    master_handle = ServeMaster.remote()
+    master_handle = ServeMaster.remote(kv_store_connector)
     ray.util.register_actor(SERVE_MASTER_NAME, master_handle)
-
-    ray.get(
-        master_handle.store_bootstrap_state.remote(BOOTSTRAP_KV_STORE_CONN_KEY,
-                                                   kv_store_connector))
     return master_handle
 
 
@@ -30,10 +25,12 @@ class ServeMaster:
         we need to initialize and store actor handles in a seperate actor.
     """
 
-    def __init__(self):
+    def __init__(self, kv_store_connector):
+        self.kv_store_connector = kv_store_connector
         self.tag_to_actor_handles = dict()
 
-        self.bootstrap_state = dict()
+    def get_kv_store_connector(self):
+        return self.kv_store_connector
 
     def start_actor(self,
                     actor_cls,
@@ -73,12 +70,6 @@ class ServeMaster:
         if actor_tag in self.tag_to_actor_handles.keys():
             self.tag_to_actor_handles.pop(actor_tag)
 
-    def store_bootstrap_state(self, key, value):
-        self.bootstrap_state[key] = value
-
-    def get_bootstrap_state_dict(self):
-        return self.bootstrap_state
-
 
 class GlobalState:
     """Encapsulate all global state in the serving system.
@@ -94,10 +85,9 @@ class GlobalState:
             master_actor_handle = ray.util.get_actor(SERVE_MASTER_NAME)
         self.master_actor_handle = master_actor_handle
 
-        # Connect to all the table
-        bootstrap_config = ray.get(
-            self.master_actor_handle.get_bootstrap_state_dict.remote())
-        kv_store_connector = bootstrap_config[BOOTSTRAP_KV_STORE_CONN_KEY]
+        # Connect to all the tables.
+        kv_store_connector = ray.get(
+            self.master_actor_handle.get_kv_store_connector.remote())
         self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
         self.policy_table = TrafficPolicyTable(kv_store_connector)
@@ -146,7 +136,6 @@ class GlobalState:
                     init_kwargs=policy_kwargs,
                     tag=queue_actor_tag,
                     is_asyncio=True))
-            # handle.register_self_handle.remote(handle)
             self.refresh_actor_handle_cache()
 
         return self.actor_handle_cache[queue_actor_tag]
