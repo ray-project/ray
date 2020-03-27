@@ -540,11 +540,19 @@ class TorchTrainer:
                 worker.shutdown.remote() for worker in self.remote_workers
             ]
             self.local_worker.shutdown()
-            ray.get(cleanup)
-            [
-                worker.__ray_terminate__.remote()
-                for worker in self.remote_workers
-            ]
+            try:
+                ray.get(cleanup)
+                [
+                    worker.__ray_terminate__.remote()
+                    for worker in self.remote_workers
+                ]
+            except RayActorError:
+                logger.warning(
+                    "Failed to shutdown gracefully, forcing a shutdown.")
+
+                for worker in self.remote_workers:
+                    logger.warning("Killing worker {}.".format(worker))
+                    ray.kill(worker)
         else:
             self.local_worker.shutdown()
             for worker in self.remote_workers:
