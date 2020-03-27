@@ -9,7 +9,7 @@ import numpy as np
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME)
-from ray.serve.global_state import GlobalState, start_initial_state
+from ray.serve.global_state import GlobalState, ServeMaster
 from ray.serve.kv_store_service import SQLiteKVStore
 from ray.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.serve.utils import block_until_http_ready, get_random_letters, expand
@@ -134,14 +134,16 @@ def init(
     def kv_store_connector(namespace):
         return SQLiteKVStore(namespace, db_path=kv_store_path)
 
-    master = start_initial_state(kv_store_connector)
+    master = ServeMaster.remote(kv_store_connector)
+    ray.util.register_actor(SERVE_MASTER_NAME, master)
+
+    ray.get(master.start_router.remote(queueing_policy.value, policy_kwargs))
 
     global_state = GlobalState(master)
-    router = global_state.init_or_get_router(
-        queueing_policy=queueing_policy, policy_kwargs=policy_kwargs)
     global_state.init_or_get_metric_monitor(
         gc_window_seconds=gc_window_seconds)
     if start_server:
+        router = ray.get(master.get_router.remote())[0]
         global_state.init_or_get_http_proxy(
             host=http_host, port=http_port).set_router_handle.remote(router)
 
@@ -194,7 +196,7 @@ def set_backend_config(backend_tag, backend_config):
 
     # inform the router about change in configuration
     # particularly for setting max_batch_size
-    ray.get(global_state.init_or_get_router().set_backend_config.remote(
+    ray.get(global_state.get_router().set_backend_config.remote(
         backend_tag, backend_config_dict))
 
     # checking if replicas need to be restarted
@@ -301,7 +303,7 @@ def create_backend(func_or_class,
 
     # set the backend config inside the router
     # particularly for max-batch-size
-    ray.get(global_state.init_or_get_router().set_backend_config.remote(
+    ray.get(global_state.get_router().set_backend_config.remote(
         backend_tag, backend_config_dict))
     _scale(backend_tag, backend_config_dict["num_replicas"])
 
@@ -328,8 +330,9 @@ def _start_replica(backend_tag):
 
     # Setup the worker
     ray.get(
-        runner_handle._ray_serve_setup.remote(
-            backend_tag, global_state.init_or_get_router(), runner_handle))
+        runner_handle._ray_serve_setup.remote(backend_tag,
+                                              global_state.get_router(),
+                                              runner_handle))
     runner_handle._ray_serve_fetch.remote()
 
     # Register the worker in config tables as well as metric monitor
@@ -358,9 +361,8 @@ def _remove_replica(backend_tag):
 
     # Remove the replica from router.
     # This will also destory the actor handle.
-    ray.get(
-        global_state.init_or_get_router().remove_and_destory_replica.remote(
-            backend_tag, replica_handle))
+    ray.get(global_state.get_router().remove_and_destory_replica.remote(
+        backend_tag, replica_handle))
 
 
 @_ensure_connected
@@ -437,7 +439,7 @@ def split(endpoint_name, traffic_policy_dictionary):
 
     global_state.policy_table.register_traffic_policy(
         endpoint_name, traffic_policy_dictionary)
-    ray.get(global_state.init_or_get_router().set_traffic.remote(
+    ray.get(global_state.get_router().set_traffic.remote(
         endpoint_name, traffic_policy_dictionary))
 
 
@@ -469,7 +471,7 @@ def get_handle(endpoint_name,
     from ray.serve.handle import RayServeHandle
 
     return RayServeHandle(
-        global_state.init_or_get_router(),
+        global_state.get_router(),
         endpoint_name,
         relative_slo_ms,
         absolute_slo_ms,

@@ -9,12 +9,6 @@ from ray.serve.policy import RoutePolicy
 from ray.serve.http_proxy import HTTPProxyActor
 
 
-def start_initial_state(kv_store_connector):
-    master_handle = ServeMaster.remote(kv_store_connector)
-    ray.util.register_actor(SERVE_MASTER_NAME, master_handle)
-    return master_handle
-
-
 @ray.remote
 class ServeMaster:
     """Initialize and store all actor handles.
@@ -28,6 +22,8 @@ class ServeMaster:
     def __init__(self, kv_store_connector):
         self.kv_store_connector = kv_store_connector
         self.tag_to_actor_handles = dict()
+
+        self.router_handle = None
 
     def get_kv_store_connector(self):
         return self.kv_store_connector
@@ -48,6 +44,15 @@ class ServeMaster:
             *init_args, **init_kwargs))
         self.tag_to_actor_handles[tag] = handle
         return [handle]
+
+    def start_router(self, router_class, init_kwargs):
+        assert self.router_handle is None
+        self.router_handle = router_class.options(
+            max_concurrency=ASYNC_CONCURRENCY).remote(**init_kwargs)
+
+    def get_router(self):
+        assert self.router_handle is not None
+        return [self.router_handle]
 
     def start_actor_with_creator(self, creator, kwargs, tag):
         """
@@ -122,23 +127,8 @@ class GlobalState:
                 break
         return return_policy
 
-    def init_or_get_router(self,
-                           queueing_policy=RoutePolicy.Random,
-                           policy_kwargs={}):
-        # get queueing policy
-        self.queueing_policy = self._get_queueing_policy(
-            default_policy=queueing_policy)
-        queue_actor_tag = "queue_actor::" + self.queueing_policy.name
-        if queue_actor_tag not in self.actor_handle_cache:
-            [handle] = ray.get(
-                self.master_actor_handle.start_actor.remote(
-                    self.queueing_policy.value,
-                    init_kwargs=policy_kwargs,
-                    tag=queue_actor_tag,
-                    is_asyncio=True))
-            self.refresh_actor_handle_cache()
-
-        return self.actor_handle_cache[queue_actor_tag]
+    def get_router(self):
+        return ray.get(self.master_actor_handle.get_router.remote())[0]
 
     def init_or_get_metric_monitor(self, gc_window_seconds=3600):
         if "metric_monitor" not in self.actor_handle_cache:
