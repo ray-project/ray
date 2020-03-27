@@ -270,7 +270,7 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
     def forbidden(self) -> aiohttp.web.Response:
         return aiohttp.web.Response(status=403, text="403 Forbidden")
 
-    def get_forbidden(self, _) -> aiohttp.web.Response:
+    async def get_forbidden(self, _) -> aiohttp.web.Response:
         return self.forbidden()
 
     async def get_index(self, req) -> aiohttp.web.Response:
