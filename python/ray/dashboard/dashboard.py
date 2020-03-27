@@ -259,6 +259,8 @@ class DashboardController(BaseDashboardController):
     def start_collecting_metrics(self):
         self.node_stats.start()
         self.raylet_stats.start()
+        if Analysis is not None:
+            self.tune_stats.start()
 
 
 class DashboardRouteHandler(BaseDashboardRouteHandler):
