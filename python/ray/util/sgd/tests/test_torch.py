@@ -413,39 +413,39 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
     trainer.shutdown()
 
 
-# @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-# def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
+@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
+def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
 
-#     config = {
-#         "model_creator": model_creator,
-#         "data_creator": data_creator,
-#         "optimizer_creator": optimizer_creator,
-#         "loss_creator": lambda config: nn.MSELoss(),
-#         "num_workers": num_workers,
-#         "use_gpu": False,
-#         "backend": "gloo",
-#         "config": {
-#             "batch_size": 512,
-#             "lr": 0.001
-#         }
-#     }
+    config = {
+        "model_creator": model_creator,
+        "data_creator": data_creator,
+        "optimizer_creator": optimizer_creator,
+        "loss_creator": lambda config: nn.MSELoss(),
+        "num_workers": num_workers,
+        "use_gpu": False,
+        "backend": "gloo",
+        "config": {
+            "batch_size": 512,
+            "lr": 0.001
+        }
+    }
 
-#     analysis = tune.run(
-#         TorchTrainable,
-#         num_samples=2,
-#         config=config,
-#         stop={"training_iteration": 2},
-#         verbose=1)
+    analysis = tune.run(
+        TorchTrainable,
+        num_samples=2,
+        config=config,
+        stop={"training_iteration": 2},
+        verbose=1)
 
-#     # checks loss decreasing for every trials
-#     for path, df in analysis.trial_dataframes.items():
-#         mean_train_loss1 = df.loc[0, "mean_train_loss"]
-#         mean_train_loss2 = df.loc[1, "mean_train_loss"]
-#         mean_val_loss1 = df.loc[0, "mean_val_loss"]
-#         mean_val_loss2 = df.loc[1, "mean_val_loss"]
+    # checks loss decreasing for every trials
+    for path, df in analysis.trial_dataframes.items():
+        mean_train_loss1 = df.loc[0, "mean_train_loss"]
+        mean_train_loss2 = df.loc[1, "mean_train_loss"]
+        mean_val_loss1 = df.loc[0, "mean_val_loss"]
+        mean_val_loss2 = df.loc[1, "mean_val_loss"]
 
-#         assert mean_train_loss2 <= mean_train_loss1
-#         assert mean_val_loss2 <= mean_val_loss1
+        assert mean_train_loss2 <= mean_train_loss1
+        assert mean_val_loss2 <= mean_val_loss1
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
