@@ -275,7 +275,8 @@ class WorkerSet:
         if type(worker) is RolloutWorker:
             actual_class = type(worker.get_policy())
         else:
-            actual_class = ray.get(worker.for_policy.remote(lambda p: type(p)))
+            actual_class = ray.get(
+                worker.foreach_policy.remote(lambda p, pid: type(p)))[0]
 
         # Pytorch case: Policy must be a TorchPolicy.
         if config["use_pytorch"]:
