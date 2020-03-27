@@ -609,16 +609,17 @@ class TorchTrainer:
     def _should_resize(self):
         """Returns True if past cooldown and exists resources to scale up."""
         worker_gap = self.max_replicas - 1 - len(self.remote_workers)
-        print("worker gap", worker_gap)
-        print("remote workers", self.remote_workers)
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
-            resources = ray.available_resources()
-            potential_workers = min(resources.get("CPU", 0), self.max_replicas)
+            # Assume 1 resource is already reserved for local worker.
+            max_remote_replicas = self.max_replicas - 1
+            remote_resources = ray.available_resources()
+            potential_remote_workers = min(
+                remote_resources.get("CPU", 0), max_remote_replicas)
             if self.use_gpu:
-                potential_workers = min(
-                    resources.get("GPU", 0), potential_workers)
-            return potential_workers > 0
+                potential_remote_workers = min(
+                    remote_resources.get("GPU", 0), potential_remote_workers)
+            return potential_remote_workers > 0
         return False
 
 
