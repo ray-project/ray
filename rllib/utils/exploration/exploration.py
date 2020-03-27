@@ -32,23 +32,17 @@ class Exploration:
         self.worker_index = worker_index
         self.framework = check_framework(framework)
 
-    def before_forward_pass(self,
-                            obs_batch,
-                            *,
-                            state_batches=None,
-                            seq_lens=None,
-                            timestep=None,
-                            explore=None,
-                            tf_sess=None,
-                            **kwargs):
+    def before_compute_actions(self,
+                               obs_batch,
+                               *,
+                               timestep=None,
+                               explore=None,
+                               tf_sess=None,
+                               **kwargs):
         """May be overridden to perform preparations before a forward pass.
 
         Args:
             obs_batch (dict): The observations batch.
-            state_batches (Optional[List[TensorType]]): The list of internal
-                state batches to pass through the model.
-            seq_lens (Optional[List[TensorType]]): The sequence lengths for the
-                RNN case.
             timestep (Optional[TensorType]): An optional timestep tensor.
             explore (Optional[TensorType]): An optional explore boolean flag.
             tf_sess (Optional[tf.Session]): The tf-session object to use.

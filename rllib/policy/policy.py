@@ -214,8 +214,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             SampleBatch: Postprocessed sample batch.
         """
-        # Call our Exploration object's postprocess method.
-        return self.exploration.postprocess_trajectory(self, sample_batch)
+        return sample_batch
 
     @DeveloperAPI
     def learn_on_batch(self, samples):

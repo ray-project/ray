@@ -6,6 +6,7 @@ from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.exploration.exploration import Exploration
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,11 @@ class MultiAgentSampleBatchBuilder:
                     "from a single trajectory.", pre_batch)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 pre_batch, other_batches, episode)
+            # Call the Policy's Exploration's postprocess method.
+            if hasattr(policy, "exploration") and isinstance(
+                    policy.exploration, Exploration):
+                policy.exploration.postprocess_trajectory(
+                    post_batches[agent_id])
 
         if log_once("after_post"):
             logger.info(
