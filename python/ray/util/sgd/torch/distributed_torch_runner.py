@@ -1,3 +1,4 @@
+from datetime import timedelta
 import collections
 import logging
 import torch
@@ -45,11 +46,16 @@ class DistributedTorchRunner(TorchRunner):
         logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
             url, world_rank, world_size))
         logger.debug("using {}".format(self.backend))
+
+        import os
+        os.environ["NCCL_BLOCKING_WAIT"] = "1"
+        timeout = timedelta(seconds=1)
         dist.init_process_group(
             backend=self.backend,
             init_method=url,
             rank=world_rank,
-            world_size=world_size)
+            world_size=world_size,
+            timeout=timeout)
 
     def _setup_training(self):
         logger.debug("Creating model")
