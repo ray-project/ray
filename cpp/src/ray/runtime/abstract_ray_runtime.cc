@@ -11,27 +11,16 @@
 
 namespace ray {
 namespace api {
-
-std::unique_ptr<AbstractRayRuntime> AbstractRayRuntime::ins_;
-std::once_flag AbstractRayRuntime::is_Inited_;
-
-AbstractRayRuntime &AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
-  std::call_once(is_Inited_, [config] {
-    if (config->runMode == RunMode::SINGLE_PROCESS) {
-      ins_.reset(new LocalModeRayRuntime(config));
-      GenerateBaseAddressOfCurrentLibrary();
-    } else {
-      throw RayException("Only single process mode supported now");
-    }
-  });
-
-  assert(ins_);
-  return *ins_;
-}
-
-AbstractRayRuntime &AbstractRayRuntime::GetInstance() {
-  RAY_CHECK(ins_ != nullptr);
-  return *ins_;
+AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
+  AbstractRayRuntime *runtime;
+  if (config->runMode == RunMode::SINGLE_PROCESS) {
+    GenerateBaseAddressOfCurrentLibrary();
+    runtime = new LocalModeRayRuntime(config);
+  } else {
+    throw RayException("Only single process mode supported now");
+  }
+  RAY_CHECK(runtime);
+  return runtime;
 }
 
 void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,

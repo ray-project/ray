@@ -10,7 +10,8 @@
 
 namespace ray {
 namespace api {
-LocalModeObjectStore::LocalModeObjectStore() {
+LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime)
+    : local_mode_ray_tuntime_(local_mode_ray_tuntime) {
   memory_store_ =
       std::unique_ptr<::ray::CoreWorkerMemoryStore>(new ::ray::CoreWorkerMemoryStore());
 }
@@ -22,7 +23,7 @@ void LocalModeObjectStore::PutRaw(const ObjectID &object_id,
   auto status = memory_store_->Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), object_id);
   if (!status) {
-    throw RayException("Put object error: ");
+    throw RayException("Put object error");
   }
 }
 
@@ -37,10 +38,10 @@ std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &o
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
     const std::vector<ObjectID> &ids, int timeout_ms) {
-  AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
   std::vector<std::shared_ptr<::ray::RayObject>> results;
-  ::ray::Status status = memory_store_->Get(ids, (int)ids.size(), timeout_ms,
-                                            *runtime.GetWorkerContext(), false, &results);
+  ::ray::Status status =
+      memory_store_->Get(ids, (int)ids.size(), timeout_ms,
+                         *local_mode_ray_tuntime_.GetWorkerContext(), false, &results);
   if (!status.ok()) {
     throw RayException("Get object error: " + status.ToString());
   }
@@ -64,9 +65,9 @@ WaitResult LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids, int num_
     memory_object_ids.insert(object_id);
   }
   absl::flat_hash_set<ObjectID> ready;
-  AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
-  ::ray::Status status = memory_store_->Wait(memory_object_ids, num_objects, timeout_ms,
-                                             *runtime.GetWorkerContext(), &ready);
+  ::ray::Status status =
+      memory_store_->Wait(memory_object_ids, num_objects, timeout_ms,
+                          *local_mode_ray_tuntime_.GetWorkerContext(), &ready);
   if (!status.ok()) {
     throw RayException("Wait object error: " + status.ToString());
   }

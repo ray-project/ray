@@ -9,8 +9,11 @@ namespace api {
 
 RayRuntime *Ray::runtime_ = nullptr;
 
+std::once_flag Ray::is_inited_;
 void Ray::Init() {
-  runtime_ = &AbstractRayRuntime::DoInit(std::make_shared<RayConfig>());
+  std::call_once(is_inited_, [] {
+    runtime_ = AbstractRayRuntime::DoInit(std::make_shared<RayConfig>());
+  });
 }
 
 }  // namespace api

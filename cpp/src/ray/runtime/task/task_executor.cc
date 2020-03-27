@@ -15,7 +15,8 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(const InvocationSpec &invocation
 };
 
 void TaskExecutor::Invoke(const TaskSpecification &task_spec,
-                          std::shared_ptr<msgpack::sbuffer> actor) {
+                          std::shared_ptr<msgpack::sbuffer> actor,
+                          AbstractRayRuntime *runtime) {
   auto args = std::make_shared<msgpack::sbuffer>(task_spec.ArgDataSize(0));
   /// TODO(Guyang Song): Avoid the memory copy.
   args->write(reinterpret_cast<const char *>(task_spec.ArgData(0)),
@@ -39,8 +40,7 @@ void TaskExecutor::Invoke(const TaskSpecification &task_spec,
     data = (*exec_function)(dynamic_library_base_addr,
                             std::stoul(typed_descriptor->FunctionOffset()), args);
   }
-  AbstractRayRuntime &runtime = AbstractRayRuntime::GetInstance();
-  runtime.Put(std::move(data), task_spec.ReturnId(0, ray::TaskTransportType::RAYLET));
+  runtime->Put(std::move(data), task_spec.ReturnId(0, ray::TaskTransportType::RAYLET));
 }
 }  // namespace api
 }  // namespace ray

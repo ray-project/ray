@@ -8,6 +8,8 @@
 namespace ray {
 namespace api {
 
+class AbstractRayRuntime;
+
 class ActorContext {
  public:
   std::shared_ptr<msgpack::sbuffer> current_actor = nullptr;
@@ -23,7 +25,8 @@ class TaskExecutor {
   std::unique_ptr<ObjectID> Execute(const InvocationSpec &invocation);
 
   static void Invoke(const TaskSpecification &task_spec,
-                     std::shared_ptr<msgpack::sbuffer> actor);
+                     std::shared_ptr<msgpack::sbuffer> actor,
+                     AbstractRayRuntime *runtime);
 
   virtual ~TaskExecutor(){};
 };

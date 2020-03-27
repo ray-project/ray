@@ -18,8 +18,6 @@ class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
 
-  static AbstractRayRuntime &GetInstance();
-
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
   ObjectID Put(std::shared_ptr<msgpack::sbuffer> data);
@@ -47,8 +45,6 @@ class AbstractRayRuntime : public RayRuntime {
   const std::unique_ptr<WorkerContext> &GetWorkerContext();
 
  protected:
-  static std::unique_ptr<AbstractRayRuntime> ins_;
-  static std::once_flag is_Inited_;
   std::shared_ptr<RayConfig> config_;
   std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
@@ -56,7 +52,7 @@ class AbstractRayRuntime : public RayRuntime {
   std::unique_ptr<ObjectStore> object_store_;
 
  private:
-  static AbstractRayRuntime &DoInit(std::shared_ptr<RayConfig> config);
+  static AbstractRayRuntime *DoInit(std::shared_ptr<RayConfig> config);
 
   void Execute(const TaskSpecification &task_spec);
 

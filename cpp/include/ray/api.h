@@ -67,6 +67,8 @@ class Ray {
  private:
   static RayRuntime *runtime_;
 
+  static std::once_flag is_inited_;
+
   /// Used by RayObject to implement .Get()
   template <typename T>
   static std::shared_ptr<T> Get(const RayObject<T> &object);
