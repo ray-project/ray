@@ -273,8 +273,11 @@ class WorkerSet:
 
         # Check for correct policy class, if `use_pytorch` explicitly set.
         # Do not check for remote workers (should behave the same).
+        expected_class = TorchPolicy if config["use_pytorch"] else Policy
         if type(worker) is RolloutWorker:
-            expected_class = TorchPolicy if config["use_pytorch"] else Policy
-            assert issubclass(type(worker.get_policy()), expected_class)
+            actual_class = type(worker.get_policy())
+        else:
+            actual_class = ray.get(worker.for_policy.remote(lambda p: type(p)))
+        assert issubclass(actual_class, expected_class)
 
         return worker
