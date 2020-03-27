@@ -463,4 +463,34 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   return item;
 }
 
+std::vector<ObjectID> CoreWorkerMemoryStore::GetAndDeletePlasmaObjectsOnRemovedNode(
+    const ClientID &node_id) {
+  std::vector<ObjectID> lost_objects;
+  {
+    absl::MutexLock lock(&mu_);
+    for (auto &it : objects_) {
+      if (it.second->IsInPlasmaError()) {
+        if (it.second->PinnedAtNodeId().value_or(ClientID::Nil()) == node_id) {
+          lost_objects.push_back(it.first);
+        }
+      }
+    }
+  }
+  Delete(lost_objects);
+  return lost_objects;
+}
+
+bool CoreWorkerMemoryStore::GetPlasmaObjectPinnedAtNodeId(
+    const ObjectID &object_id) const {
+  absl::MutexLock lock(&mu_);
+  bool pinned = false;
+  auto it = objects_.find(object_id);
+  if (it != objects_.end() && it->second->IsInPlasmaError()) {
+    if (it->second->PinnedAtNodeId().has_value()) {
+      pinned = true;
+    }
+  }
+  return pinned;
+}
+
 }  // namespace ray

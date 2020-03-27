@@ -173,9 +173,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.
-      RAY_CHECK(
-          in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+      const auto pinned_at_node_id = ClientID::FromBinary(worker_addr.raylet_id());
+      RAY_CHECK(in_memory_store_->Put(RayObject(pinned_at_node_id), object_id));
     } else {
+      // NOTE(swang): If a direct object was promoted to plasma, then we do not
+      // record the node ID that it was pinned at, which means that we will not
+      // be able to reconstruct it if the plasma object copy is lost. However,
+      // this is okay because the pinned copy is on the local node, so we will
+      // fate-share with the object if the local node fails.
       std::shared_ptr<LocalMemoryBuffer> data_buffer;
       if (return_object.data().size() > 0) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(
@@ -201,7 +206,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   TaskSpecification spec;
-  std::vector<ObjectID> plasma_return_ids;
   bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
@@ -224,10 +228,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.pending = false;
     num_pending_tasks_--;
 
-    plasma_return_ids.insert(plasma_return_ids.end(),
-                             it->second.reconstructable_return_ids.begin(),
-                             it->second.reconstructable_return_ids.end());
-
     // A finished task can be only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
@@ -242,8 +242,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
-  reference_counter_->MarkPlasmaObjectsPinnedAt(
-      plasma_return_ids, ClientID::FromBinary(worker_addr.raylet_id()));
 
   ShutdownIfNeeded();
 }

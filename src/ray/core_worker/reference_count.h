@@ -168,8 +168,8 @@ class ReferenceCounter {
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_id The TaskID of the object owner.
   /// \param[out] owner_address The address of the object owner.
-  bool GetOwner(const ObjectID &object_id, TaskID *owner_id,
-                rpc::Address *owner_address) const LOCKS_EXCLUDED(mutex_);
+  bool GetOwner(const ObjectID &object_id, TaskID *owner_id = nullptr,
+                rpc::Address *owner_address = nullptr) const LOCKS_EXCLUDED(mutex_);
 
   /// Manually delete the objects from the reference counter.
   void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
@@ -178,6 +178,9 @@ class ReferenceCounter {
   /// Returns true if the object was in scope and the callback was added, else false.
   bool SetDeleteCallback(const ObjectID &object_id,
                          const std::function<void(const ObjectID &)> callback)
+      LOCKS_EXCLUDED(mutex_);
+
+  void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback for when we are no longer borrowing this object (when our
@@ -276,13 +279,8 @@ class ReferenceCounter {
   /// \return Whether we have a reference to the object ID.
   bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
-  void MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_returns_in_scope,
-                                 const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
-
   const bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned)
       LOCKS_EXCLUDED(mutex_);
-
-  std::vector<ObjectID> HandleNodeRemoved(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
 
   /// Write the current reference table to the given proto.
   ///
@@ -361,10 +359,6 @@ class ReferenceCounter {
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
     absl::optional<std::pair<TaskID, rpc::Address>> owner;
-    // If this object is stored in plasma and the language frontend still has
-    // references to the ObjectID, then some raylet must be pinning the object
-    // value. This is the address of that raylet.
-    absl::optional<ClientID> pinned_at_raylet;
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;

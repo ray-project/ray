@@ -366,8 +366,9 @@ void CoreWorker::RunIOService() {
 void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   const auto node_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(INFO) << "Node failure " << node_id;
-  const auto lost_objects = reference_counter_->HandleNodeRemoved(node_id);
-  memory_store_->Delete(lost_objects);
+  const auto lost_objects =
+      memory_store_->GetAndDeletePlasmaObjectsOnRemovedNode(node_id);
+  reference_counter_->ResetDeleteCallbacks(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
     RAY_CHECK_OK(RecoverObject(object_id));
@@ -376,13 +377,14 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
 
 Status CoreWorker::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
-  bool pinned;
-  if (!reference_counter_->IsPlasmaObjectPinned(object_id, &pinned)) {
+  bool owned_by_us = reference_counter_->GetOwner(object_id);
+  if (!owned_by_us) {
     return Status::Invalid(
         "Object reference no longer exists or is not owned by us. Either lineage pinning "
         "is disabled or this object ID is borrowed.");
   }
 
+  bool pinned = memory_store_->GetPlasmaObjectPinnedAtNodeId(object_id);
   bool already_pending_recovery = true;
   if (!pinned) {
     {
@@ -462,10 +464,8 @@ bool CoreWorker::PinNewObjectCopy(const ObjectID &object_id,
           [this, object_id, new_node_id](const Status &status,
                                          const rpc::PinObjectIDsReply &reply) {
             if (status.ok()) {
-              reference_counter_->MarkPlasmaObjectsPinnedAt({object_id}, new_node_id);
               // Put the object to allow any dependent tasks to get scheduled.
-              RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                           object_id));
+              RAY_CHECK(memory_store_->Put(RayObject(new_node_id), object_id));
             } else {
               RAY_LOG(INFO) << "Error pinning new copy of lost object " << object_id
                             << ", trying again";

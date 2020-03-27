@@ -264,55 +264,6 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   RemoveSubmittedTaskReferences(argument_ids, release_lineage, deleted);
 }
 
-void ReferenceCounter::MarkPlasmaObjectsPinnedAt(const std::vector<ObjectID> &plasma_ids,
-                                                 const ClientID &node_id) {
-  absl::MutexLock lock(&mutex_);
-  for (const auto &plasma_id : plasma_ids) {
-    RAY_LOG(DEBUG) << "Marking plasma object " << plasma_id << " pinned at " << node_id;
-    auto it = object_id_refs_.find(plasma_id);
-    RAY_CHECK(it != object_id_refs_.end()) << plasma_id;
-    RAY_CHECK(!it->second.pinned_at_raylet.has_value());
-    if (!it->second.OutOfScope()) {
-      it->second.pinned_at_raylet = node_id;
-    }
-  }
-}
-
-const bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
-                                                  bool *pinned) {
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  if (it == object_id_refs_.end()) {
-    RAY_CHECK(!lineage_pinning_enabled_);
-    return false;
-  }
-
-  if (it->second.owned_by_us) {
-    *pinned = it->second.pinned_at_raylet.has_value();
-  }
-
-  return it->second.owned_by_us;
-}
-
-std::vector<ObjectID> ReferenceCounter::HandleNodeRemoved(const ClientID &node_id) {
-  absl::MutexLock lock(&mutex_);
-  std::vector<ObjectID> lost_objects;
-  // Clear the pinned locations and deletion callbacks for any
-  // objects that were pinned by the dead node.
-  for (auto &ref : object_id_refs_) {
-    if (ref.second.pinned_at_raylet.value_or(ClientID::Nil()) == node_id) {
-      RAY_CHECK(ref.second.owned_by_us);
-      lost_objects.push_back(ref.first);
-      ref.second.pinned_at_raylet.reset();
-      if (ref.second.on_delete) {
-        ref.second.on_delete(ref.first);
-        ref.second.on_delete = nullptr;
-      }
-    }
-  }
-  return lost_objects;
-}
-
 void ReferenceCounter::ReleaseLineageReferences(
     const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
@@ -382,8 +333,12 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id, TaskID *owner_id,
   }
 
   if (it->second.owner.has_value()) {
-    *owner_id = it->second.owner.value().first;
-    *owner_address = it->second.owner.value().second;
+    if (owner_id) {
+      *owner_id = it->second.owner.value().first;
+    }
+    if (owner_address) {
+      *owner_address = it->second.owner.value().second;
+    }
     return true;
   } else {
     return false;
@@ -460,7 +415,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   // Perform the deletion.
   if (should_delete_value) {
     if (it->second.on_delete) {
-      it->second.pinned_at_raylet.reset();
       RAY_LOG(DEBUG) << "Calling on_delete for object " << id;
       it->second.on_delete(id);
       it->second.on_delete = nullptr;
@@ -494,6 +448,19 @@ bool ReferenceCounter::SetDeleteCallback(
   RAY_CHECK(!it->second.on_delete) << object_id;
   it->second.on_delete = callback;
   return true;
+}
+
+void ReferenceCounter::ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it != object_id_refs_.end()) {
+      if (it->second.on_delete) {
+        it->second.on_delete(object_id);
+        it->second.on_delete = nullptr;
+      }
+    }
+  }
 }
 
 bool ReferenceCounter::HasReference(const ObjectID &object_id) const {

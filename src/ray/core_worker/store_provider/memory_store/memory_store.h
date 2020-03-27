@@ -108,6 +108,10 @@ class CoreWorkerMemoryStore {
   /// \return Void.
   void Delete(const std::vector<ObjectID> &object_ids);
 
+  std::vector<ObjectID> GetAndDeletePlasmaObjectsOnRemovedNode(const ClientID &node_id);
+
+  bool GetPlasmaObjectPinnedAtNodeId(const ObjectID &object_id) const;
+
   /// Check whether this store contains the object.
   ///
   /// \param[in] object_id The object to check.
@@ -154,7 +158,7 @@ class CoreWorkerMemoryStore {
   std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
 
   /// Protects the data structures below.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Set of objects that should be promoted to plasma once available.
   absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
