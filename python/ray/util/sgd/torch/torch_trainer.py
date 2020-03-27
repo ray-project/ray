@@ -397,7 +397,7 @@ class TorchTrainer:
             h.prepare_for_retry()
             self._resize_workers(checkpoint=checkpoint)
             logger.info("Retrying training step with %d workers." %
-                        len(self.remote_workers) + 1)
+                        (len(self.remote_workers) + 1))
             success, worker_stats = self._train_epoch(
                 num_steps=num_steps, profile=profile, info=info)
         if not success:
