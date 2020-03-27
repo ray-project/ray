@@ -123,7 +123,8 @@ class Exploration:
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
-        Changes the given batch in place. This callback is invoked by the sampler after policy.postprocess_trajectory() is called.
+        Changes the given batch in place. This callback is invoked by the
+        sampler after policy.postprocess_trajectory() is called.
 
         Args:
             policy (Policy): The owning policy object.
