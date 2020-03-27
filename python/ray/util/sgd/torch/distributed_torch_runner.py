@@ -51,7 +51,12 @@ class DistributedTorchRunner(TorchRunner):
             url, world_rank, world_size))
         logger.debug("using {}".format(self.backend))
 
-        os.environ["NCCL_BLOCKING_WAIT"] = '1'
+        if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
+            logger.debug(
+                "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
+                "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
+            os.environ["NCCL_BLOCKING_WAIT"] = "1"
+
         timeout = timedelta(seconds=NCCL_TIMEOUT_IN_SECONDS)
         dist.init_process_group(
             backend=self.backend,
@@ -165,6 +170,12 @@ class _DummyActor:
 
 
 class LocalDistributedRunner(DistributedTorchRunner):
+    """A wrapper for running a distributed Runner on the driver.
+
+    A dummy actor is used to reserve resources on the driver node,
+    as specified by `num_cpus` and `num_gpus`.
+    """
+
     def __init__(self, *args, num_cpus=None, num_gpus=None, **kwargs):
         ip = ray.services.get_node_ip_address()
 

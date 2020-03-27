@@ -432,7 +432,7 @@ class TorchTrainer:
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
-            print(err)
+            logger.warning(err)
             return False, None
 
         success = check_for_failure(remote_worker_stats)
@@ -600,8 +600,7 @@ class TorchTrainer:
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             resources = ray.available_resources()
-            potential_workers = min(
-                resources.get("CPU", 0), self.max_replicas)
+            potential_workers = min(resources.get("CPU", 0), self.max_replicas)
             if self.use_gpu:
                 potential_workers = min(
                     resources.get("GPU", 0), potential_workers)
@@ -612,11 +611,12 @@ class TorchTrainer:
 class TorchTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
+        remote_worker_count = config["num_workers"] - 1
         return Resources(
-            cpu=0,
-            gpu=0,
-            extra_cpu=config["num_workers"],
-            extra_gpu=int(config["use_gpu"]) * config["num_workers"])
+            cpu=1,
+            gpu=int(config["use_gpu"]),
+            extra_cpu=remote_worker_count,
+            extra_gpu=int(config["use_gpu"]) * remote_worker_count)
 
     def _setup(self, config):
         self._trainer = TorchTrainer(**config)
