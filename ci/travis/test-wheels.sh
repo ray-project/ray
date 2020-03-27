@@ -26,34 +26,45 @@ TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
 if [[ "$platform" == "linux" ]]; then
-  # Now test Python 3.6.
-
   # Install miniconda.
-  wget --quiet https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda3.sh
-  bash miniconda3.sh -b -p "$HOME/miniconda3"
+  PY_MMS=("3.6"
+          "3.7"
+          "3.8")
+  MINICONDA_URLS=("https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh"
+                  "https://repo.continuum.io/miniconda/Miniconda3-py37_4.8.2-Linux-x86_64.sh"
+                  "https://repo.continuum.io/miniconda/Miniconda3-py38_4.8.2-Linux-x86_64.sh")
 
-  PYTHON_EXE="$HOME/miniconda3/bin/python"
-  PIP_CMD="$HOME/miniconda3/bin/pip"
+  for ((i=0; i<${#PY_MMS[@]}; ++i)); do
+    PY_MM="${PY_MMS[i]}"
+    PY_WHEEL_VERSION="${PY_MM//./}"
+    MINICONDA_URL="${MINICONDA_URLS[i]}"
+    rm -r -f -- "$HOME/miniconda3"
+    wget --quiet "${MINICONDA_URL}" -O miniconda3.sh
+    bash miniconda3.sh -b -p "$HOME/miniconda3"
 
-  # Find the right wheel by grepping for the Python version.
-  PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 '36')
+    PYTHON_EXE="$HOME/miniconda3/bin/python"
+    PIP_CMD="$HOME/miniconda3/bin/pip"
 
-  # Install the wheel.
-  "$PIP_CMD" install -q "$PYTHON_WHEEL"
+    # Find the right wheel by grepping for the Python version.
+    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print -name "*${PY_WHEEL_VERSION}*")
 
-  # Check that ray.__commit__ was set properly.
-  "$PYTHON_EXE" -u -c "import ray; print(ray.__commit__)" | grep "$TRAVIS_COMMIT" || (echo "ray.__commit__ not set properly!" && exit 1)
+    # Install the wheel.
+    "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
-  # Run a simple test script to make sure that the wheel works.
-  INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
+    # Check that ray.__commit__ was set properly.
+    "$PYTHON_EXE" -u -c "import ray; print(ray.__commit__)" | grep "$TRAVIS_COMMIT" || (echo "ray.__commit__ not set properly!" && exit 1)
 
-  for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      "$PYTHON_EXE" "$SCRIPT"
+    # Run a simple test script to make sure that the wheel works.
+    INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
+
+    for SCRIPT in "${TEST_SCRIPTS[@]}"; do
+        "$PYTHON_EXE" "$SCRIPT"
+    done
+
+    # Run the UI test to make sure that the packaged UI works.
+    "$PIP_CMD" install -q aiohttp google grpcio psutil requests setproctitle
+    "$PYTHON_EXE" "$UI_TEST_SCRIPT"
   done
-
-  # Run the UI test to make sure that the packaged UI works.
-  "$PIP_CMD" install -q aiohttp google grpcio psutil requests setproctitle
-  "$PYTHON_EXE" "$UI_TEST_SCRIPT"
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q "$ROOT_DIR"/../../.whl/*.whl | wc -l)
@@ -69,21 +80,16 @@ elif [[ "$platform" == "macosx" ]]; then
           "3.6"
           "3.7"
           "3.8")
-  # This array is just used to find the right wheel.
-  PY_WHEEL_VERSIONS=("35"
-                     "36"
-                     "37"
-                     "38")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
-    PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
+    PY_WHEEL_VERSION="${PY_MM//./}"
 
     PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
     PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
     # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
+    PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print -name "*${PY_WHEEL_VERSION}*")
 
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
