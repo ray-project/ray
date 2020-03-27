@@ -306,6 +306,8 @@ def build_eager_tf_policy(name,
 
             explore = explore if explore is not None else \
                 self.config["explore"]
+            timestep = timestep if timestep is not None else \
+                self.global_timestep
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
@@ -340,19 +342,20 @@ def build_eager_tf_policy(name,
                     self.action_space,
                     explore,
                     self.config,
-                    timestep=timestep
-                    if timestep is not None else self.global_timestep)
+                    timestep=timestep)
             # Use Exploration object.
             else:
                 with tf.variable_creator_scope(_disallow_var_creation):
+                    # Call the exploration before_compute_actions hook.
+                    self.exploration.before_compute_actions(timestep=timestep)
+
                     model_out, state_out = self.model(input_dict,
                                                       state_batches, seq_lens)
                     action, logp = self.exploration.get_exploration_action(
                         model_out,
                         self.dist_class,
                         self.model,
-                        timestep=timestep
-                        if timestep is not None else self.global_timestep,
+                        timestep=timestep,
                         explore=explore)
 
             extra_fetches = {}

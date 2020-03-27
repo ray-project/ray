@@ -312,7 +312,7 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
                 policy=p,
                 environment=base_env,
                 episode=episode,
-                tf_sess=tf_sess)
+                tf_sess=getattr(p, "_sess", None))
         # Call custom on_episode_start callback.
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
@@ -506,7 +506,7 @@ def _process_observations(base_env, policies, batch_builder_pool,
                     policy=p,
                     environment=base_env,
                     episode=episode,
-                    tf_sess=tf_sess)
+                    tf_sess=getattr(p, "_sess", None))
             # Call custom on_episode_end callback.
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
@@ -577,12 +577,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
 
             obs_batch = [t.obs for t in eval_data]
             state_batches = _to_column_format(rnn_in)
-
-            # Call the exploration before_compute_actions hook.
-            policy.exploration.before_compute_actions(
-                obs_batch=obs_batch,
-                timestep=policy.global_timestep,
-                tf_sess=policy.get_session())
 
             # TODO(ekl): how can we make info batch available to TF code?
             pending_fetches[policy_id] = policy._build_compute_actions(

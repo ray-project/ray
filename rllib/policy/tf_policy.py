@@ -254,12 +254,6 @@ class TFPolicy(Policy):
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
 
-        # Call the exploration before_compute_actions hook.
-        self.exploration.before_compute_actions(
-            obs_batch=obs_batch,
-            timestep=self.global_timestep,
-            tf_sess=self.get_session())
-
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -534,6 +528,10 @@ class TFPolicy(Policy):
                                timestep=None):
 
         explore = explore if explore is not None else self.config["explore"]
+
+        # Call the exploration before_compute_actions hook.
+        self.exploration.before_compute_actions(
+            timestep=self.global_timestep, tf_sess=self.get_session())
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):

@@ -48,10 +48,7 @@ class ParameterNoise(Exploration):
                 None for auto-detection/setup.
         """
         assert framework is not None
-        super().__init__(
-            action_space,
-            framework=framework,
-            **kwargs)
+        super().__init__(action_space, framework=framework, **kwargs)
 
         # TODO(sven): Move these to base-Exploration class.
         self.policy_config = policy_config,
@@ -129,7 +126,6 @@ class ParameterNoise(Exploration):
 
     @override(Exploration)
     def before_compute_actions(self,
-                               obs_batch,
                                *,
                                timestep=None,
                                explore=None,

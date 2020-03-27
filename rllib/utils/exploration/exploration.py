@@ -1,12 +1,15 @@
 from gym.spaces import Space
+from typing import Union
+
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
 from ray.rllib.models.modelv2 import ModelV2
-from typing import Union
+from ray.rllib.utils.annotations import DeveloperAPI
 
 tf = try_import_tf()
 
 
+@DeveloperAPI
 class Exploration:
     """Implements an exploration strategy for Policies.
 
@@ -32,8 +35,8 @@ class Exploration:
         self.worker_index = worker_index
         self.framework = check_framework(framework)
 
+    @DeveloperAPI
     def before_compute_actions(self,
-                               obs_batch,
                                *,
                                timestep=None,
                                explore=None,
@@ -42,7 +45,6 @@ class Exploration:
         """Hook for preparations before policy.compute_actions() is called.
 
         Args:
-            obs_batch (dict): The observations batch.
             timestep (Optional[TensorType]): An optional timestep tensor.
             explore (Optional[TensorType]): An optional explore boolean flag.
             tf_sess (Optional[tf.Session]): The tf-session object to use.
@@ -50,6 +52,7 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def get_exploration_action(self,
                                distribution_inputs: TensorType,
                                action_dist_class: type,
@@ -82,6 +85,7 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def on_episode_start(self,
                          policy,
                          *,
@@ -98,6 +102,7 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def on_episode_end(self,
                        policy,
                        *,
@@ -114,6 +119,7 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
@@ -126,6 +132,7 @@ class Exploration:
         """
         return sample_batch
 
+    @DeveloperAPI
     def get_info(self):
         """Returns a description of the current exploration state.
 
