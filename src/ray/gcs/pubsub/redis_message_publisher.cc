@@ -28,7 +28,7 @@ Status RedisMessagePublisher::PublishMessage(const std::string &channel,
   RedisCallback pub_callback = nullptr;
   if (callback) {
     pub_callback = [callback](std::shared_ptr<CallbackReply> reply) {
-      int64_t deleted_count = reply->ReadAsInteger();
+      int64_t subscriber_count = reply->ReadAsInteger();
       callback(Status::OK());
     };
   }
