@@ -16,7 +16,7 @@ def test_normal_remote_task(ray_start_2_cpus):
 
     assert ray.get(f1.remote("key1")) == "value1"
     assert ray.get(f1.remote("key3")) == "error"
-    v = ray.get(f1.options(extra_envs={"key1", "value3"}).remote("key1"))
+    v = ray.get(f1.options(extra_envs={"key1": "value3"}).remote("key1"))
     assert v == "value3"
     v = ray.get(f1.options(extra_envs={}).remote("key1"))
     assert v == "error"
@@ -24,12 +24,12 @@ def test_normal_remote_task(ray_start_2_cpus):
     assert ray.get(f2.remote("key1")) == "error"
 
     with pytest.raises(ValueError) as excinfo:
-        f1.options(extra_envs={"CUDA_VISIBLE_DEVICES": "1"}).remote()
+        f1.options(extra_envs={"CUDA_VISIBLE_DEVICES": "1"}).remote("key")
     assert str(excinfo.value) == \
         '"CUDA_VISIBLE_DEVICES" should not be set by user.'
 
     with pytest.raises(ValueError) as excinfo:
-        f1.options(extra_envs={"key": 1.0}).remote()
+        f1.options(extra_envs={"key": 1.0}).remote("key")
     assert str(excinfo.value) == \
         "Extra envs key and value must be str."
 

@@ -314,12 +314,12 @@ cdef deserialize_args(
     return ray.signature.recover_args(args)
 
 
-cdef void prepare_extra_envs(
+cdef int prepare_extra_envs(
         dict extra_envs,
-        unordered_map[c_string, c_string] &c_extra_envs):
+        unordered_map[c_string, c_string] &c_extra_envs) except -1:
 
     if not extra_envs:
-        return
+        return 0
 
     if "CUDA_VISIBLE_DEVICES" in extra_envs:
         raise ValueError(
@@ -328,6 +328,8 @@ cdef void prepare_extra_envs(
         if not (isinstance(value, str) and isinstance(value, str)):
             raise ValueError("Extra envs key and value must be str.")
         c_extra_envs[key.encode("ascii")] = value.encode("ascii")
+
+    return 0
 
 
 cdef dict deserialize_extra_envs(
