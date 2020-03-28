@@ -627,7 +627,8 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
             loss_creator=lambda config: nn.MSELoss(),
             num_workers=2)
 
-        trainer1.train(max_retries=2)
+        # MAX RETRIES SHOULD BE ON BY DEFAULT
+        trainer1.train()
         trainer1.shutdown()
 
 
