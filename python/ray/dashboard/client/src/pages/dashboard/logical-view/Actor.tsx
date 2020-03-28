@@ -69,12 +69,7 @@ const styles = (theme: Theme) =>
       fontWeight: "bold",
     },
     secondaryFields: {
-      color: theme.palette.text.secondary,
-      "&:not(:first-child)": {
-        marginLeft: theme.spacing(2),
-      },
-    },
-    secondaryFieldsHeader: {
+      fontSize: "0.875rem",
       color: theme.palette.text.secondary,
     },
   });
@@ -220,19 +215,20 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           ];
 
     // Move some fields to the back and de-prioritize them.
-    const pushFieldsToBack = [
+    const secondaryFields = [
       "NumObjectIdsInScope",
       "NumLocalObjects",
       "UsedLocalObjectMemory",
     ];
-    pushFieldsToBack.forEach((fieldName) => {
+    const secondaryRawInformation: ActorInformation[] = [];
+    secondaryFields.forEach((fieldName) => {
       const foundIdx = rawInformation.findIndex(
         (info) => info.label === fieldName,
       );
       if (foundIdx !== -1) {
         const foundValue = rawInformation[foundIdx];
         rawInformation.splice(foundIdx, 1);
-        rawInformation.push(foundValue);
+        secondaryRawInformation.push(foundValue);
       }
     });
 
@@ -257,22 +253,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           {info.value}
         </span>
       ),
-      NumObjectIdsInScope: (info: ActorInformation) => (
-        <span className={classes.secondaryFieldsHeader} key={info.label}>
-          <br></br>
-          {info.label}: {info.value}
-        </span>
-      ),
-      NumLocalObjects: (info: ActorInformation) => (
-        <span className={classes.secondaryFields} key={info.label}>
-          {info.label}: {info.value}
-        </span>
-      ),
-      UsedLocalObjectMemory: (info: ActorInformation) => (
-        <span className={classes.secondaryFields} key={info.label}>
-          {info.label}: {info.value}
-        </span>
-      ),
       Identity: (info: ActorInformation) =>
         info.value.length === 0 ? null : (
           <span className={classes.datum} key={info.label}>
@@ -282,14 +262,18 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     };
 
     // Apply the styling transformation
-    const information = rawInformation.map((val) => {
+    const transformInformation = (val: ActorInformation) => {
       const transform = transforms[val.label];
       if (transform !== undefined) {
         return transform(val);
       } else {
         return transforms["Identity"](val);
       }
-    });
+    };
+    const information = rawInformation.map(transformInformation);
+    const secondaryInformation = secondaryRawInformation.map(
+      transformInformation,
+    );
 
     // Construct the custom message from the actor.
     let actorCustomDisplay: JSX.Element[] = [];
@@ -403,6 +387,11 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           )}
         </Typography>
         <Typography className={classes.information}>{information}</Typography>
+        {secondaryInformation.length >= 0 && (
+          <Typography className={classes.secondaryFields}>
+            {secondaryInformation}
+          </Typography>
+        )}
         {actor.state !== -1 && (
           <React.Fragment>
             {actorCustomDisplay.length > 0 && (
