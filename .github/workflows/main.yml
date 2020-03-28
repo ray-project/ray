@@ -39,7 +39,7 @@ jobs:
         CC: ${{ matrix.compiler }}
       run: |
         # TODO(mehrdadn): Replace this with the same build script as below, once we factor that out
-        bazel --batch build \
+        bazel build \
           --compilation_mode=fastbuild \
           --config=iwyu \
           --keep_going \
@@ -82,6 +82,6 @@ jobs:
     - name: Perform build
       shell: bash -e -o pipefail -l {0}
       run: |
-        bazel --batch build \
+        bazel build \
           --keep_going \
           "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
