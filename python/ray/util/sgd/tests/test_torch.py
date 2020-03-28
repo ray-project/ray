@@ -2,8 +2,6 @@ from unittest.mock import patch
 import numpy as np
 import os
 import pytest
-import shutil
-import tempfile
 import time
 import torch
 import torch.nn as nn
@@ -28,6 +26,9 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Ensure that tests don't ALL fail
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
@@ -458,7 +459,8 @@ def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
+def test_save_and_restore(ray_start_2_cpus, num_workers,
+                          tmp_path):  # noqa: F811
     trainer1 = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
@@ -466,7 +468,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     trainer1.train()
-    checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
     trainer1.save(checkpoint_path)
 
     model1 = trainer1.get_model()
@@ -480,7 +482,6 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     trainer2.load(checkpoint_path)
-    shutil.rmtree(checkpoint_path)
 
     model2 = trainer2.get_model()
 
