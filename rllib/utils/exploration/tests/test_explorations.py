@@ -12,7 +12,9 @@ import ray.rllib.agents.impala as impala
 import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
-from ray.rllib.utils import check
+from ray.rllib.utils import check, try_import_tf
+
+tf = try_import_tf()
 
 
 def do_test_explorations(run,
@@ -50,9 +52,13 @@ def do_test_explorations(run,
                 config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
 
-            eager_mode_ctx = eager_mode()
+            eager_mode_ctx = None
             if fw == "eager":
+                eager_mode_ctx = eager_mode()
                 eager_mode_ctx.__enter__()
+                assert tf.executing_eagerly()
+            elif fw == "tf":
+                assert not tf.executing_eagerly()
 
             trainer = run(config=config, env=env)
 
@@ -86,7 +92,7 @@ def do_test_explorations(run,
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
 
-            if fw == "eager":
+            if eager_mode_ctx:
                 eager_mode_ctx.__exit__(None, None, None)
 
 
