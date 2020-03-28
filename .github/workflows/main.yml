@@ -3,50 +3,6 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  iwyu:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        name: [
-          ubuntu-clang-iwyu,
-        ]
-        include:
-          - name: ubuntu-clang-iwyu
-            os: ubuntu-latest
-            compiler: clang
-    steps:
-    - name: Configure Git
-      shell: bash -e -o pipefail -l {0}
-      run: git config --global core.symlinks true && git config --global core.autocrlf false
-    - name: Checkout repository
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 1
-    - name: Setup Bazel
-      shell: bash -e -o pipefail -l {0}
-      env:
-        BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./ci/travis/install-bazel.sh
-    - name: Setup Clang Include-What-You-Use
-      shell: bash -e -o pipefail -l {0}
-      run: |
-        sudo dpkg-reconfigure debconf -f noninteractive -p high
-        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
-    - name: Perform build
-      continue-on-error: true
-      shell: bash -e -o pipefail -l {0}
-      env:
-        CC: ${{ matrix.compiler }}
-      run: |
-        # TODO(mehrdadn): Replace this with the same build script as below, once we factor that out
-        bazel build \
-          --compilation_mode=fastbuild \
-          --config=iwyu \
-          --keep_going \
-          "//:*"
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -65,9 +21,13 @@ jobs:
     steps:
     - name: Configure Git
       shell: bash -e -o pipefail -l {0}
-      run: git config --global core.symlinks true && git config --global core.autocrlf false
+      run: |
+        git config --global core.symlinks true && git config --global core.autocrlf false
+        if command -v dpkg > /dev/null; then sudo dpkg-reconfigure debconf -f noninteractive -p high; fi
     - name: Checkout repository
       uses: actions/checkout@v2
+      with:
+        fetch-depth: 1
     - name: Setup Bazel
       shell: bash -e -o pipefail -l {0}
       env:
@@ -90,4 +50,14 @@ jobs:
       run: |
         bazel build \
           --keep_going \
+          "//:*"
+    - name: Run Clang Include-What-You-Use
+      continue-on-error: true
+      if: runner.os == 'Linux'
+      shell: bash -e -o pipefail -l {0}
+      run: |
+        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
+        bazel build \
+          --keep_going \
+          --config=iwyu \
           "//:*"
