@@ -149,6 +149,9 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
             "momentum": 0.8
         },
         stop={"training_iteration": 2 if test_mode else 100},
+        max_failures=3,  # used for fault tolerance
+        checkpoint_freq=3,  # used for fault tolerance
+        keep_checkpoints_num=1,  # used for fault tolerance
         verbose=2,
         progress_reporter=reporter,
         scheduler=pbt_scheduler)

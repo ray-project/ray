@@ -325,7 +325,7 @@ class TorchTrainer:
               num_steps=None,
               profile=False,
               reduce_results=True,
-              max_retries=0,
+              max_retries=3,
               info=None):
         """Runs a training epoch.
 
@@ -349,7 +349,7 @@ class TorchTrainer:
                 process will kill all current workers, query the Ray
                 global state for total available resources, and re-launch up to
                 the available resources. Behavior is not well-defined
-                in case of shared cluster usage.
+                in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
 
@@ -699,7 +699,7 @@ class BaseTorchTrainable(Trainable):
 
         You may want to override this if using a custom LR scheduler.
         """
-        train_stats = self.trainer.train(profile=True)
+        train_stats = self.trainer.train(max_retries=10, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats
