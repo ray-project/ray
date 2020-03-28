@@ -33,10 +33,10 @@ static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
       arg += groups[1];
     } else if (groups[2].matched) {
       // double_quoted: Backslashes stay if they don't escape anything: "\x\\y" == '\x\y'
-      arg += std::regex_replace(groups[2].str(), re_dq_escape, "$1");
+      arg += std::regex_replace(groups[2].str(), re_dq_escape, std::string("$1"));
     } else if (groups[3].matched) {
       // unquoted: Backslashes get removed if they don't escape anything: \x\\y == 'x\y'
-      arg += std::regex_replace(groups[3].str(), re_escape, "$1");
+      arg += std::regex_replace(groups[3].str(), re_escape, std::string("$1"));
     } else {
       // boundary
       if (!was_space) {
@@ -71,10 +71,10 @@ static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
     bool space = false;
     if (groups[1].matched) {
       // double_quoted: Backslashes are escapes only if they precede a double-quote
-      arg += std::regex_replace(groups[1].str(), re_dq_escape, "$1$2");
+      arg += std::regex_replace(groups[1].str(), re_dq_escape, std::string("$1$2"));
     } else if (groups[2].matched) {
       // unquoted: Backslashes are escapes only if they precede a double-quote
-      arg += std::regex_replace(groups[2].str(), re_escape, "$2");
+      arg += std::regex_replace(groups[2].str(), re_escape, std::string("$2"));
     } else {
       // boundary
       if (!was_space) {
@@ -119,7 +119,7 @@ std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
     std::string arg = args[i];
     if (std::regex_search(arg, unsafe_chars)) {
       // Prefer single-quotes. Double-quotes have unpredictable behavior, e.g. for "\!".
-      arg = "'" + std::regex_replace(arg, single_quote, "'\\$1'") + "'";
+      arg = "'" + std::regex_replace(arg, single_quote, std::string("'\\$1'")) + "'";
     }
     if (i > 0) {
       result += ' ';
@@ -137,8 +137,8 @@ static std::string CreateWindowsCommandLine(const std::vector<std::string> &args
     std::string arg = args[i];
     if (std::regex_search(arg, unsafe_chars)) {
       // Escape only backslashes that precede double-quotes
-      arg = std::regex_replace(arg, end, "$1$1");
-      arg = '"' + std::regex_replace(arg, double_quote, "$1$1\\$2") + '"';
+      arg = std::regex_replace(arg, end, std::string("$1$1"));
+      arg = '"' + std::regex_replace(arg, double_quote, std::string("$1$1\\$2")) + '"';
     }
     if (i > 0) {
       result += ' ';
