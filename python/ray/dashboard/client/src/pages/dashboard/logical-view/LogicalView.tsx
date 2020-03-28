@@ -1,7 +1,10 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
+import {
+  createStyles,
+  Theme,
+  Typography,
+  WithStyles,
+  withStyles,
+} from "@material-ui/core";
 import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
 import React from "react";
 import { connect } from "react-redux";
@@ -12,16 +15,16 @@ const styles = (theme: Theme) =>
   createStyles({
     warning: {
       fontSize: "0.8125rem",
-      marginBottom: theme.spacing(2)
+      marginBottom: theme.spacing(2),
     },
     warningIcon: {
       fontSize: "1.25em",
-      verticalAlign: "text-bottom"
-    }
+      verticalAlign: "text-bottom",
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  rayletInfo: state.dashboard.rayletInfo
+  rayletInfo: state.dashboard.rayletInfo,
 });
 
 class LogicalView extends React.Component<

@@ -357,11 +357,9 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-
         if max_retries and self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
-
         success, worker_stats = self._train_epoch(
             num_steps=num_steps, profile=profile, info=info)
         # Fault handling
@@ -475,7 +473,6 @@ class TorchTrainer:
             w.validate.remote(**params) for w in self.remote_workers
         ]
         local_worker_stats = self.local_worker.validate(**params)
-
         return self._process_stats([local_worker_stats] +
                                    ray.get(remote_worker_stats))
 
@@ -506,6 +503,18 @@ class TorchTrainer:
         ]
 
         self.local_worker.load_state_dict(state_dict)
+        ray.get(remote_calls)
+
+    def state_dict(self):
+        return self.local_worker.get_state()
+
+    def load_state_dict(self, state):
+        state_id = ray.put(state)
+
+        remote_calls = [
+            worker.set_state.remote(state_id) for worker in self.remote_workers
+        ]
+        self.local_worker.set_state(state)
         ray.get(remote_calls)
 
     def save(self, checkpoint):
