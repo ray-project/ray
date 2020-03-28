@@ -32,7 +32,7 @@ install_clang() {
   elif 1>&- command -v pacman; then
     sudo pacman -S --needed --noconfirm --noprogressbar clang
   elif 1>&- command -v apt-get; then
-    sudo apt-get -q -y install clang
+    sudo apt-get install -qq -o=Dpkg::Use-Pty=0 -y clang
   fi
 }
 

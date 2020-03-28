@@ -1,8 +1,5 @@
 name: CI
 
-env:
-  DEBIAN_FRONTEND: noninteractive
-
 on: [push, pull_request]
 
 jobs:
@@ -33,7 +30,8 @@ jobs:
     - name: Setup Clang Include-What-You-Use
       shell: bash -e -o pipefail -l {0}
       run: |
-        sudo apt-get install iwyu
+        sudo dpkg-reconfigure debconf -f noninteractive -p high
+        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
     - name: Perform build
       continue-on-error: true
       shell: bash -e -o pipefail -l {0}
