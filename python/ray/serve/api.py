@@ -140,8 +140,7 @@ def init(
     ray.get(master.start_router.remote(queueing_policy.value, policy_kwargs))
 
     global_state = GlobalState(master)
-    global_state.init_or_get_metric_monitor(
-        gc_window_seconds=gc_window_seconds)
+    ray.get(master.start_metric_monitor.remote(gc_window_seconds))
     if start_server:
         print("start http proxy")
         ray.get(master.start_http_proxy.remote(http_host, http_port))
@@ -337,7 +336,7 @@ def _start_replica(backend_tag):
 
     # Register the worker in config tables as well as metric monitor
     global_state.backend_table.add_replica(backend_tag, replica_tag)
-    global_state.init_or_get_metric_monitor().add_target.remote(runner_handle)
+    global_state.get_metric_monitor().add_target.remote(runner_handle)
 
 
 def _remove_replica(backend_tag):
@@ -353,8 +352,8 @@ def _remove_replica(backend_tag):
         global_state.master_actor_handle.get_handle.remote(replica_tag))
 
     # Remove the replica from metric monitor.
-    ray.get(global_state.init_or_get_metric_monitor().remove_target.remote(
-        replica_handle))
+    ray.get(
+        global_state.get_metric_monitor().remove_target.remote(replica_handle))
 
     # Remove the replica from master actor.
     ray.get(global_state.master_actor_handle.remove_handle.remote(replica_tag))
@@ -490,7 +489,7 @@ def stat(percentiles=[50, 90, 95],
             The longest aggregation window must be shorter or equal to the
             gc_window_seconds.
     """
-    return ray.get(global_state.init_or_get_metric_monitor().collect.remote(
+    return ray.get(global_state.get_metric_monitor().collect.remote(
         percentiles, agg_windows_seconds))
 
 

@@ -4,7 +4,6 @@ from ray.serve.kv_store_service import (BackendTable, RoutingTable,
                                         TrafficPolicyTable)
 from ray.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 
-from ray.serve.policy import RoutePolicy
 from ray.serve.http_proxy import HTTPProxyActor
 
 
@@ -24,6 +23,7 @@ class ServeMaster:
 
         self.router = None
         self.http_proxy = None
+        self.metric_monitor = None
 
     def get_kv_store_connector(self):
         return self.kv_store_connector
@@ -67,6 +67,18 @@ class ServeMaster:
         assert self.http_proxy is not None, "HTTP proxy not started yet."
         return [self.http_proxy]
 
+    def start_metric_monitor(self, gc_window_seconds):
+        assert self.metric_monitor is None, "Metric monitor already started."
+        self.metric_monitor = MetricMonitor.remote(gc_window_seconds)
+        # TODO(edoakes): this should be an actor method, not a separate task.
+        start_metric_monitor_loop.remote(self.metric_monitor)
+        self.metric_monitor.add_target.remote(self.router)
+
+    def get_metric_monitor(self, gc_window_seconds=3600):
+        assert self.metric_monitor is not None, (
+            "Metric monitor not started yet.")
+        return [self.metric_monitor]
+
     def start_actor_with_creator(self, creator, kwargs, tag):
         """
         Args:
@@ -97,57 +109,24 @@ class GlobalState:
         2. A actor supervisor service
     """
 
-    def __init__(self, master_actor_handle=None):
+    def __init__(self, master_actor=None):
         # Get actor nursery handle
-        if master_actor_handle is None:
-            master_actor_handle = ray.util.get_actor(SERVE_MASTER_NAME)
-        self.master_actor_handle = master_actor_handle
+        if master_actor is None:
+            master_actor = ray.util.get_actor(SERVE_MASTER_NAME)
+        self.master_actor = master_actor
 
         # Connect to all the tables.
         kv_store_connector = ray.get(
-            self.master_actor_handle.get_kv_store_connector.remote())
+            self.master_actor.get_kv_store_connector.remote())
         self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
         self.policy_table = TrafficPolicyTable(kv_store_connector)
 
-        self.refresh_actor_handle_cache()
-
-    def refresh_actor_handle_cache(self):
-        self.actor_handle_cache = ray.get(
-            self.master_actor_handle.get_all_handles.remote())
-
     def get_http_proxy(self):
-        return ray.get(self.master_actor_handle.get_http_proxy.remote())[0]
-
-    def _get_queueing_policy(self, default_policy):
-        return_policy = default_policy
-        # check if there is already a queue_actor running
-        # with policy as p.name for the case where
-        # serve nursery exists: ray.util.get_actor(SERVE_MASTER_NAME)
-        for p in RoutePolicy:
-            queue_actor_tag = "queue_actor::" + p.name
-            if queue_actor_tag in self.actor_handle_cache:
-                return_policy = p
-                break
-        return return_policy
+        return ray.get(self.master_actor.get_http_proxy.remote())[0]
 
     def get_router(self):
-        return ray.get(self.master_actor_handle.get_router.remote())[0]
+        return ray.get(self.master_actor.get_router.remote())[0]
 
-    def init_or_get_metric_monitor(self, gc_window_seconds=3600):
-        if "metric_monitor" not in self.actor_handle_cache:
-            [handle] = ray.get(
-                self.master_actor_handle.start_actor.remote(
-                    MetricMonitor,
-                    init_args=(gc_window_seconds, ),
-                    tag="metric_monitor"))
-
-            start_metric_monitor_loop.remote(handle)
-
-            if "queue_actor" in self.actor_handle_cache:
-                handle.add_target.remote(
-                    self.actor_handle_cache["queue_actor"])
-
-            self.refresh_actor_handle_cache()
-
-        return self.actor_handle_cache["metric_monitor"]
+    def get_metric_monitor(self, gc_window_seconds=3600):
+        return ray.get(self.master_actor.get_metric_monitor.remote())[0]
