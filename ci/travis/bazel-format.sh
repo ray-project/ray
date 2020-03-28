@@ -45,6 +45,6 @@ done
 
 pushd $ROOT_DIR/../..
 BAZEL_FILES="bazel/BUILD bazel/BUILD.plasma bazel/ray.bzl BUILD.bazel java/BUILD.bazel
- streaming/BUILD.bazel streaming/java/BUILD.bazel WORKSPACE"
+ cpp/BUILD.bazel streaming/BUILD.bazel streaming/java/BUILD.bazel WORKSPACE"
 buildifier -mode=$RUN_TYPE -diff_command="diff -u" $BAZEL_FILES
 popd
