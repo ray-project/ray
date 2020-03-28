@@ -415,8 +415,14 @@ class TorchTrainer:
         try:
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
-            logger.warning(err)
-            return False, None
+            if "gloo" in err.args[0] and "Timed out" in err.args[0]:
+                logger.warning(err)
+                return False, None
+            if "NCCL" in err.args[0]:  # there is no specific error message
+                logger.warning(err)
+                return False, None
+
+            raise err
 
         success = check_for_failure(remote_worker_stats)
         if success:
