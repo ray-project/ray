@@ -11,8 +11,6 @@ RUN pip install -U boto3
 # We install this after the latest wheels -- this should not override the latest wheels.
 # Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
 RUN apt-get install -y zlib1g-dev libgl1-mesa-dev
-# The following is needed to support TensorFlow 1.14
-RUN conda remove -y --force wrapt
 RUN pip install gym[atari]==0.10.11 opencv-python-headless tensorflow lz4 keras pytest-timeout smart_open torch torchvision dm_tree
 RUN pip install --upgrade bayesian-optimization
 RUN pip install --upgrade hyperopt==0.1.2
