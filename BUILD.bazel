@@ -7,7 +7,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PROPAGATED_WINDOWS_DEFINES")
+load("//bazel:ray.bzl", "COPTS")
 
 # === Begin of protobuf definitions ===
 
@@ -394,10 +394,6 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
-    defines = select({
-        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
-        "//conditions:default": [],
-    }),
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
         ],
