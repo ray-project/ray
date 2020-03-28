@@ -96,6 +96,19 @@ The following is a list of the common algorithm hyperparameters:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+Scaling Guide
+~~~~~~~~~~~~~
+
+Here are some rules of thumb for scaling training with RLlib.
+
+1. If the environment is slow and cannot be replicated (e.g., since it requires interaction with physical systems), then you should use a sample-efficient off-policy algorithm such as `DQN <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__ or `SAC <rllib-algorithms.html#soft-actor-critic-sac>`__. These algorithms all default to ``num_workers: 0`` for single-process operation. Consider also batch RL training with the `offline data <rllib-offline.html>`__ API.
+
+2. If the environment is fast and the model is small (most models for RL are), consider more time-efficient algorithms such as `PPO <rllib-algorithms.html#proximal-policy-optimization-ppo>`__, `IMPALA <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__, or `APEX <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__. These can be scaled by simply increasing ``num_workers`` to add more rollout workers for generating experiences. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for inference. If the learner becomes a bottleneck, consider enabling multi-GPU by increasing ``num_gpus`` above ``1``.
+
+3. If the model is very large (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_worker: 1``. If you only have a single GPU, consider ``num_workers: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
+   
+4. Finally, if both model and env are compute intensive, then consider enabling `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_env_batch_wait_ms``. This batches GPU inference in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture.
+
 Tuned Examples
 ~~~~~~~~~~~~~~
 

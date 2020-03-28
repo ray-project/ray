@@ -15,6 +15,8 @@ Training APIs
 
    -  `Common Parameters <rllib-training.html#common-parameters>`__
 
+   -  `Scaling Guide <rllib-training.html#scaling-guide>`__
+
    -  `Tuned Examples <rllib-training.html#tuned-examples>`__
 
 *  `Basic Python API <rllib-training.html#basic-python-api>`__
@@ -57,28 +59,28 @@ Training APIs
 
 Environments
 ------------
-* `RLlib Environments Overview <rllib-env.html>`__
-* `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
-* `OpenAI Gym <rllib-env.html#openai-gym>`__
-* `Vectorized <rllib-env.html#vectorized>`__
-* `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
-* `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
+*  `RLlib Environments Overview <rllib-env.html>`__
+*  `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
+*  `OpenAI Gym <rllib-env.html#openai-gym>`__
+*  `Vectorized <rllib-env.html#vectorized>`__
+*  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
+*  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
 
    -  `External Application Clients <rllib-env.html#external-application-clients>`__
 
-* `Advanced Integrations <rllib-env.html#advanced-integrations>`__
+*  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
 Models, Preprocessors, and Action Distributions
 -----------------------------------------------
-* `RLlib Models, Preprocessors, and Action Distributions Overview <rllib-models.html>`__
-* `TensorFlow Models <rllib-models.html#tensorflow-models>`__
-* `PyTorch Models <rllib-models.html#pytorch-models>`__
-* `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
-* `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
-* `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
-* `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
-* `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
-* `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
+*  `RLlib Models, Preprocessors, and Action Distributions Overview <rllib-models.html>`__
+*  `TensorFlow Models <rllib-models.html#tensorflow-models>`__
+*  `PyTorch Models <rllib-models.html#pytorch-models>`__
+*  `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
+*  `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
+*  `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
+*  `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
+*  `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
+*  `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
 Algorithms
 ----------
@@ -126,10 +128,10 @@ Algorithms
 
 Offline Datasets
 ----------------
-* `Working with Offline Datasets <rllib-offline.html>`__
-* `Input Pipeline for Supervised Losses <rllib-offline.html#input-pipeline-for-supervised-losses>`__
-* `Input API <rllib-offline.html#input-api>`__
-* `Output API <rllib-offline.html#output-api>`__
+*  `Working with Offline Datasets <rllib-offline.html>`__
+*  `Input Pipeline for Supervised Losses <rllib-offline.html#input-pipeline-for-supervised-losses>`__
+*  `Input API <rllib-offline.html#input-api>`__
+*  `Output API <rllib-offline.html#output-api>`__
 
 Concepts and Custom Algorithms
 ------------------------------
@@ -152,30 +154,30 @@ Concepts and Custom Algorithms
 Examples
 --------
 
-* `Tuned Examples <rllib-examples.html#tuned-examples>`__
-* `Training Workflows <rllib-examples.html#training-workflows>`__
-* `Custom Envs and Models <rllib-examples.html#custom-envs-and-models>`__
-* `Serving and Offline <rllib-examples.html#serving-and-offline>`__
-* `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
-* `Community Examples <rllib-examples.html#community-examples>`__
+*  `Tuned Examples <rllib-examples.html#tuned-examples>`__
+*  `Training Workflows <rllib-examples.html#training-workflows>`__
+*  `Custom Envs and Models <rllib-examples.html#custom-envs-and-models>`__
+*  `Serving and Offline <rllib-examples.html#serving-and-offline>`__
+*  `Multi-Agent and Hierarchical <rllib-examples.html#multi-agent-and-hierarchical>`__
+*  `Community Examples <rllib-examples.html#community-examples>`__
 
 Development
 -----------
 
-* `Development Install <rllib-dev.html#development-install>`__
-* `API Stability <rllib-dev.html#api-stability>`__
-* `Features <rllib-dev.html#feature-development>`__
-* `Benchmarks <rllib-dev.html#benchmarks>`__
-* `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
+*  `Development Install <rllib-dev.html#development-install>`__
+*  `API Stability <rllib-dev.html#api-stability>`__
+*  `Features <rllib-dev.html#feature-development>`__
+*  `Benchmarks <rllib-dev.html#benchmarks>`__
+*  `Contributing Algorithms <rllib-dev.html#contributing-algorithms>`__
 
 Package Reference
 -----------------
-* `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
-* `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
-* `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
-* `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
-* `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
-* `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
+*  `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
+*  `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
+*  `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+*  `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
+*  `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
+*  `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
 Troubleshooting
 ---------------
