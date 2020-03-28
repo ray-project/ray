@@ -14,8 +14,6 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include <sys/wait.h>
-
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
