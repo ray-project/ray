@@ -4,7 +4,7 @@ import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
 import Typography from "@material-ui/core/Typography";
-import React from "react";
+import React, { ReactNode } from "react";
 import {
   checkProfilingStatus,
   CheckProfilingStatusResponse,
@@ -94,9 +94,19 @@ interface State {
 
 interface ActorInformation {
   label: string;
-  value: string | null;
-  rendered?: JSX.Element;
+  value: string;
 }
+
+interface ActorInformationRendered {
+  label: string;
+  rendered: ReactNode;
+}
+
+const ActorStateHumanNames = {
+  0: "ALIVE",
+  1: "RECONSTRUCTING",
+  2: "DEAD"
+};
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
@@ -152,7 +162,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     const { classes, actor } = this.props;
     const { expanded, profiling } = this.state;
 
-    let information: ActorInformation[] =
+    const rawInformation: ActorInformation[] =
       actor.state !== -1
         ? [
             {
@@ -161,7 +171,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             },
             {
               label: "State",
-              value: actor.state.toLocaleString()
+              // If the state is alive, there's no need to propogate that to user.
+              value: actor.state === 0 ? "" : ActorStateHumanNames[actor.state]
             },
             {
               label: "Resources",
@@ -171,7 +182,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       .sort((a, b) => a[0].localeCompare(b[0]))
                       .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                       .join(", ")
-                  : null
+                  : ""
             },
             {
               label: "Pending",
@@ -207,74 +218,83 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       .sort((a, b) => a[0].localeCompare(b[0]))
                       .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                       .join(", ")
-                  : null
+                  : ""
             }
           ];
 
     // Apply transformation to add styling for information field
     const transforms: Record<
       string,
-      (info: ActorInformation) => ActorInformation
+      (info: ActorInformation) => ActorInformationRendered
     > = {
       Pending: (info: ActorInformation) => {
         if (actor.state !== -1 && actor.taskQueueLength >= 50) {
-          info.rendered = (
-            <React.Fragment key={info.label}>
-              <span className={classes.warningTooManyPendingTask}>
+          return {
+            label: info.label,
+            rendered: (
+              <span
+                className={classes.warningTooManyPendingTask}
+                key={info.label}
+              >
                 {info.label}: {info.value}
               </span>
-            </React.Fragment>
-          );
+            )
+          };
+        } else {
+          return { label: info.label, rendered: info.label };
         }
-        return info;
       },
-      ActorTitle: (info: ActorInformation) => {
-        info.rendered = (
-          <React.Fragment key={info.label}>
-            <span className={classes.actorTitle}>{info.value}</span>{" "}
-          </React.Fragment>
-        );
-        return info;
-      },
-      NumObjectIdsInScope: (info: ActorInformation) => {
-        info.rendered = (
-          <React.Fragment key={info.label}>
-            <span className={classes.secondaryFieldsHeader}>
-              <br></br>
+      ActorTitle: (info: ActorInformation) => ({
+        rendered: (
+          <span className={classes.actorTitle} key={info.label}>
+            {info.value}
+          </span>
+        ),
+        label: info.label
+      }),
+      NumObjectIdsInScope: (info: ActorInformation) => ({
+        rendered: (
+          <span className={classes.secondaryFieldsHeader} key={info.label}>
+            <br></br>
+            {info.label}: {info.value}
+          </span>
+        ),
+        label: info.label
+      }),
+      NumLocalObjects: (info: ActorInformation) => ({
+        rendered: (
+          <span className={classes.secondaryFields} key={info.label}>
+            {info.label}: {info.value}
+          </span>
+        ),
+        label: info.label
+      }),
+      UsedLocalObjectMemory: (info: ActorInformation) => ({
+        rendered: (
+          <span className={classes.secondaryFields} key={info.label}>
+            {info.label}: {info.value}
+          </span>
+        ),
+        label: info.label
+      }),
+      Identity: (info: ActorInformation) => ({
+        rendered:
+          info.value.length === 0 ? null : (
+            <span className={classes.datum}>
               {info.label}: {info.value}
             </span>
-          </React.Fragment>
-        );
-        return info;
-      },
-      NumLocalObjects: (info: ActorInformation) => {
-        info.rendered = (
-          <React.Fragment key={info.label}>
-            <span className={classes.secondaryFields}>
-              {info.label}: {info.value}
-            </span>
-          </React.Fragment>
-        );
-        return info;
-      },
-      UsedLocalObjectMemory: (info: ActorInformation) => {
-        info.rendered = (
-          <React.Fragment key={info.label}>
-            <span className={classes.secondaryFields}>
-              {info.label}: {info.value}
-            </span>
-          </React.Fragment>
-        );
-        return info;
-      }
+          ),
+        label: info.label
+      })
     };
+
     // Apply the styling transformation
-    information = information.map(val => {
+    const information = rawInformation.map(val => {
       const transform = transforms[val.label];
       if (transform !== undefined) {
         return transform(val);
       } else {
-        return val;
+        return transforms["Identity"](val);
       }
     });
 
@@ -407,17 +427,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           )}
         </Typography>
         <Typography className={classes.information}>
-          {information.map(
-            ({ label, value, rendered }) =>
-              rendered ||
-              (value && value.length > 0 && (
-                <React.Fragment key={label}>
-                  <span className={classes.datum}>
-                    {label}: {value}
-                  </span>{" "}
-                </React.Fragment>
-              ))
-          )}
+          {information.map(({ label, rendered }) => rendered)}
         </Typography>
         {actor.state !== -1 && (
           <React.Fragment>
