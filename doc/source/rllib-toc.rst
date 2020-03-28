@@ -126,6 +126,11 @@ Algorithms
 
    -  |tensorflow| `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
 
+*  Contextual bandits
+
+   -  |pytorch| `Upper Confidence Bound (LinUCB) <rllib-algorithms.html#upper-confidence-bound-contrib-linucb>`__
+   -  |pytorch| `Linear Thompson Sampling (LinTS) <rllib-algorithms.html#linear-thompson-sampling-contrib-lints>`__
+
 Offline Datasets
 ----------------
 *  `Working with Offline Datasets <rllib-offline.html>`__

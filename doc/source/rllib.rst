@@ -101,9 +101,7 @@ RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to 
 Application Support
 ~~~~~~~~~~~~~~~~~~~
 
-Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__:
-
-.. image:: rllib-external.svg
+Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__.
 
 Customization
 ~~~~~~~~~~~~~
