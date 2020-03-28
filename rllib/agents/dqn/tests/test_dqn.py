@@ -44,7 +44,7 @@ class TestDQN(unittest.TestCase):
         eager_ctx = eager_mode()
         eager_ctx.__enter__()
         trainer = dqn.DQNTrainer(config=eager_config, env="CartPole-v0")
-        num_iterations = 2
+        num_iterations = 1
         for i in range(num_iterations):
             results = trainer.train()
             print(results)

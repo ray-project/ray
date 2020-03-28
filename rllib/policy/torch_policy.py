@@ -72,6 +72,7 @@ class TorchPolicy(Policy):
                         **kwargs):
 
         explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -82,8 +83,12 @@ class TorchPolicy(Policy):
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
-            dist_inputs, dist_class, state_out = \
-                self.compute_distribution_inputs(
+
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(timestep=timestep)
+
+            action_dist, state_out = \
+                self.compute_action_distribution(
                     obs_batch=obs_batch,
                     state_batches=state_batches,
                     prev_action_batch=prev_action_batch,
@@ -92,16 +97,11 @@ class TorchPolicy(Policy):
                     explore=explore,
                     is_training=False
                 )
-            action_dist = dist_class(dist_inputs, self.model)
-            # Get the exploration action from the forward results.
-            action, logp = self.exploration.get_exploration_action(
-                distribution_inputs=dist_inputs,
-                action_dist_class=self.dist_class,
-                timestep=timestep
-                if timestep is not None else self.global_timestep,
-                explore=explore)
 
-            input_dict[SampleBatch.ACTIONS] = action
+            actions, logp = \
+                self.exploration.get_exploration_action(
+                    action_dist, timestep, explore)
+            input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,
                                                      self.model, action_dist)
@@ -111,7 +111,7 @@ class TorchPolicy(Policy):
                     ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
-            return convert_to_non_torch_type((action, state_out,
+            return convert_to_non_torch_type((actions, state_out,
                                               extra_action_out))
 
     def compute_distribution_inputs(self,
@@ -150,8 +150,8 @@ class TorchPolicy(Policy):
                                 prev_action_batch=None,
                                 prev_reward_batch=None):
         with torch.no_grad():
-            dist_inputs, dist_class, state_outs = \
-                self.compute_distribution_inputs(
+            action_dist = \
+                self.compute_action_distribution(
                     obs_batch=obs_batch,
                     state_batches=state_batches,
                     prev_action_batch=prev_action_batch,

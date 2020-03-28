@@ -1,13 +1,15 @@
 from gym.spaces import Space
 from typing import Union
 
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils.annotations import DeveloperAPI
 
 tf = try_import_tf()
 
 
+@DeveloperAPI
 class Exploration:
     """Implements an exploration strategy for Policies.
 
@@ -16,8 +18,13 @@ class Exploration:
     implemented exploration schema.
     """
 
-    def __init__(self, action_space: Space, *, framework: str,
-                 num_workers: int, worker_index: int, policy_config: dict,
+    def __init__(self,
+                 action_space: Space,
+                 *,
+                 framework: str,
+                 num_workers: int,
+                 worker_index: int,
+                 policy_config: dict,
                  model: ModelV2):
         """
         Args:
@@ -36,23 +43,16 @@ class Exploration:
         self.worker_index = worker_index
         self.framework = check_framework(framework)
 
-    def before_forward_pass(self,
-                            obs_batch,
-                            *,
-                            state_batches=None,
-                            seq_lens=None,
-                            timestep=None,
-                            explore=None,
-                            tf_sess=None,
-                            **kwargs):
-        """May be overridden to perform preparations before a forward pass.
+    @DeveloperAPI
+    def before_compute_actions(self,
+                               *,
+                               timestep=None,
+                               explore=None,
+                               tf_sess=None,
+                               **kwargs):
+        """Hook for preparations before policy.compute_actions() is called.
 
         Args:
-            obs_batch (dict): The observations batch.
-            state_batches (Optional[List[TensorType]]): The list of internal
-                state batches to pass through the model.
-            seq_lens (Optional[List[TensorType]]): The sequence lengths for the
-                RNN case.
             timestep (Optional[TensorType]): An optional timestep tensor.
             explore (Optional[TensorType]): An optional explore boolean flag.
             tf_sess (Optional[tf.Session]): The tf-session object to use.
@@ -60,6 +60,7 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def get_exploration_action(self,
                                *,
                                distribution_inputs: TensorType,
@@ -91,6 +92,7 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def on_episode_start(self,
                          policy,
                          *,
@@ -107,6 +109,7 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def on_episode_end(self,
                        policy,
                        *,
@@ -123,10 +126,12 @@ class Exploration:
         """
         pass
 
+    @DeveloperAPI
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
-        Changes the given batch in place.
+        Changes the given batch in place. This callback is invoked by the
+        sampler after policy.postprocess_trajectory() is called.
 
         Args:
             policy (Policy): The owning policy object.
@@ -135,6 +140,7 @@ class Exploration:
         """
         return sample_batch
 
+    @DeveloperAPI
     def get_info(self):
         """Returns a description of the current exploration state.
 

@@ -126,6 +126,7 @@ class ParameterNoise(Exploration):
         self.episode_started = False
 
     @override(Exploration)
+<<<<<<< HEAD
     def before_forward_pass(self,
                             obs_batch,
                             *,
@@ -136,6 +137,13 @@ class ParameterNoise(Exploration):
                             timestep=None,
                             explore=None,
                             tf_sess=None):
+=======
+    def before_compute_actions(self,
+                               *,
+                               timestep=None,
+                               explore=None,
+                               tf_sess=None):
+>>>>>>> exploration_api_minimal_param_noise
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
         if self.episode_started:
@@ -203,7 +211,7 @@ class ParameterNoise(Exploration):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
-        inputs, dist_class, _ = policy.compute_distribution_inputs(
+        distribution = policy.compute_action_distribution(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -211,8 +219,8 @@ class ParameterNoise(Exploration):
             explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if dist_class is Categorical:
-            action_dist = softmax(inputs)
+        if isinstance(distribution, Categorical):
+            action_dist = softmax(distribution.inputs)
         else:  # TODO(sven): Other action-dist cases.
             raise NotImplementedError
 
@@ -221,7 +229,7 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        inputs, dist_class, _ = policy.compute_distribution_inputs(
+        distribution = policy.compute_action_distribution(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -229,8 +237,8 @@ class ParameterNoise(Exploration):
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if dist_class is Categorical:
-            action_dist = softmax(inputs)
+        if isinstance(distribution, Categorical):
+            action_dist = softmax(distribution.inputs)
 
         if not self.weights_are_currently_noisy:
             noisy_action_dist = action_dist
@@ -238,8 +246,10 @@ class ParameterNoise(Exploration):
             noise_free_action_dist = action_dist
 
         # Categorical case (e.g. DQN).
-        if dist_class is Categorical:
+        if isinstance(distribution, Categorical):
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
+            # TODO(sven): Allow KL-divergence to be calculated by our
+            #  Distribution classes (don't support off-graph/numpy yet).
             kl_divergence = np.nanmean(
                 np.sum(
                     noise_free_action_dist *

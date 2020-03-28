@@ -574,19 +574,18 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         policy = _get_or_raise(policies, policy_id)
         if builder and (policy.compute_actions.__code__ is
                         TFPolicy.compute_actions.__code__):
-            rnn_in_cols = _to_column_format(rnn_in)
-            # TODO(ekl): how can we make info batch available to TF code?
+
             obs_batch = [t.obs for t in eval_data]
-            prev_action_batch = [t.prev_action for t in eval_data]
-            prev_reward_batch = [t.prev_reward for t in eval_data]
+            state_batches = _to_column_format(rnn_in)
+
+            # TODO(ekl): how can we make info batch available to TF code?
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
                 obs_batch=obs_batch,
-                state_batches=rnn_in_cols,
-                prev_action_batch=prev_action_batch,
-                prev_reward_batch=prev_reward_batch,
-                timestep=policy.global_timestep,
-                fetch_dist_inputs=True)
+                state_batches=state_batches,
+                prev_action_batch=[t.prev_action for t in eval_data],
+                prev_reward_batch=[t.prev_reward for t in eval_data],
+                timestep=policy.global_timestep)
         else:
             # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [

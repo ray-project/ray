@@ -317,6 +317,8 @@ def build_eager_tf_policy(name,
 
             explore = explore if explore is not None else \
                 self.config["explore"]
+            timestep = timestep if timestep is not None else \
+                self.global_timestep
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
@@ -342,8 +344,8 @@ def build_eager_tf_policy(name,
                         is_training=False,
                         **prev_batches)
                 else:
-                    dist_inputs, dist_class, state_out = \
-                        self.compute_distribution_inputs(
+                    action_dist, state_out = \
+                        self.compute_action_distribution(
                             obs_batch=tf.convert_to_tensor(obs_batch),
                             state_batches=state_batches,
                             explore=explore,
@@ -351,8 +353,7 @@ def build_eager_tf_policy(name,
                             **prev_batches)
                     # Get the exploration action from the forward results.
                     action, logp = self.exploration.get_exploration_action(
-                        distribution_inputs=dist_inputs,
-                        action_dist_class=dist_class,
+                        action_distribution=action_dist,
                         timestep=timestep
                         if timestep is not None else self.global_timestep,
                         explore=explore)
@@ -372,7 +373,7 @@ def build_eager_tf_policy(name,
             return action, state_out, extra_fetches
 
         @override(Policy)
-        def compute_distribution_inputs(self,
+        def compute_action_distribution(self,
                                         obs_batch,
                                         state_batches=None,
                                         prev_action_batch=None,
@@ -393,7 +394,7 @@ def build_eager_tf_policy(name,
                 n = obs_batch.shape[0]
             seq_lens = tf.ones(n, dtype=tf.int32)
 
-            # Eploration hook before each forward pass.
+            # Exploration hook before each forward pass.
             self.exploration.before_forward_pass(
                 obs_batch=obs_batch,
                 state_batches=state_batches,
@@ -403,7 +404,7 @@ def build_eager_tf_policy(name,
 
             # Custom forward pass to get the action dist inputs.
             if action_distribution_fn:
-                dist_inputs, self.dist_class, state_out = \
+                action_distribution, state_out = \
                     action_distribution_fn(
                         self,
                         self.model,
@@ -421,8 +422,9 @@ def build_eager_tf_policy(name,
                     SampleBatch.PREV_ACTIONS: prev_action_batch,
                     SampleBatch.PREV_REWARDS: prev_reward_batch,
                 }, state_batches, seq_lens)
+                action_distribution = self.dist_class(dist_inputs, self.model)
 
-            return dist_inputs, self.dist_class, state_out
+            return action_distribution, state_out
 
         @override(Policy)
         def compute_log_likelihoods(self,
@@ -443,14 +445,13 @@ def build_eager_tf_policy(name,
                 prev_batches["prev_reward_batch"] = tf.convert_to_tensor(
                     prev_reward_batch)
 
-            dist_inputs, dist_class, _ = \
-                self.compute_distribution_inputs(
+            action_dist, _ = \
+                self.compute_action_distribution(
                     obs_batch=tf.convert_to_tensor(obs_batch),
                     state_batches=state_batches,
                     is_training=False,
                     **prev_batches)
 
-            action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
