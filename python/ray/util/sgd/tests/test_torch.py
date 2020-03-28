@@ -1,6 +1,9 @@
 from unittest.mock import patch
 import numpy as np
+import os
 import pytest
+import shutil
+import tempfile
 import time
 import torch
 import torch.nn as nn
@@ -463,7 +466,8 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     trainer1.train()
-    state = trainer1.state_dict()
+    checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
+    trainer1.save(checkpoint_path)
 
     model1 = trainer1.get_model()
 
@@ -475,7 +479,8 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
-    trainer2.load_state_dict(state)
+    trainer2.load(checkpoint_path)
+    shutil.rmtree(checkpoint_path)
 
     model2 = trainer2.get_model()
 

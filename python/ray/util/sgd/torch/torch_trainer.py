@@ -131,6 +131,11 @@ class TorchTrainer:
 
     """
 
+    # TODO: Implement autoscaling. If num_workers=-1, the trainer will use as
+    # many resources as available. Upon each train call, TorchTrainer will
+    # query the Ray global state for total available resources and resize
+    # its remote workers to consume all available resources.
+
     def __init__(
             self,
             *,
@@ -321,7 +326,6 @@ class TorchTrainer:
               profile=False,
               reduce_results=True,
               max_retries=0,
-              autoscale=False,
               info=None):
         """Runs a training epoch.
 
@@ -346,9 +350,6 @@ class TorchTrainer:
                 global state for total available resources, and re-launch up to
                 the available resources. Behavior is not well-defined
                 in case of shared cluster usage.
-            autoscale (bool): Upon training, TorchTrainer will query the Ray
-                global state for total available resources, and resize
-                its remote workers to consume all available resources.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
 
@@ -360,7 +361,7 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-        if autoscale and self._should_resize():
+        if self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
         success, worker_stats = self._train_epoch(
@@ -495,6 +496,8 @@ class TorchTrainer:
         return self.local_worker.state_dict()
 
     def load_state_dict(self, state_dict, blocking=False):
+        # This is not the most efficient because you have to wait for
+        # the local worker to save then dump to buffer.
         self.local_worker.load_state_dict(state_dict)
         state_id = ray.put(self.local_worker.state_stream())
 
@@ -515,13 +518,16 @@ class TorchTrainer:
         return checkpoint
 
     def load(self, checkpoint):
-        """Restores the Trainer and all workers from the provided checkpoint.
+        """Loads the Trainer and all workers from the provided checkpoint.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
         state_dict = torch.load(checkpoint)
         self.load_state_dict(state_dict)
+
+    def restore(self, *args):
+        raise DeprecationWarning("Use `TorchTrainer.load()` instead.")
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""

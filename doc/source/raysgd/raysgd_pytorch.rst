@@ -326,12 +326,14 @@ Use the ``initialization_hook`` parameter to initialize state on each worker pro
 Save and Load
 -------------
 
-If you want to save or reload the training procedure, you can use ``trainer.state_stream`` and ``trainer.load_state_stream``, which produce byte objects representing the training state. This should work across a distributed cluster even without a NFS because it takes advantage of Ray's distributed object store.
+If you want to save or reload the training procedure, you can use ``trainer.save``
+and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load`` calls. This should work across a distributed cluster even without a NFS because it takes advantage of Ray's distributed object store.
 
 .. code-block:: python
 
-    state_dict = trainer_1.state_dict()
-    # You must shutdown the trainer in order to create a new trainer.
+    checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
+    trainer_1.save(checkpoint_path)
+    # You can only have 1 trainer alive at a time
     trainer_1.shutdown()
 
     trainer_2 = TorchTrainer(
@@ -340,7 +342,7 @@ If you want to save or reload the training procedure, you can use ``trainer.stat
         optimizer_creator=optimizer_creator,
         loss_creator=nn.MSELoss,
         num_workers=num_workers)
-    trainer_2.load_state_stream(state)
+    trainer_2.load(checkpoint_path)
 
 
 Retrieving the model
@@ -442,19 +444,12 @@ During each ``train`` method, each parallel worker iterates through the iterable
   5. If there are no available resources, the Trainer will apply an exponential backoff before retrying to create workers.
   6. If there are available resources and the Trainer has fewer workers than initially specified, then it will scale up its worker pool until it reaches the initially specified ``num_workers``.
 
-Note that we assume the Trainer itself is not on a pre-emptible node. It is currently not possible to recover from a Trainer node failure.
-
-Users can set ``checkpoint="auto"`` to always checkpoint the current model before executing a pass over the training iterable.
-
-.. code-block:: python
-
-    trainer.train(max_retries=N, checkpoint="auto")
-
+Note that we assume the Trainer itself is not on a pre-emptible node. To allow the entire Trainer to recover from failure, you must use Tune to execute the training.
 
 Advanced: Hyperparameter Tuning
 -------------------------------
 
-``TorchTrainer`` naturally integrates with Tune via the ``TorchTrainable`` interface. Without changing any arguments, you can call ``TorchTrainer.as_trainable(model_creator...)`` to create a Tune-compatible class. See the documentation (:ref:`BaseTorchTrainable-doc`).
+``TorchTrainer`` naturally integrates with Tune via the ``BaseTorchTrainable`` interface. Without changing any arguments, you can call ``TorchTrainer.as_trainable(model_creator...)`` to create a Tune-compatible class. See the documentation (:ref:`BaseTorchTrainable-doc`).
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/tune_example.py
    :language: python
