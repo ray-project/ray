@@ -1,0 +1,40 @@
+== Status ==
+Memory usage on this node: 133.8/480.3 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/64 CPUs, 0.0/8 GPUs, 0.0/323.54 GiB heap, 0.0/98.39 GiB objects
+Result logdir: /home/ubuntu/ray_results/apex
+Result logdir: /home/ubuntu/ray_results/atari-a2c
+Result logdir: /home/ubuntu/ray_results/atari-basic-dqn
+Result logdir: /home/ubuntu/ray_results/atari-impala
+Result logdir: /home/ubuntu/ray_results/atari-ppo-tf
+Result logdir: /home/ubuntu/ray_results/atari-ppo-torch
+Number of trials: 24 (24 TERMINATED)
++-------------------------------------+------------+-------+--------+------------------+---------+----------+
+| Trial name                          | status     | loc   |   iter |   total time (s) |      ts |   reward |
+|-------------------------------------+------------+-------+--------+------------------+---------+----------|
+| IMPALA_BreakoutNoFrameskip-v4_00000 | TERMINATED |       |    293 |          3610.57 | 7244000 |    95.15 |
+| IMPALA_BreakoutNoFrameskip-v4_00001 | TERMINATED |       |    293 |          3610.01 | 7237500 |   233.92 |
+| IMPALA_BreakoutNoFrameskip-v4_00002 | TERMINATED |       |    293 |          3609.84 | 7285500 |   374.97 |
+| IMPALA_BreakoutNoFrameskip-v4_00003 | TERMINATED |       |    293 |          3609.78 | 7309500 |   371.48 |
+| PPO_BreakoutNoFrameskip-v4_00004    | TERMINATED |       |    673 |          3603.29 | 3365000 |    50.99 |
+| PPO_BreakoutNoFrameskip-v4_00005    | TERMINATED |       |    898 |          3602.34 | 4490000 |    56.53 |
+| PPO_BreakoutNoFrameskip-v4_00006    | TERMINATED |       |    903 |          3602.76 | 4515000 |    54.87 |
+| PPO_BreakoutNoFrameskip-v4_00007    | TERMINATED |       |    886 |          3603.85 | 4430000 |    36.06 |
+| PPO_BreakoutNoFrameskip-v4_00008    | TERMINATED |       |    305 |          3603.15 | 1525000 |    15.52 |
+| PPO_BreakoutNoFrameskip-v4_00009    | TERMINATED |       |    307 |          3607.11 | 1535000 |    19.75 |
+| PPO_BreakoutNoFrameskip-v4_00010    | TERMINATED |       |    257 |          3605.7  | 1285000 |    41.43 |
+| PPO_BreakoutNoFrameskip-v4_00011    | TERMINATED |       |    253 |          3613.21 | 1265000 |    23.07 |
+| APEX_BreakoutNoFrameskip-v4_00012   | TERMINATED |       |    114 |          3620.53 | 5090400 |    34.63 |
+| APEX_BreakoutNoFrameskip-v4_00013   | TERMINATED |       |    116 |          3619.38 | 7491040 |    78.16 |
+| APEX_BreakoutNoFrameskip-v4_00014   | TERMINATED |       |    115 |          3628.51 | 5769120 |    48.27 |
+| APEX_BreakoutNoFrameskip-v4_00015   | TERMINATED |       |    115 |          3627.06 | 5807200 |    49.18 |
+| A2C_BreakoutNoFrameskip-v4_00016    | TERMINATED |       |    351 |          3607.65 | 2904000 |   108.71 |
+| A2C_BreakoutNoFrameskip-v4_00017    | TERMINATED |       |    350 |          3608.21 | 2933000 |    63.93 |
+| A2C_BreakoutNoFrameskip-v4_00018    | TERMINATED |       |    351 |          3605.63 | 2898500 |   169.93 |
+| A2C_BreakoutNoFrameskip-v4_00019    | TERMINATED |       |    353 |          3606.64 | 3836000 |   232.4  |
+| DQN_BreakoutNoFrameskip-v4_00020    | TERMINATED |       |     27 |          3686.19 |  270000 |    17.53 |
+| DQN_BreakoutNoFrameskip-v4_00021    | TERMINATED |       |     27 |          3651.85 |  270000 |    18.34 |
+| DQN_BreakoutNoFrameskip-v4_00022    | TERMINATED |       |     27 |          3669.77 |  270000 |    15.45 |
+| DQN_BreakoutNoFrameskip-v4_00023    | TERMINATED |       |     27 |          3688.08 |  270000 |    12.25 |
++-------------------------------------+------------+-------+--------+------------------+---------+----------+
+

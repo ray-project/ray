@@ -1,0 +1,87 @@
+# Bazel build
+# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
+
+load("//bazel:ray.bzl", "COPTS")
+
+cc_library(
+    name = "libray_api_header",
+    hdrs = glob([
+        "include/ray/*.h",
+        "include/ray/**/*.h",
+        "include/ray/**/**/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "include",
+    deps = [
+        "//:core_worker_lib",
+        "//:ray_common",
+        "@msgpack",
+    ],
+)
+
+cc_binary(
+    name = "libray_api.so",
+    srcs = glob([
+        "src/ray/api.cc",
+        "src/ray/api/*.cc",
+        "src/ray/api/*.h",
+        "src/ray/app/*.cc",
+        "src/ray/app/*.h",
+        "src/ray/runtime/*.cc",
+        "src/ray/runtime/*.h",
+        "src/ray/runtime/**/*.cc",
+        "src/ray/runtime/**/*.h",
+        "src/ray/runtime/task/*.cc",
+        "src/ray/runtime/task/*.h",
+        "src/ray/util/*.cc",
+        "src/ray/util/*.h",
+        "src/ray/*.cc",
+        "src/ray/*.h",
+    ]),
+    copts = COPTS,
+    linkopts = ["-ldl"],
+    linkshared = 1,
+    linkstatic = False,
+    visibility = ["//visibility:public"],
+    deps = [
+        "libray_api_header",
+        "//:core_worker_lib",
+        "//:ray_common",
+        "//:ray_util",
+        "@boost//:asio",
+        "@boost//:thread",
+        "@com_google_absl//absl/synchronization",
+        "@msgpack",
+    ],
+)
+
+cc_import(
+    name = "ray_api",
+    shared_library = "libray_api.so",
+)
+
+cc_binary(
+    name = "example",
+    testonly = 1,
+    srcs = [
+        "src/example/example.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        "libray_api_header",
+        "ray_api",
+    ],
+)
+
+cc_test(
+    name = "api_test",
+    srcs = glob([
+        "src/ray/test/*.cc",
+    ]),
+    copts = COPTS,
+    deps = [
+        "libray_api_header",
+        "ray_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

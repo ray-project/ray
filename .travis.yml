@@ -298,6 +298,20 @@ matrix:
         - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
+    # Cpp worker test
+    - os: linux
+      env:
+        - TESTSUITE=cpp_worker
+        - PYTHON=3.6
+      install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+      script:
+        - bazel test //cpp:all --build_tests_only --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=streamed
+
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
   - if [ $RAY_CI_SERVE_AFFECTED != "1" ] && [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi

@@ -1,8 +1,3 @@
-/* Max window size */
-.wy-nav-content{
-    max-width: 1000px;
-}
-
 /*Extends the docstring signature box.*/
 .rst-content dl:not(.docutils) dt {
     display: block;
