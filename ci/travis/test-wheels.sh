@@ -24,6 +24,9 @@ fi
 TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_microbenchmarks.py"
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+
 if [[ "$platform" == "linux" ]]; then
   # Now test Python 3.6.
 
@@ -43,12 +46,14 @@ if [[ "$platform" == "linux" ]]; then
   # Check that ray.__commit__ was set properly.
   $PYTHON_EXE -u -c "import ray; print(ray.__commit__)" | grep $TRAVIS_COMMIT || (echo "ray.__commit__ not set properly!" && exit 1)
 
+  # Install the dependencies to run the tests.
+  $PIP_CMD install -q aiohttp google grpcio pytest requests
+
   # Run a simple test script to make sure that the wheel works.
   INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
   $PYTHON_EXE "$TEST_SCRIPT"
 
   # Run the UI test to make sure that the packaged UI works.
-  $PIP_CMD install -q aiohttp google grpcio requests
   $PYTHON_EXE "$UI_TEST_SCRIPT"
 
   # Check that the other wheels are present.
@@ -82,13 +87,15 @@ elif [[ "$platform" == "macosx" ]]; then
     # Install the wheel.
     $PIP_CMD install -q "$PYTHON_WHEEL"
 
+    # Install the dependencies to run the tests.
+    $PIP_CMD install -q aiohttp google grpcio pytest requests
+
     # Run a simple test script to make sure that the wheel works.
     INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
     $PYTHON_EXE "$TEST_SCRIPT"
 
     if (( $(echo "$PY_MM >= 3.0" | bc) )); then
       # Run the UI test to make sure that the packaged UI works.
-      $PIP_CMD install -q aiohttp google grpcio requests
       $PYTHON_EXE "$UI_TEST_SCRIPT"
     fi
 

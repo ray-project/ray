@@ -347,7 +347,9 @@ class TFPolicy(Policy):
             signature_def_map = self._build_signature_def()
             builder.add_meta_graph_and_variables(
                 self._sess, [tf.saved_model.tag_constants.SERVING],
-                signature_def_map=signature_def_map)
+                signature_def_map=signature_def_map,
+                saver=tf.summary.FileWriter(export_dir).add_graph(
+                    graph=self._sess.graph))
             builder.save()
 
     @override(Policy)
@@ -363,6 +365,14 @@ class TFPolicy(Policy):
         with self._sess.graph.as_default():
             saver = tf.train.Saver()
             saver.save(self._sess, save_path)
+
+    @override(Policy)
+    def import_model_from_h5(self, import_file):
+        """Imports weights into tf model."""
+        # Make sure the session is the right one (see issue #7046).
+        with self._sess.graph.as_default():
+            with self._sess.as_default():
+                return self.model.import_from_h5(import_file)
 
     @DeveloperAPI
     def copy(self, existing_inputs):

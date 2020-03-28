@@ -1,10 +1,10 @@
-import Typography from "@material-ui/core/Typography";
+import { Typography } from "@material-ui/core";
 import React from "react";
 import { formatByteAmount } from "../../../../common/formatUtils";
 import {
   ClusterFeatureComponent,
   NodeFeatureComponent,
-  WorkerFeatureComponent
+  WorkerFeatureComponent,
 } from "./types";
 
 export const ClusterReceived: ClusterFeatureComponent = ({ nodes }) => {

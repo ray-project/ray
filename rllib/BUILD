@@ -1035,6 +1035,14 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_model_imports",
+    tags = ["tests_dir", "tests_dir_M", "model_imports"],
+    size = "small",
+    data = glob(["tests/data/model_weights/**"]),
+    srcs = ["tests/test_model_imports.py"]
+)
+
+py_test(
     name = "tests/test_multi_agent_env",
     tags = ["tests_dir", "tests_dir_M"],
     size = "large",
@@ -1366,6 +1374,24 @@ py_test(
     size = "large",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ts",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_T"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinTS"],
+)
+
+py_test(
+    name = "contrib/bandits/examples/lin_ucb",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
 )
 
 py_test(

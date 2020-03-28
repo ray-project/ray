@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 def averaged(kv):
     """Average the value lists of a dictionary.
 
+    For non-scalar values, we simply pick the first value.
+
     Arguments:
         kv (dict): dictionary with values that are lists of floats.
 
@@ -25,6 +27,8 @@ def averaged(kv):
     for k, v in kv.items():
         if v[0] is not None and not isinstance(v[0], dict):
             out[k] = np.mean(v)
+        else:
+            out[k] = v[0]
     return out
 
 

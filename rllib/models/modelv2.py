@@ -192,6 +192,20 @@ class ModelV2:
             i += 1
         return self.__call__(input_dict, states, train_batch.get("seq_lens"))
 
+    def import_from_h5(self, h5_file):
+        """Imports weights from an h5 file.
+
+        Args:
+            h5_file (str): The h5 file name to import weights from.
+
+        Example:
+            >>> trainer = MyTrainer()
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
+            >>> for _ in range(10):
+            >>>     trainer.train()
+        """
+        raise NotImplementedError
+
     def last_output(self):
         """Returns the last output returned from calling the model."""
         return self._last_output

@@ -48,28 +48,30 @@ class Location:
 
 
 class ExportFormat:
-    """Describes the format to export the trial Trainable.
+    """Describes the format to import/export the trial Trainable.
 
     This may correspond to different file formats based on the
     Trainable implementation.
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    H5 = "h5"
 
     @staticmethod
-    def validate(export_formats):
-        """Validates export_formats.
+    def validate(formats):
+        """Validates formats.
 
         Raises:
             ValueError if the format is unknown.
         """
-        for i in range(len(export_formats)):
-            export_formats[i] = export_formats[i].strip().lower()
-            if export_formats[i] not in [
-                    ExportFormat.CHECKPOINT, ExportFormat.MODEL
+        for i in range(len(formats)):
+            formats[i] = formats[i].strip().lower()
+            if formats[i] not in [
+                    ExportFormat.CHECKPOINT, ExportFormat.MODEL,
+                    ExportFormat.H5
             ]:
-                raise TuneError("Unsupported export format: " +
-                                export_formats[i])
+                raise TuneError("Unsupported import/export format: " +
+                                formats[i])
 
 
 def checkpoint_deleter(trial_id, runner):

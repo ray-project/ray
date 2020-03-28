@@ -41,14 +41,6 @@ if os.path.exists(so_path):
 
 import ray._raylet  # noqa: E402
 
-# See https://github.com/ray-project/ray/issues/131.
-helpful_message = """
-
-If you are using Anaconda, try fixing this problem by running:
-
-    conda install libgcc
-"""
-
 from ray._raylet import (
     ActorCheckpointID,
     ActorClassID,

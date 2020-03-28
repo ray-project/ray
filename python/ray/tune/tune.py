@@ -1,5 +1,4 @@
 import logging
-import six
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -41,7 +40,7 @@ def _make_scheduler(args):
 
 
 def _check_default_resources_override(run_identifier):
-    if not isinstance(run_identifier, six.string_types):
+    if not isinstance(run_identifier, str):
         # If obscure dtype, assume it is overriden.
         return True
     trainable_cls = get_trainable_cls(run_identifier)
@@ -85,6 +84,7 @@ def run(run_or_experiment,
         global_checkpoint_period=10,
         export_formats=None,
         max_failures=0,
+        fail_fast=False,
         restore=None,
         search_alg=None,
         scheduler=None,
@@ -173,6 +173,7 @@ def run(run_or_experiment,
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 3.
+        fail_fast (bool): Whether to fail upon the first error.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
@@ -271,6 +272,9 @@ def run(run_or_experiment,
             assert exp.remote_checkpoint_dir, (
                 "Need `upload_dir` if `sync_to_cloud` given.")
 
+    if fail_fast and max_failures != 0:
+        raise ValueError("max_failures must be 0 if fail_fast=True.")
+
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
         scheduler=scheduler or FIFOScheduler(),
@@ -283,6 +287,7 @@ def run(run_or_experiment,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=bool(verbose > 1),
+        fail_fast=fail_fast,
         trial_executor=trial_executor)
 
     for exp in experiments:
@@ -327,16 +332,16 @@ def run(run_or_experiment,
 
     wait_for_sync()
 
-    errored_trials = []
+    incomplete_trials = []
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
-            errored_trials += [trial]
+            incomplete_trials += [trial]
 
-    if errored_trials:
+    if incomplete_trials:
         if raise_on_failed_trial:
-            raise TuneError("Trials did not complete", errored_trials)
+            raise TuneError("Trials did not complete", incomplete_trials)
         else:
-            logger.error("Trials did not complete: %s", errored_trials)
+            logger.error("Trials did not complete: %s", incomplete_trials)
 
     trials = runner.get_trials()
     if return_trials:
