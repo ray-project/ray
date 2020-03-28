@@ -1,9 +1,11 @@
-import Collapse from "@material-ui/core/Collapse";
-import orange from "@material-ui/core/colors/orange";
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
+import {
+  Collapse,
+  createStyles,
+  Theme,
+  Typography,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import React, { ReactNode } from "react";
 import {
   checkProfilingStatus,
@@ -11,7 +13,7 @@ import {
   getProfilingResultURL,
   launchKillActor,
   launchProfiling,
-  RayletInfoResponse
+  RayletInfoResponse,
 } from "../../../api";
 import Actors from "./Actors";
 
@@ -22,67 +24,67 @@ const styles = (theme: Theme) =>
       borderStyle: "solid",
       borderWidth: 1,
       marginTop: theme.spacing(2),
-      padding: theme.spacing(2)
+      padding: theme.spacing(2),
     },
     title: {
       color: theme.palette.text.secondary,
-      fontSize: "0.75rem"
+      fontSize: "0.75rem",
     },
     action: {
       color: theme.palette.primary.main,
       textDecoration: "none",
       "&:hover": {
-        cursor: "pointer"
-      }
+        cursor: "pointer",
+      },
     },
     invalidStateTypeInfeasible: {
-      color: theme.palette.error.main
+      color: theme.palette.error.main,
     },
     invalidStateTypePendingActor: {
-      color: orange[500]
+      color: theme.palette.secondary.main,
     },
     information: {
-      fontSize: "0.875rem"
+      fontSize: "0.875rem",
     },
     datum: {
       "&:not(:first-child)": {
-        marginLeft: theme.spacing(2)
-      }
+        marginLeft: theme.spacing(2),
+      },
     },
     webuiDisplay: {
-      fontSize: "0.875rem"
+      fontSize: "0.875rem",
     },
     inlineHTML: {
       fontSize: "0.875rem",
-      display: "inline"
+      display: "inline",
     },
     warningTooManyPendingTask: {
       fontWeight: "bold",
       color: theme.palette.error.main,
       "&:not(:first-child)": {
-        marginLeft: theme.spacing(2)
-      }
+        marginLeft: theme.spacing(2),
+      },
     },
     actorTitle: {
-      fontWeight: "bold"
+      fontWeight: "bold",
     },
     secondaryFields: {
       color: theme.palette.text.secondary,
       "&:not(:first-child)": {
-        marginLeft: theme.spacing(2)
-      }
+        marginLeft: theme.spacing(2),
+      },
     },
     secondaryFieldsHeader: {
-      color: theme.palette.text.secondary
-    }
+      color: theme.palette.text.secondary,
+    },
   });
 
 type ActorType = RayletInfoResponse["actors"][keyof RayletInfoResponse["actors"]];
-interface Props {
+type Props = {
   actor: ActorType;
-}
+};
 
-interface State {
+type State = {
   expanded: boolean;
   profiling: {
     [profilingId: string]: {
@@ -90,7 +92,7 @@ interface State {
       latestResponse: CheckProfilingStatusResponse | null;
     };
   };
-}
+};
 
 interface ActorInformation {
   label: string;
@@ -105,13 +107,13 @@ interface ActorInformationRendered {
 const ActorStateHumanNames = {
   0: "ALIVE",
   1: "RECONSTRUCTING",
-  2: "DEAD"
+  2: "DEAD",
 };
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
     expanded: true,
-    profiling: {}
+    profiling: {},
   };
 
   setExpanded = (expanded: boolean) => () => {
@@ -124,13 +126,13 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       const profilingId = await launchProfiling(
         actor.nodeId,
         actor.pid,
-        duration
+        duration,
       );
       this.setState(state => ({
         profiling: {
           ...state.profiling,
-          [profilingId]: { startTime: Date.now(), latestResponse: null }
-        }
+          [profilingId]: { startTime: Date.now(), latestResponse: null },
+        },
       }));
       const checkProfilingStatusLoop = async () => {
         const response = await checkProfilingStatus(profilingId);
@@ -139,9 +141,9 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             ...state.profiling,
             [profilingId]: {
               ...state.profiling[profilingId],
-              latestResponse: response
-            }
-          }
+              latestResponse: response,
+            },
+          },
         }));
         if (response.status === "pending") {
           setTimeout(checkProfilingStatusLoop, 1000);
@@ -167,12 +169,12 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         ? [
             {
               label: "ActorTitle",
-              value: actor.actorTitle
+              value: actor.actorTitle,
             },
             {
               label: "State",
               // If the state is alive, there's no need to propogate that to user.
-              value: actor.state === 0 ? "" : ActorStateHumanNames[actor.state]
+              value: actor.state === 0 ? "" : ActorStateHumanNames[actor.state],
             },
             {
               label: "Resources",
@@ -182,33 +184,33 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       .sort((a, b) => a[0].localeCompare(b[0]))
                       .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                       .join(", ")
-                  : ""
+                  : "",
             },
             {
               label: "Pending",
-              value: actor.taskQueueLength.toLocaleString()
+              value: actor.taskQueueLength.toLocaleString(),
             },
             {
               label: "Executed",
-              value: actor.numExecutedTasks.toLocaleString()
+              value: actor.numExecutedTasks.toLocaleString(),
             },
             {
               label: "NumObjectIdsInScope",
-              value: actor.numObjectIdsInScope.toLocaleString()
+              value: actor.numObjectIdsInScope.toLocaleString(),
             },
             {
               label: "NumLocalObjects",
-              value: actor.numLocalObjects.toLocaleString()
+              value: actor.numLocalObjects.toLocaleString(),
             },
             {
               label: "UsedLocalObjectMemory",
-              value: actor.usedObjectStoreMemory.toLocaleString()
-            }
+              value: actor.usedObjectStoreMemory.toLocaleString(),
+            },
           ]
         : [
             {
               label: "ID",
-              value: actor.actorId
+              value: actor.actorId,
             },
             {
               label: "Required resources",
@@ -218,8 +220,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       .sort((a, b) => a[0].localeCompare(b[0]))
                       .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                       .join(", ")
-                  : ""
-            }
+                  : "",
+            },
           ];
 
     // Apply transformation to add styling for information field
@@ -238,7 +240,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               >
                 {info.label}: {info.value}
               </span>
-            )
+            ),
           };
         } else {
           return { label: info.label, rendered: info.label };
@@ -250,7 +252,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {info.value}
           </span>
         ),
-        label: info.label
+        label: info.label,
       }),
       NumObjectIdsInScope: (info: ActorInformation) => ({
         rendered: (
@@ -259,7 +261,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {info.label}: {info.value}
           </span>
         ),
-        label: info.label
+        label: info.label,
       }),
       NumLocalObjects: (info: ActorInformation) => ({
         rendered: (
@@ -267,7 +269,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {info.label}: {info.value}
           </span>
         ),
-        label: info.label
+        label: info.label,
       }),
       UsedLocalObjectMemory: (info: ActorInformation) => ({
         rendered: (
@@ -275,7 +277,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {info.label}: {info.value}
           </span>
         ),
-        label: info.label
+        label: info.label,
       }),
       Identity: (info: ActorInformation) => ({
         rendered:
@@ -284,8 +286,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               {info.label}: {info.value}
             </span>
           ),
-        label: info.label
-      })
+        label: info.label,
+      }),
     };
 
     // Apply the styling transformation
@@ -302,7 +304,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     const pushFieldsToBack = [
       "NumObjectIdsInScope",
       "NumLocalObjects",
-      "UsedLocalObjectMemory"
+      "UsedLocalObjectMemory",
     ];
     pushFieldsToBack.forEach(fieldName => {
       const foundIdx = information.findIndex(info => info.label === fieldName);
@@ -369,7 +371,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               )}{" "}
               (Profile for
               {[10, 30, 60].map(duration => (
-                <React.Fragment key={duration}>
+                <React.Fragment>
                   {" "}
                   <span
                     className={classes.action}
@@ -394,7 +396,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       (
                       {latestResponse.status === "pending" ? (
                         `Profiling for ${Math.round(
-                          (Date.now() - startTime) / 1000
+                          (Date.now() - startTime) / 1000,
                         )}s...`
                       ) : latestResponse.status === "finished" ? (
                         <a
@@ -412,7 +414,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       )}
                       ){" "}
                     </React.Fragment>
-                  )
+                  ),
               )}
             </React.Fragment>
           ) : actor.invalidStateType === "infeasibleActor" ? (
