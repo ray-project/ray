@@ -796,6 +796,7 @@ cc_library(
         "@bazel_tools//src/conditions:windows": glob([
             "src/shims/windows/**/*.c",
             "src/shims/windows/**/*.cc",
+            "src/shims/windows/**/*.h",
         ]),
         "//conditions:default": [],
     }),
