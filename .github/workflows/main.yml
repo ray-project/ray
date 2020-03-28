@@ -17,6 +17,9 @@ jobs:
             os: ubuntu-latest
             compiler: clang
     steps:
+    - name: Configure Git
+      shell: bash -e -o pipefail -l {0}
+      run: git config --global core.symlinks true && git config --global core.autocrlf false
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
@@ -60,6 +63,9 @@ jobs:
             os: windows-latest
             compiler: clang-cl
     steps:
+    - name: Configure Git
+      shell: bash -e -o pipefail -l {0}
+      run: git config --global core.symlinks true && git config --global core.autocrlf false
     - name: Checkout repository
       uses: actions/checkout@v2
     - name: Setup Bazel
@@ -84,4 +90,4 @@ jobs:
       run: |
         bazel build \
           --keep_going \
-          "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
+          "//:*"

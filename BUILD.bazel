@@ -1284,22 +1284,10 @@ py_library(
 )
 
 genrule(
-    name = "cp_streaming_lib",
-    srcs = ["python/ray/streaming/_streaming.so"],
-    outs = ["cp_streaming_lib.out"],
-    cmd = """
-        set -x &&
-        WORK_DIR=$$(pwd) &&
-        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
-)
-
-genrule(
     name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
+        "python/ray/streaming/_streaming.so",
         "//:python_sources",
         "//:all_py_proto",
         "//:redis-server",
@@ -1310,10 +1298,7 @@ genrule(
         "//:gcs_server",
         "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
-    ] + select({
-        "@bazel_tools//src/conditions:windows": [],  # ignore build streaming for windows
-        "//conditions:default": [":cp_streaming_lib"],
-    }),
+    ],
     outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
@@ -1330,6 +1315,7 @@ genrule(
             fi;
         fi &&
         cp -f "$${RAYLET}" "$${RAYDIR}/$${RAYLET_TARGET_FILENAME}" &&
+        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&

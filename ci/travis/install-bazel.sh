@@ -26,6 +26,22 @@ case "${OSTYPE}" in
     exit 1
 esac
 
+# Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
+# This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
+{ git ls-files -s || true; } | {
+  missing_symlinks=()
+  while read -r mode digest sn path; do
+    if [ "${mode}" = 120000 ]; then
+      test -L "${path}" || missing_symlinks+=("${paths}")
+    fi
+  done
+  if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
+    echo "error: expected symlink: ${missing_symlinks[@]}" 1>&2
+    echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
+    false
+  fi
+}
+
 if [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
