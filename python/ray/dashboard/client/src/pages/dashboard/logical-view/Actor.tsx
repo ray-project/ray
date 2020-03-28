@@ -94,15 +94,15 @@ type State = {
   };
 };
 
-interface ActorInformation {
+type ActorInformation = {
   label: string;
   value: string;
-}
+};
 
-interface ActorInformationRendered {
+type ActorInformationRendered = {
   label: string;
   rendered: ReactNode;
-}
+};
 
 const ActorStateHumanNames = {
   0: "ALIVE",
@@ -128,7 +128,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         actor.pid,
         duration,
       );
-      this.setState(state => ({
+      this.setState((state) => ({
         profiling: {
           ...state.profiling,
           [profilingId]: { startTime: Date.now(), latestResponse: null },
@@ -136,7 +136,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       }));
       const checkProfilingStatusLoop = async () => {
         const response = await checkProfilingStatus(profilingId);
-        this.setState(state => ({
+        this.setState((state) => ({
           profiling: {
             ...state.profiling,
             [profilingId]: {
@@ -291,7 +291,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     };
 
     // Apply the styling transformation
-    const information = rawInformation.map(val => {
+    const information = rawInformation.map((val) => {
       const transform = transforms[val.label];
       if (transform !== undefined) {
         return transform(val);
@@ -306,8 +306,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       "NumLocalObjects",
       "UsedLocalObjectMemory",
     ];
-    pushFieldsToBack.forEach(fieldName => {
-      const foundIdx = information.findIndex(info => info.label === fieldName);
+    pushFieldsToBack.forEach((fieldName) => {
+      const foundIdx = information.findIndex(
+        (info) => info.label === fieldName,
+      );
       if (foundIdx !== -1) {
         const foundValue = information[foundIdx];
         information.splice(foundIdx, 1);
@@ -370,7 +372,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               )}{" "}
               (Profile for
-              {[10, 30, 60].map(duration => (
+              {[10, 30, 60].map((duration) => (
                 <React.Fragment>
                   {" "}
                   <span
@@ -409,9 +411,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                         </a>
                       ) : latestResponse.status === "error" ? (
                         `Profiling error: ${latestResponse.error.trim()}`
-                      ) : (
-                        undefined
-                      )}
+                      ) : undefined}
                       ){" "}
                     </React.Fragment>
                   ),
