@@ -128,7 +128,7 @@ Algorithms
 
 *  Contextual bandits
 
-   -  |pytorch| `Upper Confidence Bound (contrib/LinUCB) <rllib-algorithms.html#upper-confidence-bound-contrib-linucb>`__
+   -  |pytorch| `Linear Upper Confidence Bound (contrib/LinUCB) <rllib-algorithms.html#linear-upper-confidence-bound-contrib-linucb>`__
    -  |pytorch| `Linear Thompson Sampling (contrib/LinTS) <rllib-algorithms.html#linear-thompson-sampling-contrib-lints>`__
 
 Offline Datasets

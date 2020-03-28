@@ -485,8 +485,8 @@ model) and an exploration strategy (e-greedy, UCB, Thompson Sampling etc.)
 RLlib supports the following online contextual bandit algorithms,
 named after the exploration strategies that they employ:
 
-Upper Confidence Bound (contrib/LinUCB)
----------------------------------------
+Linear Upper Confidence Bound (contrib/LinUCB)
+----------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
 <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ucb.py>`__
