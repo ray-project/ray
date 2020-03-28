@@ -1,7 +1,6 @@
 import numpy as np
 import logging
 import os
-import io
 import numbers
 import tempfile
 import time
@@ -322,7 +321,7 @@ class TorchTrainer:
               profile=False,
               reduce_results=True,
               max_retries=0,
-              checkpoint="auto",
+              autoscale=False,
               info=None):
         """Runs a training epoch.
 
@@ -341,11 +340,15 @@ class TorchTrainer:
                 all workers into one dict. If a metric is a non-numerical
                 value (or nested dictionaries), one value will be randomly
                 selected among the workers. If False, returns a list of dicts.
-            max_retries (int): Must be non-negative. If set to N, will
-                kill all current workers, query the Ray global state for
-                total available resources, and re-launch up to the
-                available resources. Behavior is not well-defined
+            max_retries (int): Must be non-negative. If set to N, TorchTrainer
+                will detect and recover from training failure. The recovery
+                process will kill all current workers, query the Ray
+                global state for total available resources, and re-launch up to
+                the available resources. Behavior is not well-defined
                 in case of shared cluster usage.
+            autoscale (bool): Upon training, TorchTrainer will query the Ray
+                global state for total available resources, and resize
+                its remote workers to consume all available resources.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
 
@@ -357,7 +360,7 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-        if max_retries and self._should_resize():
+        if autoscale and self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
         success, worker_stats = self._train_epoch(
@@ -491,31 +494,16 @@ class TorchTrainer:
     def state_dict(self):
         return self.local_worker.state_dict()
 
-    def load_state_dict(self, state_dict):
-        _buffer = io.BytesIO()
-        torch.save(state_dict, _buffer)
-        state = _buffer.getvalue()
-        state_id = ray.put(state)
+    def load_state_dict(self, state_dict, blocking=False):
+        self.local_worker.load_state_dict(state_dict)
+        state_id = ray.put(self.local_worker.state_stream())
 
         remote_calls = [
             worker.load_state_stream.remote(state_id)
             for worker in self.remote_workers
         ]
-
-        self.local_worker.load_state_dict(state_dict)
-        ray.get(remote_calls)
-
-    def state_dict(self):
-        return self.local_worker.get_state()
-
-    def load_state_dict(self, state):
-        state_id = ray.put(state)
-
-        remote_calls = [
-            worker.set_state.remote(state_id) for worker in self.remote_workers
-        ]
-        self.local_worker.set_state(state)
-        ray.get(remote_calls)
+        if blocking:
+            ray.get(remote_calls)
 
     def save(self, checkpoint):
         """Saves the Trainer state to the provided checkpoint path.
