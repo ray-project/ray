@@ -8,7 +8,7 @@ import torch
 import torch.distributed as dist
 
 import ray
-
+from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.trial import Resources
 from ray.util.sgd.torch.distributed_torch_runner import (
