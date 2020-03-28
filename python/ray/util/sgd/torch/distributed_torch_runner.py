@@ -180,7 +180,8 @@ class LocalDistributedRunner(DistributedTorchRunner):
     """A wrapper for running a distributed Runner on the driver.
 
     A dummy actor is used to reserve resources on the driver node,
-    as specified by `num_cpus` and `num_gpus`.
+    as specified by `num_cpus` and `num_gpus`. If the Trainer is already
+    in an actor, we will ignore this resource request.
     """
 
     def __init__(self, *args, num_cpus=None, num_gpus=None, **kwargs):
@@ -188,8 +189,9 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
+
         global _dummy_actor
-        if _dummy_actor is None:
+        if not self.is_actor() and _dummy_actor is None:
             _dummy_actor = ray.remote(
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
@@ -201,7 +203,12 @@ class LocalDistributedRunner(DistributedTorchRunner):
 
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()
-        if cleanup:
-            global _dummy_actor
+        global _dummy_actor
+        if cleanup and _dummy_actor:
+            assert not self.is_actor(), "Actor shouldn't have a dummy actor."
             ray.kill(_dummy_actor)
             _dummy_actor = None
+
+    def is_actor(self):
+        actor_id = ray.worker.global_worker.actor_id
+        return actor_id != actor_id.nil()
