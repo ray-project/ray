@@ -96,6 +96,8 @@ class HTTPProxy:
 
         error_sender = self._make_error_sender(scope, receive, send)
 
+        assert self.route_table is not None, (
+            "Route table must be set via set_route_table.")
         assert scope["type"] == "http"
         current_path = scope["path"]
         if current_path == "/-/routes":
@@ -142,6 +144,8 @@ class HTTPProxy:
             absolute_slo_ms=absolute_slo_ms,
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"))
 
+        assert self.route_table is not None, (
+            "Router handle must be set via set_router_handle.")
         try:
             result = await self.router_handle.enqueue_request.remote(
                 request_in_object, *args)
