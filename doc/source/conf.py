@@ -71,7 +71,7 @@ sphinx_gallery_conf = {
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     # "filename_pattern": "tutorial.py",
-    "backreferences_dir": False
+    # "backreferences_dir": "False",
     # "show_memory': False,
     # 'min_reported_time': False
 }
