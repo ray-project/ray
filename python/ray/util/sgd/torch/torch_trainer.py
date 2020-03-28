@@ -552,7 +552,7 @@ class TorchTrainer:
         else:
             self.local_worker.shutdown()
             for worker in self.remote_workers:
-                logger.warning("Killing worker {}.".format(worker))
+                logger.debug("Killing worker {}.".format(worker))
                 ray.kill(worker)
 
         self.local_worker = DeactivatedRunner()
@@ -562,7 +562,7 @@ class TorchTrainer:
         """Terminates models without giving up local resource reservation."""
         self.local_worker.shutdown(cleanup=False)
         for worker in self.remote_workers:
-            logger.warning("Killing worker {}.".format(worker))
+            logger.debug("Killing worker {}.".format(worker))
             ray.kill(worker)
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []
