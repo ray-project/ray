@@ -68,12 +68,12 @@ def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     for i in range(3):
-        train_loss1 = trainer.train()["mean_train_loss"]
-    validation_loss1 = trainer.validate()["mean_val_loss"]
+        train_loss1 = trainer.train()["train_loss"]
+    validation_loss1 = trainer.validate()["val_loss"]
 
     for i in range(3):
-        train_loss2 = trainer.train()["mean_train_loss"]
-    validation_loss2 = trainer.validate()["mean_val_loss"]
+        train_loss2 = trainer.train()["train_loss"]
+    validation_loss2 = trainer.validate()["val_loss"]
 
     assert train_loss2 <= train_loss1, (train_loss2, train_loss1)
     assert validation_loss2 <= validation_loss1, (validation_loss2,
@@ -347,20 +347,20 @@ def test_metrics(ray_start_2_cpus, num_workers):
 
     stats = trainer.train(num_steps=num_train_steps)
     # Test that we output mean and last of custom metrics in an epoch
-    assert "mean_score" in stats
+    assert "score" in stats
     assert stats["last_score"] == 0
 
     assert stats[NUM_SAMPLES] == num_train_steps * batch_size
     expected_score = num_workers * (sum(train_scores) /
                                     (num_train_steps * batch_size))
-    assert np.allclose(stats["mean_score"], expected_score)
+    assert np.allclose(stats["score"], expected_score)
 
     val_stats = trainer.validate()
     # Test that we output mean and last of custom metrics in validation
     assert val_stats["last_score"] == 0
     expected_score = (sum(val_scores) /
                       (num_val_steps * batch_size)) * num_workers
-    assert np.allclose(val_stats["mean_score"], expected_score)
+    assert np.allclose(val_stats["score"], expected_score)
     assert val_stats[BATCH_COUNT] == np.ceil(num_val_steps / num_workers)
     assert val_stats[NUM_SAMPLES] == num_val_steps * batch_size
     assert val_stats[NUM_SAMPLES] == val_size
@@ -395,14 +395,14 @@ def test_metrics_nan(ray_start_2_cpus, num_workers):
         training_operator_cls=_TestMetricsOperator)
 
     stats = trainer.train(num_steps=num_train_steps)
-    assert "mean_score" in stats
+    assert "score" in stats
     assert stats["last_score"] == 0
-    assert np.isnan(stats["mean_score"])
+    assert np.isnan(stats["score"])
 
     stats = trainer.validate()
-    assert "mean_score" in stats
+    assert "score" in stats
     assert stats["last_score"] == 0
-    assert np.isnan(stats["mean_score"])
+    assert np.isnan(stats["score"])
     trainer.shutdown()
 
 
@@ -449,10 +449,10 @@ def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
-        mean_train_loss1 = df.loc[0, "mean_train_loss"]
-        mean_train_loss2 = df.loc[1, "mean_train_loss"]
-        mean_val_loss1 = df.loc[0, "mean_val_loss"]
-        mean_val_loss2 = df.loc[1, "mean_val_loss"]
+        mean_train_loss1 = df.loc[0, "train_loss"]
+        mean_train_loss2 = df.loc[1, "train_loss"]
+        mean_val_loss1 = df.loc[0, "val_loss"]
+        mean_val_loss2 = df.loc[1, "val_loss"]
 
         assert mean_train_loss2 <= mean_train_loss1
         assert mean_val_loss2 <= mean_val_loss1

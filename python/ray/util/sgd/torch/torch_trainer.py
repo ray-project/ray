@@ -705,17 +705,16 @@ class BaseTorchTrainable(Trainable):
         return stats
 
     def _save(self, checkpoint_dir):
-        """Returns a dictionary containing the trainer state."""
+        """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
         self.trainer.save(checkpoint_path)
-        return checkpoint_dir
+        return checkpoint_path
 
     def _restore(self, checkpoint_dir):
         """Restores the trainer state.
 
-        Override this if you have state to the Trainer object.
+        Override this if you have state external to the Trainer object.
         """
-        checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
         return self.trainer.load(checkpoint_path)
 
     def _stop(self):
