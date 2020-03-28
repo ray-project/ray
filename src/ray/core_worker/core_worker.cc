@@ -409,7 +409,8 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   reference_counter_->ResetDeleteCallbacks(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
-    object_recovery_manager_->RecoverObject(object_id);
+    // The lost object must have been owned by us.
+    RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
   }
 }
 

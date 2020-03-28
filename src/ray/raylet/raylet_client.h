@@ -297,7 +297,7 @@ class RayletClient : public PinObjectsInterface,
 
   ray::Status PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback);
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   ray::Status GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 

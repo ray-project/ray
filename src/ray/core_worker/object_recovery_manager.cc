@@ -98,6 +98,7 @@ Status ObjectRecoveryManager::PinNewObjectCopy(
   if (node_id == ClientID::FromBinary(rpc_address_.raylet_id())) {
     client = local_object_pinning_client_;
   } else {
+    absl::MutexLock lock(&mu_);
     auto client_it = remote_object_pinning_clients_.find(node_id);
     if (client_it == remote_object_pinning_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << node_id;
