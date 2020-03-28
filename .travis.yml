@@ -49,11 +49,11 @@ matrix:
 
     - os: linux
       env:
-        - TESTSUITE=gcs_service
+        - TESTSUITE=gcs_service_disabled
         - JDK='Oracle JDK 8'
-        - RAY_GCS_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_SERVICE_ENABLED=false
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - ./ci/travis/install-bazel.sh
@@ -69,11 +69,11 @@ matrix:
 
     - os: linux
       env:
-        - TESTSUITE=gcs_service_python_testcase
+        - TESTSUITE=gcs_service_disabled_python_testcase
         - JDK='Oracle JDK 8'
-        - RAY_GCS_SERVICE_ENABLED=true
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
+        - RAY_GCS_SERVICE_ENABLED=false
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - ./ci/travis/install-bazel.sh

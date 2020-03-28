@@ -78,14 +78,10 @@ def ray_deps_setup():
         url = "https://github.com/antirez/redis/archive/5.0.3.tar.gz",
         sha256 = "7084e8bd9e5dedf2dbb2a1e1d862d0c46e66cc0872654bdc677f4470d28d84c5",
         patches = [
-            "//thirdparty/patches:hiredis-casts.patch",
             "//thirdparty/patches:hiredis-connect-rename.patch",
             "//thirdparty/patches:hiredis-windows-sigpipe.patch",
             "//thirdparty/patches:hiredis-windows-sockets.patch",
             "//thirdparty/patches:hiredis-windows-strerror.patch",
-            "//thirdparty/patches:hiredis-windows-poll.patch",
-            "//thirdparty/patches:hiredis-windows-translations.patch",
-            "//thirdparty/patches:redis-windows-poll.patch",
         ],
     )
 
@@ -171,10 +167,11 @@ def ray_deps_setup():
         patches = [
             "//thirdparty/patches:arrow-headers-unused.patch",
             "//thirdparty/patches:arrow-windows-export.patch",
-            "//thirdparty/patches:arrow-windows-poll.patch",
+            "//thirdparty/patches:arrow-windows-nonstdc.patch",
             "//thirdparty/patches:arrow-windows-sigpipe.patch",
             "//thirdparty/patches:arrow-windows-socket.patch",
             "//thirdparty/patches:arrow-windows-dlmalloc.patch",
+            "//thirdparty/patches:arrow-windows-tcp.patch",
         ],
     )
 
