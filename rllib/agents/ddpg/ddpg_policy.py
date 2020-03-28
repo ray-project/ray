@@ -30,44 +30,44 @@ PRIO_WEIGHTS = "weights"
 
 
 class DDPGPostprocessing:
-    """Implements n-step learning and param noise adjustments."""
+    """Implements n-step learning."""
 
     @override(Policy)
     def postprocess_trajectory(self,
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        if self.config["parameter_noise"]:
-            # adjust the sigma of parameter space noise
-            states, noisy_actions = [
-                list(x) for x in sample_batch.columns(
-                    [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
-            ]
-            self.sess.run(self.remove_parameter_noise_op)
+#        if self.config["parameter_noise"]:
+#            # adjust the sigma of parameter space noise
+#            states, noisy_actions = [
+#                list(x) for x in sample_batch.columns(
+#                    [SampleBatch.CUR_OBS, SampleBatch.ACTIONS])
+#            ]
+#            self.sess.run(self.remove_parameter_noise_op)
 
-            # TODO(sven): This won't work if exploration != Noise, which is
-            #  probably fine as parameter_noise will soon be its own
-            #  Exploration class.
-            clean_actions, cur_noise_scale = self.sess.run(
-                [self.output_actions,
-                 self.exploration.get_info()],
-                feed_dict={
-                    self.cur_observations: states,
-                    self._is_exploring: False,
-                })
-            distance_in_action_space = np.sqrt(
-                np.mean(np.square(clean_actions - noisy_actions)))
-            self.pi_distance = distance_in_action_space
-            if distance_in_action_space < \
-                    self.config["exploration_config"].get("ou_sigma", 0.2) * \
-                    cur_noise_scale:
-                # multiplying the sampled OU noise by noise scale is
-                # equivalent to multiplying the sigma of OU by noise scale
-                self.parameter_noise_sigma_val *= 1.01
-            else:
-                self.parameter_noise_sigma_val /= 1.01
-            self.parameter_noise_sigma.load(
-                self.parameter_noise_sigma_val, session=self.sess)
+#            # TODO(sven): This won't work if exploration != Noise, which is
+#            #  probably fine as parameter_noise will soon be its own
+#            #  Exploration class.
+#            clean_actions, cur_noise_scale = self.sess.run(
+#                [self.output_actions,
+#                 self.exploration.get_info()],
+#                feed_dict={
+#                    self.cur_observations: states,
+#                    self._is_exploring: False,
+#                })
+#            distance_in_action_space = np.sqrt(
+#                np.mean(np.square(clean_actions - noisy_actions)))
+#            self.pi_distance = distance_in_action_space
+#            if distance_in_action_space < \
+#                    self.config["exploration_config"].get("ou_sigma", 0.2) * \
+#                    cur_noise_scale:
+#                # multiplying the sampled OU noise by noise scale is
+#                # equivalent to multiplying the sigma of OU by noise scale
+#                self.parameter_noise_sigma_val *= 1.01
+#            else:
+#                self.parameter_noise_sigma_val /= 1.01
+#            self.parameter_noise_sigma.load(
+#                self.parameter_noise_sigma_val, session=self.sess)
 
         return postprocess_nstep_and_prio(self, sample_batch)
 
@@ -110,11 +110,11 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
                 self.cur_observations, observation_space, action_space)
             self.policy_vars = scope_vars(scope.name)
 
-        # Noise vars for P network except for layer normalization vars
-        if self.config["parameter_noise"]:
-            self._build_parameter_noise([
-                var for var in self.policy_vars if "LayerNorm" not in var.name
-            ])
+        ## Noise vars for P network except for layer normalization vars
+        #if self.config["parameter_noise"]:
+        #    self._build_parameter_noise([
+        #        var for var in self.policy_vars if "LayerNorm" not in var.name
+        #    ])
 
         # Create exploration component.
         self.exploration = self._create_exploration(action_space, config)
@@ -406,16 +406,16 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         activation = getattr(tf.nn, self.config["actor_hidden_activation"])
         for hidden in self.config["actor_hiddens"]:
-            if self.config["parameter_noise"]:
-                import tensorflow.contrib.layers as layers
-                action_out = layers.fully_connected(
-                    action_out,
-                    num_outputs=hidden,
-                    activation_fn=activation,
-                    normalizer_fn=layers.layer_norm)
-            else:
-                action_out = tf.layers.dense(
-                    action_out, units=hidden, activation=activation)
+            #if self.config["parameter_noise"]:
+            #    import tensorflow.contrib.layers as layers
+            #    action_out = layers.fully_connected(
+            #        action_out,
+            #        num_outputs=hidden,
+            #        activation_fn=activation,
+            #        normalizer_fn=layers.layer_norm)
+            #else:
+            action_out = tf.layers.dense(
+                action_out, units=hidden, activation=activation)
         action_out = tf.layers.dense(
             action_out, units=action_space.shape[0], activation=None)
 
@@ -477,43 +477,43 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         actor_loss = -tf.reduce_mean(q_t_det_policy)
         return critic_loss, actor_loss, td_error
 
-    def _build_parameter_noise(self, pnet_params):
-        self.parameter_noise_sigma_val = \
-            self.config["exploration_config"].get("ou_sigma", 0.2)
-        self.parameter_noise_sigma = tf.get_variable(
-            initializer=tf.constant_initializer(
-                self.parameter_noise_sigma_val),
-            name="parameter_noise_sigma",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
-        self.parameter_noise = list()
-        # No need to add any noise on LayerNorm parameters
-        for var in pnet_params:
-            noise_var = tf.get_variable(
-                name=var.name.split(":")[0] + "_noise",
-                shape=var.shape,
-                initializer=tf.constant_initializer(.0),
-                trainable=False)
-            self.parameter_noise.append(noise_var)
-        remove_noise_ops = list()
-        for var, var_noise in zip(pnet_params, self.parameter_noise):
-            remove_noise_ops.append(tf.assign_add(var, -var_noise))
-        self.remove_parameter_noise_op = tf.group(*tuple(remove_noise_ops))
-        generate_noise_ops = list()
-        for var_noise in self.parameter_noise:
-            generate_noise_ops.append(
-                tf.assign(
-                    var_noise,
-                    tf.random_normal(
-                        shape=var_noise.shape,
-                        stddev=self.parameter_noise_sigma)))
-        with tf.control_dependencies(generate_noise_ops):
-            add_noise_ops = list()
-            for var, var_noise in zip(pnet_params, self.parameter_noise):
-                add_noise_ops.append(tf.assign_add(var, var_noise))
-            self.add_noise_op = tf.group(*tuple(add_noise_ops))
-        self.pi_distance = None
+    #def _build_parameter_noise(self, pnet_params):
+    #    self.parameter_noise_sigma_val = \
+    #        self.config["exploration_config"].get("ou_sigma", 0.2)
+    #    self.parameter_noise_sigma = tf.get_variable(
+    #        initializer=tf.constant_initializer(
+    #            self.parameter_noise_sigma_val),
+    #        name="parameter_noise_sigma",
+    #        shape=(),
+    #        trainable=False,
+    #        dtype=tf.float32)
+    #    self.parameter_noise = list()
+    #    # No need to add any noise on LayerNorm parameters
+    #    for var in pnet_params:
+    #        noise_var = tf.get_variable(
+    #            name=var.name.split(":")[0] + "_noise",
+    #            shape=var.shape,
+    #            initializer=tf.constant_initializer(.0),
+    #            trainable=False)
+    #        self.parameter_noise.append(noise_var)
+    #    remove_noise_ops = list()
+    #    for var, var_noise in zip(pnet_params, self.parameter_noise):
+    #        remove_noise_ops.append(tf.assign_add(var, -var_noise))
+    #    self.remove_parameter_noise_op = tf.group(*tuple(remove_noise_ops))
+    #    generate_noise_ops = list()
+    #    for var_noise in self.parameter_noise:
+    #        generate_noise_ops.append(
+    #            tf.assign(
+    #                var_noise,
+    #                tf.random_normal(
+    #                    shape=var_noise.shape,
+    #                    stddev=self.parameter_noise_sigma)))
+    #    with tf.control_dependencies(generate_noise_ops):
+    #        add_noise_ops = list()
+    #        for var, var_noise in zip(pnet_params, self.parameter_noise):
+    #            add_noise_ops.append(tf.assign_add(var, var_noise))
+    #        self.add_noise_op = tf.group(*tuple(add_noise_ops))
+    #    self.pi_distance = None
 
     def compute_td_error(self, obs_t, act_t, rew_t, obs_tp1, done_mask,
                          importance_weights):
@@ -529,9 +529,9 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             })
         return td_err
 
-    def add_parameter_noise(self):
-        if self.config["parameter_noise"]:
-            self.sess.run(self.add_noise_op)
+    #def add_parameter_noise(self):
+    #    if self.config["parameter_noise"]:
+    #        self.sess.run(self.add_noise_op)
 
     # support both hard and soft sync
     def update_target(self, tau=None):

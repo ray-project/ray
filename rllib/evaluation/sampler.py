@@ -306,6 +306,14 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
     def new_episode():
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
                                     get_batch_builder, extra_batch_callback)
+        # Call each policy's Exploration.on_episode_start method.
+        for p in policies.values():
+            p.exploration.on_episode_start(
+                policy=p,
+                environment=base_env,
+                episode=episode,
+                tf_sess=getattr(p, "_sess", None))
+        # Call custom on_episode_start callback.
         if callbacks.get("on_episode_start"):
             callbacks["on_episode_start"]({
                 "env": base_env,
@@ -492,6 +500,14 @@ def _process_observations(base_env, policies, batch_builder_pool,
         if all_done:
             # Handle episode termination
             batch_builder_pool.append(episode.batch_builder)
+            # Call each policy's Exploration.on_episode_end method.
+            for p in policies.values():
+                p.exploration.on_episode_end(
+                    policy=p,
+                    environment=base_env,
+                    episode=episode,
+                    tf_sess=getattr(p, "_sess", None))
+            # Call custom on_episode_end callback.
             if callbacks.get("on_episode_end"):
                 callbacks["on_episode_end"]({
                     "env": base_env,
@@ -558,15 +574,15 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         policy = _get_or_raise(policies, policy_id)
         if builder and (policy.compute_actions.__code__ is
                         TFPolicy.compute_actions.__code__):
-            rnn_in_cols = _to_column_format(rnn_in)
+
+            obs_batch = [t.obs for t in eval_data]
+            state_batches = _to_column_format(rnn_in)
+
             # TODO(ekl): how can we make info batch available to TF code?
-            # TODO(sven): Return dict from _build_compute_actions.
-            # it's becoming more and more unclear otherwise, what's where in
-            # the return tuple.
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
-                obs_batch=[t.obs for t in eval_data],
-                state_batches=rnn_in_cols,
+                obs_batch=obs_batch,
+                state_batches=state_batches,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 timestep=policy.global_timestep)
@@ -585,8 +601,8 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 episodes=[active_episodes[t.env_id] for t in eval_data],
                 timestep=policy.global_timestep)
     if builder:
-        for k, v in pending_fetches.items():
-            eval_results[k] = builder.get(v)
+        for pid, v in pending_fetches.items():
+            eval_results[pid] = builder.get(v)
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(
@@ -613,7 +629,11 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id][:3]
+
+        actions = eval_results[policy_id][0]
+        rnn_out_cols = eval_results[policy_id][1]
+        pi_info_cols = eval_results[policy_id][2]
+
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
