@@ -177,8 +177,7 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  if (getenv(kRayGcsServiceEnabled) == nullptr ||
-      strcmp(getenv(kRayGcsServiceEnabled), "true") == 0) {
+  if (RayConfig::instance().gcs_service_enabled()) {
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
   } else {
     gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);

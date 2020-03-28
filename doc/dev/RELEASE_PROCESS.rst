@@ -123,7 +123,7 @@ This document describes the process for creating new releases.
    .. code-block:: bash
 
      # Downloads all of the wheels to the current directory.
-     RAY_VERSION=<version> COMMIT=<commit_sha> bash download_wheels.sh
+     RAY_VERSION=<version> RAY_HASH=<commit_sha> bash download_wheels.sh
 
      # Will ask for your PyPI test credentials and require that you're a maintainer
      # on PyPI test. If you are not, ask @robertnishihara to add you.

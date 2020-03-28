@@ -1,4 +1,5 @@
 import numpy as np
+from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.dqn as dqn
@@ -14,20 +15,40 @@ class TestDQN(unittest.TestCase):
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
 
-        # tf.
-        config["eager"] = False
-        trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
+        # Rainbow.
+        rainbow_config = config.copy()
+        rainbow_config["eager"] = False
+        rainbow_config["num_atoms"] = 10
+        rainbow_config["noisy"] = True
+        rainbow_config["double_q"] = True
+        rainbow_config["dueling"] = True
+        rainbow_config["n_step"] = 5
+        trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
 
-        config["eager"] = True
-        trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
+        # tf.
+        tf_config = config.copy()
+        tf_config["eager"] = False
+        trainer = dqn.DQNTrainer(config=tf_config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
+
+        # Eager.
+        eager_config = config.copy()
+        eager_config["eager"] = True
+        eager_ctx = eager_mode()
+        eager_ctx.__enter__()
+        trainer = dqn.DQNTrainer(config=eager_config, env="CartPole-v0")
+        num_iterations = 2
+        for i in range(num_iterations):
+            results = trainer.train()
+            print(results)
+        eager_ctx.__exit__(None, None, None)
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""

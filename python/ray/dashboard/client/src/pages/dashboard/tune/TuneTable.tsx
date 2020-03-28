@@ -1,47 +1,50 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import {
+  createStyles,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  Theme,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
+import { TuneTrial } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
-import TableSortLabel from "@material-ui/core/TableSortLabel";
-import { TuneTrial } from "../../../api";
 
 const styles = (theme: Theme) =>
   createStyles({
     root: {
       padding: theme.spacing(2),
       "& > :not(:first-child)": {
-        marginTop: theme.spacing(2)
-      }
+        marginTop: theme.spacing(2),
+      },
     },
     table: {
-      marginTop: theme.spacing(1)
+      marginTop: theme.spacing(1),
     },
     cell: {
       padding: theme.spacing(1),
       textAlign: "right",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
-    }
+        paddingRight: theme.spacing(1),
+      },
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  tuneInfo: state.dashboard.tuneInfo
+  tuneInfo: state.dashboard.tuneInfo,
 });
 
-interface State {
+type State = {
   metricParamColumn: string;
   ascending: boolean;
   sortedColumn: keyof TuneTrial | undefined;
-}
+};
 
 const mapDispatchToProps = dashboardActions;
 
@@ -56,7 +59,7 @@ class TuneTable extends React.Component<
   state: State = {
     sortedColumn: undefined,
     ascending: true,
-    metricParamColumn: ""
+    metricParamColumn: "",
   };
 
   onColumnClick = (column: keyof TuneTrial, metricParamColumn?: string) => {
@@ -68,12 +71,12 @@ class TuneTable extends React.Component<
     }
     this.setState({
       sortedColumn: column,
-      ascending: ascending
+      ascending: ascending,
     });
 
     if (metricParamColumn) {
       this.setState({
-        metricParamColumn: metricParamColumn
+        metricParamColumn: metricParamColumn,
       });
     }
   };
@@ -82,14 +85,11 @@ class TuneTable extends React.Component<
    * Replaces all underscores with spaces and capitalizes all words
    * in str
    */
-  humanize = (str: string) => {
-    var i,
-      frags = str.split("_");
-    for (i = 0; i < frags.length; i++) {
-      frags[i] = frags[i].charAt(0).toUpperCase() + frags[i].slice(1);
-    }
-    return frags.join(" ");
-  };
+  humanize = (str: string) =>
+    str
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
 
   sortedCell = (name: keyof TuneTrial, chosenMetricParam?: string) => {
     const { tuneInfo, classes } = this.props;
@@ -154,11 +154,11 @@ class TuneTable extends React.Component<
     if (sortedColumn) {
       if (ascending) {
         trialDetails.sort((a, b) =>
-          getAttribute(a) > getAttribute(b) ? 1 : -1
+          getAttribute(a) > getAttribute(b) ? 1 : -1,
         );
       } else if (!ascending) {
         trialDetails.sort((a, b) =>
-          getAttribute(a) < getAttribute(b) ? 1 : -1
+          getAttribute(a) < getAttribute(b) ? 1 : -1,
         );
       }
     }
@@ -178,10 +178,10 @@ class TuneTable extends React.Component<
 
     const firstTrial = Object.keys(tuneInfo["trial_records"])[0];
     const paramsDict = tuneInfo["trial_records"][firstTrial]["params"];
-    const paramNames = Object.keys(paramsDict).filter(k => k !== "args");
+    const paramNames = Object.keys(paramsDict).filter((k) => k !== "args");
 
     const metricNames = Object.keys(
-      tuneInfo["trial_records"][firstTrial]["metrics"]
+      tuneInfo["trial_records"][firstTrial]["metrics"],
     );
 
     const trialDetails = this.sortedTrialRecords();
@@ -194,9 +194,9 @@ class TuneTable extends React.Component<
               {this.sortedCell("trial_id")}
               {this.sortedCell("job_id")}
               {this.sortedCell("start_time")}
-              {paramNames.map(value => this.sortedCell("params", value))}
+              {paramNames.map((value) => this.sortedCell("params", value))}
               {this.sortedCell("status")}
-              {metricNames.map(value => this.sortedCell("metrics", value))}
+              {metricNames.map((value) => this.sortedCell("metrics", value))}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -212,7 +212,7 @@ class TuneTable extends React.Component<
                   <TableCell className={classes.cell}>
                     {trial["start_time"]}
                   </TableCell>
-                  {paramNames.map(value => (
+                  {paramNames.map((value) => (
                     <TableCell className={classes.cell} key={value}>
                       {trial["params"][value]}
                     </TableCell>
@@ -221,7 +221,7 @@ class TuneTable extends React.Component<
                     {trial["status"]}
                   </TableCell>
                   {trial["metrics"] &&
-                    metricNames.map(value => (
+                    metricNames.map((value) => (
                       <TableCell className={classes.cell} key={value}>
                         {trial["metrics"][value]}
                       </TableCell>
@@ -237,5 +237,5 @@ class TuneTable extends React.Component<
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(TuneTable));

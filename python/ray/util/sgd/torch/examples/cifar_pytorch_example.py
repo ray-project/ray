@@ -85,14 +85,14 @@ def train_example(num_workers=1,
         backend="nccl" if use_gpu else "gloo",
         scheduler_step_freq="epoch",
         use_fp16=use_fp16,
-        tqdm=True)
+        use_tqdm=True)
     pbar = trange(num_epochs, unit="epoch")
     for i in pbar:
         info = {"num_steps": 1} if test_mode else {}
         info["epoch_idx"] = i
         info["num_epochs"] = num_epochs
         # Increase `max_retries` to turn on fault tolerance.
-        stats = trainer1.train(max_retries=0, info=info)
+        stats = trainer1.train(max_retries=1, info=info)
         pbar.set_postfix(dict(loss=stats["mean_train_loss"]))
 
     print(trainer1.validate())
