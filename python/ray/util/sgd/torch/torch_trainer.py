@@ -710,7 +710,7 @@ class BaseTorchTrainable(Trainable):
         self.trainer.save(checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_dir):
+    def _restore(self, checkpoint_path):
         """Restores the trainer state.
 
         Override this if you have state external to the Trainer object.

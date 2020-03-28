@@ -12,17 +12,20 @@ import torchvision.transforms as transforms
 from tqdm import trange
 
 import ray
+from ray.tune import CLIReporter
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
 
 
 def initialization_hook():
-    print("NCCL DEBUG SET")
-    # Need this for avoiding a connection restart issue
+    # Need this for avoiding a connection restart issue on AWS.
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
-    os.environ["NCCL_DEBUG"] = "INFO"
+
+    # set the below if needed
+    # print("NCCL DEBUG SET")
+    # os.environ["NCCL_DEBUG"] = "INFO"
 
 
 def cifar_creator(config):
@@ -84,7 +87,7 @@ def train_example(num_workers=1,
         config={
             "lr": 0.01,
             "test_mode": test_mode,
-            BATCH_SIZE: 128,
+            BATCH_SIZE: 128,  # this will be split across workers.
         },
         use_gpu=use_gpu,
         scheduler_step_freq="epoch",
@@ -122,7 +125,6 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
 
-
     pbt_scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
         metric="val_loss",
@@ -130,17 +132,25 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
         perturbation_interval=1,
         hyperparam_mutations={
             # distribution for resampling
-            "lr": lambda: np.random.uniform(0.0001, 1),
+            "lr": lambda: np.random.uniform(0.001, 1),
             # allow perturbations within this set of categorical values
             "momentum": [0.8, 0.9, 0.99],
         })
 
+    reporter = CLIReporter()
+    reporter.add_metric_column("val_loss", "loss")
+    reporter.add_metric_column("val_accuracy", "acc")
+
     analysis = tune.run(
         TorchTrainable,
-        num_samples=2,
-        config={"lr": tune.choice([1e-4, 1e-3]), "momentum": 0.8},
+        num_samples=4,
+        config={
+            "lr": tune.choice([0.001, 0.01, 0.1]),
+            "momentum": 0.8
+        },
         stop={"training_iteration": 2 if test_mode else 100},
         verbose=2,
+        progress_reporter=reporter,
         scheduler=pbt_scheduler)
 
     return analysis.get_best_config(metric="val_loss", mode="min")
