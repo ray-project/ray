@@ -1,5 +1,3 @@
-
-
 def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
                              config: dict) -> LocalIterator[dict]:
     """Operator to periodically collect and report metrics.
@@ -27,8 +25,6 @@ def StandardMetricsReporting(train_op: LocalIterator[Any], workers: WorkerSet,
             workers, min_history=config["metrics_smoothing_episodes"],
             timeout_seconds=config["collect_metrics_timeout"]))
     return output_op
-
-
 
 
 class CollectMetrics:
@@ -116,4 +112,3 @@ class OncePerTimeInterval:
             self.last_called = now
             return True
         return False
-

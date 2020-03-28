@@ -1,6 +1,3 @@
-
-
-
 class TrainOneStep:
     """Callable that improves the policy and updates workers.
 

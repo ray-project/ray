@@ -1,6 +1,3 @@
-
-
-
 def ParallelRollouts(workers: WorkerSet, mode="bulk_sync",
                      async_queue_depth=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
@@ -111,7 +108,6 @@ def AsyncGradients(
     rollouts = from_actors(workers.remote_workers())
     grads = rollouts.for_each(samples_to_grads)
     return grads.gather_async().for_each(record_metrics())
-
 
 
 class ConcatBatches:

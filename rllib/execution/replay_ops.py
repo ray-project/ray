@@ -1,5 +1,3 @@
-
-
 class StoreToReplayBuffer:
     """Callable that stores data into a local replay buffer.
 
@@ -137,5 +135,3 @@ def LocalReplay(replay_buffer: ReplayBuffer, train_batch_size: int):
             yield MultiAgentBatch(samples, train_batch_size)
 
     return LocalIterator(gen_replay, SharedMetrics())
-
-

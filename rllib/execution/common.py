@@ -18,7 +18,6 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.compression import pack_if_needed
 
-
 # Counters for training progress (keys for metrics.counters).
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 STEPS_TRAINED_COUNTER = "num_steps_trained"

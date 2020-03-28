@@ -1,5 +1,3 @@
-
-
 def Concurrently(ops: List[LocalIterator], mode="round_robin"):
     """Operator that runs the given parent iterators concurrently.
 
@@ -24,7 +22,6 @@ def Concurrently(ops: List[LocalIterator], mode="round_robin"):
     else:
         raise ValueError("Unknown mode {}".format(mode))
     return ops[0].union(*ops[1:], deterministic=deterministic)
-
 
 
 class Enqueue:
