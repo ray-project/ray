@@ -80,6 +80,10 @@ RLlib uses Gym as its environment interface for single-agent training. For more 
 Performance
 ~~~~~~~~~~~
 
+.. tip::
+
+    Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
+
 There are two ways to scale experience collection with Gym environments:
 
     1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
