@@ -12,12 +12,18 @@ jobs:
         # Github Actions requires a single row to be added to the build matrix.
         # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
         name: [
-          windows-clang-cl,
+          windows-clang,
         ]
         include:
-          - name: windows-clang-cl
-            os: windows-latest
+          - name: ubuntu-clang
+            os: ubuntu-16.04
+            compiler: clang
+          - name: windows-clang
+            os: windows-2019
             compiler: clang-cl
+          - name: macos-clang
+            os: macos-10.15
+            compiler: clang
     steps:
     - name: Configure Git
       shell: bash -e -o pipefail -l {0}
