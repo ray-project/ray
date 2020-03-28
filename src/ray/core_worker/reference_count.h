@@ -86,6 +86,11 @@ class ReferenceCounter {
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
 
+  /// Add references for the object dependencies of a resubmitted task. This
+  /// does not increment the arguments' lineage ref counts because we should
+  /// have already incremented them when the task was first submitted.
+  ///
+  /// \param[in] argument_ids The arguments of the task to add references for.
   void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
