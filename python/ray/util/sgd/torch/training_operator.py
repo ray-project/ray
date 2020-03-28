@@ -168,8 +168,10 @@ class TrainingOperator:
 
             if self.use_tqdm and self.world_rank == 0:
                 _progress_bar.n = batch_idx + 1
+                postfix = {}
                 if "train_loss" in metrics:
-                    _progress_bar.set_postfix({"loss": metrics["train_loss"]})
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
 
             if self.scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:

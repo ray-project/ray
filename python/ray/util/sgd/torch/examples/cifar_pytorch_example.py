@@ -63,7 +63,7 @@ def optimizer_creator(model, config):
     return torch.optim.SGD(
         model.parameters(),
         lr=config.get("lr", 0.1),
-        momentum=config.get("momentum", 0.8))
+        momentum=config.get("momentum", 0.9))
 
 
 def scheduler_creator(optimizer, config):
@@ -85,9 +85,9 @@ def train_example(num_workers=1,
         initialization_hook=initialization_hook,
         num_workers=num_workers,
         config={
-            "lr": 0.01,
-            "test_mode": test_mode,
-            BATCH_SIZE: 128,  # this will be split across workers.
+            "lr": 0.1,
+            "test_mode": test_mode,  # user-defined param to subset the data
+            BATCH_SIZE: 128 * num_workers  # this will be split across workers.
         },
         use_gpu=use_gpu,
         scheduler_step_freq="epoch",
@@ -99,8 +99,9 @@ def train_example(num_workers=1,
         info["epoch_idx"] = i
         info["num_epochs"] = num_epochs
         # Increase `max_retries` to turn on fault tolerance.
-        stats = trainer1.train(max_retries=1, info=info)
-        pbar.set_postfix(dict(loss=stats["mean_train_loss"]))
+        trainer1.train(max_retries=1, info=info)
+        val_stats = trainer1.validate()
+        pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     print(trainer1.validate())
     trainer1.shutdown()
@@ -118,7 +119,7 @@ def tune_example(num_workers=1, use_gpu=False, use_fp16=False,
         initialization_hook=initialization_hook,
         num_workers=num_workers,
         config={
-            "test_mode": test_mode,
+            "test_mode": test_mode,  # user-defined param to subset the data
             BATCH_SIZE: 128 * num_workers,
         },
         use_gpu=use_gpu,
