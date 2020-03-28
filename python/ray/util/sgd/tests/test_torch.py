@@ -116,7 +116,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
     trainer1.train()
-    state = trainer1.state_stream()
+    state = trainer1.state_dict()
 
     models1 = trainer1.get_model()
 
@@ -130,7 +130,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
         num_workers=num_workers)
-    trainer2.load_state_stream(state)
+    trainer2.load_state_dict(state)
 
     models2 = trainer2.get_model()
 
@@ -450,7 +450,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
     trainer1.train()
-    state = trainer1.state_stream()
+    state = trainer1.state_dict()
 
     model1 = trainer1.get_model()
 
@@ -462,7 +462,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers):  # noqa: F811
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers)
-    trainer2.load_state_stream(state)
+    trainer2.load_state_dict(state)
 
     model2 = trainer2.get_model()
 

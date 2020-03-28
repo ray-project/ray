@@ -1,8 +1,11 @@
 import numpy as np
 import logging
+import os
+import io
 import numbers
 import tempfile
 import time
+import torch
 import torch.distributed as dist
 
 import ray
@@ -343,9 +346,6 @@ class TorchTrainer:
                 total available resources, and re-launch up to the
                 available resources. Behavior is not well-defined
                 in case of shared cluster usage.
-            checkpoint (str): Path to checkpoint to restore from if retrying.
-                If max_retries is set and ``checkpoint == "auto"``,
-                TorchTrainer will save a checkpoint before starting to train.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
 
@@ -357,16 +357,10 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-        if max_retries:
-            if checkpoint == "auto":
-                logger.debug("Retrying detected. Automatically checkpointing.")
-                checkpoint = self.state_stream()
-            elif not checkpoint:
-                raise ValueError("Cannot retry from empty checkpoint.")
 
-        if checkpoint and self._should_resize():
+        if max_retries and self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self._resize_workers(checkpoint=checkpoint)
+            self._resize_workers()
 
         success, worker_stats = self._train_epoch(
             num_steps=num_steps, profile=profile, info=info)
@@ -376,7 +370,7 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self._resize_workers(checkpoint=checkpoint)
+            self._resize_workers()
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))
             success, worker_stats = self._train_epoch(
@@ -498,15 +492,20 @@ class TorchTrainer:
         return self.local_worker.given_models
 
     def state_dict(self):
-        return self.local_worker.get_state()
+        return self.local_worker.state_dict()
 
-    def load_state_dict(self, state):
+    def load_state_dict(self, state_dict):
+        _buffer = io.BytesIO()
+        torch.save(state_dict, _buffer)
+        state = _buffer.getvalue()
         state_id = ray.put(state)
 
         remote_calls = [
-            worker.set_state.remote(state_id) for worker in self.remote_workers
+            worker.load_state_stream.remote(state_id)
+            for worker in self.remote_workers
         ]
-        self.local_worker.set_state(state)
+
+        self.local_worker.load_state_dict(state_dict)
         ray.get(remote_calls)
 
     def save(self, checkpoint):
@@ -524,8 +523,8 @@ class TorchTrainer:
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
-        state = torch.load(checkpoint)
-        self.load_state_dict(state)
+        state_dict = torch.load(checkpoint)
+        self.load_state_dict(state_dict)
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
@@ -576,9 +575,8 @@ class TorchTrainer:
                 remote_resources.get("GPU", 0), new_remote_workers)
         return new_remote_workers
 
-    def _resize_workers(self, checkpoint, max_retries=10):
+    def _resize_workers(self, max_retries=10):
         self._reset()
-        assert checkpoint, "Cannot restore without checkpoint."
 
         time.sleep(1)
         for i in range(max_retries):
@@ -586,7 +584,7 @@ class TorchTrainer:
             if new_remote_workers:
                 self._last_resize = time.time()
                 self._start_workers(int(new_remote_workers) + 1)
-                self.restore(checkpoint)
+                self.load_state_dict(self.state_dict())
                 return
             else:
                 delay = 2**i
@@ -632,9 +630,8 @@ class TorchTrainer:
         class TorchTrainable(BaseTorchTrainable):
             @classmethod
             def default_resource_request(cls, config):
-                num_workers = config.get(
-                    "num_workers",
-                    kwargs.get("num_workers", 1))
+                num_workers = config.get("num_workers",
+                                         kwargs.get("num_workers", 1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
 
                 remote_worker_count = num_workers - 1
@@ -644,7 +641,6 @@ class TorchTrainer:
                     gpu=int(use_gpu),
                     extra_cpu=int(remote_worker_count),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
-
 
             def _create_trainer(self, tune_config):
                 """Overrides the provided config with Tune config."""
@@ -705,17 +701,19 @@ class BaseTorchTrainable(Trainable):
         stats = merge_dicts(train_stats, validation_stats)
         return stats
 
-    def _save(self, checkpoint):
+    def _save(self, checkpoint_dir):
         """Returns a dictionary containing the trainer state."""
-        return {"state": self.trainer.state_stream()}
+        checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
+        self.trainer.save(checkpoint_path)
+        return checkpoint_dir
 
-    def _restore(self, checkpoint_dict):
-        """Returns a dictionary containing the trainer state.
+    def _restore(self, checkpoint_dir):
+        """Restores the trainer state.
 
         Override this if you have state to the Trainer object.
         """
-        checkpoint = checkpoint_dict["state"]
-        return self.trainer.load_state_stream(checkpoint)
+        checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
+        return self.trainer.load(checkpoint_path)
 
     def _stop(self):
         """Shuts down the trainer."""

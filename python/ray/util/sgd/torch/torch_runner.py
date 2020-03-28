@@ -226,14 +226,7 @@ class TorchRunner:
         self.training_operator._set_timers(self.timers)
 
     def _get_model_state_dicts(self):
-        # This is so that we create a duplicate of weights into CPU rather than
-        # move the model weights entirely out of the GPU, so that we can
-        # resume training while saving intermediate checkpoints.
-        cpu_state_dicts = []
-        for model in self.models:
-            state_dict = model.state_dict()
-            cpu_state_dicts += [{k: v.cpu() for k, v in state_dict.items()}]
-        return cpu_state_dicts
+        return [model.state_dict() for model in self.models]
 
     def _set_model_state_dicts(self, models_state_dicts):
         for model, state_dict in zip(self.models, models_state_dicts):
