@@ -1,11 +1,12 @@
 from typing import Union
 
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.tuple_actions import TupleActions
-from ray.rllib.models.modelv2 import ModelV2
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -23,9 +24,10 @@ class StochasticSampling(Exploration):
     def __init__(self,
                  action_space,
                  *,
+                 framework: str,
+                 model: ModelV2,
                  static_params=None,
                  time_dependent_params=None,
-                 framework="tf",
                  **kwargs):
         """Initializes a StochasticSampling Exploration object.
 
@@ -36,10 +38,11 @@ class StochasticSampling(Exploration):
             time_dependent_params (dict): Parameters to be evaluated based on
                 `timestep` and then passed into the action distribution
                 class' constructor.
-            framework (Optional[str]): One of None, "tf", "torch".
+            framework (str): One of None, "tf", "torch".
         """
         assert framework is not None
-        super().__init__(action_space, framework=framework, **kwargs)
+        super().__init__(
+            action_space, model=model, framework=framework, **kwargs)
 
         self.static_params = static_params or {}
 
@@ -49,9 +52,8 @@ class StochasticSampling(Exploration):
 
     @override(Exploration)
     def get_exploration_action(self,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
-                               model: ModelV2,
+                               *,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         kwargs = self.static_params.copy()
@@ -63,12 +65,13 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(distribution_inputs, model, **kwargs)
 
         if self.framework == "torch":
-            return self._get_torch_exploration_action(action_dist, explore)
+            return self._get_torch_exploration_action(
+                action_distribution, explore)
         else:
-            return self._get_tf_exploration_action_op(action_dist, explore)
+            return self._get_tf_exploration_action_op(
+                action_distribution, explore)
 
     def _get_tf_exploration_action_op(self, action_dist, explore):
         sample = action_dist.sample()
