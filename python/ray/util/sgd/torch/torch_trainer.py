@@ -219,6 +219,9 @@ class TorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
+        self.local_worker = DeactivatedRunner()
+        self.remote_workers = []
+
         _validate_scheduler_step_freq(scheduler_step_freq)
         self.scheduler_step_freq = scheduler_step_freq
 
@@ -250,9 +253,6 @@ class TorchTrainer:
         batch_size_per_worker = self._configure_and_split_batch(num_workers)
         if batch_size_per_worker:
             worker_config[BATCH_SIZE] = batch_size_per_worker
-
-        self.local_worker = None
-        self.remote_workers = []
 
         if num_workers == 1:
             # Start local worker
@@ -549,7 +549,7 @@ class TorchTrainer:
                 logger.warning("Killing worker {}.".format(worker))
                 ray.kill(worker)
 
-        self.local_worker = None
+        self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
     def _reset(self):
@@ -558,7 +558,7 @@ class TorchTrainer:
         for worker in self.remote_workers:
             logger.warning("Killing worker {}.".format(worker))
             ray.kill(worker)
-        self.local_worker = None
+        self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
     def _check_potential_remote_workers_size(self):

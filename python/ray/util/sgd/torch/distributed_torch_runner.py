@@ -205,3 +205,9 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id
         return actor_id != actor_id.nil()
+
+class DeactivatedRunner:
+    def __getattr__(self, *args, **kwargs):
+        raise RuntimeError(
+            "This TorchTrainer is not active (it is likely shutdown already). "
+            "Create a new TorchTrainer.")

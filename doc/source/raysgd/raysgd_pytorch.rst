@@ -330,7 +330,9 @@ If you want to save or reload the training procedure, you can use ``trainer.stat
 
 .. code-block:: python
 
-    state = trainer_1.state_stream()
+    state_dict = trainer_1.state_dict()
+    # You must shutdown the trainer in order to create a new trainer.
+    trainer_1.shutdown()
 
     trainer_2 = TorchTrainer(
         model_creator=model_creator,
