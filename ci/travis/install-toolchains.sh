@@ -11,7 +11,7 @@ install_clang() {
     #   choco install --no-progress llvm
     # However, it frequently gives HTTP 503 errors, so we just download and install manually.
     local target_dir="${PROGRAMFILES}\LLVM"
-    if ! command -v clang "${target_dir}/clang" > /dev/null; then
+    if ! command -v clang "${target_dir}\\clang.exe" > /dev/null; then
       local urldir="https://releases.llvm.org"
       local arch=64
       if [ "${HOSTTYPE}" = "${HOSTTYPE%64}" ]; then arch=32; fi
