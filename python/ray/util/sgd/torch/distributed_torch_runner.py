@@ -99,7 +99,7 @@ class DistributedTorchRunner(TorchRunner):
             world_rank=self.world_rank,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16,
-            tqdm=self.tqdm)
+            use_tqdm=self.use_tqdm)
 
     def _initialize_dataloaders(self):
         super(DistributedTorchRunner, self)._initialize_dataloaders()

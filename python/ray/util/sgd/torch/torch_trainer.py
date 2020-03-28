@@ -145,7 +145,7 @@ class TorchTrainer:
             use_gpu=False,
             backend="auto",
             use_fp16=False,
-            tqdm=False,
+            use_tqdm=False,
             apex_args=None,
             scheduler_step_freq="batch",
             num_replicas=None,
@@ -208,7 +208,7 @@ class TorchTrainer:
         self.max_replicas = num_workers
 
         self.use_fp16 = use_fp16
-        self.tqdm = tqdm
+        self.use_tqdm = use_tqdm
 
         if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
@@ -264,7 +264,7 @@ class TorchTrainer:
                 training_operator_cls=self.training_operator_cls,
                 config=worker_config,
                 use_fp16=self.use_fp16,
-                tqdm=self.tqdm,
+                use_tqdm=self.use_tqdm,
                 apex_args=self.apex_args,
                 scheduler_step_freq=self.scheduler_step_freq)
 
@@ -283,7 +283,7 @@ class TorchTrainer:
                 training_operator_cls=self.training_operator_cls,
                 config=worker_config,
                 use_fp16=self.use_fp16,
-                tqdm=self.tqdm,
+                use_tqdm=self.use_tqdm,
                 apex_args=self.apex_args,
                 scheduler_step_freq=self.scheduler_step_freq)
 

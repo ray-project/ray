@@ -49,7 +49,7 @@ class TorchRunner:
                  training_operator_cls=None,
                  config=None,
                  use_fp16=False,
-                 tqdm=False,
+                 use_tqdm=False,
                  apex_args=None,
                  scheduler_step_freq="batch"):
         self.model_creator = model_creator
@@ -69,7 +69,7 @@ class TorchRunner:
         self.train_loader = None
         self.validation_loader = None
         self.use_fp16 = use_fp16
-        self.tqdm = tqdm
+        self.use_tqdm = use_tqdm
         self.apex_args = apex_args or {}
         if use_fp16 and not amp:
             raise ImportError(
@@ -163,7 +163,7 @@ class TorchRunner:
             world_rank=0,
             schedulers=self.schedulers,
             use_fp16=self.use_fp16,
-            tqdm=self.tqdm)
+            use_tqdm=self.use_tqdm)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""

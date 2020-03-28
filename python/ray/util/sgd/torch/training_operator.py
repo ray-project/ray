@@ -57,7 +57,7 @@ class TrainingOperator:
                  criterion=None,
                  schedulers=None,
                  use_fp16=False,
-                 tqdm=False):
+                 use_tqdm=False):
         # You are not expected to override this method.
         self._models = models  # List of models
         assert isinstance(models, collections.Iterable), (
@@ -76,7 +76,7 @@ class TrainingOperator:
                     type(schedulers)))
         self._config = config
         self._use_fp16 = use_fp16
-        self._tqdm = tqdm
+        self._use_tqdm = use_tqdm
         self.global_step = 0
 
         if type(self) is TrainingOperator:
@@ -141,7 +141,7 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
-        if self.world_rank == 0:
+        if self.use_tqdm and self.world_rank == 0:
             desc = ""
             if info is not None and "epoch_idx" in info:
                 if "num_epochs" in info:
@@ -166,7 +166,7 @@ class TrainingOperator:
             batch_info.update(info)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
-            if self.world_rank == 0:
+            if self.use_tqdm and self.world_rank == 0:
                 _progress_bar.n = batch_idx + 1
                 if "train_loss" in metrics:
                     _progress_bar.set_postfix({"loss": metrics["train_loss"]})
@@ -391,7 +391,7 @@ class TrainingOperator:
     @property
     def use_tqdm(self):
         """Whether tqdm progress bars are enabled."""
-        return self._tqdm
+        return self._use_tqdm
 
 
 class _TestingOperator(TrainingOperator):
