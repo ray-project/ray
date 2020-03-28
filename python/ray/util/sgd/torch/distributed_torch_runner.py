@@ -1,12 +1,17 @@
+from datetime import timedelta
 import collections
 import logging
+import os
+
 import torch
 import torch.nn as nn
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from ray.util.sgd.torch.constants import NCCL_TIMEOUT_IN_SECONDS
 
+import ray
 from ray.util.sgd.torch.torch_runner import TorchRunner
 
 logger = logging.getLogger(__name__)
@@ -45,11 +50,20 @@ class DistributedTorchRunner(TorchRunner):
         logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
             url, world_rank, world_size))
         logger.debug("using {}".format(self.backend))
+
+        if self.backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
+            logger.debug(
+                "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
+                "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
+            os.environ["NCCL_BLOCKING_WAIT"] = "1"
+
+        timeout = timedelta(seconds=NCCL_TIMEOUT_IN_SECONDS)
         dist.init_process_group(
             backend=self.backend,
             init_method=url,
             rank=world_rank,
-            world_size=world_size)
+            world_size=world_size,
+            timeout=timeout)
 
     def _setup_training(self):
         logger.debug("Creating model")
@@ -84,7 +98,8 @@ class DistributedTorchRunner(TorchRunner):
             validation_loader=self.validation_loader,
             world_rank=self.world_rank,
             schedulers=self.schedulers,
-            use_fp16=self.use_fp16)
+            use_fp16=self.use_fp16,
+            use_tqdm=self.use_tqdm)
 
     def _initialize_dataloaders(self):
         super(DistributedTorchRunner, self)._initialize_dataloaders()
@@ -140,12 +155,60 @@ class DistributedTorchRunner(TorchRunner):
         for model, model_state_dict in zip(self.models, model_state_dicts):
             model.module.load_state_dict(model_state_dict)
 
-    # def shutdown(self):
+    def shutdown(self):
         """Attempts to shut down the worker."""
-        # super(DistributedTorchRunner, self).shutdown()
-        # TODO: Temporarily removing since it causes hangs on MacOSX.
         # However, it seems to be harmless to remove permanently
         # since the processes are shutdown anyways. This comment can be
         # removed in a future release if it is still not documented
         # the stable Pytorch docs.
-        # dist.destroy_process_group()
+        dist.destroy_process_group()
+        super(DistributedTorchRunner, self).shutdown()
+
+
+class _DummyActor:
+    def cuda_devices(self):
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+
+# This is a bit of a hack. It prevents the reassignment of CUDA_VISIBLE_DEVICES
+# during a trainer resize. We won't need this if we don't shutdown
+# all the actors.
+_dummy_actor = None
+
+
+class LocalDistributedRunner(DistributedTorchRunner):
+    """A wrapper for running a distributed Runner on the driver.
+
+    A dummy actor is used to reserve resources on the driver node,
+    as specified by `num_cpus` and `num_gpus`. If the Trainer is already
+    in an actor, we will ignore this resource request.
+    """
+
+    def __init__(self, *args, num_cpus=None, num_gpus=None, **kwargs):
+        ip = ray.services.get_node_ip_address()
+
+        # Reserve a local GPU or CPU for the local worker
+        # TODO: we should make sure this NEVER dies.
+
+        global _dummy_actor
+        if not self.is_actor() and _dummy_actor is None:
+            _dummy_actor = ray.remote(
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                resources={"node:" + ip: 0.1})(_DummyActor).remote()
+
+            head_cuda = ray.get(_dummy_actor.cuda_devices.remote())
+            os.environ["CUDA_VISIBLE_DEVICES"] = head_cuda
+        super(LocalDistributedRunner, self).__init__(*args, **kwargs)
+
+    def shutdown(self, cleanup=True):
+        super(LocalDistributedRunner, self).shutdown()
+        global _dummy_actor
+        if cleanup and _dummy_actor:
+            assert not self.is_actor(), "Actor shouldn't have a dummy actor."
+            ray.kill(_dummy_actor)
+            _dummy_actor = None
+
+    def is_actor(self):
+        actor_id = ray.worker.global_worker.actor_id
+        return actor_id != actor_id.nil()
