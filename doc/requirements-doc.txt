@@ -10,6 +10,7 @@ numpy
 opencv-python-headless
 pandas
 pickle5
+PIL
 pygments
 pyyaml
 recommonmark
