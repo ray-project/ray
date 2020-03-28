@@ -99,11 +99,6 @@ type ActorInformation = {
   value: string;
 };
 
-type ActorInformationRendered = {
-  label: string;
-  rendered: ReactNode;
-};
-
 const ActorStateHumanNames = {
   0: "ALIVE",
   1: "RECONSTRUCTING",
@@ -224,70 +219,66 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             },
           ];
 
+    // Move some fields to the back and de-prioritize them.
+    const pushFieldsToBack = [
+      "NumObjectIdsInScope",
+      "NumLocalObjects",
+      "UsedLocalObjectMemory",
+    ];
+    pushFieldsToBack.forEach((fieldName) => {
+      const foundIdx = rawInformation.findIndex(
+        (info) => info.label === fieldName,
+      );
+      if (foundIdx !== -1) {
+        const foundValue = rawInformation[foundIdx];
+        rawInformation.splice(foundIdx, 1);
+        rawInformation.push(foundValue);
+      }
+    });
+
     // Apply transformation to add styling for information field
-    const transforms: Record<
-      string,
-      (info: ActorInformation) => ActorInformationRendered
-    > = {
+    const transforms: Record<string, (info: ActorInformation) => ReactNode> = {
       Pending: (info: ActorInformation) => {
         if (actor.state !== -1 && actor.taskQueueLength >= 50) {
-          return {
-            label: info.label,
-            rendered: (
-              <span
-                className={classes.warningTooManyPendingTask}
-                key={info.label}
-              >
-                {info.label}: {info.value}
-              </span>
-            ),
-          };
-        } else {
-          return { label: info.label, rendered: info.label };
-        }
-      },
-      ActorTitle: (info: ActorInformation) => ({
-        rendered: (
-          <span className={classes.actorTitle} key={info.label}>
-            {info.value}
-          </span>
-        ),
-        label: info.label,
-      }),
-      NumObjectIdsInScope: (info: ActorInformation) => ({
-        rendered: (
-          <span className={classes.secondaryFieldsHeader} key={info.label}>
-            <br></br>
-            {info.label}: {info.value}
-          </span>
-        ),
-        label: info.label,
-      }),
-      NumLocalObjects: (info: ActorInformation) => ({
-        rendered: (
-          <span className={classes.secondaryFields} key={info.label}>
-            {info.label}: {info.value}
-          </span>
-        ),
-        label: info.label,
-      }),
-      UsedLocalObjectMemory: (info: ActorInformation) => ({
-        rendered: (
-          <span className={classes.secondaryFields} key={info.label}>
-            {info.label}: {info.value}
-          </span>
-        ),
-        label: info.label,
-      }),
-      Identity: (info: ActorInformation) => ({
-        rendered:
-          info.value.length === 0 ? null : (
-            <span className={classes.datum}>
+          return (
+            <span
+              className={classes.warningTooManyPendingTask}
+              key={info.label}
+            >
               {info.label}: {info.value}
             </span>
-          ),
-        label: info.label,
-      }),
+          );
+        } else {
+          return info.label;
+        }
+      },
+      ActorTitle: (info: ActorInformation) => (
+        <span className={classes.actorTitle} key={info.label}>
+          {info.value}
+        </span>
+      ),
+      NumObjectIdsInScope: (info: ActorInformation) => (
+        <span className={classes.secondaryFieldsHeader} key={info.label}>
+          <br></br>
+          {info.label}: {info.value}
+        </span>
+      ),
+      NumLocalObjects: (info: ActorInformation) => (
+        <span className={classes.secondaryFields} key={info.label}>
+          {info.label}: {info.value}
+        </span>
+      ),
+      UsedLocalObjectMemory: (info: ActorInformation) => (
+        <span className={classes.secondaryFields} key={info.label}>
+          {info.label}: {info.value}
+        </span>
+      ),
+      Identity: (info: ActorInformation) =>
+        info.value.length === 0 ? null : (
+          <span className={classes.datum} key={info.label}>
+            {info.label}: {info.value}
+          </span>
+        ),
     };
 
     // Apply the styling transformation
@@ -297,23 +288,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         return transform(val);
       } else {
         return transforms["Identity"](val);
-      }
-    });
-
-    // Move some fields to the back and de-prioritize them.
-    const pushFieldsToBack = [
-      "NumObjectIdsInScope",
-      "NumLocalObjects",
-      "UsedLocalObjectMemory",
-    ];
-    pushFieldsToBack.forEach((fieldName) => {
-      const foundIdx = information.findIndex(
-        (info) => info.label === fieldName,
-      );
-      if (foundIdx !== -1) {
-        const foundValue = information[foundIdx];
-        information.splice(foundIdx, 1);
-        information.push(foundValue);
       }
     });
 
@@ -373,7 +347,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               )}{" "}
               (Profile for
               {[10, 30, 60].map((duration) => (
-                <React.Fragment>
+                <React.Fragment key={duration}>
                   {" "}
                   <span
                     className={classes.action}
@@ -428,9 +402,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             </span>
           )}
         </Typography>
-        <Typography className={classes.information}>
-          {information.map(({ label, rendered }) => rendered)}
-        </Typography>
+        <Typography className={classes.information}>{information}</Typography>
         {actor.state !== -1 && (
           <React.Fragment>
             {actorCustomDisplay.length > 0 && (
