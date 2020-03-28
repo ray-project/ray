@@ -25,23 +25,22 @@ jobs:
       with:
         fetch-depth: 1
     - name: Setup Bazel
-      shell: bash
+      shell: bash -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./ci/travis/install-bazel.sh
     - name: Setup Clang Include-What-You-Use
-      shell: bash
+      shell: bash -e -o pipefail -l {0}
       run: |
         sudo apt-get install iwyu
     - name: Perform build
       continue-on-error: true
-      shell: bash
+      shell: bash -e -o pipefail -l {0}
       env:
         CC: ${{ matrix.compiler }}
       run: |
         # TODO(mehrdadn): Replace this with the same build script as below, once we factor that out
-        . ./ci/travis/build-helper.sh prep_build_env
         bazel --batch build \
           --compilation_mode=fastbuild \
           --config=iwyu \
@@ -66,14 +65,14 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
     - name: Setup Bazel
-      shell: bash
+      shell: bash -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./ci/travis/install-bazel.sh
     - name: Install C/C++ toolchains
       if: matrix.compiler == 'clang' || matrix.compiler == 'clang-cl'
-      shell: bash
+      shell: bash -e -o pipefail -l {0}
       env:
         CC: ${{ matrix.compiler }}
       run: ./ci/travis/install-toolchains.sh "${CC%%-*}"
@@ -83,9 +82,8 @@ jobs:
       with:
         update: false
     - name: Perform build
-      shell: bash
+      shell: bash -e -o pipefail -l {0}
       run: |
-        . ./ci/travis/build-helper.sh prep_build_env
         bazel --batch build \
           --keep_going \
           "//:ray_pkg"  # TODO(mehrdadn): Should be "//:*", but we get a linking error with _streaming.so
