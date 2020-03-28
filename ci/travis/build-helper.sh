@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 prep_build_env() {
-  export PATH="${PATH}:${HOME}/bin"
+  export PATH="${HOME}/bin:${PATH}"
   if [ "${OSTYPE}" = "msys" ]; then
     export USE_CLANG_CL=1
     export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
