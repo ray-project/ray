@@ -206,6 +206,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
         actor_id = ray.worker.global_worker.actor_id
         return actor_id != actor_id.nil()
 
+
 class DeactivatedRunner:
     def __getattr__(self, *args, **kwargs):
         raise RuntimeError(

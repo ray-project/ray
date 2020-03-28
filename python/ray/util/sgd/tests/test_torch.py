@@ -42,6 +42,19 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainer.shutdown()
 
 
+def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
+    trainer = TorchTrainer(
+        model_creator=model_creator,
+        data_creator=data_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_workers=2)
+    trainer.train(num_steps=1)
+    trainer.shutdown()
+    with pytest.raises(RuntimeError):
+        trainer.train()
+
+
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
     trainer = TorchTrainer(
