@@ -3,6 +3,7 @@ from typing import Union
 
 from ray.rllib.utils.framework import check_framework, try_import_tf, \
     TensorType
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -63,8 +64,7 @@ class Exploration:
     @DeveloperAPI
     def get_exploration_action(self,
                                *,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         """Returns a (possibly) exploratory action and its log-likelihood.
@@ -73,11 +73,9 @@ class Exploration:
         exploratory action.
 
         Args:
-            distribution_inputs (TensorType): The output coming from the model,
-                ready for parameterizing a distribution
-                (e.g. q-values or PG-logits).
-            action_dist_class (class): The action distribution class
-                to use.
+            action_distribution (ActionDistribution): The instantiated
+                ActionDistribution object to work with when creating
+                exploration acitons.
             timestep (int|TensorType): The current sampling time step. It can
                 be a tensor for TF graph mode, otherwise an integer.
             explore (bool): True: "Normal" exploration behavior.

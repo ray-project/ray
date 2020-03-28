@@ -167,7 +167,7 @@ class Policy(metaclass=ABCMeta):
             {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
-    def compute_distribution_inputs(self,
+    def compute_action_distribution(self,
                                     obs_batch,
                                     state_batches=None,
                                     prev_action_batch=None,
@@ -191,9 +191,8 @@ class Policy(metaclass=ABCMeta):
 
         Returns:
             Tuple:
-            - distribution_inputs (np.ndarray): Batch of distribution
-                inputs.
-            - distribution_class (type): The distirbution class to instantiate.
+            - action_distribution (ActionDistribution): The parameterized and
+                instantiated action distribution object.
             - states_out (List[np.ndarray]): List internal states outputs.
         """
         raise NotImplementedError
@@ -248,8 +247,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             SampleBatch: Postprocessed sample batch.
         """
-        # Call our Exploration object's postprocess method.
-        return self.exploration.postprocess_trajectory(self, sample_batch)
+        return sample_batch
 
     @DeveloperAPI
     def learn_on_batch(self, samples):

@@ -84,9 +84,6 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
-            # Call the exploration before_compute_actions hook.
-            self.exploration.before_compute_actions(timestep=timestep)
-
             action_dist, state_out = \
                 self.compute_action_distribution(
                     obs_batch=obs_batch,
@@ -100,7 +97,8 @@ class TorchPolicy(Policy):
 
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    action_dist, timestep, explore)
+                    action_distribution=action_dist,
+                    timestep=timestep, explore=explore)
             input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,
@@ -114,7 +112,7 @@ class TorchPolicy(Policy):
             return convert_to_non_torch_type((actions, state_out,
                                               extra_action_out))
 
-    def compute_distribution_inputs(self,
+    def compute_action_distribution(self,
                                     obs_batch,
                                     state_batches=None,
                                     prev_action_batch=None,
@@ -131,16 +129,14 @@ class TorchPolicy(Policy):
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
 
         with torch.no_grad():
-            self.exploration.before_forward_pass(
-                model=self.model,
-                obs_batch=input_dict[SampleBatch.CUR_OBS],
-                state_batches=state_batches,
-                seq_lens=self._convert_to_tensor([1]),
-                timestep=timestep,
-                explore=explore)
-            dist_inputs, state_out = self.model(input_dict, state_batches, [1])
+            # Exploration hook before each forward pass.
+            self.exploration.before_compute_actions(
+                timestep=timestep, explore=explore)
 
-            return dist_inputs, self.dist_class, state_out
+            dist_inputs, state_out = self.model(input_dict, state_batches, [1])
+            action_dist = self.dist_class(dist_inputs, self.model)
+
+            return action_dist, state_out
 
     @override(Policy)
     def compute_log_likelihoods(self,
@@ -158,7 +154,6 @@ class TorchPolicy(Policy):
                     prev_reward_batch=prev_reward_batch,
                     is_training=False
                 )
-            action_dist = dist_class(dist_inputs, self.model)
             action_tensor = self._lazy_tensor_dict({
                 SampleBatch.ACTIONS: actions
             })

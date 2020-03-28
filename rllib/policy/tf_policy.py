@@ -61,6 +61,7 @@ class TFPolicy(Policy):
                  sampled_action_logp=None,
                  action_input=None,
                  log_likelihood=None,
+                 action_distribution=None,
                  #distribution_inputs=None,
                  #dist_class=None,
                  state_inputs=None,
@@ -99,6 +100,9 @@ class TFPolicy(Policy):
                 logp/log-likelihood calculations.
             log_likelihood (Optional[Tensor]): Tensor to calculate the
                 log_likelihood (given action_input and obs_input).
+            action_distribution (Optional[ActionDistribution): An optional
+                action distribution object to use for default action sampling
+                behavior (through the Exploration object).
             #distribution_inputs (Optional[Tensor]): Tensor to calculate
             #    only the distribution inputs.
             state_inputs (list): list of RNN state input Tensors.
@@ -136,6 +140,7 @@ class TFPolicy(Policy):
                                      if self._sampled_action_logp is not None
                                      else None)
         self._action_input = action_input  # For logp calculations.
+        self._action_distribution = action_distribution
         self._log_likelihood = log_likelihood
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
@@ -168,10 +173,11 @@ class TFPolicy(Policy):
                 "seq_lens tensor must be given if state inputs are defined")
 
         # The log-likelihood calculator op.
-        self._log_likelihood = log_likelihood
-        ## The distribution inputs calculator op.
-        #self._distribution_inputs = distribution_inputs
-        #self.dist_class = dist_class
+        self._log_likelihood = None
+        if self._action_distribution is not None and \
+                self._action_input is not None:
+            self._log_likelihood = self._action_distribution.logp(
+                self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -294,12 +300,11 @@ class TFPolicy(Policy):
             raise ValueError("Cannot return distribution_inputs w/o a "
                              "self.dist_class!")
 
+        # Exploration hook before each forward pass.
         self.exploration.before_compute_actions(
-            timestep=timestep,
-            explore=explore,
-            tf_sess=self.get_session())
+            timestep=timestep, explore=explore, tf_sess=self.get_session())
 
-        builder = TFRunBuilder(self._sess, "compute_distribution_inputs")
+        builder = TFRunBuilder(self._sess, "compute_action_distribution")
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
             raise ValueError(
@@ -336,6 +341,10 @@ class TFPolicy(Policy):
         if self._log_likelihood is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
                              "self._log_likelihood op!")
+
+        # Exploration hook before each forward pass.
+        self.exploration.before_compute_actions(
+            explore=False, tf_sess=self.get_session())
 
         builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
         # Feed actions (for which we want logp values) into graph.
@@ -588,9 +597,10 @@ class TFPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
 
-        # Call the exploration before_compute_actions hook.
+        # Exploration hook before each forward pass.
         self.exploration.before_compute_actions(
-            timestep=self.global_timestep, tf_sess=self.get_session())
+            timestep=self.global_timestep, explore=explore,
+            tf_sess=self.get_session())
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):

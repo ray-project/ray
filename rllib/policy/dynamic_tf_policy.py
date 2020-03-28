@@ -189,10 +189,10 @@ class DynamicTFPolicy(TFPolicy):
                 explore=explore,
                 is_training=self._input_dict["is_training"])
         else:
-            # Only the distribution-inputs generation is customized,
+            # Only the distribution generation is customized,
             # sampling will happen through our exploration object.
             if action_distribution_fn:
-                dist_inputs, dist_class, self._state_out = \
+                action_dist, self._state_out = \
                     action_distribution_fn(
                         self, self.model,
                         obs_batch=self._input_dict[SampleBatch.CUR_OBS],
@@ -208,12 +208,12 @@ class DynamicTFPolicy(TFPolicy):
             else:
                 dist_inputs, self._state_out = self.model(
                     self._input_dict, self._state_in, self._seq_lens)
+                action_dist = dist_class(dist_inputs, self.model)
 
             # Using exploration to get final action (e.g. via sampling).
             sampled_action, sampled_action_logp = \
                 self.exploration.get_exploration_action(
-                    distribution_inputs=dist_inputs,
-                    action_dist_class=dist_class,
+                    action_distribution=action_dist,
                     timestep=timestep,
                     explore=explore)
 
@@ -225,12 +225,11 @@ class DynamicTFPolicy(TFPolicy):
             batch_divisibility_req = 1
 
         # Generate the log-likelihood op.
-        log_likelihood = None
-        # Create log_likelihood, iff we have a distribution class and its
-        # inputs.
-        if dist_class is not None and dist_inputs is not None:
-            log_likelihood = \
-                dist_class(dist_inputs, self.model).logp(action_input)
+        #log_likelihood = None
+        ## Create log_likelihood, iff we have a distribution class and its
+        ## inputs.
+        #if action_dist is not None:
+        #    log_likelihood = action_dist.logp(action_input)
 
         super().__init__(
             obs_space,
@@ -241,9 +240,10 @@ class DynamicTFPolicy(TFPolicy):
             action_input=action_input,  # for logp calculations
             sampled_action=sampled_action,
             sampled_action_logp=sampled_action_logp,
-            log_likelihood=log_likelihood,
-            distribution_inputs=dist_inputs,
-            dist_class=dist_class,
+            #log_likelihood=log_likelihood,
+            #distribution_inputs=dist_inputs,
+            #dist_class=dist_class,
+            action_distribution=action_dist,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,

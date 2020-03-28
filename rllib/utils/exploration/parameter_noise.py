@@ -126,24 +126,11 @@ class ParameterNoise(Exploration):
         self.episode_started = False
 
     @override(Exploration)
-<<<<<<< HEAD
-    def before_forward_pass(self,
-                            obs_batch,
-                            *,
-                            state_batches=None,
-                            seq_lens=None,
-                            prev_action_batch=None,
-                            prev_reward_batch=None,
-                            timestep=None,
-                            explore=None,
-                            tf_sess=None):
-=======
     def before_compute_actions(self,
                                *,
                                timestep=None,
                                explore=None,
                                tf_sess=None):
->>>>>>> exploration_api_minimal_param_noise
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
         if self.episode_started:
@@ -161,15 +148,13 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               distribution_inputs,
-                               action_dist_class,
+                               action_distribution,
                                timestep,
                                explore=True):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            distribution_inputs=distribution_inputs,
-            action_dist_class=action_dist_class,
+            action_distribution=action_distribution,
             timestep=timestep,
             explore=explore)
 

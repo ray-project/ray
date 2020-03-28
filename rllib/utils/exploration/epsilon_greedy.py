@@ -1,5 +1,6 @@
 from typing import Union
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration, TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
@@ -57,17 +58,17 @@ class EpsilonGreedy(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
 
+        q_values = action_distribution.inputs
         if self.framework == "tf":
-            return self._get_tf_exploration_action_op(distribution_inputs,
-                                                      explore, timestep)
+            return self._get_tf_exploration_action_op(
+                q_values, explore, timestep)
         else:
-            return self._get_torch_exploration_action(distribution_inputs,
-                                                      explore, timestep)
+            return self._get_torch_exploration_action(
+                q_values, explore, timestep)
 
     def _get_tf_exploration_action_op(self, q_values, explore, timestep):
         """TF method to produce the tf op for an epsilon exploration action.

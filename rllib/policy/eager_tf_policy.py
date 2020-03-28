@@ -395,12 +395,8 @@ def build_eager_tf_policy(name,
             seq_lens = tf.ones(n, dtype=tf.int32)
 
             # Exploration hook before each forward pass.
-            self.exploration.before_forward_pass(
-                obs_batch=obs_batch,
-                state_batches=state_batches,
-                seq_lens=seq_lens,
-                timestep=timestep,
-                explore=explore)
+            self.exploration.before_compute_actions(
+                timestep=timestep, explore=explore)
 
             # Custom forward pass to get the action dist inputs.
             if action_distribution_fn:
