@@ -17,7 +17,7 @@ import {
   Dialog,
   DialogContent,
   Link,
-  Grid
+  Grid,
 } from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
@@ -37,23 +37,23 @@ const styles = (theme: Theme) =>
     table: {
       marginTop: theme.spacing(1),
       height: "700px",
-      overflowY: "auto"
+      overflowY: "auto",
     },
     cell: {
       padding: theme.spacing(1),
       textAlign: "right",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
+        paddingRight: theme.spacing(1),
+      },
     },
     checkboxRoot: {
       height: "500px",
       overflowY: "auto",
-      overflowX: "auto"
+      overflowX: "auto",
     },
     paramChecklist: {
-      marginBottom: theme.spacing(2)
-    }
+      marginBottom: theme.spacing(2),
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
@@ -68,7 +68,7 @@ type State = {
   paramColumns: string[];
   errorTrial: string;
   open: boolean;
-}
+};
 
 const mapDispatchToProps = dashboardActions;
 
@@ -87,7 +87,7 @@ class TuneTable extends React.Component<
     metricColumns: [],
     paramColumns: [],
     errorTrial: "",
-    open: false
+    open: false,
   };
 
   onColumnClick = (column: keyof TuneTrial, metricParamColumn?: string) => {
@@ -125,20 +125,20 @@ class TuneTable extends React.Component<
     }
     this.setState({
       open: true,
-      errorTrial: key
+      errorTrial: key,
     });
   };
 
   handleClose = () => {
     this.setState({
-      open: false
+      open: false,
     });
   };
 
   sortedCell = (
     name: keyof TuneTrial,
     chosenMetricParam?: string,
-    index?: number
+    index?: number,
   ) => {
     const { tuneInfo, classes } = this.props;
     const { sortedColumn, ascending, metricParamColumn } = this.state;
@@ -219,18 +219,18 @@ class TuneTable extends React.Component<
   };
 
   handleMetricChoiceChange = (name: string) => (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     let { metricColumns } = this.state;
     if (event.target.checked) {
       metricColumns.push(name);
       this.setState({
-        metricColumns: metricColumns
+        metricColumns: metricColumns,
       });
     } else {
-      metricColumns = metricColumns.filter(value => value !== name);
+      metricColumns = metricColumns.filter((value) => value !== name);
       this.setState({
-        metricColumns: metricColumns
+        metricColumns: metricColumns,
       });
     }
   };
@@ -243,7 +243,7 @@ class TuneTable extends React.Component<
         <FormControl>
           <FormLabel component="legend">Select Metrics </FormLabel>
           <FormGroup>
-            {metricNames.map(value => (
+            {metricNames.map((value) => (
               <FormControlLabel
                 control={
                   <Checkbox
@@ -263,18 +263,18 @@ class TuneTable extends React.Component<
   };
 
   handleParamChoiceChange = (name: string) => (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     let { paramColumns } = this.state;
     if (event.target.checked) {
       paramColumns.push(name);
       this.setState({
-        paramColumns: paramColumns
+        paramColumns: paramColumns,
       });
     } else {
-      paramColumns = paramColumns.filter(value => value !== name);
+      paramColumns = paramColumns.filter((value) => value !== name);
       this.setState({
-        paramColumns: paramColumns
+        paramColumns: paramColumns,
       });
     }
   };
@@ -287,7 +287,7 @@ class TuneTable extends React.Component<
         <FormControl className={classes.paramChecklist}>
           <FormLabel component="legend">Select Parameters </FormLabel>
           <FormGroup>
-            {paramNames.map(value => (
+            {paramNames.map((value) => (
               <FormControlLabel
                 control={
                   <Checkbox
@@ -327,7 +327,7 @@ class TuneTable extends React.Component<
     if (paramOptions) {
       if (paramColumns.length === 0) {
         this.setState({
-          paramColumns: paramNames.slice(0, 3)
+          paramColumns: paramNames.slice(0, 3),
         });
       }
       viewableParams = paramColumns;
@@ -342,7 +342,7 @@ class TuneTable extends React.Component<
     if (metricOptions) {
       if (metricColumns.length === 0) {
         this.setState({
-          metricColumns: metricNames.slice(0, 3)
+          metricColumns: metricNames.slice(0, 3),
         });
       }
       viewableMetrics = metricColumns;
@@ -371,11 +371,11 @@ class TuneTable extends React.Component<
                   {this.sortedCell("job_id")}
                   {this.sortedCell("start_time")}
                   {viewableParams.map((value, index) =>
-                    this.sortedCell("params", value, index)
+                    this.sortedCell("params", value, index),
                   )}
                   {this.sortedCell("status")}
                   {viewableMetrics.map((value, index) =>
-                    this.sortedCell("metrics", value, index)
+                    this.sortedCell("metrics", value, index),
                   )}
                   <TableCell className={classes.cell} key="error">
                     Error
