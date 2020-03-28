@@ -87,49 +87,49 @@ Algorithms
 
 *  High-throughput architectures
 
-   -  |tensorflow| `Distributed Prioritized Experience Replay (Ape-X) <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
+   -  |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
-   -  |tensorflow| `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
+   -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
-   -  |tensorflow| `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
+   -  |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
-   -  |pytorch| `Decentralized Distributed Proximal Policy Optimization (DD-PPO) <rllib-algorithms.html#decentralized-distributed-proximal-policy-optimization-dd-ppo>`__
+   -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
-   -  |pytorch| `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
+   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
 *  Gradient-based
 
-   -  |pytorch| |tensorflow| `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
+   -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
 
-   -  |tensorflow| `Deep Deterministic Policy Gradients (DDPG, TD3) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg-td3>`__
+   -  |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
-   -  |tensorflow| `Deep Q Networks (DQN, Rainbow, Parametric DQN) <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__
+   -  |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
-   -  |pytorch| |tensorflow| `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
+   -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
-   -  |pytorch| |tensorflow| `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
+   -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
-   -  |tensorflow| `Soft Actor Critic (SAC) <rllib-algorithms.html#soft-actor-critic-sac>`__
+   -  |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
 *  Derivative-free
 
-   -  |tensorflow| `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
+   -  |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
-   -  |tensorflow| `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
+   -  |tensorflow| :ref:`Evolution Strategies <es>`
 
 *  Multi-agent specific
 
-   -  |pytorch| `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
-   -  |tensorflow| `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <rllib-algorithms.html#multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>`__
+   -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
+   -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
 
 *  Offline
 
-   -  |tensorflow| `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
+   -  |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 *  Contextual bandits
 
-   -  |pytorch| `Linear Upper Confidence Bound (contrib/LinUCB) <rllib-algorithms.html#linear-upper-confidence-bound-contrib-linucb>`__
-   -  |pytorch| `Linear Thompson Sampling (contrib/LinTS) <rllib-algorithms.html#linear-thompson-sampling-contrib-lints>`__
+   -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
+   -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
 
 Offline Datasets
 ----------------
