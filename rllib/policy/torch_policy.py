@@ -84,8 +84,7 @@ class TorchPolicy(Policy):
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
             # Call the exploration before_compute_actions hook.
-            self.exploration.before_compute_actions(
-                timestep=timestep, tf_sess=self.get_session())
+            self.exploration.before_compute_actions(timestep=timestep)
 
             model_out = self.model(input_dict, state_batches,
                                    self._convert_to_tensor([1]))
