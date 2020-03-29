@@ -3,6 +3,7 @@ logger = logging.getLogger(__name__)
 
 TorchTrainer = None
 TrainingOperator = None
+BaseTorchTrainable = None
 
 try:
     import torch  # noqa: F401
