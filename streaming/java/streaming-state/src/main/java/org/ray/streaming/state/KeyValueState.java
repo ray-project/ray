@@ -16,21 +16,14 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde;
+package org.ray.streaming.state;
 
 /**
- * Key Map Serialization and Deserialization.
+ * Key Value State interface.
  */
-public interface IKMapStoreSerDe<K, S, T> {
+public interface KeyValueState<K, V> {
 
-  byte[] serKey(K key);
+  V get(K key);
 
-  byte[] serUKey(S uk);
-
-  S deSerUKey(byte[] ukArray);
-
-  byte[] serUValue(T uv);
-
-  T deSerUValue(byte[] uvArray);
-
+  void put(K k, V v);
 }

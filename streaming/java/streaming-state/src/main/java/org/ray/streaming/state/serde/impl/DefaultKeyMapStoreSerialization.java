@@ -18,14 +18,14 @@
 
 package org.ray.streaming.state.serde.impl;
 
-import org.ray.streaming.state.serde.IKMapStoreSerDe;
+import org.ray.streaming.state.serde.KeyMapStoreSerialization;
 import org.ray.streaming.state.serde.SerializationHelper;
 
 /**
  * Default Key Map Serialization and Deserialization.
  */
-public class DefaultKMapStoreSerDe<K, S, T> extends AbstractSerDe implements
-    IKMapStoreSerDe<K, S, T> {
+public class DefaultKeyMapStoreSerialization<K, S, T> extends AbstractSerialization implements
+    KeyMapStoreSerialization<K, S, T> {
 
   @Override
   public byte[] serKey(K key) {

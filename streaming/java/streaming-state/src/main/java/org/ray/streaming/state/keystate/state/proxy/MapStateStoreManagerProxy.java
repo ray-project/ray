@@ -19,7 +19,7 @@
 package org.ray.streaming.state.keystate.state.proxy;
 
 import java.util.Map;
-import org.ray.streaming.state.IKVState;
+import org.ray.streaming.state.KeyValueState;
 import org.ray.streaming.state.backend.KeyStateBackend;
 import org.ray.streaming.state.keystate.desc.MapStateDescriptor;
 import org.ray.streaming.state.keystate.state.MapState;
@@ -30,7 +30,7 @@ import org.ray.streaming.state.strategy.TransactionStateStoreManagerProxy;
  * This class defines MapState Wrapper, connecting state and backend.
  */
 public class MapStateStoreManagerProxy<K, V> extends
-    TransactionStateStoreManagerProxy<Map<K, V>> implements IKVState<String, Map<K, V>> {
+    TransactionStateStoreManagerProxy<Map<K, V>> implements KeyValueState<String, Map<K, V>> {
 
   private final MapStateImpl<K, V> mapState;
 

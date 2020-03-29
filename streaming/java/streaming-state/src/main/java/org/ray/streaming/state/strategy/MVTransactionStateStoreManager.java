@@ -26,14 +26,14 @@ import java.util.Map;
 import java.util.Map.Entry;
 import org.ray.streaming.state.StateException;
 import org.ray.streaming.state.StorageRecord;
-import org.ray.streaming.state.store.IKVStore;
+import org.ray.streaming.state.store.KeyValueStore;
 
 /**
  * This class define the multi-version store strategy, which leverages external storage's mvcc.
  */
 public class MVTransactionStateStoreManager<V> extends AbstractTransactionStateStoreManager<V> {
 
-  public MVTransactionStateStoreManager(IKVStore<String, Map<Long, byte[]>> kvStore) {
+  public MVTransactionStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> kvStore) {
     super(kvStore);
   }
 

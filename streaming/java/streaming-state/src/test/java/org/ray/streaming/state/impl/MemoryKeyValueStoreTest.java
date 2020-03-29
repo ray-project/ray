@@ -23,7 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.ray.streaming.state.backend.AbstractStateBackend;
 import org.ray.streaming.state.backend.StateBackendBuilder;
-import org.ray.streaming.state.store.IKVStore;
+import org.ray.streaming.state.store.KeyValueStore;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -31,23 +31,23 @@ import org.testng.annotations.Test;
 public class MemoryKeyValueStoreTest {
 
   private AbstractStateBackend stateBackend;
-  private IKVStore<String, String> ikvStore;
+  private KeyValueStore<String, String> KeyValueStore;
 
   @BeforeClass
   public void setUp() {
     Map<String, String> config = new HashMap<>();
     stateBackend = StateBackendBuilder.buildStateBackend(config);
-    ikvStore = stateBackend.getKeyValueStore("kepler_hlg_ut");
+    KeyValueStore = stateBackend.getKeyValueStore("kepler_hlg_ut");
   }
 
   @Test
   public void testCase() {
     try {
-      ikvStore.put("hello", "world");
-      Assert.assertEquals(ikvStore.get("hello"), "world");
-      ikvStore.put("hello", "world1");
-      Assert.assertEquals(ikvStore.get("hello"), "world1");
-      Assert.assertNull(ikvStore.get("hello1"));
+      KeyValueStore.put("hello", "world");
+      Assert.assertEquals(KeyValueStore.get("hello"), "world");
+      KeyValueStore.put("hello", "world1");
+      Assert.assertEquals(KeyValueStore.get("hello"), "world1");
+      Assert.assertNull(KeyValueStore.get("hello1"));
     } catch (IOException e) {
       e.printStackTrace();
     }

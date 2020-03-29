@@ -29,8 +29,8 @@ import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor.DescType;
 import org.ray.streaming.state.keystate.state.proxy.ListStateStoreManagerProxy;
 import org.ray.streaming.state.keystate.state.proxy.MapStateStoreManagerProxy;
 import org.ray.streaming.state.keystate.state.proxy.ValueStateStoreManagerProxy;
-import org.ray.streaming.state.store.IKeyMapStore;
-import org.ray.streaming.state.store.IKVStore;
+import org.ray.streaming.state.store.KeyMapStore;
+import org.ray.streaming.state.store.KeyValueStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +55,7 @@ public abstract class TransactionKeyStateBackend implements TransactionStateStor
   /**
    * tablename, IKVStore key, checkpointId, content
    */
-  protected Map<String, IKVStore<String, Map<Long, byte[]>>> backStorageCache;
+  protected Map<String, KeyValueStore<String, Map<Long, byte[]>>> backStorageCache;
   private AbstractStateBackend backend;
 
   public TransactionKeyStateBackend(AbstractStateBackend backend) {
@@ -154,17 +154,17 @@ public abstract class TransactionKeyStateBackend implements TransactionStateStor
     }
   }
 
-  public IKVStore<String, Map<Long, byte[]>> getBackStorage(String tableName) {
+  public KeyValueStore<String, Map<Long, byte[]>> getBackStorage(String tableName) {
     if (this.backStorageCache.containsKey(tableName)) {
       return this.backStorageCache.get(tableName);
     } else {
-      IKeyMapStore<String, Long, byte[]> ikvStore = this.backend.getKeyMapStore(tableName);
+      KeyMapStore<String, Long, byte[]> ikvStore = this.backend.getKeyMapStore(tableName);
       this.backStorageCache.put(tableName, ikvStore);
       return ikvStore;
     }
   }
 
-  public IKVStore<String, Map<Long, byte[]>> getBackStorage(
+  public KeyValueStore<String, Map<Long, byte[]>> getBackStorage(
       AbstractStateDescriptor stateDescriptor) {
     String tableName = this.backend.getTableName(stateDescriptor);
     return getBackStorage(tableName);

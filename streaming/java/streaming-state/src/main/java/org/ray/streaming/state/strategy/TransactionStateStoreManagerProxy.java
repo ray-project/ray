@@ -23,7 +23,7 @@ import org.ray.streaming.state.TransactionStateStoreManager;
 import org.ray.streaming.state.backend.StateStrategy;
 import org.ray.streaming.state.backend.TransactionKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
-import org.ray.streaming.state.store.IKVStore;
+import org.ray.streaming.state.store.KeyValueStore;
 
 
 /**
@@ -41,7 +41,7 @@ public abstract class TransactionStateStoreManagerProxy<V> implements Transactio
   public TransactionStateStoreManagerProxy(TransactionKeyStateBackend keyStateBackend,
                                            AbstractStateDescriptor stateDescriptor) {
     this.keyStateBackend = keyStateBackend;
-    IKVStore<String, Map<Long, byte[]>> backStorage = keyStateBackend
+    KeyValueStore<String, Map<Long, byte[]>> backStorage = keyStateBackend
         .getBackStorage(stateDescriptor);
     StateStrategy stateStrategy = keyStateBackend.getStateStrategyEnum();
     switch (stateStrategy) {

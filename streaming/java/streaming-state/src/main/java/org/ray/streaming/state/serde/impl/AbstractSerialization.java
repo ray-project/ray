@@ -16,25 +16,31 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.store;
+package org.ray.streaming.state.serde.impl;
 
-import java.io.IOException;
-import java.io.Serializable;
+import com.google.common.hash.Hashing;
+import org.apache.commons.lang3.StringUtils;
+import org.ray.streaming.state.StateException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Key Value Store interface.
+ * AbstractSerDe. Generate row key.
  */
-public interface IKVStore<K, V> extends Serializable {
+public abstract class AbstractSerialization {
 
-  void put(K key, V value) throws IOException;
+  private static final Logger LOG = LoggerFactory.getLogger(AbstractSerialization.class);
 
-  V get(K key) throws IOException;
-
-  void remove(K key) throws IOException;
-
-  void flush() throws IOException;
-
-  void clearCache();
-
-  void close() throws IOException;
+  public String generateRowKeyPrefix(String key) {
+    if (StringUtils.isNotEmpty(key)) {
+      String md5 = Hashing.md5().hashUnencodedChars(key).toString();
+      if ("".equals(md5)) {
+        throw new StateException("Invalid VALUE to md5:" + key);
+      }
+      return StringUtils.substring(md5, 0, 4) + ":" + key;
+    } else {
+      LOG.warn("key is empty");
+      return key;
+    }
+  }
 }

@@ -21,12 +21,12 @@ package org.ray.streaming.state.store.impl;
 import com.google.common.collect.Maps;
 import java.io.IOException;
 import java.util.Map;
-import org.ray.streaming.state.store.IKVStore;
+import org.ray.streaming.state.store.KeyValueStore;
 
 /**
  * Memory Key Value Store.
  */
-public class MemoryKeyValueStore<K, V> implements IKVStore<K, V> {
+public class MemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
   private Map<K, V> memoryStore;
 

@@ -19,7 +19,7 @@
 package org.ray.streaming.state.keystate.state.proxy;
 
 import java.util.List;
-import org.ray.streaming.state.IKVState;
+import org.ray.streaming.state.KeyValueState;
 import org.ray.streaming.state.backend.TransactionKeyStateBackend;
 import org.ray.streaming.state.keystate.desc.ListStateDescriptor;
 import org.ray.streaming.state.keystate.state.ListState;
@@ -31,7 +31,7 @@ import org.ray.streaming.state.strategy.TransactionStateStoreManagerProxy;
  * This class defines ListState Wrapper, connecting state and backend.
  */
 public class ListStateStoreManagerProxy<T> extends
-    TransactionStateStoreManagerProxy<List<T>> implements IKVState<String, List<T>> {
+    TransactionStateStoreManagerProxy<List<T>> implements KeyValueState<String, List<T>> {
 
   private final ListState<T> listState;
 

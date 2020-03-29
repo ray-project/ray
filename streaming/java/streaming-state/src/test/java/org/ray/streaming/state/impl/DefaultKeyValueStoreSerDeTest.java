@@ -16,16 +16,28 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde;
+package org.ray.streaming.state.impl;
 
-/**
- * Key Value Serialization and Deserialization.
- */
-public interface IKVStoreSerDe<K, V> {
+import org.ray.streaming.state.serde.impl.DefaultKeyValueStoreSerialization;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
-  byte[] serKey(K key);
+public class DefaultKeyValueStoreSerDeTest {
 
-  byte[] serValue(V value);
+  DefaultKeyValueStoreSerialization<String, Integer> serDe = new DefaultKeyValueStoreSerialization<>();
+  byte[] ret;
 
-  V deSerValue(byte[] valueArray);
+  @Test
+  public void testSerKey() throws Exception {
+    ret = serDe.serKey("key");
+    String key = new String(ret);
+    Assert.assertEquals(key.indexOf("key"), 5);
+  }
+
+  @Test
+  public void testSerValue() throws Exception {
+    ret = serDe.serValue(5);
+    Assert.assertEquals(ret.length, 2);
+    Assert.assertEquals((int) serDe.deSerValue(ret), 5);
+  }
 }

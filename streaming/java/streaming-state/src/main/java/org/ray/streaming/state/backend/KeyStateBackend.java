@@ -48,7 +48,7 @@ public class KeyStateBackend extends TransactionKeyStateBackend {
   /**
    * value State
    */
-  protected <T> ValueStateStoreManagerProxy<T> newValueStateFacade(
+  protected <T> ValueStateStoreManagerProxy<T> newValueStateProxy(
       ValueStateDescriptor<T> stateDescriptor) {
     return new ValueStateStoreManagerProxy<>(this, stateDescriptor);
   }
@@ -58,9 +58,9 @@ public class KeyStateBackend extends TransactionKeyStateBackend {
     if (valueManagerProxyHashMap.containsKey(desc)) {
       return valueManagerProxyHashMap.get(desc).getValueState();
     } else {
-      ValueStateStoreManagerProxy<T> valueStateFacade = newValueStateFacade(stateDescriptor);
-      valueManagerProxyHashMap.put(desc, valueStateFacade);
-      return valueStateFacade.getValueState();
+      ValueStateStoreManagerProxy<T> valueStateProxy = newValueStateProxy(stateDescriptor);
+      valueManagerProxyHashMap.put(desc, valueStateProxy);
+      return valueStateProxy.getValueState();
     }
   }
 
@@ -75,8 +75,8 @@ public class KeyStateBackend extends TransactionKeyStateBackend {
   public <T> ListState<T> getListState(ListStateDescriptor<T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();
     if (listManagerProxyHashMap.containsKey(desc)) {
-      ListStateStoreManagerProxy<T> listStateFacade = listManagerProxyHashMap.get(desc);
-      return listStateFacade.getListState();
+      ListStateStoreManagerProxy<T> listStateProxy = listManagerProxyHashMap.get(desc);
+      return listStateProxy.getListState();
     } else {
       ListStateStoreManagerProxy<T> listStateProxy = newListStateProxy(stateDescriptor);
       listManagerProxyHashMap.put(desc, listStateProxy);
@@ -87,7 +87,7 @@ public class KeyStateBackend extends TransactionKeyStateBackend {
   /**
    * MAP state
    */
-  protected <S, T> MapStateStoreManagerProxy<S, T> newMapStateFacade(
+  protected <S, T> MapStateStoreManagerProxy<S, T> newMapStateProxy(
       MapStateDescriptor<S, T> stateDescriptor) {
     return new MapStateStoreManagerProxy<>(this, stateDescriptor);
   }
@@ -95,12 +95,12 @@ public class KeyStateBackend extends TransactionKeyStateBackend {
   public <S, T> MapState<S, T> getMapState(MapStateDescriptor<S, T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();
     if (mapManagerProxyHashMap.containsKey(desc)) {
-      MapStateStoreManagerProxy<S, T> mapStateFacade = mapManagerProxyHashMap.get(desc);
-      return mapStateFacade.getMapState();
+      MapStateStoreManagerProxy<S, T> mapStateProxy = mapManagerProxyHashMap.get(desc);
+      return mapStateProxy.getMapState();
     } else {
-      MapStateStoreManagerProxy<S, T> mapStateFacade = newMapStateFacade(stateDescriptor);
-      mapManagerProxyHashMap.put(desc, mapStateFacade);
-      return mapStateFacade.getMapState();
+      MapStateStoreManagerProxy<S, T> mapStateProxy = newMapStateProxy(stateDescriptor);
+      mapManagerProxyHashMap.put(desc, mapStateProxy);
+      return mapStateProxy.getMapState();
     }
   }
 
@@ -120,14 +120,14 @@ public class KeyStateBackend extends TransactionKeyStateBackend {
   }
 
   public void close() {
-    for (ValueStateStoreManagerProxy facade : valueManagerProxyHashMap.values()) {
-      facade.close();
+    for (ValueStateStoreManagerProxy proxy : valueManagerProxyHashMap.values()) {
+      proxy.close();
     }
-    for (ListStateStoreManagerProxy facade : listManagerProxyHashMap.values()) {
-      facade.close();
+    for (ListStateStoreManagerProxy proxy : listManagerProxyHashMap.values()) {
+      proxy.close();
     }
-    for (MapStateStoreManagerProxy facade : mapManagerProxyHashMap.values()) {
-      facade.close();
+    for (MapStateStoreManagerProxy proxy : mapManagerProxyHashMap.values()) {
+      proxy.close();
     }
   }
 }

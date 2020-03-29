@@ -16,17 +16,21 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.store;
-
-import java.io.IOException;
-import java.util.Map;
+package org.ray.streaming.state.serde;
 
 /**
- * Key Map Store interface.
+ * Key Map Serialization and Deserialization.
  */
-public interface IKeyMapStore<K, S, T> extends IKVStore<K, Map<S, T>> {
+public interface KeyMapStoreSerialization<K, S, T> {
 
-  void put(K key, S subKey, T value) throws IOException;
+  byte[] serKey(K key);
 
-  T get(K key, S subKey) throws IOException;
+  byte[] serUKey(S uk);
+
+  S deSerUKey(byte[] ukArray);
+
+  byte[] serUValue(T uv);
+
+  T deSerUValue(byte[] uvArray);
+
 }

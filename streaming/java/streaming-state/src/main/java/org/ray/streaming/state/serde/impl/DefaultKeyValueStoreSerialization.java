@@ -16,28 +16,30 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.impl;
+package org.ray.streaming.state.serde.impl;
 
-import org.ray.streaming.state.serde.impl.DefaultKVStoreSerDe;
-import org.testng.Assert;
-import org.testng.annotations.Test;
+import org.ray.streaming.state.serde.KeyValueStoreSerialization;
+import org.ray.streaming.state.serde.SerializationHelper;
 
-public class DefaultKVStoreSerDeTest {
+/**
+ * KV Store Serialization and Deserialization.
+ */
+public class DefaultKeyValueStoreSerialization<K, V> extends AbstractSerialization
+    implements KeyValueStoreSerialization<K, V> {
 
-  DefaultKVStoreSerDe<String, Integer> serDe = new DefaultKVStoreSerDe<>();
-  byte[] ret;
-
-  @Test
-  public void testSerKey() throws Exception {
-    ret = serDe.serKey("key");
-    String key = new String(ret);
-    Assert.assertEquals(key.indexOf("key"), 5);
+  @Override
+  public byte[] serKey(K key) {
+    String keyWithPrefix = generateRowKeyPrefix(key.toString());
+    return keyWithPrefix.getBytes();
   }
 
-  @Test
-  public void testSerValue() throws Exception {
-    ret = serDe.serValue(5);
-    Assert.assertEquals(ret.length, 2);
-    Assert.assertEquals((int) serDe.deSerValue(ret), 5);
+  @Override
+  public byte[] serValue(V value) {
+    return SerializationHelper.object2Byte(value);
+  }
+
+  @Override
+  public V deSerValue(byte[] valueArray) {
+    return (V) SerializationHelper.byte2Object(valueArray);
   }
 }

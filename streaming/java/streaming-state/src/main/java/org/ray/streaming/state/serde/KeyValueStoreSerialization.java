@@ -16,31 +16,16 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde.impl;
-
-import com.google.common.hash.Hashing;
-import org.apache.commons.lang3.StringUtils;
-import org.ray.streaming.state.StateException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+package org.ray.streaming.state.serde;
 
 /**
- * AbstractSerDe. Generate row key.
+ * Key Value Serialization and Deserialization.
  */
-public abstract class AbstractSerDe {
+public interface KeyValueStoreSerialization<K, V> {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AbstractSerDe.class);
+  byte[] serKey(K key);
 
-  public String generateRowKeyPrefix(String key) {
-    if (StringUtils.isNotEmpty(key)) {
-      String md5 = Hashing.md5().hashUnencodedChars(key).toString();
-      if ("".equals(md5)) {
-        throw new StateException("Invalid VALUE to md5:" + key);
-      }
-      return StringUtils.substring(md5, 0, 4) + ":" + key;
-    } else {
-      LOG.warn("key is empty");
-      return key;
-    }
-  }
+  byte[] serValue(V value);
+
+  V deSerValue(byte[] valueArray);
 }

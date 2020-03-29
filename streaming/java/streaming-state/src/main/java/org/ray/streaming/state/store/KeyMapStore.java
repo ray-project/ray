@@ -16,14 +16,17 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state;
+package org.ray.streaming.state.store;
+
+import java.io.IOException;
+import java.util.Map;
 
 /**
- * Key Value State interface.
+ * Key Map Store interface.
  */
-public interface IKVState<K, V> {
+public interface KeyMapStore<K, S, T> extends KeyValueStore<K, Map<S, T>> {
 
-  V get(K key);
+  void put(K key, S subKey, T value) throws IOException;
 
-  void put(K k, V v);
+  T get(K key, S subKey) throws IOException;
 }

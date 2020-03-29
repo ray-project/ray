@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import org.ray.streaming.state.StateException;
 import org.ray.streaming.state.StorageRecord;
-import org.ray.streaming.state.store.IKVStore;
+import org.ray.streaming.state.store.KeyValueStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +38,7 @@ public class DualTransactionStateStoreManager<V> extends AbstractTransactionStat
 
   private static final Logger LOG = LoggerFactory.getLogger(DualTransactionStateStoreManager.class);
 
-  public DualTransactionStateStoreManager(IKVStore<String, Map<Long, byte[]>> backStore) {
+  public DualTransactionStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> backStore) {
     super(backStore);
   }
 

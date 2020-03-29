@@ -48,14 +48,14 @@ public class OperatorStateBackend extends TransactionKeyStateBackend {
   public <T> ListState<T> getSplitListState(ListStateDescriptor<T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();
     if (listManagerProxyHashMap.containsKey(desc)) {
-      ListStateStoreManagerProxy<T> listStateFacade = listManagerProxyHashMap.get(desc);
-      return listStateFacade.getListState();
+      ListStateStoreManagerProxy<T> listStateProxy = listManagerProxyHashMap.get(desc);
+      return listStateProxy.getListState();
     } else {
-      ListStateStoreManagerProxy<T> listStateFacade = newListStateStoreManagerProxy(
+      ListStateStoreManagerProxy<T> listStateProxy = newListStateStoreManagerProxy(
           stateDescriptor);
-      listManagerProxyHashMap.put(desc, listStateFacade);
-      ((OperatorStateImpl) (listStateFacade.getListState())).setSplit(true);
-      return listStateFacade.getListState();
+      listManagerProxyHashMap.put(desc, listStateProxy);
+      ((OperatorStateImpl) (listStateProxy.getListState())).setSplit(true);
+      return listStateProxy.getListState();
     }
   }
 
@@ -65,14 +65,14 @@ public class OperatorStateBackend extends TransactionKeyStateBackend {
   public <T> ListState<T> getUnionListState(ListStateDescriptor<T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();
     if (listManagerProxyHashMap.containsKey(desc)) {
-      ListStateStoreManagerProxy<T> listStateFacade = listManagerProxyHashMap.get(desc);
-      return listStateFacade.getListState();
+      ListStateStoreManagerProxy<T> listStateProxy = listManagerProxyHashMap.get(desc);
+      return listStateProxy.getListState();
     } else {
-      ListStateStoreManagerProxy<T> listStateFacade = newListStateStoreManagerProxy(
+      ListStateStoreManagerProxy<T> listStateProxy = newListStateStoreManagerProxy(
           stateDescriptor);
-      listManagerProxyHashMap.put(desc, listStateFacade);
-      ((OperatorStateImpl) (listStateFacade.getListState())).init();
-      return listStateFacade.getListState();
+      listManagerProxyHashMap.put(desc, listStateProxy);
+      ((OperatorStateImpl) (listStateProxy.getListState())).init();
+      return listStateProxy.getListState();
     }
   }
 }

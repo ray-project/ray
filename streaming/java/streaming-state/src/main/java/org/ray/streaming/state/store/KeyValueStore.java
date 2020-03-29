@@ -16,29 +16,25 @@
  * limitations under the License.
  */
 
-package org.ray.streaming.state.serde.impl;
+package org.ray.streaming.state.store;
 
-import org.ray.streaming.state.serde.IKVStoreSerDe;
-import org.ray.streaming.state.serde.SerializationHelper;
+import java.io.IOException;
+import java.io.Serializable;
 
 /**
- * KV Store Serialization and Deserialization.
+ * Key Value Store interface.
  */
-public class DefaultKVStoreSerDe<K, V> extends AbstractSerDe implements IKVStoreSerDe<K, V> {
+public interface KeyValueStore<K, V> extends Serializable {
 
-  @Override
-  public byte[] serKey(K key) {
-    String keyWithPrefix = generateRowKeyPrefix(key.toString());
-    return keyWithPrefix.getBytes();
-  }
+  void put(K key, V value) throws IOException;
 
-  @Override
-  public byte[] serValue(V value) {
-    return SerializationHelper.object2Byte(value);
-  }
+  V get(K key) throws IOException;
 
-  @Override
-  public V deSerValue(byte[] valueArray) {
-    return (V) SerializationHelper.byte2Object(valueArray);
-  }
+  void remove(K key) throws IOException;
+
+  void flush() throws IOException;
+
+  void clearCache();
+
+  void close() throws IOException;
 }

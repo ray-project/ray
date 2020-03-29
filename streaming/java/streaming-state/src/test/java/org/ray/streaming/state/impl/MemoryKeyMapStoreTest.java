@@ -24,7 +24,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.ray.streaming.state.backend.AbstractStateBackend;
 import org.ray.streaming.state.backend.StateBackendBuilder;
-import org.ray.streaming.state.store.IKeyMapStore;
+import org.ray.streaming.state.store.KeyMapStore;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -32,7 +32,7 @@ import org.testng.annotations.Test;
 public class MemoryKeyMapStoreTest {
 
   private AbstractStateBackend stateBackend;
-  private IKeyMapStore<String, String, String> IKeyMapStore;
+  private KeyMapStore<String, String, String> IKeyMapStore;
 
   @BeforeClass
   public void setUp() {

@@ -20,18 +20,18 @@ package org.ray.streaming.state.impl;
 
 import java.util.HashMap;
 import java.util.Map;
-import org.ray.streaming.state.serde.impl.DefaultKMapStoreSerDe;
+import org.ray.streaming.state.serde.impl.DefaultKeyMapStoreSerialization;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class DefaultKMapStoreSerDeTest {
+public class DefaultKeyMapStoreSerDeTest {
 
-  private DefaultKMapStoreSerDe<String, String, Map<String, String>> defaultKMapStoreSerDe;
+  private DefaultKeyMapStoreSerialization<String, String, Map<String, String>> defaultKMapStoreSerDe;
 
   @BeforeClass
   public void setUp() {
-    this.defaultKMapStoreSerDe = new DefaultKMapStoreSerDe<>();
+    this.defaultKMapStoreSerDe = new DefaultKeyMapStoreSerialization<>();
   }
 
   @Test

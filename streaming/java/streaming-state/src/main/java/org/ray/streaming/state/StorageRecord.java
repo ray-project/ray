@@ -51,9 +51,9 @@ public class StorageRecord<T> implements Serializable {
   @Override
   public String toString() {
     if (value != null) {
-      return "checkpointId:" + checkpointId + ", VALUE:" + value;
+      return "checkpointId:" + checkpointId + ", value:" + value;
     } else {
-      return "checkpointId:" + checkpointId + ", VALUE:null";
+      return "checkpointId:" + checkpointId + ", value:null";
     }
   }
 }

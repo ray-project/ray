@@ -21,11 +21,11 @@ package org.ray.streaming.state.strategy;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.ray.streaming.state.TransactionStateStoreManager;
 import org.ray.streaming.state.StateException;
 import org.ray.streaming.state.StorageRecord;
+import org.ray.streaming.state.TransactionStateStoreManager;
 import org.ray.streaming.state.serde.SerializationHelper;
-import org.ray.streaming.state.store.IKVStore;
+import org.ray.streaming.state.store.KeyValueStore;
 
 /**
  * This class defines the StoreManager Abstract class.
@@ -42,7 +42,7 @@ public abstract class AbstractTransactionStateStoreManager<V> implements
   /**
    * remote-storage
    */
-  protected IKVStore<String, Map<Long, byte[]>> kvStore;
+  protected KeyValueStore<String, Map<Long, byte[]>> kvStore;
 
   /**
    * read-only
@@ -50,7 +50,7 @@ public abstract class AbstractTransactionStateStoreManager<V> implements
   protected Map<Long, Map<String, byte[]>> middleStore = new ConcurrentHashMap<>();
   protected int keyGroupIndex = -1;
 
-  public AbstractTransactionStateStoreManager(IKVStore<String, Map<Long, byte[]>> backStore) {
+  public AbstractTransactionStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> backStore) {
     kvStore = backStore;
   }
 
