@@ -186,7 +186,7 @@ class Trainable:
     def default_resource_request(cls, config):
         """Provides a static resource requirement for the given configuration.
 
-        This can be overriden by sub-classes to set the correct trial resource
+        This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
         .. code-block:: python

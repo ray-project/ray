@@ -72,13 +72,14 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "has_resources() method")
 
-    def start_trial(self, trial, checkpoint=None):
+    def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
             trial (Trial): Trial to be started.
             checkpoint (Checkpoint): A Python object or path storing the state
             of trial.
+            train (bool): Whether or not to start training.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
@@ -211,7 +212,7 @@ class TrialExecutor:
         """Returns a string describing the total resources available."""
         raise NotImplementedError
 
-    def restore(self, trial, checkpoint=None):
+    def restore(self, trial, checkpoint=None, block=False):
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -220,6 +221,7 @@ class TrialExecutor:
         Args:
             trial (Trial): Trial to be restored.
             checkpoint (Checkpoint): Checkpoint to restore from.
+            block (bool): Whether or not to block on restore before returning.
 
         Returns:
             False if error occurred, otherwise return True.

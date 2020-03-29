@@ -1,7 +1,10 @@
+import logging
 import os
 
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.syncer import get_cloud_sync_client
+
+logger = logging.getLogger(__name__)
 
 
 class DurableTrainable(Trainable):
@@ -81,9 +84,14 @@ class DurableTrainable(Trainable):
         Args:
             checkpoint_path (str): Local path to checkpoint.
         """
+        try:
+            local_dirpath = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        except FileNotFoundError as e:
+            logger.warning("Trial %s: checkpoint path not found during "
+                           "garbage collection. See issue #6697.")
+        else:
+            self.storage_client.delete(self._storage_path(local_dirpath))
         super(DurableTrainable, self).delete_checkpoint(checkpoint_path)
-        local_dirpath = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self.storage_client.delete(self._storage_path(local_dirpath))
 
     def _create_storage_client(self):
         """Returns a storage client."""

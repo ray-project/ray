@@ -186,7 +186,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 class _MockTrialExecutor(TrialExecutor):
-    def start_trial(self, trial, checkpoint_obj=None):
+    def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
         trial.status = Trial.RUNNING
@@ -196,7 +196,7 @@ class _MockTrialExecutor(TrialExecutor):
         if stop_logger:
             trial.logger_running = False
 
-    def restore(self, trial, checkpoint=None):
+    def restore(self, trial, checkpoint=None, block=False):
         pass
 
     def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
@@ -744,6 +744,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     TrialScheduler.CONTINUE)
         pbt.reset_stats()
         return pbt, runner
+
+    def testPerturbationCheckpointConflict(self):
+        pbt, runner = self.basicSetup()
 
     def testCheckpointsMostPromisingTrials(self):
         pbt, runner = self.basicSetup()
