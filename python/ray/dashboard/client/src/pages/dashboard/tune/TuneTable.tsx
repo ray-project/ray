@@ -1,5 +1,12 @@
 import {
+  Checkbox,
   createStyles,
+  FormControl,
+  FormControlLabel,
+  FormGroup,
+  FormLabel,
+  Grid,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -7,24 +14,16 @@ import {
   TableRow,
   TableSortLabel,
   Theme,
-  withStyles,
   WithStyles,
-  FormControl,
-  Checkbox,
-  FormGroup,
-  FormLabel,
-  FormControlLabel,
-  Dialog,
-  DialogContent,
-  Link,
-  Grid,
+  withStyles,
 } from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
 import { TuneTrial } from "../../../api";
+import DialogWithTitle from "../../../common/DialogWithTitle";
+import NumberedLines from "../../../common/NumberedLines";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import NumberedLines from "../../../common/NumberedLines";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -120,7 +119,7 @@ class TuneTable extends React.Component<
       .join(" ");
 
   handleOpen = (key: string | number) => {
-    if (typeof key == "number") {
+    if (typeof key === "number") {
       key = key.toString();
     }
     this.setState({
@@ -239,26 +238,24 @@ class TuneTable extends React.Component<
     const { metricColumns } = this.state;
 
     return (
-      <div>
-        <FormControl>
-          <FormLabel component="legend">Select Metrics </FormLabel>
-          <FormGroup>
-            {metricNames.map((value) => (
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={metricColumns.includes(value)}
-                    onChange={this.handleMetricChoiceChange(value)}
-                    value={value}
-                    color="primary"
-                  />
-                }
-                label={value}
-              />
-            ))}
-          </FormGroup>
-        </FormControl>
-      </div>
+      <FormControl>
+        <FormLabel component="legend">Select Metrics </FormLabel>
+        <FormGroup>
+          {metricNames.map((value) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={metricColumns.includes(value)}
+                  onChange={this.handleMetricChoiceChange(value)}
+                  value={value}
+                  color="primary"
+                />
+              }
+              label={value}
+            />
+          ))}
+        </FormGroup>
+      </FormControl>
     );
   };
 
@@ -283,26 +280,24 @@ class TuneTable extends React.Component<
     const { classes } = this.props;
     const { paramColumns } = this.state;
     return (
-      <div>
-        <FormControl className={classes.paramChecklist}>
-          <FormLabel component="legend">Select Parameters </FormLabel>
-          <FormGroup>
-            {paramNames.map((value) => (
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={paramColumns.includes(value)}
-                    onChange={this.handleParamChoiceChange(value)}
-                    value={value}
-                    color="primary"
-                  />
-                }
-                label={value}
-              />
-            ))}
-          </FormGroup>
-        </FormControl>
-      </div>
+      <FormControl className={classes.paramChecklist}>
+        <FormLabel component="legend">Select Parameters </FormLabel>
+        <FormGroup>
+          {paramNames.map((value) => (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={paramColumns.includes(value)}
+                  onChange={this.handleParamChoiceChange(value)}
+                  value={value}
+                  color="primary"
+                />
+              }
+              label={value}
+            />
+          ))}
+        </FormGroup>
+      </FormControl>
     );
   };
 
@@ -430,8 +425,8 @@ class TuneTable extends React.Component<
             </Table>
           </Grid>
         </Grid>
-        <Dialog fullWidth maxWidth="md" open={open} onClose={this.handleClose}>
-          <DialogContent>
+        {open && (
+          <DialogWithTitle handleClose={this.handleClose} title="Error Log">
             {open && (
               <NumberedLines
                 lines={tuneInfo["trial_records"][errorTrial]["error"]
@@ -439,8 +434,8 @@ class TuneTable extends React.Component<
                   .split("\n")}
               />
             )}
-          </DialogContent>
-        </Dialog>
+          </DialogWithTitle>
+        )}
       </div>
     );
   }

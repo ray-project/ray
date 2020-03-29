@@ -1,44 +1,46 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import {
+  createStyles,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Theme,
+  withStyles,
+  WithStyles,
+} from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
+import DialogWithTitle from "../../../common/DialogWithTitle";
+import NumberedLines from "../../../common/NumberedLines";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
-import NumberedLines from "../../../common/NumberedLines";
-import Link from "@material-ui/core/Link";
-import Dialog from "@material-ui/core/Dialog";
-import DialogContent from "@material-ui/core/DialogContent";
 
 const styles = (theme: Theme) =>
   createStyles({
     table: {
-      marginTop: theme.spacing(1)
+      marginTop: theme.spacing(1),
     },
     cell: {
       padding: theme.spacing(1),
       textAlign: "center",
       "&:last-child": {
-        paddingRight: theme.spacing(1)
-      }
-    }
+        paddingRight: theme.spacing(1),
+      },
+    },
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  tuneInfo: state.dashboard.tuneInfo
+  tuneInfo: state.dashboard.tuneInfo,
 });
 
 const mapDispatchToProps = dashboardActions;
 
-interface State {
+type State = {
   currentError: string;
   open: boolean;
-}
+};
 
 class TuneErrors extends React.Component<
   WithStyles<typeof styles> &
@@ -48,19 +50,19 @@ class TuneErrors extends React.Component<
 > {
   state: State = {
     currentError: "",
-    open: false
+    open: false,
   };
 
   handleOpen = (key: string) => {
     this.setState({
       open: true,
-      currentError: key
+      currentError: key,
     });
   };
 
   handleClose = () => {
     this.setState({
-      open: false
+      open: false,
     });
   };
 
@@ -73,7 +75,7 @@ class TuneErrors extends React.Component<
     }
 
     return (
-      <div>
+      <React.Fragment>
         <Table className={classes.table}>
           <TableHead>
             <TableRow>
@@ -109,8 +111,8 @@ class TuneErrors extends React.Component<
               ))}
           </TableBody>
         </Table>
-        <Dialog fullWidth maxWidth="md" open={open} onClose={this.handleClose}>
-          <DialogContent>
+        {open && (
+          <DialogWithTitle handleClose={this.handleClose} title="Error Log">
             {open && (
               <NumberedLines
                 lines={tuneInfo["errors"][currentError]["text"]
@@ -118,14 +120,14 @@ class TuneErrors extends React.Component<
                   .split("\n")}
               />
             )}
-          </DialogContent>
-        </Dialog>
-      </div>
+          </DialogWithTitle>
+        )}
+      </React.Fragment>
     );
   }
 }
 
 export default connect(
   mapStateToProps,
-  mapDispatchToProps
+  mapDispatchToProps,
 )(withStyles(styles)(TuneErrors));

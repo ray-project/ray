@@ -13,9 +13,9 @@ import { connect } from "react-redux";
 import { getTuneInfo } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
+import TuneErrors from "./TuneErrors";
 import TuneTable from "./TuneTable";
 import TuneTensorBoard from "./TuneTensorBoard";
-import TuneErrors from "./TuneErrors";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -88,12 +88,12 @@ class Tune extends React.Component<
 
     const { tabIndex } = this.state;
 
-    let tabs = [
+    const tabs = [
       { label: "Table", component: TuneTable },
       { label: "TensorBoard", component: TuneTensorBoard },
     ];
 
-    if (tuneInfo != null && Object.keys(tuneInfo["errors"]).length > 0) {
+    if (tuneInfo !== null && Object.keys(tuneInfo["errors"]).length > 0) {
       tabs.push({ label: "Errors", component: TuneErrors });
     }
 
