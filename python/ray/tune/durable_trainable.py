@@ -22,13 +22,14 @@ class DurableTrainable(Trainable):
 
     Attributes:
         remote_checkpoint_dir (str):  Upload directory (S3 or GS path).
+            If None, this class acts like a Trainable class.
         storage_client: Tune-internal interface for interacting with external
             storage.
 
     >>> tune.run(MyDurableTrainable, sync_to_driver=False)
     """
 
-    def __init__(self, remote_checkpoint_dir, *args, **kwargs):
+    def __init__(self, remote_checkpoint_dir=None, *args, **kwargs):
         """Initializes a DurableTrainable.
 
         Args:
@@ -59,8 +60,10 @@ class DurableTrainable(Trainable):
                                  "a sub-directory.")
 
         checkpoint_path = super(DurableTrainable, self).save(checkpoint_dir)
-        self.storage_client.sync_up(self.logdir, self.remote_checkpoint_dir)
-        self.storage_client.wait()
+        if self.remote_checkpoint_dir:
+            self.storage_client.sync_up(self.logdir,
+                                        self.remote_checkpoint_dir)
+            self.storage_client.wait()
         return checkpoint_path
 
     def restore(self, checkpoint_path):
@@ -71,8 +74,10 @@ class DurableTrainable(Trainable):
         Args:
             checkpoint_path (str): Local path to checkpoint.
         """
-        self.storage_client.sync_down(self.remote_checkpoint_dir, self.logdir)
-        self.storage_client.wait()
+        if self.remote_checkpoint_dir:
+            self.storage_client.sync_down(self.remote_checkpoint_dir,
+                                          self.logdir)
+            self.storage_client.wait()
         super(DurableTrainable, self).restore(checkpoint_path)
 
     def delete_checkpoint(self, checkpoint_path):
@@ -82,13 +87,16 @@ class DurableTrainable(Trainable):
             checkpoint_path (str): Local path to checkpoint.
         """
         super(DurableTrainable, self).delete_checkpoint(checkpoint_path)
-        local_dirpath = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self.storage_client.delete(self._storage_path(local_dirpath))
+        if self.remote_checkpoint_dir:
+            local_dirpath = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+            self.storage_client.delete(self._storage_path(local_dirpath))
 
     def _create_storage_client(self):
         """Returns a storage client."""
-        return get_cloud_sync_client(self.remote_checkpoint_dir)
+        if self.remote_checkpoint_dir:
+            return get_cloud_sync_client(self.remote_checkpoint_dir)
 
     def _storage_path(self, local_path):
-        rel_local_path = os.path.relpath(local_path, self.logdir)
-        return os.path.join(self.remote_checkpoint_dir, rel_local_path)
+        if self.remote_checkpoint_dir:
+            rel_local_path = os.path.relpath(local_path, self.logdir)
+            return os.path.join(self.remote_checkpoint_dir, rel_local_path)
