@@ -86,7 +86,7 @@ class DurableTrainable(Trainable):
         """
         try:
             local_dirpath = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logger.warning("Trial %s: checkpoint path not found during "
                            "garbage collection. See issue #6697.")
         else:
