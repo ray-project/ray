@@ -15,3 +15,4 @@ RUN pip install ConfigSpace==0.4.10
 RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost torch torchvision tensorboardX dragonfly-opt
 RUN pip install -U tabulate mlflow
 RUN pip install -U pytest-remotedata>=0.3.1
+RUN pip install -U matplotlib jupyter pandas 
