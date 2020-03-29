@@ -72,8 +72,10 @@ class RNNModel(RecurrentTorchModel):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
     ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("rnn", RNNModel)
+
     tune.run(
         args.run,
         stop={"episode_reward_mean": args.stop},
