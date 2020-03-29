@@ -649,6 +649,7 @@ def set_sigterm_handler(sigterm_handler):
     else:
         signal.signal(signal.SIGTERM, sigterm_handler)
 
+
 def try_make_directory_shared(directory_path):
     try:
         os.chmod(directory_path, 0o0777)

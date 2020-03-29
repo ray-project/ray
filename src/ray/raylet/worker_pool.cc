@@ -73,7 +73,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
   SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
   // If worker processes crash, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
-#else        
+#else
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
