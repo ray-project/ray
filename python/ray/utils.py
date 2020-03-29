@@ -5,6 +5,7 @@ import inspect
 import logging
 import numpy as np
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -637,6 +638,16 @@ def set_kill_child_on_death_win32(child_proc):
     else:
         assert False, "AssignProcessToJobObject used despite being unavailable"
 
+
+def set_sigterm_handler(sigterm_handler):
+    """Registers a handler for SIGTERM in a platform-compatible manner."""
+    if sys.platform == "win32":
+        # Note that these signal handlers only work for console applications.
+        # TODO(mehrdadn): implement graceful process termination mechanism
+        # SIGINT is Ctrl+C, SIGBREAK is Ctrl+Break.
+        signal.signal(signal.SIGBREAK, sigterm_handler)
+    else:
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
 def try_make_directory_shared(directory_path):
     try:

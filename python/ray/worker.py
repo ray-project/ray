@@ -422,7 +422,7 @@ class Worker:
             shutdown(True)
             sys.exit(1)
 
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        ray.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -882,7 +882,7 @@ def sigterm_handler(signum, frame):
 
 
 try:
-    signal.signal(signal.SIGTERM, sigterm_handler)
+    ray.utils.set_sigterm_handler(sigterm_handler)
 except ValueError:
     logger.warning("Failed to set SIGTERM handler, processes might"
                    "not be cleaned up properly on exit.")
