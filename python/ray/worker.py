@@ -1244,12 +1244,10 @@ def connect(node,
 
             worker_dict["stdout_file"] = os.path.abspath(
                 (log_stdout_file
-                 if log_stdout_file is not None
-                 else sys.stdout).name)
+                 if log_stdout_file is not None else sys.stdout).name)
             worker_dict["stderr_file"] = os.path.abspath(
                 (log_stderr_file
-                 if log_stderr_file is not None
-                 else sys.stderr).name)
+                 if log_stderr_file is not None else sys.stderr).name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     else:
         raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
