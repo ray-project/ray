@@ -84,25 +84,33 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
 
-            action_dist, state_out = \
-                self.compute_action_distribution(
-                    obs_batch=obs_batch,
-                    state_batches=state_batches,
-                    prev_action_batch=prev_action_batch,
-                    prev_reward_batch=prev_reward_batch,
-                    timestep=timestep,
-                    explore=explore,
-                    is_training=False
-                )
+            #action_dist, state_out = \
+            #    self.compute_action_distribution(
+            #        obs_batch=obs_batch,
+            #        state_batches=state_batches,
+            #        prev_action_batch=prev_action_batch,
+            #        prev_reward_batch=prev_reward_batch,
+            #        timestep=timestep,
+            #        explore=explore,
+            #        is_training=False
+            #    )
 
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(timestep=timestep)
+
+            model_out = self.model(input_dict, state_batches,
+                                   self._convert_to_tensor([1]))
+            logits, state_out = model_out
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep, explore=explore)
+                    logits,
+                    action_dist_class=self.dist_class,
+                    timestep=timestep,
+                    explore=explore)
             input_dict[SampleBatch.ACTIONS] = actions
-
-            extra_action_out = self.extra_action_out(input_dict, state_batches,
-                                                     self.model, action_dist)
+            action_dist = self.dist_class(logits, self.model)
+            extra_action_out = self.extra_action_out(
+                input_dict, state_batches, self.model, action_dist)
             if logp is not None:
                 logp = convert_to_non_torch_type(logp)
                 extra_action_out.update({

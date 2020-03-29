@@ -99,6 +99,17 @@ def try_import_tfp(error=False):
         return None
 
 
+# Fake module for torch.nn.
+class NNStub:
+    pass
+
+
+# Fake class for torch.nn.Module to allow it to be inherited from.
+class ModuleStub:
+    def __init__(self, *a, **kw):
+        raise ImportError("Could not import `torch`.")
+
+
 def try_import_torch(error=False):
     """
     Args:
@@ -118,7 +129,10 @@ def try_import_torch(error=False):
     except ImportError as e:
         if error:
             raise e
-        return None, None
+
+        nn = NNStub()
+        nn.Module = ModuleStub
+        return None, nn
 
 
 def get_variable(value, framework="tf", tf_name="unnamed-variable"):

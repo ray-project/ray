@@ -148,13 +148,15 @@ class ParameterNoise(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               action_distribution,
+                               distribution_inputs,
+                               action_dist_class,
                                timestep,
                                explore=True):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            action_distribution=action_distribution,
+            distribution_inputs=distribution_inputs,
+            action_dist_class=action_dist_class,
             timestep=timestep,
             explore=explore)
 

@@ -324,38 +324,56 @@ def build_eager_tf_policy(name,
             self._is_training = False
             self._state_in = state_batches
 
-            prev_batches = {}
+            input_dict = {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
+                "is_training": tf.constant(False),
+            }
             if obs_include_prev_action_reward:
-                prev_batches["prev_action_batch"] = \
-                    tf.convert_to_tensor(prev_action_batch)
-                prev_batches["prev_reward_batch"] = \
-                    tf.convert_to_tensor(prev_reward_batch)
+                input_dict.update({
+                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                        prev_action_batch),
+                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                        prev_reward_batch),
+                })
+
+            #prev_batches = {}
+            #if obs_include_prev_action_reward:
+            #    prev_batches["prev_action_batch"] = \
+            #        tf.convert_to_tensor(prev_action_batch)
+            #    prev_batches["prev_reward_batch"] = \
+            #        tf.convert_to_tensor(prev_reward_batch)
 
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampling_fn:
-                    action, logp = action_sampling_fn(
+                    state_out = []
+                    action, logp = action_sampler_fn(
                         self,
                         self.model,
-                        obs_batch=tf.convert_to_tensor(obs_batch),
-                        state_batches=state_batches,
-                        seq_lens=tf.convert_to_tensor([1]),
-                        explore=explore,
-                        is_training=False,
-                        **prev_batches)
+                        input_dict,
+                        self.observation_space,
+                        self.action_space,
+                        explore,
+                        self.config,
+                        timestep=timestep)
                 else:
-                    action_dist, state_out = \
-                        self.compute_action_distribution(
-                            obs_batch=tf.convert_to_tensor(obs_batch),
-                            state_batches=state_batches,
-                            explore=explore,
-                            is_training=False,
-                            **prev_batches)
+                    # Call the exploration before_compute_actions hook.
+                    self.exploration.before_compute_actions(timestep=timestep)
+
+                    model_out, state_out = self.model(input_dict,
+                                                      state_batches, seq_lens)
+                    #action_dist, state_out = \
+                    #    self.compute_action_distribution(
+                    #        obs_batch=tf.convert_to_tensor(obs_batch),
+                    #        state_batches=state_batches,
+                    #        explore=explore,
+                    #        is_training=False,
+                    #        **prev_batches)
                     # Get the exploration action from the forward results.
                     action, logp = self.exploration.get_exploration_action(
-                        action_distribution=action_dist,
-                        timestep=timestep
-                        if timestep is not None else self.global_timestep,
+                        model_out,
+                        action_dist_class=self.dist_class,
+                        timestep=timestep,
                         explore=explore)
 
             extra_fetches = {}

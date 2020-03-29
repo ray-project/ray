@@ -597,7 +597,7 @@ class TFPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
 
-        # Exploration hook before each forward pass.
+        # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(
             timestep=self.global_timestep, explore=explore,
             tf_sess=self.get_session())
