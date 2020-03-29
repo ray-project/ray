@@ -45,6 +45,14 @@ class ModelV2:
 
         Returns:
             list of np.array objects, if any
+
+        Examples:
+
+            def get_initial_state(self):
+                return [
+                    np.zeros(self.cell_size, np.float32),
+                    np.zeros(self.cell_size, np.float32),
+                ]
         """
         return []
 

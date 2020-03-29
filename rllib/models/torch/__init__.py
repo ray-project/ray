@@ -6,7 +6,6 @@
 #     RecurrentTorchModel
 # from ray.rllib.models.torch.visionnet import VisionNetwork
 
-
 # __all__ = [
 #     "FullyConnectedNetwork",
 #     "RecurrentTorchModel",

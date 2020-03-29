@@ -6,7 +6,6 @@
 #     RecurrentTFModelV2
 # from ray.rllib.models.tf.visionnet_v2 import VisionNetwork
 
-
 # __all__ = [
 #     "FullyConnectedNetwork",
 #     "RecurrentTFModelV2",

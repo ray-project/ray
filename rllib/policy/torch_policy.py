@@ -116,8 +116,8 @@ class TorchPolicy(Policy):
                     ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
-            return convert_to_non_torch_type(
-                (actions, state, extra_action_out))
+            return convert_to_non_torch_type((actions, state,
+                                              extra_action_out))
 
     @override(Policy)
     def compute_log_likelihoods(self,

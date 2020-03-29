@@ -90,8 +90,13 @@ def build_torch_policy(name,
                     framework="torch")
 
             TorchPolicy.__init__(
-                self, obs_space, action_space, config, self.model,
-                loss_fn, self.dist_class,
+                self,
+                obs_space,
+                action_space,
+                config,
+                self.model,
+                loss_fn,
+                self.dist_class,
                 max_seq_len=config["model"]["max_seq_len"],
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
@@ -122,17 +127,18 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, input_dict, state_batches, model,
+        def extra_action_out(self,
+                             input_dict,
+                             state_batches,
+                             model,
                              action_dist=None):
             with torch.no_grad():
                 if extra_action_out_fn:
                     stats_dict = extra_action_out_fn(
-                        self, input_dict, state_batches, model, action_dist
-                    )
+                        self, input_dict, state_batches, model, action_dist)
                 else:
                     stats_dict = TorchPolicy.extra_action_out(
-                        self, input_dict, state_batches, model, action_dist
-                    )
+                        self, input_dict, state_batches, model, action_dist)
                 return convert_to_non_torch_type(stats_dict)
 
         @override(TorchPolicy)

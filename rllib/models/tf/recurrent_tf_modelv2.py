@@ -44,7 +44,7 @@ class RecurrentTFModelV2(TFModelV2):
             self.register_variables(self.rnn_model.variables)
             self.rnn_model.summary()
     """
-    
+
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         """Adds time dimension to batch before sending inputs to forward_rnn().
@@ -52,8 +52,8 @@ class RecurrentTFModelV2(TFModelV2):
         You should implement forward_rnn() in your subclass."""
         output, new_state = self.forward_rnn(
             add_time_dimension(
-                input_dict["obs_flat"], seq_lens, framework="tf"),
-            state, seq_lens)
+                input_dict["obs_flat"], seq_lens, framework="tf"), state,
+            seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 
     def forward_rnn(self, inputs, state, seq_lens):

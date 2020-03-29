@@ -1,5 +1,6 @@
 import numpy as np
 
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -24,22 +25,22 @@ class RecurrentTorchModel(TorchModelV2, nn.Module):
             self.fc1 = nn.Linear(self.obs_size, self.rnn_hidden_dim)
             self.rnn = nn.GRUCell(self.rnn_hidden_dim, self.rnn_hidden_dim)
             self.fc2 = nn.Linear(self.rnn_hidden_dim, num_outputs)
-    
+
             self.value_branch = nn.Linear(self.rnn_hidden_dim, 1)
             self._cur_value = None
-    
+
         @override(ModelV2)
         def get_initial_state(self):
             # make hidden states on same device as model
             h = [self.fc1.weight.new(
                 1, self.rnn_hidden_dim).zero_().squeeze(0)]
             return h
-    
+
         @override(ModelV2)
         def value_function(self):
             assert self._cur_value is not None, "must call forward() first"
             return self._cur_value
-    
+
         @override(RecurrentTorchModel)
         def forward_rnn(self, input_dict, state, seq_lens):
             x = nn.functional.relu(self.fc1(input_dict["obs_flat"].float()))
@@ -49,12 +50,14 @@ class RecurrentTorchModel(TorchModelV2, nn.Module):
             self._cur_value = self.value_branch(h).squeeze(1)
             return q, [h]
     """
+
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        TorchModelV2.__init__(
-            self, obs_space, action_space, num_outputs, model_config, name)
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
         nn.Module.__init__(self)
 
+    @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
@@ -64,7 +67,7 @@ class RecurrentTorchModel(TorchModelV2, nn.Module):
         output, new_state = self.forward_rnn(
             add_time_dimension(
                 input_dict["obs_flat"].float(), seq_lens, framework="torch"),
-                state, seq_lens)
+            state, seq_lens)
         return torch.reshape(output, [-1, self.num_outputs]), new_state
 
     def forward_rnn(self, inputs, state, seq_lens):
@@ -85,21 +88,5 @@ class RecurrentTorchModel(TorchModelV2, nn.Module):
             def forward_rnn(self, inputs, state, seq_lens):
                 model_out, h, c = self.rnn_model([inputs, seq_lens] + state)
                 return model_out, [h, c]
-        """
-        raise NotImplementedError("You must implement this for an RNN model")
-
-    def get_initial_state(self):
-        """Get the initial recurrent state values for the model.
-
-        Returns:
-            list of np.array objects, if any
-
-        Examples:
-
-            def get_initial_state(self):
-                return [
-                    np.zeros(self.cell_size, np.float32),
-                    np.zeros(self.cell_size, np.float32),
-                ]
         """
         raise NotImplementedError("You must implement this for an RNN model")

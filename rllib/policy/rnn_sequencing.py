@@ -41,7 +41,7 @@ def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
     if framework == "tf":
         padded_batch_size = tf.shape(padded_inputs)[0]
         max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
-    
+
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
         new_shape = ([new_batch_size, max_seq_len] +
@@ -51,7 +51,7 @@ def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
         assert framework == "torch", "`framework` must be either tf or torch!"
         padded_batch_size = padded_inputs.shape[0]
         max_seq_len = padded_batch_size // seq_lens.shape[0]
-    
+
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
         new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
