@@ -38,10 +38,9 @@ def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
                 "results to the provided upload_dir. "
                 "Set `sync_to_driver=False` to avoid data inconsistencies.")
         if not upload_dir:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "`upload_dir` must be provided.")
+            logger.warning(
+                "EXPERIMENTAL: DurableTrainable will not automatically sync "
+                "results - no `upload_dir` provided.")
 
 
 class Experiment:
