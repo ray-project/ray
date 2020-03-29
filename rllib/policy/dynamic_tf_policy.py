@@ -47,7 +47,7 @@ class DynamicTFPolicy(TFPolicy):
                  grad_stats_fn=None,
                  before_loss_init=None,
                  make_model=None,
-                 action_sampling_fn=None,
+                 action_sampler_fn=None,
                  action_distribution_fn=None,
                  existing_inputs=None,
                  existing_model=None,
@@ -71,7 +71,7 @@ class DynamicTFPolicy(TFPolicy):
                 given (policy, obs_space, action_space, config).
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampling_fn (Optional[callable]): A callable returning a
+            action_sampler_fn (Optional[callable]): A callable returning a
                 sampled action and its log-likelihood given some (obs and
                 state) inputs.
             action_distribution_fn (Optional[callable]): A callable returning
@@ -136,10 +136,10 @@ class DynamicTFPolicy(TFPolicy):
             dtype=tf.int32, shape=[None], name="seq_lens")
 
         dist_class = dist_inputs = None
-        if action_sampling_fn or action_distribution_fn:
+        if action_sampler_fn or action_distribution_fn:
             if not make_model:
                 raise ValueError(
-                    "`make_model` is required if `action_sampling_fn` OR "
+                    "`make_model` is required if `action_sampler_fn` OR "
                     "`action_distribution_fn` is given")
         else:
             dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -177,8 +177,8 @@ class DynamicTFPolicy(TFPolicy):
         timestep = tf.placeholder(tf.int32, (), name="timestep")
 
         # Fully customized action generation.
-        if action_sampling_fn:
-            sampled_action, sampled_action_logp = action_sampling_fn(
+        if action_sampler_fn:
+            sampled_action, sampled_action_logp = action_sampler_fn(
                 self,
                 self.model,
                 obs_batch=self._input_dict[SampleBatch.CUR_OBS],
@@ -192,7 +192,7 @@ class DynamicTFPolicy(TFPolicy):
             # Only the distribution generation is customized,
             # sampling will happen through our exploration object.
             if action_distribution_fn:
-                action_dist, self._state_out = \
+                dist_inputs, self._state_out = \
                     action_distribution_fn(
                         self, self.model,
                         obs_batch=self._input_dict[SampleBatch.CUR_OBS],
@@ -208,8 +208,7 @@ class DynamicTFPolicy(TFPolicy):
             else:
                 dist_inputs, self._state_out = self.model(
                     self._input_dict, self._state_in, self._seq_lens)
-                action_dist = dist_class(dist_inputs, self.model)
-
+            action_dist = dist_class(dist_inputs, self.model)
             # Using exploration to get final action (e.g. via sampling).
             sampled_action, sampled_action_logp = \
                 self.exploration.get_exploration_action(
@@ -224,13 +223,6 @@ class DynamicTFPolicy(TFPolicy):
         else:
             batch_divisibility_req = 1
 
-        # Generate the log-likelihood op.
-        #log_likelihood = None
-        ## Create log_likelihood, iff we have a distribution class and its
-        ## inputs.
-        #if action_dist is not None:
-        #    log_likelihood = action_dist.logp(action_input)
-
         super().__init__(
             obs_space,
             action_space,
@@ -240,10 +232,8 @@ class DynamicTFPolicy(TFPolicy):
             action_input=action_input,  # for logp calculations
             sampled_action=sampled_action,
             sampled_action_logp=sampled_action_logp,
-            #log_likelihood=log_likelihood,
-            #distribution_inputs=dist_inputs,
-            #dist_class=dist_class,
-            action_distribution=action_dist,
+            dist_inputs=dist_inputs,
+            dist_class=dist_class,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,

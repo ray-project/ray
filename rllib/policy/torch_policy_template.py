@@ -22,7 +22,7 @@ def build_torch_policy(name,
                        optimizer_fn=None,
                        before_init=None,
                        after_init=None,
-                       action_sampling_fn=None,
+                       action_sampler_fn=None,
                        action_distribution_fn=None,
                        make_model_and_action_dist=None,
                        mixins=None):
@@ -48,7 +48,7 @@ def build_torch_policy(name,
             policy init that takes the same arguments as the policy constructor
         after_init (func): optional function to run at the end of policy init
             that takes the same arguments as the policy constructor
-        action_sampling_fn (Optional[callable]): A callable returning a sampled
+        action_sampler_fn (Optional[callable]): A callable returning a sampled
             action and its log-likelihood given some (obs and state) inputs.
         action_distribution_fn (Optional[callable]): A callable returning
             distribution inputs (parameters), a dist-class to generate an

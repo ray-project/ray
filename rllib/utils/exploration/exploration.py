@@ -30,12 +30,11 @@ class Exploration:
         """
         Args:
             action_space (Space): The action space in which to explore.
-            policy_config (dict): The Policy's config dict.
-            model (ModelV2): The Policy's model.
             framework (str): One of "tf" or "torch".
-            policy_config (Optional[dict]): An optional policy config dict.
             num_workers (int): The overall number of workers used.
             worker_index (int): The index of the worker using this class.
+            policy_config (dict): The Policy's config dict.
+            model (ModelV2): The Policy's model.
         """
         self.action_space = action_space
         self.policy_config = policy_config

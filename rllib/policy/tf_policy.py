@@ -286,52 +286,6 @@ class TFPolicy(Policy):
         return fetched[:-1]
 
     @override(Policy)
-    def compute_action_distribution(self,
-                                    obs_batch,
-                                    state_batches=None,
-                                    prev_action_batch=None,
-                                    prev_reward_batch=None,
-                                    explore=None,
-                                    timestep=None,
-                                    is_training=None):
-        explore = explore if explore is not None else self.config["explore"]
-
-        if self.dist_class is None:
-            raise ValueError("Cannot return distribution_inputs w/o a "
-                             "self.dist_class!")
-
-        # Exploration hook before each forward pass.
-        self.exploration.before_compute_actions(
-            timestep=timestep, explore=explore, tf_sess=self.get_session())
-
-        builder = TFRunBuilder(self._sess, "compute_action_distribution")
-        state_batches = state_batches or []
-        if len(self._state_inputs) != len(state_batches):
-            raise ValueError(
-                "Must pass in RNN state batches for placeholders {}, got {}".
-                format(self._state_inputs, state_batches))
-        builder.add_feed_dict(self.extra_compute_action_feed_dict())
-        builder.add_feed_dict({self._obs_input: obs_batch})
-        if state_batches:
-            builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-        if self._prev_action_input is not None and \
-           prev_action_batch is not None:
-            builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if self._prev_reward_input is not None and \
-           prev_reward_batch is not None:
-            builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
-        builder.add_feed_dict({self._is_training: False})
-        builder.add_feed_dict({self._is_exploring: explore})
-        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        to_fetch = builder.add_fetches([self._distribution_inputs] +
-                                       self._state_outputs)
-        fetched = builder.get(to_fetch)
-
-        action_dist = self.dist_class(fetched[0], self.model)
-        # Return action-dist object and state-outs.
-        return action_dist, fetched[1:]
-
-    @override(Policy)
     def compute_log_likelihoods(self,
                                 actions,
                                 obs_batch,
@@ -592,14 +546,14 @@ class TFPolicy(Policy):
                                prev_reward_batch=None,
                                episodes=None,
                                explore=None,
-                               timestep=None,
-                               fetch_dist_inputs=False):
+                               timestep=None):
 
         explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(
-            timestep=self.global_timestep, explore=explore,
+            timestep=timestep, explore=explore,
             tf_sess=self.get_session())
 
         state_batches = state_batches or []

@@ -26,7 +26,7 @@ def build_tf_policy(name,
                     before_loss_init=None,
                     after_init=None,
                     make_model=None,
-                    action_sampling_fn=None,
+                    action_sampler_fn=None,
                     action_distribution_fn=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
@@ -83,7 +83,7 @@ def build_tf_policy(name,
             given (policy, obs_space, action_space, config).
             All policy variables should be created in this function. If not
             specified, a default model will be created.
-        action_sampling_fn (Optional[callable]): A callable returning a sampled
+        action_sampler_fn (Optional[callable]): A callable returning a sampled
             action and its log-likelihood given some (obs and state) inputs.
         action_distribution_fn (Optional[callable]): A callable returning
             distribution inputs (parameters), a dist-class to generate an
@@ -135,7 +135,7 @@ def build_tf_policy(name,
                 grad_stats_fn=grad_stats_fn,
                 before_loss_init=before_loss_init_wrapper,
                 make_model=make_model,
-                action_sampling_fn=action_sampling_fn,
+                action_sampler_fn=action_sampler_fn,
                 action_distribution_fn=action_distribution_fn,
                 existing_model=existing_model,
                 existing_inputs=existing_inputs,

@@ -101,14 +101,13 @@ class TorchPolicy(Policy):
             model_out = self.model(input_dict, state_batches,
                                    self._convert_to_tensor([1]))
             logits, state_out = model_out
+            action_dist = self.dist_class(logits, self.model)
             actions, logp = \
                 self.exploration.get_exploration_action(
-                    logits,
-                    action_dist_class=self.dist_class,
+                    action_distribution=action_dist,
                     timestep=timestep,
                     explore=explore)
             input_dict[SampleBatch.ACTIONS] = actions
-            action_dist = self.dist_class(logits, self.model)
             extra_action_out = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist)
             if logp is not None:

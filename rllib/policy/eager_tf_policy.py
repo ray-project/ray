@@ -178,7 +178,7 @@ def build_eager_tf_policy(name,
                           before_loss_init=None,
                           after_init=None,
                           make_model=None,
-                          action_sampling_fn=None,
+                          action_sampler_fn=None,
                           action_distribution_fn=None,
                           mixins=None,
                           obs_include_prev_action_reward=True,
@@ -213,10 +213,10 @@ def build_eager_tf_policy(name,
 
             self.config = config
             self.dist_class = None
-            if action_sampling_fn or action_distribution_fn:
+            if action_sampler_fn or action_distribution_fn:
                 if not make_model:
                     raise ValueError(
-                        "`make_model` is required if `action_sampling_fn` OR "
+                        "`make_model` is required if `action_sampler_fn` OR "
                         "`action_distribution_fn` is given")
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
@@ -246,15 +246,7 @@ def build_eager_tf_policy(name,
                     [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
-
-            # Perform one forward pass for initializing the Model's tf-vars.
-            self.compute_actions(
-                obs_batch=input_dict[SampleBatch.CUR_OBS],
-                state_batches=self._state_in,
-                seq_lens=tf.convert_to_tensor([1]),
-                prev_action_batch=input_dict[SampleBatch.PREV_ACTIONS],
-                prev_reward_batch=input_dict[SampleBatch.PREV_REWARDS],
-                is_training=False)
+            self.model(input_dict, self._state_in, tf.convert_to_tensor([1]))
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -336,16 +328,9 @@ def build_eager_tf_policy(name,
                         prev_reward_batch),
                 })
 
-            #prev_batches = {}
-            #if obs_include_prev_action_reward:
-            #    prev_batches["prev_action_batch"] = \
-            #        tf.convert_to_tensor(prev_action_batch)
-            #    prev_batches["prev_reward_batch"] = \
-            #        tf.convert_to_tensor(prev_reward_batch)
-
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
-                if action_sampling_fn:
+                if action_sampler_fn:
                     state_out = []
                     action, logp = action_sampler_fn(
                         self,
@@ -357,22 +342,16 @@ def build_eager_tf_policy(name,
                         self.config,
                         timestep=timestep)
                 else:
-                    # Call the exploration before_compute_actions hook.
-                    self.exploration.before_compute_actions(timestep=timestep)
+                    # Exploration hook before each forward pass.
+                    self.exploration.before_compute_actions(
+                        timestep=timestep, explore=explore)
 
-                    model_out, state_out = self.model(input_dict,
-                                                      state_batches, seq_lens)
-                    #action_dist, state_out = \
-                    #    self.compute_action_distribution(
-                    #        obs_batch=tf.convert_to_tensor(obs_batch),
-                    #        state_batches=state_batches,
-                    #        explore=explore,
-                    #        is_training=False,
-                    #        **prev_batches)
+                    model_out, state_out = self.model(
+                        input_dict, state_batches, tf.convert_to_tensor([1]))
+                    action_dist = self.dist_class(model_out, self.model)
                     # Get the exploration action from the forward results.
                     action, logp = self.exploration.get_exploration_action(
-                        model_out,
-                        action_dist_class=self.dist_class,
+                        action_distribution=action_dist,
                         timestep=timestep,
                         explore=explore)
 
@@ -391,82 +370,48 @@ def build_eager_tf_policy(name,
             return action, state_out, extra_fetches
 
         @override(Policy)
-        def compute_action_distribution(self,
-                                        obs_batch,
-                                        state_batches=None,
-                                        prev_action_batch=None,
-                                        prev_reward_batch=None,
-                                        explore=True,
-                                        timestep=None,
-                                        is_training=True):
-
-            if action_sampling_fn and action_distribution_fn is None:
-                raise ValueError("Cannot compute distribution-inputs w/o an "
-                                 "`action_distribution_fn` and a provided "
-                                 "`action_sampling_fn`!")
-
-            if isinstance(obs_batch, list):
-                n = len(obs_batch)
-            else:
-                assert isinstance(obs_batch, tf.Tensor)
-                n = obs_batch.shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
-
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(
-                timestep=timestep, explore=explore)
-
-            # Custom forward pass to get the action dist inputs.
-            if action_distribution_fn:
-                action_distribution, state_out = \
-                    action_distribution_fn(
-                        self,
-                        self.model,
-                        obs_batch,
-                        state_batches=state_batches,
-                        seq_lens=seq_lens,
-                        prev_action_batch=prev_action_batch,
-                        prev_reward_batch=prev_reward_batch,
-                        explore=explore,
-                        is_training=is_training)
-            # Default: Forward pass through the model.
-            else:
-                dist_inputs, state_out = self.model({
-                    SampleBatch.CUR_OBS: obs_batch,
-                    SampleBatch.PREV_ACTIONS: prev_action_batch,
-                    SampleBatch.PREV_REWARDS: prev_reward_batch,
-                }, state_batches, seq_lens)
-                action_distribution = self.dist_class(dist_inputs, self.model)
-
-            return action_distribution, state_out
-
-        @override(Policy)
         def compute_log_likelihoods(self,
                                     actions,
                                     obs_batch,
                                     state_batches=None,
                                     prev_action_batch=None,
                                     prev_reward_batch=None):
-            if action_sampling_fn and action_distribution_fn is None:
+            if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError("Cannot compute log-prob/likelihood w/o an "
                                  "`action_distribution_fn` and a provided "
-                                 "`action_sampling_fn`!")
+                                 "`action_sampler_fn`!")
 
-            prev_batches = {}
+            seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
+            input_dict = {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
+                "is_training": tf.constant(False),
+            }
             if obs_include_prev_action_reward:
-                prev_batches["prev_action_batch"] = tf.convert_to_tensor(
-                    prev_action_batch)
-                prev_batches["prev_reward_batch"] = tf.convert_to_tensor(
-                    prev_reward_batch)
+                input_dict.update({
+                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                        prev_action_batch),
+                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                        prev_reward_batch),
+                })
 
-            action_dist, _ = \
-                self.compute_action_distribution(
-                    obs_batch=tf.convert_to_tensor(obs_batch),
-                    state_batches=state_batches,
-                    is_training=False,
-                    **prev_batches)
-
-            log_likelihoods = action_dist.logp(actions)
+            if action_distribution_fn:
+                dist_inputs, dist_class, _ = action_distribution_fn(
+                    # TODO
+                )
+                action_dist = dist_class(dist_inputs, self.model)
+                log_likelihoods = action_dist.logp(actions)
+            # Custom log_likelihood function given.
+            elif action_sampler_fn and isinstance(self.action_space, Discrete):
+                actions, logp = action_sampler_fn(
+                    self, self.model, actions, input_dict,
+                    self.observation_space, self.action_space, self.config)
+                log_likelihoods = logp
+            # Default log-likelihood calculation.
+            else:
+                dist_inputs, _ = self.model(
+                    input_dict, state_batches, seq_lens)
+                action_dist = self.dist_class(dist_inputs, self.model)
+                log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
 
