@@ -790,6 +790,28 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
 
+    def testDurableTrainableNoop(self):
+        class TestTrain(DurableTrainable):
+            def _setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def _train(self):
+                self.state["iter"] += 1
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        test_trainable = TestTrain(remote_checkpoint_dir=None)
+        checkpoint_path = test_trainable.save()
+        test_trainable.train()
+        test_trainable.state["hi"] = 2
+        test_trainable.restore(checkpoint_path)
+        self.assertEqual(test_trainable.state["hi"], 1)
+
     def testCheckpointDict(self):
         class TestTrain(Trainable):
             def _setup(self, config):
