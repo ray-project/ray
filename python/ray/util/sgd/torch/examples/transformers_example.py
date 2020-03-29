@@ -658,11 +658,13 @@ def main():
             "Use --overwrite_output_dir to overcome.".format(args.output_dir))
 
     # Setup logging
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
+
+    def init_hook():
+        logging.basicConfig(
+            format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+            datefmt="%m/%d/%Y %H:%M:%S",
+            level=logging.INFO,
+        )
     # Set seed
 
     # Prepare GLUE task
@@ -683,6 +685,7 @@ def main():
             data_creator=data_creator,
             optimizer_creator=create_optimizer,
             training_operator_cls=TransformerOperator,
+            initialization_hook=init_hook,
             use_fp16=args.fp16,
             num_workers=args.num_workers,
             use_gpu=True,
