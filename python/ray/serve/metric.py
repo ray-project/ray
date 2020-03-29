@@ -1,7 +1,8 @@
 import time
+from collections import Counter
 
-import numpy as np
-import pandas as pd
+from hdrh.histogram import HdrHistogram
+from prometheus_client import CollectorRegistry
 
 import ray
 
@@ -148,10 +149,3 @@ class MetricMonitor:
                 aggregated_metric[result_key] = value
 
         return aggregated_metric
-
-
-@ray.remote(num_cpus=0)
-def start_metric_monitor_loop(monitor_handle, duration_s=5):
-    while True:
-        ray.get(monitor_handle.scrape.remote())
-        time.sleep(duration_s)
