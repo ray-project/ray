@@ -12,53 +12,48 @@ class RecurrentTFModelV2(TFModelV2):
     """Helper class to simplify implementing RNN models with TFModelV2.
 
     Instead of implementing forward(), you can implement forward_rnn() which
-    takes batches with the time dimension added already."""
+    takes batches with the time dimension added already.
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        """Initialize a TFModelV2.
+    Here is an example implementation for a subclass
+    ``MyRNNClass(RecurrentTFModelV2)``::
 
-        Here is an example implementation for a subclass
-        ``MyRNNClass(RecurrentTFModelV2)``::
+        def __init__(self, *args, **kwargs):
+            super(MyModelClass, self).__init__(*args, **kwargs)
+            cell_size = 256
 
-            def __init__(self, *args, **kwargs):
-                super(MyModelClass, self).__init__(*args, **kwargs)
-                cell_size = 256
+            # Define input layers
+            input_layer = tf.keras.layers.Input(
+                shape=(None, obs_space.shape[0]))
+            state_in_h = tf.keras.layers.Input(shape=(256, ))
+            state_in_c = tf.keras.layers.Input(shape=(256, ))
+            seq_in = tf.keras.layers.Input(shape=(), dtype=tf.int32)
 
-                # Define input layers
-                input_layer = tf.keras.layers.Input(
-                    shape=(None, obs_space.shape[0]))
-                state_in_h = tf.keras.layers.Input(shape=(256, ))
-                state_in_c = tf.keras.layers.Input(shape=(256, ))
-                seq_in = tf.keras.layers.Input(shape=(), dtype=tf.int32)
+            # Send to LSTM cell
+            lstm_out, state_h, state_c = tf.keras.layers.LSTM(
+                cell_size, return_sequences=True, return_state=True,
+                name="lstm")(
+                    inputs=input_layer,
+                    mask=tf.sequence_mask(seq_in),
+                    initial_state=[state_in_h, state_in_c])
+            output_layer = tf.keras.layers.Dense(...)(lstm_out)
 
-                # Send to LSTM cell
-                lstm_out, state_h, state_c = tf.keras.layers.LSTM(
-                    cell_size, return_sequences=True, return_state=True,
-                    name="lstm")(
-                        inputs=input_layer,
-                        mask=tf.sequence_mask(seq_in),
-                        initial_state=[state_in_h, state_in_c])
-                output_layer = tf.keras.layers.Dense(...)(lstm_out)
-
-                # Create the RNN model
-                self.rnn_model = tf.keras.Model(
-                    inputs=[input_layer, seq_in, state_in_h, state_in_c],
-                    outputs=[output_layer, state_h, state_c])
-                self.register_variables(self.rnn_model.variables)
-                self.rnn_model.summary()
-        """
-        TFModelV2.__init__(self, obs_space, action_space, num_outputs,
-                           model_config, name)
-
+            # Create the RNN model
+            self.rnn_model = tf.keras.Model(
+                inputs=[input_layer, seq_in, state_in_h, state_in_c],
+                outputs=[output_layer, state_h, state_c])
+            self.register_variables(self.rnn_model.variables)
+            self.rnn_model.summary()
+    """
+    
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
         output, new_state = self.forward_rnn(
-            add_time_dimension(input_dict["obs_flat"], seq_lens), state,
-            seq_lens)
+            add_time_dimension(
+                input_dict["obs_flat"], seq_lens, framework="tf"),
+            state, seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 
     def forward_rnn(self, inputs, state, seq_lens):

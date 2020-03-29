@@ -4,6 +4,7 @@ import time
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
     ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
@@ -26,8 +27,15 @@ class TorchPolicy(Policy):
         dist_class (type): Torch action distribution class.
     """
 
-    def __init__(self, observation_space, action_space, config, model, loss,
-                 action_distribution_class):
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 config,
+                 model,
+                 loss,
+                 action_distribution_class,
+                 max_seq_len=20,
+                 get_batch_divisibility_req=None):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -44,6 +52,9 @@ class TorchPolicy(Policy):
                 train_batch) and returns a single scalar loss.
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
+            max_seq_len (int): Max sequence length for LSTM training.
+            get_batch_divisibility_req (Optional[callable]): Optional callable
+                that returns the divisibility requirement for sample batches.
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
@@ -57,6 +68,11 @@ class TorchPolicy(Policy):
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
+
+        self.max_seq_len = max_seq_len
+        self.batch_divisibility_req = \
+            get_batch_divisibility_req(self) if get_batch_divisibility_req \
+            else 1
 
     @override(Policy)
     def compute_actions(self,
@@ -127,8 +143,56 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        shuffle = False
+        if shuffle:
+            postprocessed_batch.shuffle()
 
+        if self.batch_divisibility_req > 1:
+            meets_divisibility_reqs = (
+                len(postprocessed_batch[SampleBatch.CUR_OBS]) %
+                self.batch_divisibility_req == 0
+                # not multiagent
+                and max(postprocessed_batch[SampleBatch.AGENT_INDEX]) == 0)
+        else:
+            meets_divisibility_reqs = True
+
+        dynamic_max = max_seq_len = None
+        # RNN-case.
+        if "state_in_0" in postprocessed_batch:
+            max_seq_len = self.max_seq_len
+            dynamic_max = True
+        # Multi-agent case.
+        elif not meets_divisibility_reqs:
+            max_seq_len = self.batch_divisibility_req
+            dynamic_max = False
+
+        # RNN or multi-agent case.
+        if max_seq_len is not None:
+            state_keys = []
+            feature_keys = []
+            for k in postprocessed_batch.keys():
+                if "state_in_" in k:
+                    state_keys.append(k)
+                elif "state_out_" not in k and k != "infos":
+                    feature_keys.append(k)
+
+            feature_sequences, initial_states, seq_lens = \
+                chop_into_sequences(
+                    postprocessed_batch[SampleBatch.EPS_ID],
+                    postprocessed_batch[SampleBatch.UNROLL_ID],
+                    postprocessed_batch[SampleBatch.AGENT_INDEX],
+                    [postprocessed_batch[k] for k in feature_keys],
+                    [postprocessed_batch[k] for k in state_keys],
+                    max_seq_len,
+                    dynamic_max=dynamic_max,
+                    shuffle=shuffle)
+            postprocessed_batch["seq_lens"] = seq_lens
+            for i, k in enumerate(feature_keys):
+                postprocessed_batch[k] = feature_sequences[i]
+            for i, k in enumerate(state_keys):
+                postprocessed_batch[k] = initial_states[i]
+
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = self._loss(self, self.model, self.dist_class, train_batch)
         self._optimizer.zero_grad()
         loss_out.backward()
