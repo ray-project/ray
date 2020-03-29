@@ -25,9 +25,6 @@ TEST_DIR="$TRAVIS_BUILD_DIR/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 UI_TEST_SCRIPT="$TRAVIS_BUILD_DIR/python/ray/tests/test_webui.py"
 
-export LC_ALL=en_US.UTF-8
-export LANG=en_US.UTF-8
-
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
   PY_MMS=("3.6"

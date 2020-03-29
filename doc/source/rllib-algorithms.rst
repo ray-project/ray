@@ -33,6 +33,8 @@ MARWIL          **Yes** `+parametric`_  **Yes**             **Yes**      `+RNN`_
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. _apex:
+
 Distributed Prioritized Experience Replay (Ape-X)
 -------------------------------------------------
 |tensorflow|
@@ -78,6 +80,8 @@ SpaceInvaders  646                               ~300
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+.. _impala:
 
 Importance Weighted Actor-Learner Architecture (IMPALA)
 -------------------------------------------------------
@@ -126,6 +130,8 @@ SpaceInvaders  843                              ~300
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _appo:
+
 Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
 |tensorflow|
@@ -135,7 +141,7 @@ We include an asynchronous variant of Proximal Policy Optimization (PPO) based o
 
 .. tip::
 
-    APPO is not always more efficient; it is often better to use `standard PPO <rllib-algorithms.html#proximal-policy-optimization-ppo>`__ or `IMPALA <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__.
+    APPO is not always more efficient; it is often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
 
 .. figure:: impala-arch.svg
 
@@ -149,6 +155,8 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+.. _ddppo:
 
 Decentralized Distributed Proximal Policy Optimization (DD-PPO)
 ---------------------------------------------------------------
@@ -176,6 +184,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 Gradient-based
 ~~~~~~~~~~~~~~
+
+.. _a3c:
 
 Advantage Actor-Critic (A2C, A3C)
 ---------------------------------
@@ -212,6 +222,8 @@ SpaceInvaders  692                       ~600
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _ddpg:
+
 Deep Deterministic Policy Gradients (DDPG, TD3)
 -----------------------------------------------
 |tensorflow|
@@ -230,6 +242,8 @@ Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rll
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+.. _dqn:
 
 Deep Q Networks (DQN, Rainbow, Parametric DQN)
 ----------------------------------------------
@@ -274,6 +288,8 @@ SpaceInvaders  650                       1001                           1025    
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _pg:
+
 Policy Gradients
 ----------------
 |pytorch| |tensorflow|
@@ -291,6 +307,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+.. _ppo:
 
 Proximal Policy Optimization (PPO)
 ----------------------------------
@@ -341,6 +359,8 @@ HalfCheetah    9664                       ~7700
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _sac:
+
 Soft Actor Critic (SAC)
 ------------------------
 |tensorflow|
@@ -372,6 +392,8 @@ HalfCheetah    13000       ~15000
 Derivative-free
 ~~~~~~~~~~~~~~~
 
+.. _ars:
+
 Augmented Random Search (ARS)
 -----------------------------
 |tensorflow|
@@ -386,6 +408,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+.. _es:
 
 Evolution Strategies
 --------------------
@@ -409,6 +433,8 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _qmix:
+
 QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)
 ---------------------------------------------------
 |pytorch|
@@ -422,6 +448,8 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+.. _maddpg:
 
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
@@ -437,6 +465,8 @@ Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/mad
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _marwil:
+
 Advantage Re-Weighted Imitation Learning (MARWIL)
 -------------------------------------------------
 |tensorflow|
@@ -450,6 +480,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+.. _alphazero:
 
 Single-Player Alpha Zero (contrib/AlphaZero)
 --------------------------------------------
@@ -485,8 +517,10 @@ model) and an exploration strategy (e-greedy, UCB, Thompson Sampling etc.)
 RLlib supports the following online contextual bandit algorithms,
 named after the exploration strategies that they employ:
 
-LinUCB (Upper Confidence Bound)
--------------------------------
+.. _linucb:
+
+Linear Upper Confidence Bound (contrib/LinUCB)
+----------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
 <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ucb.py>`__
@@ -496,6 +530,8 @@ It constructs a confidence region around the weights of the linear
 regression model and uses this confidence ellipsoid to estimate the
 uncertainty of action values.
 
+Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/simple_context_bandit.py>`__, `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/tune_LinUCB_train_recommendation.py>`__.
+
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
@@ -504,9 +540,10 @@ uncertainty of action values.
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _lints:
 
-LinTS (Linear Thompson Sampling)
---------------------------------
+Linear Thompson Sampling (contrib/LinTS)
+----------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__ `[implementation]
 <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ts.py>`__
@@ -516,6 +553,8 @@ estimate the Q values of actions given the context. It assumes a Gaussian
 prior on the weights and a Gaussian likelihood function. For deciding which
 action to take, the agent samples weights for each arm, using
 the posterior distributions, and plays the arm that produces the highest reward.
+
+Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/simple_context_bandit.py>`__, `WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/tune_LinTS_train_wheel_env.py>`__.
 
 **LinTS-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):

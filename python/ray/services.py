@@ -1081,12 +1081,15 @@ def start_dashboard(require_webui,
             port += 1
 
     dashboard_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "dashboard/dashboard_main.py")
+        os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
-        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
-        "--port={}".format(port), "--redis-address={}".format(redis_address),
-        "--temp-dir={}".format(temp_dir)
+        sys.executable,
+        "-u",
+        dashboard_filepath,
+        "--host={}".format(host),
+        "--port={}".format(port),
+        "--redis-address={}".format(redis_address),
+        "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1118,7 +1121,6 @@ def start_dashboard(require_webui,
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
             colorama.Fore.RESET, colorama.Style.NORMAL))
-
         return dashboard_url, process_info
     else:
         return None, None
