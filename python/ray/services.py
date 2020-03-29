@@ -99,8 +99,8 @@ class ConsolePopen(subprocess.Popen):
                 # because our children need to be in out process group for
                 # the process reaper to properly terminate them.
                 flags = new_pgroup
-            kwargs.setdefault('creationflags', flags)
-            self._use_signals = (kwargs['creationflags'] & new_pgroup)
+            kwargs.setdefault("creationflags", flags)
+            self._use_signals = (kwargs["creationflags"] & new_pgroup)
             super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
