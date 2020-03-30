@@ -10,6 +10,7 @@ from azure.common.client_factory import get_client_from_cli_profile
 from azure.mgmt.authorization import AuthorizationManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.resource.resources.models import DeploymentMode
 from azure.mgmt.msi import ManagedServiceIdentityClient
 
 RETRIES = 30
