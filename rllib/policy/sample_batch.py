@@ -28,7 +28,6 @@ class SampleBatch:
     INFOS = "infos"
 
     # Extra action fetches keys.
-    ACTION_DIST_CLASS = "action_dist_class"
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"

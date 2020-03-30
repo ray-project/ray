@@ -425,7 +425,6 @@ class TFPolicy(Policy):
             extra_fetches[SampleBatch.ACTION_LOGP] = self._sampled_action_logp
         # Action-dist inputs.
         if self._distr_inputs is not None:
-            extra_fetches[SampleBatch.ACTION_DIST_CLASS] = self.dist_class
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = self._distr_inputs
         return extra_fetches
 

@@ -246,7 +246,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             sampled_action=act_sampler,
             loss=actor_loss + critic_loss,
             loss_inputs=loss_inputs,
-            distribution_inputs=actor_feature)
+            dist_inputs=actor_feature)
 
         self.sess.run(tf.global_variables_initializer())
 

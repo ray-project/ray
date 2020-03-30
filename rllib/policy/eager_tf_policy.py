@@ -376,7 +376,6 @@ def build_eager_tf_policy(name,
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
             # Action-dist inputs.
             if dist_inputs is not None:
-                extra_fetches[SampleBatch.ACTION_DIST_CLASS] = dist_class
                 extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
             # Custom extra fetches.
             if extra_action_fetches_fn:

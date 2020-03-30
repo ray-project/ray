@@ -206,7 +206,7 @@ class ParameterNoise(Exploration):
             explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if fetches[SampleBatch.ACTION_DIST_CLASS] is Categorical:
+        if policy.dist_class is Categorical:
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
         else:  # TODO(sven): Other action-dist cases.
             raise NotImplementedError
@@ -224,7 +224,7 @@ class ParameterNoise(Exploration):
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if fetches[SampleBatch.ACTION_DIST_CLASS] is Categorical:
+        if policy.dist_class is Categorical:
             action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
 
         if not self.weights_are_currently_noisy:
@@ -233,7 +233,7 @@ class ParameterNoise(Exploration):
             noise_free_action_dist = action_dist
 
         # Categorical case (e.g. DQN).
-        if fetches[SampleBatch.ACTION_DIST_CLASS] is Categorical:
+        if policy.dist_class is Categorical:
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
             # TODO(sven): Allow KL-divergence to be calculated by our
             #  Distribution classes (don't support off-graph/numpy yet).

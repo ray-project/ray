@@ -149,7 +149,6 @@ class TorchPolicy(Policy):
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
             # Action-dist inputs.
             if dist_inputs is not None:
-                extra_fetches[SampleBatch.ACTION_DIST_CLASS] = dist_class
                 extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
             return convert_to_non_torch_type((actions, state_out,
                                               extra_fetches))
