@@ -1,7 +1,6 @@
 import argparse
 
 import ray
-import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.cartpole_lstm import CartPoleStatelessEnv
 from ray.rllib.examples.custom_keras_rnn_model import RepeatInitialEnv
 from ray.rllib.models.preprocessors import get_preprocessor
@@ -82,11 +81,12 @@ if __name__ == "__main__":
     tune.register_env("cartpole_stateless", lambda c: CartPoleStatelessEnv())
 
     config = {
+        "env": args.env,
+        "use_pytorch": True,
         "num_workers": 0,
         "num_envs_per_worker": 20,
         "gamma": 0.9,
         "entropy_coeff": 0.001,
-        "use_pytorch": True,
         "model": {
             "custom_model": "rnn",
             "lstm_use_prev_action_reward": "store_true",
@@ -96,12 +96,7 @@ if __name__ == "__main__":
         "lr": 0.0003,
         "num_sgd_iter": 5,
         "vf_loss_coeff": 1e-5,
-        "env": args.env,
     }
-
-    #trainer = ppo.PPOTrainer(config)
-    #for _ in range(100):
-    #    trainer.train()
 
     tune.run(
         args.run,

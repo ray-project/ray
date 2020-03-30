@@ -121,7 +121,7 @@ class TestPPO(unittest.TestCase):
 
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
-    
+
             # Post-process (calculate simple (non-GAE) advantages) and attach
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
@@ -135,24 +135,23 @@ class TestPPO(unittest.TestCase):
             # Check Advantage values.
             check(train_batch[Postprocessing.VALUE_TARGETS],
                   [0.50005, -0.505, 0.5])
-    
+
             # Calculate actual PPO loss (results are stored in policy.loss_obj)
             # for tf.
             if fw == "tf":
-                ppo_surrogate_loss_tf(
-                    policy, policy.model, Categorical, train_batch)
+                ppo_surrogate_loss_tf(policy, policy.model, Categorical,
+                                      train_batch)
             else:
                 ppo_surrogate_loss_torch(policy, policy.model,
-                                         TorchCategorical,
-                                         train_batch)
+                                         TorchCategorical, train_batch)
 
             vars = policy.model.variables() if fw == "tf" else \
                 list(policy.model.parameters())
-            expected_shared_out = fc(
-                train_batch[SampleBatch.CUR_OBS], vars[0], vars[1])
+            expected_shared_out = fc(train_batch[SampleBatch.CUR_OBS], vars[0],
+                                     vars[1])
             expected_logits = fc(expected_shared_out, vars[2], vars[3])
             expected_value_outs = fc(expected_shared_out, vars[4], vars[5])
-    
+
             kl, entropy, pg_loss, vf_loss, overall_loss = \
                 self._ppo_loss_helper(
                     policy, policy.model,
