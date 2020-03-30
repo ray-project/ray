@@ -29,18 +29,15 @@ if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
   PY_MMS=("3.6"
           "3.7"
-          "3.8")
-  MINICONDA_URLS=("https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh"
-                  "https://repo.continuum.io/miniconda/Miniconda3-py37_4.8.2-Linux-x86_64.sh"
-                  "https://repo.continuum.io/miniconda/Miniconda3-py38_4.8.2-Linux-x86_64.sh")
+          "3.8.2")
+  wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
+  bash miniconda3.sh -b -p "$HOME/miniconda3"
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
     PY_WHEEL_VERSION="${PY_MM//./}"
-    MINICONDA_URL="${MINICONDA_URLS[i]}"
-    rm -r -f -- "$HOME/miniconda3"
-    wget --quiet "${MINICONDA_URL}" -O miniconda3.sh
-    bash miniconda3.sh -b -p "$HOME/miniconda3"
+
+    conda install -y python="${PY_MM}"
 
     PYTHON_EXE="$HOME/miniconda3/bin/python"
     PIP_CMD="$HOME/miniconda3/bin/pip"
