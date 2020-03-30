@@ -60,7 +60,7 @@ class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
   std::shared_ptr<RedisClient> redis_client_;
 };
 
-typedef RedisStoreClient<ActorID, rpc::ActorTableData, JobID> ActorStoreTable;
+typedef RedisStoreClient<ActorID, rpc::ActorTableData, JobID> RedisActorStoreTable;
 
 }  // namespace gcs
 

@@ -17,8 +17,10 @@
 
 #include <memory>
 #include <string>
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
+#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/io_service_pool.h"
 #include "ray/util/logging.h"
 
@@ -96,6 +98,8 @@ class StoreClient {
  protected:
   StoreClient() = default;
 };
+
+typedef StoreClient<ActorID, rpc::ActorTableData, JobID> ActorStoreTable;
 
 }  // namespace gcs
 
