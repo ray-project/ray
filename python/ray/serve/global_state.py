@@ -28,23 +28,6 @@ class ServeMaster:
     def get_kv_store_connector(self):
         return self.kv_store_connector
 
-    def start_actor(self,
-                    actor_cls,
-                    tag,
-                    init_args=(),
-                    init_kwargs={},
-                    is_asyncio=False):
-        """Start an actor and add it to the nursery"""
-        # Avoid double initialization
-        if tag in self.tag_to_actor_handles.keys():
-            return [self.tag_to_actor_handles[tag]]
-
-        max_concurrency = ASYNC_CONCURRENCY if is_asyncio else None
-        handle = (actor_cls.options(max_concurrency=max_concurrency).remote(
-            *init_args, **init_kwargs))
-        self.tag_to_actor_handles[tag] = handle
-        return [handle]
-
     def start_router(self, router_class, init_kwargs):
         assert self.router is None, "Router already started."
         self.router = router_class.options(
