@@ -128,5 +128,5 @@ class GlobalState:
     def get_router(self):
         return ray.get(self.master_actor.get_router.remote())[0]
 
-    def get_metric_monitor(self, gc_window_seconds=3600):
+    def get_metric_monitor(self):
         return ray.get(self.master_actor.get_metric_monitor.remote())[0]
