@@ -67,7 +67,7 @@ public class ExecutionJobVertex {
     List<ExecutionVertex> executionVertices = new ArrayList<>();
     ResourceConfig resourceConfig = ConfigFactory.create(ResourceConfig.class, jobConfig);
 
-    for (int subIndex = 0; subIndex <= parallelism; subIndex++) {
+    for (int subIndex = 0; subIndex < parallelism; subIndex++) {
       executionVertices.add(new ExecutionVertex(
         gloabalIndex.getAndIncrement(), subIndex, this, resourceConfig));
     }
