@@ -197,13 +197,3 @@ cdef class Task:
             self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
         self.c_task.reset(new CTask(task_spec.task_spec.get()[0],
                                     task_execution_spec.c_spec.get()[0]))
-
-
-def generate_gcs_task_table_data(TaskSpec task_spec):
-    """Converts a Python `TaskSpec` object to serialized GCS `TaskTableData`.
-    """
-    cdef:
-        TaskTableData task_table_data
-    task_table_data.mutable_task().mutable_task_spec().CopyFrom(
-        task_spec.task_spec.get().GetMessage())
-    return task_table_data.SerializeAsString()
