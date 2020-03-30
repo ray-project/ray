@@ -50,7 +50,7 @@ void RedisMultiReader::OnReadCallback(const std::string &key,
     value = reply->ReadAsString();
 
     {
-      absl::MutexLock lock(&mutex_);
+      std::lock_guard<std::mutex> lock(&mutex_);
       read_result_.emplace_back(key, value);
     }
   }
@@ -64,7 +64,7 @@ void RedisMultiReader::OnDone() {
   if (!is_failed_) {
     std::vector<std::pair<std::string, std::string>> result;
     {
-      absl::MutexLock lock(&mutex_);
+      std::lock_guard<std::mutex> lock(&mutex_);
       result.swap(read_result_);
     }
     multi_read_callback_(Status::OK(), result);

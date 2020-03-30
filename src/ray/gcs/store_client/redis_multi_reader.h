@@ -2,6 +2,7 @@
 #define RAY_GCS_STORE_CLIENT_REDIS_MULTI_READER_H
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -57,7 +58,7 @@ class RedisMultiReader {
   /// Whether multi read failed.
   std::atomic<bool> is_failed_{false};
 
-  mutable absl::Mutex mutex_;
+  mutable std::Mutex mutex_;
 
   /// The result that redis returns.
   std::vector<std::pair<std::string, std::string>> read_result_ GUARDED_BY(mutex_);

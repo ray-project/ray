@@ -25,8 +25,8 @@ Status RedisScanner::ScanRows(const MultiItemCallback <
                               callback) {
   RAY_DCHECK(callback);
 
-  RAY_CHECK(scan_request_.scan_type_ == ScanType::kUnknown);
-  scan_request_.scan_type_ = ScanType::kScanAllRows;
+  RAY_CHECK(scan_request_.scan_type_ == ScanRequest::ScanType::kUnknown);
+  scan_request_.scan_type_ = ScanRequest::ScanType::kScanAllRows;
   scan_request_.scan_all_rows_callback_ = callback;
 
   DoScan();
@@ -37,9 +37,9 @@ Status RedisScanner::ScanPartialRows(
     const ScanCallback<std::string, std::string> &callback) {
   RAY_DCHECK(callback);
 
-  RAY_CHECK(scan_request_.scan_type_ == ScanType::kUnknown ||
-            scan_request_.scan_type_ == ScanType::kScanPartialRows);
-  scan_request_.scan_type_ = ScanType::kScanPartialRows;
+  RAY_CHECK(scan_request_.scan_type_ == ScanRequest::ScanType::kUnknown ||
+            scan_request_.scan_type_ == ScanRequest::ScanType::kScanPartialRows);
+  scan_request_.scan_type_ = ScanRequest::ScanType::kScanPartialRows;
   scan_request_.scan_partial_rows_callback_ = callback;
 
   DoScan();
@@ -49,8 +49,8 @@ Status RedisScanner::ScanPartialRows(
 Status RedisScanner::ScanKeys(const MultiItemCallback<std::string> &callback) {
   RAY_DCHECK(callback);
 
-  RAY_CHECK(scan_request_.scan_type_ == ScanType::kUnknown);
-  scan_request_.scan_type_ = ScanType::kScanAllKeys;
+  RAY_CHECK(scan_request_.scan_type_ == ScanRequest::ScanType::kUnknown);
+  scan_request_.scan_type_ = ScanRequest::ScanType::kScanAllKeys;
   scan_request_.scan_all_keys_callback_ = callback;
 
   DoScan();
@@ -60,9 +60,9 @@ Status RedisScanner::ScanKeys(const MultiItemCallback<std::string> &callback) {
 Status RedisScanner::ScanPartialKeys(const ScanCallback<std::string> &callback) {
   RAY_DCHECK(callback);
 
-  RAY_CHECK(scan_request_.scan_type_ == ScanType::kUnknown ||
-            scan_request_.scan_type_ == ScanType::kScanPartialKeys);
-  scan_request_.scan_type_ = ScanType::kScanPartialKeys;
+  RAY_CHECK(scan_request_.scan_type_ == ScanRequest::ScanType::kUnknown ||
+            scan_request_.scan_type_ == ScanRequest::ScanType::kScanPartialKeys);
+  scan_request_.scan_type_ = ScanRequest::ScanType::kScanPartialKeys;
   scan_request_.scan_partial_keys_callback_ = callback;
 
   DoScan();
@@ -128,7 +128,7 @@ void RedisScanner::ProcessScanResult(size_t shard_index, size_t cousor,
                                      const std::vector<std::string> &scan_result,
                                      bool pending_done) {
   {
-    absl::MutexLock lock(&mutex_);
+    std::lock_guard<std::mutex> lock(&mutex_);
     // Update shard cursors.
     auto shard_it = shard_to_cursor_.find(shard_index);
     RAY_CHECK(shard_it != shard_to_cursor_.end());
@@ -143,7 +143,8 @@ void RedisScanner::ProcessScanResult(size_t shard_index, size_t cousor,
   // Deduplicate keys.
   auto deduped_result = Deduplicate(scan_result);
   // Save scan result.
-  bool is_empty = UpdateResult(deduped_result);
+  size_t total_count = UpdateResult(deduped_result);
+  bool is_empty = (total_count == 0);
 
   if (!pending_done) {
     // Waiting for all pending scan command return.
@@ -157,14 +158,14 @@ void RedisScanner::ProcessScanResult(size_t shard_index, size_t cousor,
   }
 
   switch (scan_request_.scan_type_) {
-  case ScanType::kScanAllRows:
-  case ScanType::kScanPartialRows: {
+  case ScanRequest::ScanType::kScanAllRows:
+  case ScanRequest::ScanType::kScanPartialRows: {
     DoMultiRead();
   } break;
-  case ScanType::kScanAllKeys: {
+  case ScanRequest::ScanType::kScanAllKeys: {
     DoScan();
   } break;
-  case ScanType::kScanPartialKeys: {
+  case ScanRequest::ScanType::kScanPartialKeys: {
     DoPartialCallback();
     // User will call `ScanPartialKeys` again to trigger the next scan.
   } break;
@@ -177,7 +178,7 @@ std::vector<std::string> RedisScanner::Deduplicate(
     const std::vector<std::string> &scan_result) {
   std::vector<std::string> new_keys;
   for (const auto &key : scan_result) {
-    absl::MutexLock lock(&mutex_);
+    std::lock_guard<std::mutex> lock(&mutex_);
 
     auto it = all_received_keys_.find(key);
     if (it == all_received_keys_.end()) {
@@ -229,7 +230,7 @@ void RedisScanner::OnReadCallback(
   }
 
   UpdateResult(read_result);
-  if (scan_request_.scan_type_ == ScanType::kScanPartialRows) {
+  if (scan_request_.scan_type_ == ScanRequest::ScanType::kScanPartialRows) {
     DoPartialCallback();
   } else {
     RAY_CHECK(scan_request_.scan_type_ == ScanType::kScanRows);
@@ -241,35 +242,28 @@ void RedisScanner::OnDone() {
   Status status = is_failed_ ? Status::RedisError() : Status::OK();
 
   // There is no need to lock here. Only one thread will go here.
-  std::vector<std::pair<std::string, std::string>> rows;
-  rows.swap(scan_request_.rows_);
+  ScanRequest request;
+  scan_request_.SwapOut(&request);
 
-  std::vector<std::string> keys;
-  keys.swap(scan_request_.keys_);
-
-  switch (scan_request_.scan_type_) {
-  case ScanType::kScanAllRows:
-    if (scan_request_.scan_all_rows_callback_) {
-      scan_request_.scan_all_rows_callback_(status, rows);
-      // scan_request_.scan_all_rows_callback_ = nullptr;
+  switch (request.scan_type_) {
+  case ScanRequest::ScanType::kScanAllRows:
+    if (request.scan_all_rows_callback_) {
+      request.scan_all_rows_callback_(status, rows);
     }
     break;
-  case ScanType::kScanPartialRows:
-    if (scan_request_.scan_partial_rows_callback_) {
-      scan_request_.scan_partial_rows_callback_(status, true, rows);
-      // scan_request_.scan_partial_rows_callback_ = nullptr;
+  case ScanRequest::ScanType::kScanPartialRows:
+    if (request.scan_partial_rows_callback_) {
+      request.scan_partial_rows_callback_(status, true, rows);
     }
     break;
-  case ScanType::kScanAllKeys:
-    if (scan_request_.scan_all_keys_callback_) {
-      scan_request_.scan_all_keys_callback_(status, keys);
-      // scan_request_.scan_all_keys_callback_ = nullptr;
+  case ScanRequest::ScanType::kScanAllKeys:
+    if (request.scan_all_keys_callback_) {
+      request.scan_all_keys_callback_(status, keys);
     }
     break;
-  case ScanType::kScanPartialKeys:
-    if (scan_request_.scan_partial_keys_callback_) {
-      scan_request_.scan_partial_keys_callback_(status, keys);
-      // scan_request_.scan_partial_keys_callback_ = nullptr;
+  case ScanRequest::ScanType::kScanPartialKeys:
+    if (request.scan_partial_keys_callback_) {
+      request.scan_partial_keys_callback_(status, keys);
     }
     break;
   default:
@@ -278,6 +272,8 @@ void RedisScanner::OnDone() {
 }
 
 void RedisScanner::DoPartialCallback() {
+  // There is no need to lock here. Only one thread will go here.
+  // We wait until all pending redis commands done. Then call this method.
   std::vector<std::pair<std::string, std::string>> rows;
   rows.swap(scan_request_.rows_);
 
@@ -285,13 +281,13 @@ void RedisScanner::DoPartialCallback() {
   keys.swap(scan_request_.keys_);
 
   switch (scan_request_.scan_type_) {
-  case ScanType::kScanPartialRows:
+  case ScanRequest::ScanType::kScanPartialRows:
     if (!rows_.empty()) {
       RAY_CHECK(scan_request_.scan_partial_rows_callback_);
       scan_request_.scan_partial_rows_callback_(status_, false, rows);
     }
     break;
-  case ScanType::kScanPartialKeys:
+  case ScanRequest::ScanType::kScanPartialKeys:
     if (!keys_.empty()) {
       RAY_CHECK(scan_request_.scan_partial_keys_callback_);
       scan_request_.scan_partial_keys_callback_(status_, false, keys);
@@ -302,19 +298,44 @@ void RedisScanner::DoPartialCallback() {
   }
 }
 
-bool RedisScanner::UpdateResult(const std::vector<std::string> &keys) {
-  absl::MutexLock lock(&mutex_);
+size_t RedisScanner::UpdateResult(const std::vector<std::string> &keys) {
+  std::lock_guard<std::mutex> lock(&mutex_);
 
   scan_request_.keys_.insert(scan_request_.keys_.begin(), keys.begin(), keys.end());
-  return scan_request_.keys_.empty();
+  return scan_request_.keys_.size();
 }
 
-bool RedisScanner::UpdateResult(
+size_t RedisScanner::UpdateResult(
     const std::vector<std::pair<std::string, std::string>> &rows) {
-  absl::MutexLock lock(&mutex_);
+  std::lock_guard<std::mutex> lock(&mutex_);
 
   scan_request_.rows_.insert(scan_request_.rows_.begin(), rows.begin(), rows.end());
-  return scan_request_.rows_.empty();
+  return scan_request_.rows_.size();
+}
+
+void ScanRequest::SwapOut(ScanRequest *other) {
+  other->match_pattern_ = this->match_pattern_;
+  this->match_pattern_ = ScanRequest::ScanRequest::ScanType::kUnknown;
+
+  other->match_pattern_ = std::move(this->match_pattern_);
+
+  other->scan_all_rows_callback_ = this->scan_all_rows_callback_;
+  this->scan_all_rows_callback_ = nullptr;
+
+  other->scan_partial_rows_callback_ = this->scan_partial_rows_callback_;
+  this->scan_partial_rows_callback_ = nullptr;
+
+  other->scan_all_keys_callback_ = this->scan_all_keys_callback_;
+  this->scan_all_keys_callback_ = nullptr;
+
+  other->scan_partial_keys_callback_ = this->scan_partial_keys_callback_;
+  this->scan_partial_keys_callback_ = nullptr;
+
+  other->rows_.clear();
+  other->rows_.swap(this->rows_);
+
+  other->keys_.clear();
+  other->keys_.swap(this->keys_);
 }
 
 }  // namespace gcs

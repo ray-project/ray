@@ -2,10 +2,10 @@
 #define RAY_GCS_STORE_CLIENT_REDIS_SCANNER_H
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_set>
 #include <vector>
-#include "absl/base/optimization.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
@@ -17,6 +17,8 @@ namespace gcs {
 class ScanRequest {
  public:
   ScanRequest() {}
+
+  void SwapOut(ScanRequest *other);
 
   enum class ScanType : int8_t {
     kScanAllRows = 0,
@@ -57,7 +59,14 @@ class ScanRequest {
 };
 
 /// \class RedisScanner
-/// This class is used to scan data from redis.
+/// This class is used to scan data from Redis.
+///
+/// Call method `ScanKeys` if you want to scan all keys at once.
+/// Call method `ScanPartialKeys` if you want to scan partial keys at one time.
+/// Call method `ScanRows` if you want to scan all rows at once.
+/// Call method `ScanPartialRows` if you want to scan partial rows at one time.
+///
+/// If you called one method, should never call the other methods. 
 class RedisScanner {
  public:
   /// Constructor of RedisScanner.
@@ -70,7 +79,9 @@ class RedisScanner {
   ~RedisScanner();
 
   /// Start scan keys. Will callback after the scan finishes(receiving all data from
-  /// redis).
+  /// redis). 
+  ///
+  /// This function is non-thread safe.
   ///
   /// \param callback The callback will be called after scan finishes.
   /// All result will be returned.
@@ -94,6 +105,8 @@ class RedisScanner {
   /// Start scan rows. Will callback after the scan finishes(receiving all data from
   /// redis).
   ///
+  /// This function is non-thread safe.
+  ///
   /// \param callback The callback will be called after scan finishes.
   /// All result will be returned.
   /// \return Status
@@ -103,7 +116,6 @@ class RedisScanner {
   /// Start or continue scan rows. Will callback immediately after receiving some data
   /// from redis. Should call this method again if you want scan the rest data. Should not
   /// call other methods once you call this method.
-  ///
   ///
   /// This function is non-thread safe.
   /// If the callback return `has_more == true`, means there has more data
@@ -115,40 +127,67 @@ class RedisScanner {
   Status ScanPartialRows(const ScanCallback<std::string, std::string> &callback);
 
  private:
+  /// Scan from Redis.
   void DoScan();
 
+  /// Process scan done.
   void OnDone();
 
+  /// Process when scan Redis callback.
   void OnScanCallback(size_t shard_index, std::shared_ptr<CallbackReply> reply);
 
+  /// Process scan result.
+  ///
+  /// \param shard_index The index of the shard which execute the scan command.
+  /// \param cousor The scan cousor of the shard.
+  /// \param scan_result The keys returned by scan command.
+  /// \param pending_done Whether all pending scan is finishes.
   void ProcessScanResult(size_t shard_index, size_t cousor,
                          const std::vector<std::string> &scan_result, bool pending_done);
 
+  /// Run callback for partial scan.
   void DoPartialCallback();
 
+  /// Deduplicate the keys returned by scan command.
+  ///
+  /// \return Return deduplicated keys.
   std::vector<std::string> Deduplicate(const std::vector<std::string> &scan_result);
 
+  /// Execute multi read command.
   void DoMultiRead();
 
+  /// Process read result of read command.
+  ///
+  /// \param status Read command execution status.
+  /// \param read_result The result of read command.
   void OnReadCallback(
       Status status, const std::vector<std::pair<std::string, std::string>> &read_result);
 
-  bool UpdateResult(const std::vector<std::string> &keys);
+  /// Update result keys.
+  ///
+  /// \return The size of result.
+  size_t UpdateResult(const std::vector<std::string> &keys);
 
-  bool UpdateResult(const std::vector<std::pair<std::string, std::string>> &rows);
+  /// Update result rows.
+  ///
+  /// \return The size of result.
+  size_t UpdateResult(const std::vector<std::pair<std::string, std::string>> &rows);
 
  private:
   /// Redis client.
   std::shared_ptr<RedisClient> redis_client_;
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
 
-  mutable absl::Mutex mutex_;
+  mutable std::Mutex mutex_;
 
   ScanRequest scan_request_;
 
+  /// Whether the scan is failed.
   std::atomic<bool> is_failed_{false};
+  /// Whether the scan is finishes.
   std::atomic<bool> is_scan_done_{false};
 
+  /// The pending shard scan count.
   std::atomic<size_t> pending_request_count_{0};
 
   /// The scan cursor for each shard.
