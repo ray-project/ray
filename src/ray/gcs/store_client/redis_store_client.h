@@ -25,8 +25,7 @@ namespace ray {
 
 namespace gcs {
 
-template <typename Key, typename Data, typename SecondaryKey>
-class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
+class RedisStoreClient : public StoreClient {
  public:
   RedisStoreClient(const RedisClientOptions &options) {
     redis_client_.reset(new RedisClient(options));
@@ -38,27 +37,27 @@ class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
 
   void Disconnect() override;
 
-  Status AsyncPut(const std::string &table_name, const Key &key, const Data &value,
+  Status AsyncPut(const std::string &table_name, const std::string &key, const google::protobuf::Message &data,
                   const StatusCallback &callback) override;
 
-  Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
-                           const SecondaryKey &index_key, const Data &value,
+  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
+                           const std::string &index_key, const google::protobuf::Message &data,
                            const StatusCallback &callback) override;
 
-  Status AsyncGet(const std::string &table_name, const Key &key,
-                  const OptionalItemCallback<Data> &callback) override;
+  Status AsyncGet(const std::string &table_name, const std::string &key,
+                  const OptionalItemCallback<std::string> &callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const SegmentedCallback<std::pair<Key, Data>> &callback) override;
+                     const SegmentedCallback<std::pair<std::string, std::string>> &callback) override;
 
-  Status AsyncDelete(const std::string &table_name, const Key &key,
+  Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const SecondaryKey &index_key,
+  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;
 
  private:
-  Status DoPut(const std::string &key, const std::string &value,
+  Status DoPut(const std::string &key, const std::string &data,
                const StatusCallback &callback);
 
   std::shared_ptr<RedisClient> redis_client_;

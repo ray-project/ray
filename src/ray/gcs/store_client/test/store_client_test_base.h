@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "ray/common/id.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/util/io_service_pool.h"
@@ -58,19 +59,26 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
  protected:
   void GenTestData() {
     for (size_t i = 0; i < key_count_; i++) {
-      std::string key = std::to_string(i);
-      key_to_value_[key] = key;
+      rpc::ActorTableData actor;
+      actor.set_max_reconstructions(1);
+      actor.set_remaining_reconstructions(1);
+      JobID job_id = JobID::FromInt(i % index_count_);
+      actor.set_job_id(job_id.Binary());
+      actor.set_state(rpc::ActorTableData::ALIVE);
+      ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), /*parent_task_counter=*/i);
+      actor.set_actor_id(actor_id.Binary());
+      
+      key_to_value_[actor_id] = actor;
 
-      std::string index = std::to_string(i % index_count_);
-      key_to_index_[key] = index;
+      key_to_index_[actor_id] = job_id;
 
-      auto it = index_to_keys_.find(index);
+      auto it = index_to_keys_.find(job_id);
       if (it != index_to_keys_.end()) {
-        it->second.emplace(key);
+        it->second.emplace(actor_id);
       } else {
-        std::unordered_set<std::string> key_set;
-        key_set.emplace(key);
-        index_to_keys_.emplace(index, std::move(key_set));
+        std::unordered_set<ActorID> key_set;
+        key_set.emplace(actor_id);
+        index_to_keys_.emplace(job_id, std::move(key_set));
       }
     }
   }
@@ -86,12 +94,14 @@ class StoreClientTestBase : public RedisServiceManagerForTest {
   size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
 
+  std::shared_ptr<StoreClient> store_client_;
+
   std::string table_name_{"test_table"};
   size_t key_count_{5000};
   size_t index_count_{100};
-  std::unordered_map<std::string, std::string> key_to_value_;
-  std::unordered_map<std::string, std::string> key_to_index_;
-  std::unordered_map<std::string, std::unordered_set<std::string>> index_to_keys_;
+  std::unordered_map<ActorID, rpc::ActorTableData> key_to_value_;
+  std::unordered_map<ActorID, JobID> key_to_index_;
+  std::unordered_map<JobID, std::unordered_set<ActorID>> index_to_keys_;
 
   std::atomic<int> pending_count_{0};
   std::chrono::milliseconds wait_pending_timeout_{5000};

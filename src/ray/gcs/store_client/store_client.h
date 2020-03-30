@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <string>
+#include <google/protobuf/message.h>
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
 #include "ray/util/io_service_pool.h"
@@ -31,7 +32,6 @@ namespace gcs {
 ///
 /// To read and write from the storage, `Connect()` must be called and return Status::OK.
 /// Before exit, `Disconnect()` must be called.
-template <typename Key, typename Data, typename SecondaryKey>
 class StoreClient {
  public:
   virtual ~StoreClient() {}
@@ -48,22 +48,22 @@ class StoreClient {
   ///
   /// \param table_name The name of the table to be written.
   /// \param key The key that will be written to the table.
-  /// \param value The value of the key that will be written to the table.
+  /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPut(const std::string &table_name, const Key &key,
-                          const Data &value, const StatusCallback &callback) = 0;
+  virtual Status AsyncPut(const std::string &table_name, const std::string &key,
+                  const google::protobuf::Message &data, const StatusCallback &callback) = 0;
 
   /// Write data to the given table asynchronously.
   ///
   /// \param table_name The name of the table to be written.
   /// \param key The key that will be written to the table.
   /// \param index_key A secondary key that will be used for indexing the data.
-  /// \param value The value of the key that will be written to the table.
+  /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
-                                   const SecondaryKey &index_key, const Data &value,
+  virtual Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
+                                   const std::string &index_key, const google::protobuf::Message &data,
                                    const StatusCallback &callback) = 0;
 
   /// Get data from the given table asynchronously.
@@ -72,8 +72,8 @@ class StoreClient {
   /// \param key The key that will be read from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  virtual Status AsyncGet(const std::string &table_name, const Key &key,
-                          const OptionalItemCallback<Data> &callback) = 0;
+  virtual Status AsyncGet(const std::string &table_name, const std::string &key,
+                          const OptionalItemCallback<std::string> &callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -82,7 +82,7 @@ class StoreClient {
   /// If the callback return `has_more == true` mean there's more data will be received.
   /// \return Status
   virtual Status AsyncGetAll(const std::string &table_name,
-                             const SegmentedCallback<std::pair<Key, Data>> &callback) = 0;
+                     const SegmentedCallback<std::pair<std::string, std::string>> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///
@@ -90,7 +90,7 @@ class StoreClient {
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status AsyncDelete(const std::string &table_name, const Key &key,
+  virtual Status AsyncDelete(const std::string &table_name, const std::string &key,
                              const StatusCallback &callback) = 0;
 
   /// Delete by index from the given table asynchronously.
@@ -101,11 +101,11 @@ class StoreClient {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   virtual Status AsyncDeleteByIndex(const std::string &table_name,
-                                    const SecondaryKey &index_key,
+                                    const std::string &index_key,
                                     const StatusCallback &callback) = 0;
 
  protected:
-  StoreClient() {}
+  StoreClient() = default;
 };
 
 }  // namespace gcs
