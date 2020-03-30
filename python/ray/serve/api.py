@@ -172,9 +172,11 @@ def create_endpoint(endpoint_name, route=None, methods=["GET"]):
     methods = [m.upper() for m in methods]
     global_state.route_table.register_service(
         route, endpoint_name, methods=methods)
-    ray.get(global_state.get_http_proxy().set_route_table.remote(
-        global_state.route_table.list_service(
-            include_methods=True, include_headless=False)))
+    http_proxy = global_state.get_http_proxy()
+    ray.get(
+        http_proxy.set_route_table.remote(
+            global_state.route_table.list_service(
+                include_methods=True, include_headless=False)))
 
 
 @_ensure_connected
@@ -201,8 +203,8 @@ def set_backend_config(backend_tag, backend_config):
 
     # inform the router about change in configuration
     # particularly for setting max_batch_size
-    ray.get(global_state.get_router().set_backend_config.remote(
-        backend_tag, backend_config_dict))
+    router = global_state.get_router()
+    ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
 
     # checking if replicas need to be restarted
     # Replicas are restarted if there is any change in the backend config
@@ -308,8 +310,8 @@ def create_backend(func_or_class,
 
     # set the backend config inside the router
     # particularly for max-batch-size
-    ray.get(global_state.get_router().set_backend_config.remote(
-        backend_tag, backend_config_dict))
+    router = global_state.get_router()
+    ray.get(router.set_backend_config.remote(backend_tag, backend_config_dict))
     _scale(backend_tag, backend_config_dict["num_replicas"])
 
 
@@ -342,7 +344,8 @@ def _start_replica(backend_tag):
 
     # Register the worker in config tables as well as metric monitor
     global_state.backend_table.add_replica(backend_tag, replica_tag)
-    global_state.get_metric_monitor().add_target.remote(runner_handle)
+    monitor = global_state.get_metric_monitor()
+    monitor.add_target.remote(runner_handle)
 
 
 def _remove_replica(backend_tag):
@@ -358,16 +361,17 @@ def _remove_replica(backend_tag):
         global_state.master_actor.get_handle.remote(replica_tag))
 
     # Remove the replica from metric monitor.
-    ray.get(
-        global_state.get_metric_monitor().remove_target.remote(replica_handle))
+    monitor = global_state.get_metric_monitor()
+    ray.get(monitor.remove_target.remote(replica_handle))
 
     # Remove the replica from master actor.
     ray.get(global_state.master_actor.remove_handle.remote(replica_tag))
 
     # Remove the replica from router.
     # This will also destroy the actor handle.
-    ray.get(global_state.get_router().remove_and_destory_replica.remote(
-        backend_tag, replica_handle))
+    router = global_state.get_router()
+    ray.get(
+        router.remove_and_destory_replica.remote(backend_tag, replica_handle))
 
 
 @_ensure_connected
@@ -444,8 +448,9 @@ def split(endpoint_name, traffic_policy_dictionary):
 
     global_state.policy_table.register_traffic_policy(
         endpoint_name, traffic_policy_dictionary)
-    ray.get(global_state.get_router().set_traffic.remote(
-        endpoint_name, traffic_policy_dictionary))
+    router = global_state.get_router()
+    ray.get(
+        router.set_traffic.remote(endpoint_name, traffic_policy_dictionary))
 
 
 @_ensure_connected
@@ -495,8 +500,8 @@ def stat(percentiles=[50, 90, 95],
             The longest aggregation window must be shorter or equal to the
             gc_window_seconds.
     """
-    return ray.get(global_state.get_metric_monitor().collect.remote(
-        percentiles, agg_windows_seconds))
+    monitor = global_state.get_metric_monitor()
+    return ray.get(monitor.collect.remote(percentiles, agg_windows_seconds))
 
 
 class route:
