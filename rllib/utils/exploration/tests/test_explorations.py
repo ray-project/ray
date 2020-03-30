@@ -102,10 +102,12 @@ class TestExplorations(unittest.TestCase):
     compute_action calls.
     """
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         ray.init(ignore_reinit_error=True)
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
 
     def test_a2c(self):

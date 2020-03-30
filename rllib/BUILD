@@ -1370,6 +1370,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "large",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
     name = "contrib/bandits/examples/lin_ts",
     main = "contrib/bandits/examples/simple_context_bandit.py",
     tags = ["examples", "examples_T"],
@@ -1379,11 +1387,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_T"],
-    size = "large",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=contrib/MADDPG"]
+    name = "contrib/bandits/examples/lin_ucb",
+    main = "contrib/bandits/examples/simple_context_bandit.py",
+    tags = ["examples", "examples_U"],
+    size = "small",
+    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
+    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
 )
 
 py_test(
@@ -1408,13 +1417,4 @@ py_test(
     size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=APEX_QMIX", "--num-cpus=4"]
-)
-
-py_test(
-    name = "contrib/bandits/examples/lin_ucb",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
-    tags = ["examples", "examples_U"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--stop-at-reward=10", "--run=contrib/LinUCB"],
 )
