@@ -57,7 +57,7 @@ class ServeMaster:
         start_metric_monitor_loop.remote(self.metric_monitor)
         self.metric_monitor.add_target.remote(self.router)
 
-    def get_metric_monitor(self, gc_window_seconds=3600):
+    def get_metric_monitor(self):
         assert self.metric_monitor is not None, (
             "Metric monitor not started yet.")
         return [self.metric_monitor]
