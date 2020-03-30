@@ -2,6 +2,7 @@ from gym.spaces import Discrete
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -30,9 +31,9 @@ class ParameterNoise(Exploration):
     def __init__(self,
                  action_space,
                  *,
-                 policy_config,
-                 model,
-                 framework,
+                 framework: str,
+                 policy_config: dict,
+                 model: ModelV2,
                  initial_stddev=1.0,
                  random_timesteps=10000,
                  sub_exploration=None,
@@ -125,16 +126,11 @@ class ParameterNoise(Exploration):
         self.episode_started = False
 
     @override(Exploration)
-    def before_forward_pass(self,
-                            obs_batch,
-                            *,
-                            state_batches=None,
-                            seq_lens=None,
-                            prev_action_batch=None,
-                            prev_reward_batch=None,
-                            timestep=None,
-                            explore=None,
-                            tf_sess=None):
+    def before_compute_actions(self,
+                               *,
+                               timestep=None,
+                               explore=None,
+                               tf_sess=None):
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
         if self.episode_started:
@@ -142,38 +138,12 @@ class ParameterNoise(Exploration):
 
         explore = explore if explore is not None else \
             self.policy_config["explore"]
-        if explore:
-            # We don't explore by default AND weights are currently noise-free:
-            # Apply stored noise.
-            if not self.default_explore and \
-                    not self.weights_are_currently_noisy:
-                self._add_stored_noise(tf_sess=tf_sess)
-        else:
-            # We expolore by default AND noise is currently in place:
-            # Remove it.
-            if self.default_explore and self.weights_are_currently_noisy:
-                self._remove_noise(tf_sess=tf_sess)
-
-    @override(Exploration)
-    def after_forward_pass(self,
-                           *,
-                           distribution_inputs,
-                           action_dist_class,
-                           timestep=None,
-                           explore=None,
-                           tf_sess=None):
-        explore = explore if explore is not None else \
-            self.policy_config["explore"]
-        if explore:
-            # Default is not to explore -> Remove noise.
-            if not self.default_explore:
-                self._remove_noise(tf_sess=tf_sess)
-            # Default is to explore. Don't do anything.
-        else:
-            # Default is to explore. Add noise again.
-            if self.default_explore:
-                self._add_stored_noise(tf_sess=tf_sess)
-            # Default is not to explore. Don't do anything.
+        # Add noise if necessary.
+        if explore and not self.weights_are_currently_noisy:
+            self._add_stored_noise(tf_sess=tf_sess)
+        # Remove noise if necessary.
+        elif not explore and self.weights_are_currently_noisy:
+            self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -228,7 +198,7 @@ class ParameterNoise(Exploration):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
-        inputs, dist_class, _ = policy.compute_distribution_inputs(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -236,8 +206,8 @@ class ParameterNoise(Exploration):
             explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if dist_class is Categorical:
-            action_dist = softmax(inputs)
+        if policy.dist_class is Categorical:
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
         else:  # TODO(sven): Other action-dist cases.
             raise NotImplementedError
 
@@ -246,7 +216,7 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        inputs, dist_class, _ = policy.compute_distribution_inputs(
+        _, _, fetches = policy.compute_actions(
             obs_batch=sample_batch[SampleBatch.CUR_OBS],
             # TODO(sven): What about state-ins and seq-lens?
             prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
@@ -254,8 +224,8 @@ class ParameterNoise(Exploration):
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
-        if dist_class is Categorical:
-            action_dist = softmax(inputs)
+        if policy.dist_class is Categorical:
+            action_dist = softmax(fetches[SampleBatch.ACTION_DIST_INPUTS])
 
         if not self.weights_are_currently_noisy:
             noisy_action_dist = action_dist
@@ -263,8 +233,10 @@ class ParameterNoise(Exploration):
             noise_free_action_dist = action_dist
 
         # Categorical case (e.g. DQN).
-        if dist_class is Categorical:
+        if policy.dist_class is Categorical:
             # Calculate KL-divergence (DKL(clean||noisy)) according to [2].
+            # TODO(sven): Allow KL-divergence to be calculated by our
+            #  Distribution classes (don't support off-graph/numpy yet).
             kl_divergence = np.nanmean(
                 np.sum(
                     noise_free_action_dist *

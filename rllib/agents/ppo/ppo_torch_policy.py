@@ -7,7 +7,6 @@ from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -128,7 +127,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
         train_batch[BEHAVIOUR_LOGITS],
-        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,
         model.value_function(),

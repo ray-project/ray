@@ -9,8 +9,7 @@ import numpy as np
 from ray.util.debug import log_once
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
-    ACTION_LOGP
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
@@ -178,7 +177,8 @@ def build_eager_tf_policy(name,
                           before_loss_init=None,
                           after_init=None,
                           make_model=None,
-                          forward_fn=None,
+                          action_sampler_fn=None,
+                          action_distribution_fn=None,
                           mixins=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
@@ -212,10 +212,11 @@ def build_eager_tf_policy(name,
 
             self.config = config
             self.dist_class = None
-            if forward_fn:
+            if action_sampler_fn or action_distribution_fn:
                 if not make_model:
-                    raise ValueError("`make_model` is required if "
-                                     "`forward_fn` is given")
+                    raise ValueError(
+                        "`make_model` is required if `action_sampler_fn` OR "
+                        "`action_distribution_fn` is given")
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"])
@@ -236,7 +237,6 @@ def build_eager_tf_policy(name,
                 tf.convert_to_tensor(np.array([s]))
                 for s in self.model.get_initial_state()
             ]
-
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
@@ -244,17 +244,10 @@ def build_eager_tf_policy(name,
                     [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
-            if forward_fn:
-                _, self.dist_class, _ = forward_fn(
-                    self,
-                    self.model,
-                    input_dict[SampleBatch.CUR_OBS],
-                    state_batches=self._state_in,
-                    seq_lens=tf.convert_to_tensor([1]),
-                    prev_action_batch=input_dict[SampleBatch.PREV_ACTIONS],
-                    prev_reward_batch=input_dict[SampleBatch.PREV_REWARDS],
-                    explore=True,
-                    is_training=True)
+
+            if action_distribution_fn:
+                dist_inputs, self.dist_class, _ = action_distribution_fn(
+                    self, self.model, input_dict[SampleBatch.CUR_OBS])
             else:
                 self.model(input_dict, self._state_in,
                            tf.convert_to_tensor([1]))
@@ -320,12 +313,23 @@ def build_eager_tf_policy(name,
 
             explore = explore if explore is not None else \
                 self.config["explore"]
+            timestep = timestep if timestep is not None else \
+                self.global_timestep
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
             self._state_in = state_batches
 
-            prev_batches = {}
+            if tf.executing_eagerly():
+                n = len(obs_batch)
+            else:
+                n = obs_batch.shape[0]
+            seq_lens = tf.ones(n, dtype=tf.int32)
+
+            input_dict = {
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
+                "is_training": tf.constant(False),
+            }
             if obs_include_prev_action_reward:
                 prev_batches["prev_action_batch"] = \
                     tf.convert_to_tensor(prev_action_batch)
@@ -334,34 +338,56 @@ def build_eager_tf_policy(name,
 
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
-                dist_inputs, dist_class, state_out = \
-                    self.compute_distribution_inputs(
-                        obs_batch=tf.convert_to_tensor(obs_batch),
-                        state_batches=state_batches,
+                if action_sampler_fn:
+                    dist_class = dist_inputs = None
+                    state_out = []
+                    actions, logp = self.action_sampler_fn(
+                        self,
+                        self.model,
+                        input_dict[SampleBatch.CUR_OBS],
                         explore=explore,
-                        is_training=False,
-                        **prev_batches)
-                # Get the exploration action from the forward results.
-                action, logp = self.exploration.get_exploration_action(
-                    distribution_inputs=dist_inputs,
-                    action_dist_class=self.dist_class,
-                    timestep=timestep
-                    if timestep is not None else self.global_timestep,
-                    explore=explore)
+                        timestep=timestep)
+                else:
+                    # Exploration hook before each forward pass.
+                    self.exploration.before_compute_actions(
+                        timestep=timestep, explore=explore)
 
+                    if action_distribution_fn:
+                        dist_inputs, dist_class, state_out = \
+                            action_distribution_fn(
+                                self, self.model,
+                                input_dict[SampleBatch.CUR_OBS],
+                                explore=explore, timestep=timestep)
+                    else:
+                        dist_class = self.dist_class
+                        dist_inputs, state_out = self.model(
+                            input_dict, state_batches, seq_lens)
+
+                    action_dist = dist_class(dist_inputs, self.model)
+
+                    # Get the exploration action from the forward results.
+                    actions, logp = self.exploration.get_exploration_action(
+                        action_distribution=action_dist,
+                        timestep=timestep,
+                        explore=explore)
+
+            # Add default and custom fetches.
             extra_fetches = {}
+            # Action-logp and action-prob.
             if logp is not None:
-                extra_fetches.update({
-                    ACTION_PROB: tf.exp(logp),
-                    ACTION_LOGP: logp,
-                })
+                extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
+                extra_fetches[SampleBatch.ACTION_LOGP] = logp
+            # Action-dist inputs.
+            if dist_inputs is not None:
+                extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+            # Custom extra fetches.
             if extra_action_fetches_fn:
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Increase our global sampling timestep counter by 1.
             self.global_timestep += 1
 
-            return action, state_out, extra_fetches
+            return actions, state_out, extra_fetches
 
         @override(Policy)
         def compute_distribution_inputs(self,
@@ -421,6 +447,10 @@ def build_eager_tf_policy(name,
                                     state_batches=None,
                                     prev_action_batch=None,
                                     prev_reward_batch=None):
+            if action_sampler_fn and action_distribution_fn is None:
+                raise ValueError("Cannot compute log-prob/likelihood w/o an "
+                                 "`action_distribution_fn` and a provided "
+                                 "`action_sampler_fn`!")
 
             seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
             input_dict = {
@@ -435,14 +465,16 @@ def build_eager_tf_policy(name,
                         prev_reward_batch),
                 })
 
-            if forward_fn:
-                dist_inputs, dist_class, _ = forward_fn(
-                    self,
-                    self.model,
-                    input_dict[SampleBatch.CUR_OBS],
-                    state_batches=state_batches,
-                    seq_lens=seq_lens,
-                    explore=False)
+            # Exploration hook before each forward pass.
+            self.exploration.before_compute_actions(explore=False)
+
+            # Action dist class and inputs are generated via custom function.
+            if action_distribution_fn:
+                dist_inputs, dist_class, _ = action_distribution_fn(
+                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+                action_dist = dist_class(dist_inputs, self.model)
+                log_likelihoods = action_dist.logp(actions)
+            # Default log-likelihood calculation.
             else:
                 dist_inputs, _ = self.model(input_dict, state_batches,
                                             seq_lens)

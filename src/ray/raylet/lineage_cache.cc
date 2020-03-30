@@ -174,14 +174,12 @@ LineageCache::LineageCache(const ClientID &self_node_id,
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
   RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << self_node_id_;
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = uncommitted_lineage.GetEntry(task_id);
   if (!entry) {
-    return;
-  } else if (entry->TaskData().GetTaskSpecification().IsDirectCall()) {
-    // Disable lineage logging for direct tasks.
     return;
   }
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED);
@@ -200,10 +198,7 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::CommitTask(const Task &task) {
-  if (task.GetTaskSpecification().IsDirectCall()) {
-    // Disable lineage logging for direct tasks.
-    return true;
-  }
+  // TODO(edoakes): remove this method, it's currently only called in unit tests.
   const TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << self_node_id_;
 

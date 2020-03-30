@@ -1,15 +1,13 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import { createStyles, Theme, withStyles, WithStyles } from "@material-ui/core";
 import React from "react";
 import { RayletInfoResponse } from "../../../api";
 import Actor from "./Actor";
 
 const styles = (theme: Theme) => createStyles({});
 
-interface Props {
+type Props = {
   actors: RayletInfoResponse["actors"];
-}
+};
 
 class Actors extends React.Component<Props & WithStyles<typeof styles>> {
   render() {

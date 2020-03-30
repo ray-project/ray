@@ -10,9 +10,6 @@ from ray.rllib.utils.from_config import from_config
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
 
-ACTION_PROB = "action_prob"
-ACTION_LOGP = "action_logp"
-
 
 @DeveloperAPI
 class Policy(metaclass=ABCMeta):

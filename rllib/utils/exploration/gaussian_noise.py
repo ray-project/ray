@@ -1,5 +1,7 @@
 from typing import Union
 
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
@@ -23,8 +25,8 @@ class GaussianNoise(Exploration):
     def __init__(self,
                  action_space,
                  *,
-                 model,
-                 framework,
+                 framework: str,
+                 model: ModelV2,
                  random_timesteps=1000,
                  stddev=0.1,
                  initial_scale=1.0,
@@ -72,19 +74,16 @@ class GaussianNoise(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Adds IID Gaussian noise for exploration, TD3-style.
-        action_dist = action_dist_class(distribution_inputs, self.model)
-
         if self.framework == "torch":
-            return self._get_torch_exploration_action(action_dist, explore,
-                                                      timestep)
+            return self._get_torch_exploration_action(action_distribution,
+                                                      explore, timestep)
         else:
-            return self._get_tf_exploration_action_op(action_dist, explore,
-                                                      timestep)
+            return self._get_tf_exploration_action_op(action_distribution,
+                                                      explore, timestep)
 
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
         ts = timestep if timestep is not None else self.last_timestep

@@ -35,7 +35,9 @@ def do_test_explorations(run,
                 run in [ddpg.DDPGTrainer, dqn.DQNTrainer, dqn.SimpleQTrainer,
                         impala.ImpalaTrainer, sac.SACTrainer, td3.TD3Trainer]:
             continue
-        elif fw == "eager" and run in [ddpg.DDPGTrainer, td3.TD3Trainer]:
+        elif fw == "eager" and run in [
+                ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer
+        ]:
             continue
 
         print("Testing {} in framework={}".format(run, fw))

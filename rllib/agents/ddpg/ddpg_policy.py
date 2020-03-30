@@ -126,8 +126,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Action outputs.
         with tf.variable_scope(ACTION_SCOPE):
             self.output_actions, _ = self.exploration.get_exploration_action(
-                distribution_inputs=self._distribution_inputs,
-                action_dist_class=Deterministic,
+                action_distribution=Deterministic(self._distribution_inputs,
+                                                  self.model),
                 timestep=timestep,
                 explore=explore)
 
@@ -295,7 +295,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             loss_inputs=self.loss_inputs,
             update_ops=q_batchnorm_update_ops + policy_batchnorm_update_ops,
             explore=explore,
-            distribution_inputs=self._distribution_inputs,
+            dist_inputs=self._distribution_inputs,
+            dist_class=Deterministic,
             timestep=timestep)
         self.sess.run(tf.global_variables_initializer())
 

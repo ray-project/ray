@@ -12,7 +12,6 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
@@ -111,7 +110,8 @@ class TestPPO(unittest.TestCase):
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
             BEHAVIOUR_LOGITS: np.array(
                 [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
-            ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32)
+            SampleBatch.ACTION_LOGP: np.array(
+                [-0.5, -0.1, -0.2], dtype=np.float32),
         }
 
         # tf.
@@ -190,13 +190,14 @@ class TestPPO(unittest.TestCase):
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
             expected_rho = np.exp(expected_logp.detach().numpy() -
-                                  train_batch.get(ACTION_LOGP))
+                                  train_batch.get(SampleBatch.ACTION_LOGP))
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().numpy())
             # Entropy-loss component.
             entropy = np.mean(dist.entropy().detach().numpy())
         else:
-            expected_rho = np.exp(expected_logp - train_batch[ACTION_LOGP])
+            expected_rho = np.exp(expected_logp -
+                                  train_batch[SampleBatch.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist))
             # Entropy-loss component.

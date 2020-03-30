@@ -1,6 +1,7 @@
 from gym.spaces import Discrete, MultiDiscrete, Tuple
 from typing import Union
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
@@ -30,6 +31,7 @@ class Random(Exploration):
             action_space=action_space,
             model=model,
             framework=framework,
+           model=model,
             **kwargs)
 
         # Determine py_func types, depending on our action-space.
@@ -43,16 +45,16 @@ class Random(Exploration):
     @override(Exploration)
     def get_exploration_action(self,
                                *,
-                               distribution_inputs: TensorType,
-                               action_dist_class: type,
+                               action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Instantiate the distribution object.
-        action_dist = action_dist_class(distribution_inputs, self.model)
         if self.framework == "tf":
-            return self.get_tf_exploration_action_op(action_dist, explore)
+            return self.get_tf_exploration_action_op(action_distribution,
+                                                     explore)
         else:
-            return self.get_torch_exploration_action(action_dist, explore)
+            return self.get_torch_exploration_action(action_distribution,
+                                                     explore)
 
     def get_tf_exploration_action_op(self, action_dist, explore):
         def true_fn():

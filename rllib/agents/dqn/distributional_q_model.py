@@ -19,25 +19,24 @@ class DistributionalQModel(TFModelV2):
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
-    def __init__(
-            self,
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
-            q_hiddens=(256, ),
-            dueling=False,
-            num_atoms=1,
-            use_noisy=False,
-            v_min=-10.0,
-            v_max=10.0,
-            sigma0=0.5,
-            # TODO(sven): Move `add_layer_norm` into ModelCatalog as
-            #  generic option, then error if we use ParameterNoise as
-            #  Exploration type and do not have any LayerNorm layers in
-            #  the net.
-            add_layer_norm=False):
+    def __init__(self,
+                 obs_space,
+                 action_space,
+                 num_outputs,
+                 model_config,
+                 name,
+                 q_hiddens=(256, ),
+                 dueling=False,
+                 num_atoms=1,
+                 use_noisy=False,
+                 v_min=-10.0,
+                 v_max=10.0,
+                 sigma0=0.5,
+                 # TODO(sven): Move `add_layer_norm` into ModelCatalog as
+                 #  generic option, then error if we use ParameterNoise as
+                 #  Exploration type and do not have any LayerNorm layers in
+                 #  the net.
+                 add_layer_norm=False):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -76,7 +75,8 @@ class DistributionalQModel(TFModelV2):
                             units=q_hiddens[i],
                             activation=tf.nn.relu)(action_out)
                         action_out = \
-                            tf.keras.layers.LayerNormalization()(action_out)
+                            tf.keras.layers.LayerNormalization()(
+                                action_out)
                     else:
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
@@ -99,23 +99,25 @@ class DistributionalQModel(TFModelV2):
                     activation=None)(action_out)
             else:
                 action_scores = model_out
+
             if num_atoms > 1:
                 # Distributional Q-learning uses a discrete support z
                 # to represent the action value distribution
                 z = tf.range(num_atoms, dtype=tf.float32)
                 z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
-                support_logits_per_action = tf.reshape(
-                    tensor=action_scores,
-                    shape=(-1, self.action_space.n, num_atoms))
-                support_prob_per_action = tf.nn.softmax(
-                    logits=support_logits_per_action)
-                action_scores = tf.reduce_sum(
-                    input_tensor=z * support_prob_per_action, axis=-1)
-                logits = support_logits_per_action
-                dist = support_prob_per_action
-                return [
-                    action_scores, z, support_logits_per_action, logits, dist
-                ]
+
+                def _layer(x):
+                    support_logits_per_action = tf.reshape(
+                        tensor=x, shape=(-1, self.action_space.n, num_atoms))
+                    support_prob_per_action = tf.nn.softmax(
+                        logits=support_logits_per_action)
+                    x = tf.reduce_sum(
+                        input_tensor=z * support_prob_per_action, axis=-1)
+                    logits = support_logits_per_action
+                    dist = support_prob_per_action
+                    return [x, z, support_logits_per_action, logits, dist]
+
+                return tf.keras.layers.Lambda(_layer)(action_scores)
             else:
                 logits = tf.expand_dims(tf.ones_like(action_scores), -1)
                 dist = tf.expand_dims(tf.ones_like(action_scores), -1)
@@ -255,15 +257,17 @@ class DistributionalQModel(TFModelV2):
             name=prefix + "_fc_w",
             shape=[in_size, out_size],
             dtype=tf.float32,
-            initializer=tf.initializers.GlorotUniform())
+            initializer=tf.initializers.glorot_uniform())
         b = tf.get_variable(
             name=prefix + "_fc_b",
             shape=[out_size],
             dtype=tf.float32,
             initializer=tf.zeros_initializer())
 
-        action_activation = tf.nn.xw_plus_b(action_in, w + sigma_w * epsilon_w,
-                                            b + sigma_b * epsilon_b)
+        action_activation = \
+            tf.keras.layers.Lambda(lambda x: tf.matmul(
+                x, w + sigma_w * epsilon_w) + b + sigma_b * epsilon_b)(
+                action_in)
 
         if not non_linear:
             return action_activation

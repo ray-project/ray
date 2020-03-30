@@ -11,6 +11,7 @@ tf = try_import_tf()
 
 @DeveloperAPI
 def build_tf_policy(name,
+                    *,
                     loss_fn,
                     get_default_config=None,
                     postprocess_fn=None,
@@ -25,7 +26,8 @@ def build_tf_policy(name,
                     before_loss_init=None,
                     after_init=None,
                     make_model=None,
-                    forward_fn=None,
+                    action_sampler_fn=None,
+                    action_distribution_fn=None,
                     mixins=None,
                     get_batch_divisibility_req=None,
                     obs_include_prev_action_reward=True):
@@ -81,9 +83,12 @@ def build_tf_policy(name,
             given (policy, obs_space, action_space, config).
             All policy variables should be created in this function. If not
             specified, a default model will be created.
-        forward_fn (Optional[callable]): A callable returning
-            distribution inputs (parameters) and a dist-class to generate an
-            action distribution object from.
+        action_sampler_fn (Optional[callable]): A callable returning a sampled
+            action and its log-likelihood given some (obs and state) inputs.
+        action_distribution_fn (Optional[callable]): A callable returning
+            distribution inputs (parameters), a dist-class to generate an
+            action distribution object from, and internal-state outputs (or an
+            empty list if not applicable).
         mixins (list): list of any class mixins for the returned policy class.
             These mixins will be applied in order and will have higher
             precedence than the DynamicTFPolicy class
@@ -130,7 +135,8 @@ def build_tf_policy(name,
                 grad_stats_fn=grad_stats_fn,
                 before_loss_init=before_loss_init_wrapper,
                 make_model=make_model,
-                forward_fn=forward_fn,
+                action_sampler_fn=action_sampler_fn,
+                action_distribution_fn=action_distribution_fn,
                 existing_model=existing_model,
                 existing_inputs=existing_inputs,
                 get_batch_divisibility_req=get_batch_divisibility_req,
@@ -144,9 +150,6 @@ def build_tf_policy(name,
                                    sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
-            # Call our Exploration object's postprocess method.
-            sample_batch = self.exploration.postprocess_trajectory(
-                self, sample_batch, tf_sess=self.get_session())
             if postprocess_fn:
                 return postprocess_fn(self, sample_batch, other_agent_batches,
                                       episode)

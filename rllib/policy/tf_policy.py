@@ -6,8 +6,7 @@ import os
 import ray
 import ray.experimental.tf_utils
 from ray.util.debug import log_once
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, \
-    ACTION_PROB, ACTION_LOGP
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
@@ -61,7 +60,7 @@ class TFPolicy(Policy):
                  sampled_action_logp=None,
                  action_input=None,
                  log_likelihood=None,
-                 distribution_inputs=None,
+                 dist_inputs=None,
                  dist_class=None,
                  state_inputs=None,
                  state_outputs=None,
@@ -99,8 +98,10 @@ class TFPolicy(Policy):
                 logp/log-likelihood calculations.
             log_likelihood (Optional[Tensor]): Tensor to calculate the
                 log_likelihood (given action_input and obs_input).
-            distribution_inputs (Optional[Tensor]): Tensor to calculate
-                only the distribution inputs.
+            dist_class (Optional[type): An optional ActionDistribution class
+                to use for generating a dist object from distribution inputs.
+            dist_inputs (Optional[Tensor]): Tensor to calculate the
+                distribution inputs/parameters.
             state_inputs (list): list of RNN state input Tensors.
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
@@ -136,6 +137,8 @@ class TFPolicy(Policy):
                                      if self._sampled_action_logp is not None
                                      else None)
         self._action_input = action_input  # For logp calculations.
+        self._distr_inputs = dist_inputs
+        self.dist_class = dist_class
         self._log_likelihood = log_likelihood
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
@@ -168,10 +171,10 @@ class TFPolicy(Policy):
                 "seq_lens tensor must be given if state inputs are defined")
 
         # The log-likelihood calculator op.
-        self._log_likelihood = log_likelihood
-        # The distribution inputs calculator op.
-        self._distribution_inputs = distribution_inputs
-        self.dist_class = dist_class
+        self._log_likelihood = None
+        if self._distr_inputs is not None and self.dist_class is not None:
+            self._log_likelihood = self.dist_class(
+                self._distr_inputs, self.model).logp(self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -261,14 +264,8 @@ class TFPolicy(Policy):
                         timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
 
-        self.exploration.before_forward_pass(
-            obs_batch=obs_batch,
-            state_batches=state_batches,
-            seq_lens=np.ones(len(obs_batch)),
-            timestep=timestep,
-            explore=explore,
-            tf_sess=self.get_session())
         builder = TFRunBuilder(self._sess, "compute_actions")
         to_fetch = self._build_compute_actions(
             builder,
@@ -277,75 +274,12 @@ class TFPolicy(Policy):
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             explore=explore,
-            timestep=timestep
-            if timestep is not None else self.global_timestep,
-            fetch_dist_inputs=True)
+            timestep=timestep)
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
 
-        self.exploration.after_forward_pass(
-            distribution_inputs=fetched[-1],
-            action_dist_class=self.dist_class,
-            timestep=timestep,
-            explore=explore,
-            tf_sess=self.get_session())
-
-        return fetched[:-1]
-
-    @override(Policy)
-    def compute_distribution_inputs(self,
-                                    obs_batch,
-                                    state_batches=None,
-                                    prev_action_batch=None,
-                                    prev_reward_batch=None,
-                                    explore=None,
-                                    timestep=None,
-                                    is_training=None):
-        explore = explore if explore is not None else self.config["explore"]
-
-        if self.dist_class is None:
-            raise ValueError("Cannot return distribution_inputs w/o a "
-                             "self.dist_class!")
-
-        self.exploration.before_forward_pass(
-            obs_batch=obs_batch,
-            state_batches=state_batches,
-            seq_lens=np.ones(len(obs_batch)),
-            timestep=timestep,
-            explore=explore,
-            tf_sess=self.get_session())
-
-        builder = TFRunBuilder(self._sess, "compute_distribution_inputs")
-        state_batches = state_batches or []
-        if len(self._state_inputs) != len(state_batches):
-            raise ValueError(
-                "Must pass in RNN state batches for placeholders {}, got {}".
-                format(self._state_inputs, state_batches))
-        builder.add_feed_dict(self.extra_compute_action_feed_dict())
-        builder.add_feed_dict({self._obs_input: obs_batch})
-        if state_batches:
-            builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-        if self._prev_action_input is not None and \
-           prev_action_batch is not None:
-            builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if self._prev_reward_input is not None and \
-           prev_reward_batch is not None:
-            builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
-        builder.add_feed_dict({self._is_training: False})
-        builder.add_feed_dict({self._is_exploring: explore})
-        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        to_fetch = builder.add_fetches([self._distribution_inputs] +
-                                       self._state_outputs)
-        fetched = builder.get(to_fetch)
-        self.exploration.after_forward_pass(
-            distribution_inputs=fetched[0],
-            action_dist_class=self.dist_class,
-            timestep=timestep,
-            explore=explore,
-            tf_sess=self.get_session())
-
-        return fetched[0], self.dist_class, fetched[1:-1]
+        return fetched
 
     @override(Policy)
     def compute_log_likelihoods(self,
@@ -357,6 +291,10 @@ class TFPolicy(Policy):
         if self._log_likelihood is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
                              "self._log_likelihood op!")
+
+        # Exploration hook before each forward pass.
+        self.exploration.before_compute_actions(
+            explore=False, tf_sess=self.get_session())
 
         builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
         # Feed actions (for which we want logp values) into graph.
@@ -426,7 +364,9 @@ class TFPolicy(Policy):
             signature_def_map = self._build_signature_def()
             builder.add_meta_graph_and_variables(
                 self._sess, [tf.saved_model.tag_constants.SERVING],
-                signature_def_map=signature_def_map)
+                signature_def_map=signature_def_map,
+                saver=tf.summary.FileWriter(export_dir).add_graph(
+                    graph=self._sess.graph))
             builder.save()
 
     @override(Policy)
@@ -475,13 +415,18 @@ class TFPolicy(Policy):
     def extra_compute_action_fetches(self):
         """Extra values to fetch and return from compute_actions().
 
-        By default we only return action probability info (if present).
+        By default we return action probability/log-likelihood info
+        and action distribution inputs (if present).
         """
-        ret = {}
+        extra_fetches = {}
+        # Action-logp and action-prob.
         if self._sampled_action_logp is not None:
-            ret[ACTION_PROB] = self._sampled_action_prob
-            ret[ACTION_LOGP] = self._sampled_action_logp
-        return ret
+            extra_fetches[SampleBatch.ACTION_PROB] = self._sampled_action_prob
+            extra_fetches[SampleBatch.ACTION_LOGP] = self._sampled_action_logp
+        # Action-dist inputs.
+        if self._distr_inputs is not None:
+            extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = self._distr_inputs
+        return extra_fetches
 
     @DeveloperAPI
     def extra_compute_grad_feed_dict(self):
@@ -606,12 +551,18 @@ class TFPolicy(Policy):
                                fetch_dist_inputs=False):
 
         explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
+
+        # Call the exploration before_compute_actions hook.
+        self.exploration.before_compute_actions(
+            timestep=timestep, explore=explore, tf_sess=self.get_session())
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
             raise ValueError(
                 "Must pass in RNN state batches for placeholders {}, got {}".
                 format(self._state_inputs, state_batches))
+
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:
