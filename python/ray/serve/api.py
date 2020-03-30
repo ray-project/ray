@@ -4,8 +4,6 @@ from tempfile import mkstemp
 
 from multiprocessing import cpu_count
 
-import numpy as np
-
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_MASTER_NAME)
@@ -375,26 +373,9 @@ def split(endpoint_name, traffic_policy_dictionary):
         traffic_policy_dictionary (dict): a dictionary maps backend names
             to their traffic weights. The weights must sum to 1.
     """
-    assert endpoint_name in expand(
-        global_state.route_table.list_service(include_headless=True).values())
-
-    assert isinstance(traffic_policy_dictionary,
-                      dict), "Traffic policy must be dictionary"
-    prob = 0
-    for backend, weight in traffic_policy_dictionary.items():
-        prob += weight
-        assert (backend in global_state.backend_table.list_backends()
-                ), "backend {} is not registered".format(backend)
-    assert np.isclose(
-        prob, 1,
-        atol=0.02), "weights must sum to 1, currently it sums to {}".format(
-            prob)
-
-    global_state.policy_table.register_traffic_policy(
-        endpoint_name, traffic_policy_dictionary)
-    router = global_state.get_router()
     ray.get(
-        router.set_traffic.remote(endpoint_name, traffic_policy_dictionary))
+        global_state.master_actor.split_traffic.remote(
+            endpoint_name, traffic_policy_dictionary))
 
 
 @_ensure_connected
