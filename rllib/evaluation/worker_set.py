@@ -291,5 +291,5 @@ class WorkerSet:
                        "`TorchPolicy` (your class={})! If you have a torch " \
                        "Trainer, make sure to set `use_pytorch=True` in " \
                        "your Trainer's config)!".format(actual_class.__name__)
-    
+
         return worker
