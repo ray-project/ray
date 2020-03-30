@@ -15,7 +15,6 @@
 #ifndef RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
 #define RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
 
-#include <google/protobuf/message.h>
 #include <memory>
 #include <string>
 #include "ray/common/status.h"
