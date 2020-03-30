@@ -9,11 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Github Actions requires a single row to be added to the build matrix.
-        # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
-        name: [
-          windows-clang,
-        ]
+        # Useful info: https://help.github.com/en/articles/workflow-syntax-for-github-actions
         include:
           - name: ubuntu-clang
             os: ubuntu-16.04
@@ -26,6 +22,7 @@ jobs:
             compiler: clang
     steps:
     - name: Configure Git
+      # We add -l to process .bashrc, but need -e -o pipefail for consistency with GitHub Actions's default behavior.
       shell: bash -e -o pipefail -l {0}
       run: |
         git config --global core.symlinks true && git config --global core.autocrlf false
@@ -41,7 +38,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./ci/travis/install-bazel.sh
     - name: Install C/C++ toolchains
-      if: matrix.compiler == 'clang' || matrix.compiler == 'clang-cl'
       shell: bash -e -o pipefail -l {0}
       env:
         CC: ${{ matrix.compiler }}

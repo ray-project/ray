@@ -54,9 +54,16 @@ else
   rm -f "${target}"
 fi
 
-cat <<"EOF" >> "${HOME}/.bashrc"
-export PATH="${HOME}/bin:${PATH}"
-EOF
+add_missing_lines() {
+  local file="$1"
+  shift
+  local line
+  for line in "$@"; do
+    grep -q -F -x -- "${line}" "${file}" || printf "%s\n" "${line}" >> "${file}"
+  done
+}
+
+add_missing_lines "${HOME}/.bashrc" 'export PATH="${HOME}/bin:${PATH}"'
 
 if [ "${TRAVIS-}" = true ]; then
   # Use bazel disk cache if this script is running in Travis.
@@ -68,10 +75,11 @@ EOF
 fi
 if [ -n "${GITHUB_WORKFLOW-}" ]; then
   cat <<"EOF" >> "${HOME}/.profile"
+# Set up environment variables the CI user needs on login to run Bazel on each platform.
 if [ "${OSTYPE}" = "msys" ]; then
   export USE_CLANG_CL=1
   export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
-  latest_python_bin=""
+  latest_python_bin=""  # Detect the system Python from the registry
   for latest_python_bin in /proc/registry/HKEY_LOCAL_MACHINE/Software/Python/PythonCore/*/InstallPath/@; do
     if [ -f "${latest_python_bin}" ]; then
       read -r latest_python_bin < "${latest_python_bin}"
