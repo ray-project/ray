@@ -37,4 +37,5 @@ if __name__ == "__main__":
         config={
             "env": "CartPole-v0",
             "num_workers": 2,
+            "use_pytorch": True
         })
