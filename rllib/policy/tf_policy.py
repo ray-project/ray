@@ -253,6 +253,7 @@ class TFPolicy(Policy):
                         timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
+
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -528,11 +529,16 @@ class TFPolicy(Policy):
 
         explore = explore if explore is not None else self.config["explore"]
 
+        # Call the exploration before_compute_actions hook.
+        self.exploration.before_compute_actions(
+            timestep=self.global_timestep, tf_sess=self.get_session())
+
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
             raise ValueError(
                 "Must pass in RNN state batches for placeholders {}, got {}".
                 format(self._state_inputs, state_batches))
+
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
         builder.add_feed_dict({self._obs_input: obs_batch})
         if state_batches:

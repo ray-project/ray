@@ -11,7 +11,6 @@ import shelve
 
 import gym
 import ray
-from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import _flatten_action
@@ -19,6 +18,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.tune.utils import merge_dicts
+from ray.tune.registry import get_trainable_cls
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
@@ -274,7 +274,7 @@ def run(args, parser):
     ray.init()
 
     # Create the Trainer from config.
-    cls = get_agent_class(args.run)
+    cls = get_trainable_cls(args.run)
     agent = cls(env=args.env, config=config)
     # Load state from checkpoint.
     agent.restore(args.checkpoint)
