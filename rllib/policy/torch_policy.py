@@ -71,6 +71,7 @@ class TorchPolicy(Policy):
                         **kwargs):
 
         explore = explore if explore is not None else self.config["explore"]
+        timestep = timestep if timestep is not None else self.global_timestep
 
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -81,6 +82,10 @@ class TorchPolicy(Policy):
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             state_batches = [self._convert_to_tensor(s) for s in state_batches]
+
+            # Call the exploration before_compute_actions hook.
+            self.exploration.before_compute_actions(timestep=timestep)
+
             model_out = self.model(input_dict, state_batches,
                                    self._convert_to_tensor([1]))
             logits, state = model_out
@@ -88,8 +93,7 @@ class TorchPolicy(Policy):
             actions, logp = \
                 self.exploration.get_exploration_action(
                     logits, self.dist_class, self.model,
-                    timestep if timestep is not None else
-                    self.global_timestep, explore)
+                    timestep, explore)
             input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,
@@ -100,8 +104,8 @@ class TorchPolicy(Policy):
                     ACTION_PROB: np.exp(logp),
                     ACTION_LOGP: logp
                 })
-            return convert_to_non_torch_type(
-                (actions, state, extra_action_out))
+            return convert_to_non_torch_type((actions, state,
+                                              extra_action_out))
 
     @override(Policy)
     def compute_log_likelihoods(self,
