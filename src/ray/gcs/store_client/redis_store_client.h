@@ -28,26 +28,23 @@ namespace gcs {
 template <typename Key, typename Data, typename SecondaryKey>
 class RedisStoreClient : public StoreClient<Key, Data, SecondaryKey> {
  public:
-  RedisStoreClient(std::shared_ptr<RedisClient> redis_client) 
+  RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(std::move(redis_client)) {}
 
   virtual ~RedisStoreClient() {}
 
-  Status AsyncPut(const std::string &table_name, const Key &key,
-                  const Data &data,
+  Status AsyncPut(const std::string &table_name, const Key &key, const Data &data,
                   const StatusCallback &callback) override;
 
   Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
-                           const SecondaryKey &index_key,
-                           const Data &data,
+                           const SecondaryKey &index_key, const Data &data,
                            const StatusCallback &callback) override;
 
   Status AsyncGet(const std::string &table_name, const Key &key,
                   const OptionalItemCallback<Data> &callback) override;
 
-  Status AsyncGetAll(
-      const std::string &table_name,
-      const SegmentedCallback<std::pair<Key, Data>> &callback) override;
+  Status AsyncGetAll(const std::string &table_name,
+                     const SegmentedCallback<std::pair<Key, Data>> &callback) override;
 
   Status AsyncDelete(const std::string &table_name, const Key &key,
                      const StatusCallback &callback) override;

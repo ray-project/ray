@@ -41,8 +41,7 @@ class StoreClient {
   /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPut(const std::string &table_name, const Key &key,
-                          const Data &data,
+  virtual Status AsyncPut(const std::string &table_name, const Key &key, const Data &data,
                           const StatusCallback &callback) = 0;
 
   /// Write data to the given table asynchronously.
@@ -54,8 +53,7 @@ class StoreClient {
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
   virtual Status AsyncPutWithIndex(const std::string &table_name, const Key &key,
-                                   const SecondaryKey &index_key,
-                                   const Data &data,
+                                   const SecondaryKey &index_key, const Data &data,
                                    const StatusCallback &callback) = 0;
 
   /// Get data from the given table asynchronously.
@@ -73,9 +71,8 @@ class StoreClient {
   /// \param callback Callback that will be called after data has been received.
   /// If the callback return `has_more == true` mean there's more data to be received.
   /// \return Status
-  virtual Status AsyncGetAll(
-      const std::string &table_name,
-      const SegmentedCallback<std::pair<Key, Data>> &callback) = 0;
+  virtual Status AsyncGetAll(const std::string &table_name,
+                             const SegmentedCallback<std::pair<Key, Data>> &callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///

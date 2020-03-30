@@ -31,7 +31,9 @@ class RedisStoreClientTest : public StoreClientTestBase {
     redis_client_ = std::make_shared<RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 
-    store_client_ = std::make_shared<RedisStoreClient<ActorID, rpc::ActorTableData, JobID>>(redis_client_);
+    store_client_ =
+        std::make_shared<RedisStoreClient<ActorID, rpc::ActorTableData, JobID>>(
+            redis_client_);
   }
 
   void DisconnectStoreClient() override { redis_client_->Disconnect(); }
@@ -48,14 +50,15 @@ TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncPut(table_name_, elem.first, elem.second,
-                                            put_calllback);
+    Status status =
+        store_client_->AsyncPut(table_name_, elem.first, elem.second, put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
 
   // AsyncGet
-  auto get_callback = [this](Status status, const boost::optional<rpc::ActorTableData> &result) {
+  auto get_callback = [this](Status status,
+                             const boost::optional<rpc::ActorTableData> &result) {
     RAY_CHECK_OK(status);
     RAY_CHECK(result);
     ActorID actor_id = ActorID::FromBinary(result->actor_id());
@@ -65,8 +68,7 @@ TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status =
-        store_client_->AsyncGet(table_name_, elem.first, get_callback);
+    Status status = store_client_->AsyncGet(table_name_, elem.first, get_callback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -77,8 +79,8 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   auto put_calllback = [this](Status status) { --pending_count_; };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status = store_client_->AsyncPut(table_name_, elem.first, elem.second,
-                                            put_calllback);
+    Status status =
+        store_client_->AsyncPut(table_name_, elem.first, elem.second, put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -90,22 +92,21 @@ TEST_F(RedisStoreClientTest, AsyncDeleteTest) {
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status =
-        store_client_->AsyncDelete(table_name_, elem.first, delete_calllback);
+    Status status = store_client_->AsyncDelete(table_name_, elem.first, delete_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
 
   // AsyncGet
-  auto get_callback = [this](Status status, const boost::optional<rpc::ActorTableData> &result) {
+  auto get_callback = [this](Status status,
+                             const boost::optional<rpc::ActorTableData> &result) {
     RAY_CHECK_OK(status);
     RAY_CHECK(!result);
     --pending_count_;
   };
   for (const auto &elem : key_to_value_) {
     ++pending_count_;
-    Status status =
-        store_client_->AsyncGet(table_name_, elem.first, get_callback);
+    Status status = store_client_->AsyncGet(table_name_, elem.first, get_callback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();
@@ -119,8 +120,8 @@ TEST_F(RedisStoreClientTest, DISABLED_AsyncGetAllTest) {
     // Get index
     auto it = key_to_index_.find(elem.first);
     const JobID &index = it->second;
-    Status status = store_client_->AsyncPutWithIndex(
-        table_name_, elem.first, index, elem.second, put_calllback);
+    Status status = store_client_->AsyncPutWithIndex(table_name_, elem.first, index,
+                                                     elem.second, put_calllback);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone();

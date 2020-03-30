@@ -25,9 +25,9 @@ namespace ray {
 namespace gcs {
 
 template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPut(const std::string &table_name, const Key &key,
-                                  const Data &data,
-                                  const StatusCallback &callback) {
+Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPut(
+    const std::string &table_name, const Key &key, const Data &data,
+    const StatusCallback &callback) {
   std::string full_key = table_name + key.Binary();
   std::string data_str = data.SerializeAsString();
   RAY_CHECK(!data_str.empty());
@@ -35,11 +35,9 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPut(const std::string &ta
 }
 
 template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPutWithIndex(const std::string &table_name,
-                                           const Key &key,
-                                           const SecondaryKey &index_key,
-                                           const Data &data,
-                                           const StatusCallback &callback) {
+Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPutWithIndex(
+    const std::string &table_name, const Key &key, const SecondaryKey &index_key,
+    const Data &data, const StatusCallback &callback) {
   std::string data_str = data.SerializeAsString();
   RAY_CHECK(!data_str.empty());
 
@@ -70,8 +68,9 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncPutWithIndex(const std::s
 }
 
 template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::DoPut(const std::string &key, const std::string &data,
-                               const StatusCallback &callback) {
+Status RedisStoreClient<Key, Data, SecondaryKey>::DoPut(const std::string &key,
+                                                        const std::string &data,
+                                                        const StatusCallback &callback) {
   std::vector<std::string> args = {"SET", key, data};
   RedisCallback write_callback = nullptr;
   if (callback) {
@@ -86,8 +85,9 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::DoPut(const std::string &key, 
 }
 
 template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncGet(const std::string &table_name, const Key &key,
-                                  const OptionalItemCallback<Data> &callback) {
+Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncGet(
+    const std::string &table_name, const Key &key,
+    const OptionalItemCallback<Data> &callback) {
   RAY_CHECK(callback != nullptr);
 
   auto redis_callback = [callback](std::shared_ptr<CallbackReply> reply) {
@@ -119,9 +119,8 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncGetAll(
 }
 
 template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDelete(const std::string &table_name,
-                                     const Key &key,
-                                     const StatusCallback &callback) {
+Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDelete(
+    const std::string &table_name, const Key &key, const StatusCallback &callback) {
   RedisCallback delete_callback = nullptr;
   if (callback) {
     delete_callback = [callback](std::shared_ptr<CallbackReply> reply) {
@@ -139,9 +138,9 @@ Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDelete(const std::string 
 }
 
 template <typename Key, typename Data, typename SecondaryKey>
-Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDeleteByIndex(const std::string &table_name,
-                                            const SecondaryKey &index_key,
-                                            const StatusCallback &callback) {
+Status RedisStoreClient<Key, Data, SecondaryKey>::AsyncDeleteByIndex(
+    const std::string &table_name, const SecondaryKey &index_key,
+    const StatusCallback &callback) {
   RAY_CHECK(0) << "Not implemented! Will implement this function in next PR.";
   return Status::OK();
 }
