@@ -1,6 +1,15 @@
 import time
 from collections import Counter
 
+# Discussion
+# We need to a histogram system that captures percentiles and handle variable
+# time ranges (e.g. p99 over last 5min, p99.9 over last hour).
+# There are few histogram library to choose from:
+# 1. Use raw data + numpy: too memory intensive.
+# 2. HdrHistogram: statically allocate memory, too costly for idle or noop
+#    time duration.
+# 3. t-digest: grow dynamically as sample size and has the ability to compress.
+#    Allow merging histograms as well.
 from tdigest import TDigest
 from prometheus_client import CollectorRegistry
 
@@ -9,13 +18,9 @@ import ray
 
 @ray.remote(num_cpus=0)
 class MetricMonitor:
-    def __init__(self, gc_window_seconds=3600):
+    def __init__(self:
         """Metric monitor scrapes metrics from ray serve actors
         and allow windowed query operations.
-
-        Args:
-            gc_window_seconds(int): How long will we keep the metric data in
-                memory. Data older than the gc_window will be deleted.
         """
         #: Mapping actor ID (hex) -> actor handle
         self.actor_handles = dict()
